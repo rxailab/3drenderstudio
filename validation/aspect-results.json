@@ -1,0 +1,564 @@
+{
+  "started_at": "2026-11-06T11:36:25Z",
+  "method": "actual localhost application API and downloaded image verification",
+  "checks": [
+    {
+      "aspect": "4:3",
+      "quality": "preview",
+      "job_id": "6c0c68f09653406c941b77172609aaaa",
+      "version": 2,
+      "output": {
+        "blend_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/6c0c68f09653406c941b77172609aaaa/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.1298731118440628,
+                0.2806726396083832,
+                0.8780786991119385,
+                0.6581640839576721
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7482055872678757,
+          "projected_bounds": [
+            0.1298731118440628,
+            0.2806726396083832,
+            0.8780786991119385,
+            0.6581640839576721
+          ],
+          "projection_test_points": [
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.0
+            ]
+          ]
+        },
+        "created_at": 1793964991.611215,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 384,
+        "job_id": "6c0c68f09653406c941b77172609aaaa",
+        "jpg_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/6c0c68f09653406c941b77172609aaaa/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.8098,
+          "dark_fraction": 0.0,
+          "luminance_mean": 237.64
+        },
+        "png_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/6c0c68f09653406c941b77172609aaaa/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.png",
+        "quality": "preview",
+        "result_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/6c0c68f09653406c941b77172609aaaa/拉丝金属收纳盘_hero_v2/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 2,
+        "width": 512
+      },
+      "download_checks": {
+        "png": {
+          "file": "D:\\模型渲染\\validation\\metal-4x3-preview.png",
+          "pixels": [
+            512,
+            384
+          ],
+          "format": "PNG",
+          "bytes": 100110,
+          "valid": true
+        },
+        "jpg": {
+          "file": "D:\\模型渲染\\validation\\metal-4x3-preview.jpg",
+          "pixels": [
+            512,
+            384
+          ],
+          "format": "JPEG",
+          "bytes": 20250,
+          "valid": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "aspect": "4:3",
+      "quality": "standard",
+      "job_id": "10ba20b65d1e4277a1fd3d9d98e0102d",
+      "version": 2,
+      "output": {
+        "blend_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/10ba20b65d1e4277a1fd3d9d98e0102d/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.1298731118440628,
+                0.2806726396083832,
+                0.8780786991119385,
+                0.6581640839576721
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7482055872678757,
+          "projected_bounds": [
+            0.1298731118440628,
+            0.2806726396083832,
+            0.8780786991119385,
+            0.6581640839576721
+          ],
+          "projection_test_points": [
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.0
+            ]
+          ]
+        },
+        "created_at": 1793965120.2393932,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 3072,
+        "job_id": "10ba20b65d1e4277a1fd3d9d98e0102d",
+        "jpg_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/10ba20b65d1e4277a1fd3d9d98e0102d/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.81,
+          "dark_fraction": 0.0,
+          "luminance_mean": 237.58
+        },
+        "png_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/10ba20b65d1e4277a1fd3d9d98e0102d/拉丝金属收纳盘_hero_v2/拉丝金属收纳盘_hero_v2.png",
+        "quality": "standard",
+        "result_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/10ba20b65d1e4277a1fd3d9d98e0102d/拉丝金属收纳盘_hero_v2/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 2,
+        "width": 4096
+      },
+      "download_checks": {
+        "png": {
+          "file": "D:\\模型渲染\\validation\\metal-4x3-standard.png",
+          "pixels": [
+            4096,
+            3072
+          ],
+          "format": "PNG",
+          "bytes": 4675093,
+          "valid": true
+        },
+        "jpg": {
+          "file": "D:\\模型渲染\\validation\\metal-4x3-standard.jpg",
+          "pixels": [
+            4096,
+            3072
+          ],
+          "format": "JPEG",
+          "bytes": 554065,
+          "valid": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "aspect": "3:4",
+      "quality": "preview",
+      "job_id": "a99efc4d604f4bbb969c3a058b4a99e0",
+      "version": 3,
+      "output": {
+        "blend_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/a99efc4d604f4bbb969c3a058b4a99e0/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.12790949642658234,
+                0.38177797198295593,
+                0.8780866265296936,
+                0.5925105214118958
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7501771301031113,
+          "projected_bounds": [
+            0.12790949642658234,
+            0.38177797198295593,
+            0.8780866265296936,
+            0.5925105214118958
+          ],
+          "projection_test_points": [
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.0
+            ]
+          ]
+        },
+        "created_at": 1793965138.1993768,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 512,
+        "job_id": "a99efc4d604f4bbb969c3a058b4a99e0",
+        "jpg_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/a99efc4d604f4bbb969c3a058b4a99e0/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.jpg",
+        "metrics": {
+          "bright_fraction": 0.8908,
+          "dark_fraction": 0.0,
+          "luminance_mean": 245.28
+        },
+        "png_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/a99efc4d604f4bbb969c3a058b4a99e0/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.png",
+        "quality": "preview",
+        "result_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/a99efc4d604f4bbb969c3a058b4a99e0/拉丝金属收纳盘_hero_v3/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 3,
+        "width": 384
+      },
+      "download_checks": {
+        "png": {
+          "file": "D:\\模型渲染\\validation\\metal-3x4-preview.png",
+          "pixels": [
+            384,
+            512
+          ],
+          "format": "PNG",
+          "bytes": 87703,
+          "valid": true
+        },
+        "jpg": {
+          "file": "D:\\模型渲染\\validation\\metal-3x4-preview.jpg",
+          "pixels": [
+            384,
+            512
+          ],
+          "format": "JPEG",
+          "bytes": 15872,
+          "valid": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "aspect": "3:4",
+      "quality": "standard",
+      "job_id": "0b5262b7e769433d8891b3a8cc20d9a9",
+      "version": 3,
+      "output": {
+        "blend_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/0b5262b7e769433d8891b3a8cc20d9a9/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.12790949642658234,
+                0.38177797198295593,
+                0.8780866265296936,
+                0.5925105214118958
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7501771301031113,
+          "projected_bounds": [
+            0.12790949642658234,
+            0.38177797198295593,
+            0.8780866265296936,
+            0.5925105214118958
+          ],
+          "projection_test_points": [
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              -1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              -1.0,
+              0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.0
+            ],
+            [
+              1.0,
+              -0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.21276596188545227
+            ],
+            [
+              1.0,
+              0.6170212626457214,
+              0.0
+            ]
+          ]
+        },
+        "created_at": 1793965267.8413677,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 4096,
+        "job_id": "0b5262b7e769433d8891b3a8cc20d9a9",
+        "jpg_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/0b5262b7e769433d8891b3a8cc20d9a9/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.jpg",
+        "metrics": {
+          "bright_fraction": 0.8911,
+          "dark_fraction": 0.0,
+          "luminance_mean": 245.24
+        },
+        "png_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/0b5262b7e769433d8891b3a8cc20d9a9/拉丝金属收纳盘_hero_v3/拉丝金属收纳盘_hero_v3.png",
+        "quality": "standard",
+        "result_url": "/files/aaa52b3c90dc4a39bde2b867e9817e16/runs/0b5262b7e769433d8891b3a8cc20d9a9/拉丝金属收纳盘_hero_v3/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 3,
+        "width": 3072
+      },
+      "download_checks": {
+        "png": {
+          "file": "D:\\模型渲染\\validation\\metal-3x4-standard.png",
+          "pixels": [
+            3072,
+            4096
+          ],
+          "format": "PNG",
+          "bytes": 4329018,
+          "valid": true
+        },
+        "jpg": {
+          "file": "D:\\模型渲染\\validation\\metal-3x4-standard.jpg",
+          "pixels": [
+            3072,
+            4096
+          ],
+          "format": "JPEG",
+          "bytes": 492851,
+          "valid": true
+        }
+      },
+      "passed": true
+    }
+  ],
+  "project_id": "aaa52b3c90dc4a39bde2b867e9817e16",
+  "passed": true,
+  "finished_at": "2026-11-06T11:41:08Z",
+  "preview_final_consistency": [
+    {
+      "aspect": "4:3",
+      "matching_settings": {
+        "camera": true,
+        "studio": true,
+        "operations": true
+      },
+      "normalized_mean_absolute_srgb_difference": 0.0026183217698971953,
+      "preview_render_seconds": 1.825,
+      "standard_render_seconds": 127.058
+    },
+    {
+      "aspect": "3:4",
+      "matching_settings": {
+        "camera": true,
+        "studio": true,
+        "operations": true
+      },
+      "normalized_mean_absolute_srgb_difference": 0.002001979719839324,
+      "preview_render_seconds": 1.822,
+      "standard_render_seconds": 125.949
+    }
+  ],
+  "cpu_probe": {
+    "success": true,
+    "device": {
+      "status": "ready",
+      "type": "CPU",
+      "backend": "CPU",
+      "name": "CPU",
+      "reason": "用户指定或 GPU 不可用",
+      "blender_version": "5.0.1"
+    }
+  }
+}

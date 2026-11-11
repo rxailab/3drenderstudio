@@ -1,0 +1,1 @@
+{"success": false, "error": "[WinError 2] 系统找不到指定的文件。: 'D:\\\\模型渲染\\\\validation\\\\scene-export\\\\failure-cases\\\\not-present.blend'", "files": {}, "warnings": [], "blender_version": "5.0.1"}

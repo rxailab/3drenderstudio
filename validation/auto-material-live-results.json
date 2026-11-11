@@ -1,0 +1,233 @@
+{
+  "passed": true,
+  "project_id": "7d273cdfb9ea4ebc804aa8fc93268a40",
+  "task_id": "19a5e91a0ef84dceb79947182380ccc9",
+  "origin": "automatic",
+  "selection": {
+    "asset_id": "stretch_poplin",
+    "name": "Stretch Poplin",
+    "url": "https://polyhaven.com/a/stretch_poplin",
+    "license": "CC0-1.0",
+    "license_url": "https://polyhaven.com/license",
+    "reason": "Explicit request is fine woven cotton textile microtexture. Stretch Poplin is described as a cotton poplin with a fine, tight weave, matching the fine woven cotton finish needed. Other cotton candidates are coarser (Book Pattern, Waffle Pique, Fabric Pattern 07) or carry strong pattern/colour, and Rough Linen is linen, not cotton. Since use_base_color=false, the green colour is irrelevant; only normal and roughness are applied.",
+    "mode": "ai",
+    "query": "fine woven cotton fabric textile microtexture"
+  },
+  "targets": [
+    {
+      "object_name": "Cotton cushion body",
+      "material_name": "Fine woven cotton fabric - cream"
+    }
+  ],
+  "files": [
+    {
+      "channel": "normal",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/stretch_poplin/stretch_poplin_nor_gl_1k.png",
+      "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+      "sha256": "00a918963b9c30336a55367adb156fe11665ab5f51dc58086c891f2cada68935",
+      "md5": "d67cabb52eb8eb8fde2ea141f2e5c0c4",
+      "bytes": 5203013,
+      "width": 1024,
+      "height": 988,
+      "color_space": "Non-Color"
+    }
+  ],
+  "outputs": [
+    {
+      "shot": "hero",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.041066487630208336,
+      "render_seconds": 2.291,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    },
+    {
+      "shot": "campaign",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.03372065226236979,
+      "render_seconds": 1.561,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    },
+    {
+      "shot": "side",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.048611958821614586,
+      "render_seconds": 1.534,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    },
+    {
+      "shot": "back",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.021062215169270832,
+      "render_seconds": 1.583,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    },
+    {
+      "shot": "detail1",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.07510121663411458,
+      "render_seconds": 1.655,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    },
+    {
+      "shot": "detail2",
+      "job_id": "65a1e6da30834e87b7fe28304e8c7577",
+      "version": 3,
+      "pixel_mean_difference_255": 0.0697021484375,
+      "render_seconds": 1.603,
+      "resources": [
+        {
+          "material": "Fine woven cotton fabric - cream.001",
+          "maps": [
+            {
+              "channel": "normal",
+              "path": "D:\\模型渲染\\data\\7d273cdfb9ea4ebc804aa8fc93268a40\\materials\\19a5e91a0ef84dceb79947182380ccc9\\normal.png",
+              "applied": true,
+              "color_space": "Non-Color",
+              "mapping": "UV",
+              "scale": 1,
+              "rotation_degrees": 0
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "review_source": "ai"
+    }
+  ],
+  "comparison": {
+    "before": 0.6,
+    "after": 0.6033333333333334,
+    "shots": 6
+  },
+  "decision": "reverted",
+  "auto_material": {
+    "origin_job_id": "ab8fa06a8125457ab2d661a06b50473a",
+    "round": 1,
+    "max_rounds": 2,
+    "status": "reverted",
+    "stage": "新材质预览评分未明显提升，已恢复之前的材质与图片",
+    "error": null,
+    "updated_at": 1794022555.1659496,
+    "task_id": "19a5e91a0ef84dceb79947182380ccc9",
+    "comparison": {
+      "before": 0.6,
+      "after": 0.6033333333333334,
+      "shots": 6
+    },
+    "notice": "新材质预览评分未明显提升；尝试结果已保留供对比。"
+  },
+  "unrelated_photography_preserved": true,
+  "base_color_map_not_replaced": true,
+  "new_4k_test": false,
+  "browser_downloads": [
+    {
+      "file": "C:\\Users\\Sam\\Downloads\\auto-cotton-cushion_hero_v3.png",
+      "format": "PNG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "matches_actual_output": true
+    },
+    {
+      "file": "C:\\Users\\Sam\\Downloads\\auto-cotton-cushion_hero_v3.jpg",
+      "format": "JPEG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "matches_actual_output": true
+    }
+  ],
+  "ui_retained_baseline_and_candidate_compare": true
+}

@@ -1,0 +1,80 @@
+{
+  "source": "normal browser UI with real Blender ray picking",
+  "project_id": "fb50b3a68d194f28af84b5d7b598599f",
+  "points_ui_count": 2,
+  "hits": [
+    {
+      "id": "3e85b0c5-de96-4dcd-bb0a-ce0a4283761f",
+      "x": 0.7,
+      "y": 0.47,
+      "hit": true,
+      "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+      "object_name": "镜向左边板_2",
+      "material_name": "红色塑料_10",
+      "material_render_name": "红色塑料_10",
+      "face_index": 120,
+      "position": [
+        0.8429501056671143,
+        -0.13328401744365692,
+        1.2894206047058105
+      ]
+    },
+    {
+      "id": "3e769bb0-4d23-416e-ae2e-bab94c74cc87",
+      "x": 0.3,
+      "y": 0.46,
+      "hit": true,
+      "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+      "object_name": "布尔",
+      "material_name": "红色塑料.1_1",
+      "material_render_name": "红色塑料.1_1",
+      "face_index": 3,
+      "position": [
+        -0.544753909111023,
+        -0.3991059958934784,
+        1.1466814279556274
+      ]
+    },
+    {
+      "id": "08b9aa5a-3caa-4e94-8a4d-74f531ad7abd",
+      "x": 0.7021276595744681,
+      "y": 0.474468085106383,
+      "hit": true,
+      "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+      "object_name": "镜向左边板_2",
+      "material_name": "红色塑料_10",
+      "material_render_name": "红色塑料_10",
+      "face_index": 120,
+      "position": [
+        0.8429499268531799,
+        -0.11884716153144836,
+        1.271385908126831
+      ]
+    },
+    {
+      "id": "42720a6e-4e40-46ce-87ed-6c96f2adf5e5",
+      "x": 0.2978723404255319,
+      "y": 0.46382978723404256,
+      "hit": true,
+      "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+      "object_name": "布尔",
+      "material_name": "红色塑料.1_1",
+      "material_render_name": "红色塑料.1_1",
+      "face_index": 3,
+      "position": [
+        -0.5548174977302551,
+        -0.3991064131259918,
+        1.131412148475647
+      ]
+    }
+  ],
+  "key_configured": false,
+  "upstream_llm_verified": false,
+  "server_tests_passed": 46,
+  "screenshots": [
+    "validation/ai-feedback-ui.png",
+    "validation/ai-auto-review-ui.png",
+    "validation/ai-settings-ui.png"
+  ],
+  "scope": "No user product colors were changed during UI verification. Actual local material isolation is separately verified in Blender."
+}

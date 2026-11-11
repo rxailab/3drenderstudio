@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "checked_at": "2026-11-07T02:59:51.954063+00:00",
+  "blender_version": "5.0.1",
+  "project_id": "dab3b4cdf73f4232a7c36cb2cbd958e3",
+  "task_id": "13a20b1998b448cd9c33b612b8e97044",
+  "before_job": "6fce95da385c4ec4ac1444ab8fd020ba",
+  "after_job": "355715f9e83742f286458545c15b6178",
+  "before_scene": "D:\\模型渲染\\data\\dab3b4cdf73f4232a7c36cb2cbd958e3\\runs\\6fce95da385c4ec4ac1444ab8fd020ba\\帆布皮革手提包_hero_v1\\帆布皮革手提包_hero_v1.blend",
+  "after_scene": "D:\\模型渲染\\data\\dab3b4cdf73f4232a7c36cb2cbd958e3\\runs\\355715f9e83742f286458545c15b6178\\帆布皮革手提包_hero_v2\\帆布皮革手提包_hero_v2.blend",
+  "selected_object": "Canvas body",
+  "original_base_color_graph_and_packed_image_unchanged": true,
+  "non_normal_shader_inputs_unchanged": true,
+  "selected_geometry_and_transform_unchanged": true,
+  "unselected_objects_and_materials_unchanged": 43,
+  "camera_and_lights_unchanged": true,
+  "external_normal_connected_to_actual_surface": true,
+  "normal_matches_download_sha256": true,
+  "all_file_images_packed": true,
+  "normal_image": {
+    "name": "normal.png",
+    "size": [
+      1024,
+      988
+    ],
+    "color_space": "Non-Color",
+    "packed": true,
+    "packed_sha256": "00a918963b9c30336a55367adb156fe11665ab5f51dc58086c891f2cada68935"
+  },
+  "base_color_images": [
+    {
+      "name": "canvas-weave",
+      "size": [
+        256,
+        256
+      ],
+      "color_space": "sRGB",
+      "packed": true,
+      "packed_sha256": "a9563669088d76ae6d9373494a11b3d75d24a6cdae1531425dd435a45bd0b080"
+    }
+  ],
+  "resource": {
+    "asset_id": "stretch_poplin",
+    "name": "Stretch Poplin",
+    "url": "https://polyhaven.com/a/stretch_poplin",
+    "license_url": "https://polyhaven.com/license",
+    "provider": "Poly Haven",
+    "resolution": "1k",
+    "downloaded_at": 1794020231.9581351,
+    "manifest_path": "D:\\模型渲染\\data\\dab3b4cdf73f4232a7c36cb2cbd958e3\\materials\\13a20b1998b448cd9c33b612b8e97044\\manifest.json"
+  },
+  "license": "CC0-1.0",
+  "read_only_scene_audit": true
+}

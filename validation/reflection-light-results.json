@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "softness_preserves_power": true,
+  "nonmetal_adds_no_metal_softbox": true,
+  "metal_camera_reflection_alignment": true,
+  "metal_softbox": {
+    "name": "Metal reflection softbox",
+    "position": [
+      -0.6335187554359436,
+      0.904758632183075,
+      1.6856132745742798
+    ],
+    "energy": 0.5,
+    "size": 0.6499999761581421,
+    "color": [
+      1,
+      1,
+      1
+    ],
+    "shape": "RECTANGLE",
+    "size_y": 0.2199999988079071,
+    "target_object": "Cube",
+    "target": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "method": "visible metal face reflected camera direction"
+  }
+}

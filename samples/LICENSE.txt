@@ -1,0 +1,4 @@
+SPDX-License-Identifier: CC0-1.0
+
+All models, geometry, fictional MORA labels, materials and textures in this directory were procedurally authored for this application. The authors dedicate them to the public domain under CC0 1.0 Universal. No third-party assets or real brand marks are used.
+https://creativecommons.org/publicdomain/zero/1.0/

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "project": "fb50b3a68d194f28af84b5d7b598599f",
+  "output": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/905102ea6b5843c585950b9a42af4d45/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+  "provider": "openai",
+  "model": "gpt-5.5-2026-04-23",
+  "summary": "整体可识别为红色移动工具柜/工作柜，主体完整未裁切，产品占画面约71%，白底允许高亮且产品本身没有明显过曝。台面金属反光可读，有长条高光和边缘亮线；红色柜体造型清楚，但大面积红色表面偏均匀，缺少微表面变化。接地阴影存在，轮子和地面关系基本可信；主要影响真实感的是红色面板的平滑CG感，以及部分小金属件反射不足。",
+  "question": "仅诊断，检查这张预览中台面金属反光与红色柜体的表面质感，不修改或重渲染。",
+  "mode": "diagnostic_only",
+  "main_text_model": "claude-haiku-5-5",
+  "vision_connection_status": "verified"
+}

@@ -1,0 +1,65 @@
+{
+  "passed": true,
+  "project_id": "dab3b4cdf73f4232a7c36cb2cbd958e3",
+  "proposal_id": "8ee87b64c7fa4c4395d92472963aaa74",
+  "job_id": "73744bec056747598997a8fb7d9d2c42",
+  "applied_version": 3,
+  "output_version": 3,
+  "changes": [
+    {
+      "path": "shot_adjustments.hero",
+      "before": {},
+      "after": {
+        "lighting": {
+          "fill_power": 0.7
+        }
+      }
+    }
+  ],
+  "render_settings": {
+    "exposure": 0,
+    "light_softness": 1,
+    "lighting": {
+      "key_power": 1,
+      "fill_power": 0.7,
+      "rim_power": 1,
+      "environment": 1
+    }
+  },
+  "desktop_viewport": [
+    1280,
+    720
+  ],
+  "desktop_viewer_height": 321.21875,
+  "mobile_viewport": [
+    390,
+    844
+  ],
+  "mobile_viewer_height": 223.5,
+  "mobile_document_height": 844,
+  "backend_test_count": 136,
+  "frontend_test_suites": 4,
+  "new_4k_test": false,
+  "browser_downloads": [
+    {
+      "format": "PNG",
+      "pixels": [
+        512,
+        512
+      ],
+      "download_matches_output": true
+    },
+    {
+      "format": "JPEG",
+      "pixels": [
+        512,
+        512
+      ],
+      "download_matches_output": true
+    }
+  ],
+  "bundle_crc_verified": true,
+  "bundle_contains_materials_and_license": true,
+  "desktop_document_height": 720,
+  "desktop_document_width": 1280
+}

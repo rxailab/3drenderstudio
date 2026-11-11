@@ -1,0 +1,80 @@
+[
+  {
+    "id": "matte-bottle",
+    "name": "哑光塑料按压瓶",
+    "description": "细长物体，哑光塑料、独立泵头、已有标签文字；GLB。",
+    "file": "matte-pump-bottle.glb",
+    "license": "CC0-1.0",
+    "features": [
+      "matte plastic",
+      "elongated",
+      "multipart",
+      "text label"
+    ]
+  },
+  {
+    "id": "metal-tray",
+    "name": "拉丝金属收纳盘",
+    "description": "扁平单网格金属物体，圆角与真实凹槽；GLB。",
+    "file": "brushed-metal-tray.glb",
+    "license": "CC0-1.0",
+    "features": [
+      "metal",
+      "flat",
+      "single mesh",
+      "concave"
+    ]
+  },
+  {
+    "id": "glass-tumbler",
+    "name": "厚壁透明玻璃杯",
+    "description": "真实内外壁、杯口及杯底厚度，单网格；GLB。",
+    "file": "thick-glass-tumbler.glb",
+    "license": "CC0-1.0",
+    "features": [
+      "transparent",
+      "hollow",
+      "single mesh",
+      "actual thickness"
+    ]
+  },
+  {
+    "id": "canvas-tote",
+    "name": "帆布皮革手提包",
+    "description": "帆布纹理、皮革、金属铆钉与缝线，多部件层级；GLB。",
+    "file": "canvas-leather-tote.glb",
+    "license": "CC0-1.0",
+    "features": [
+      "fabric",
+      "leather",
+      "mixed materials",
+      "multipart",
+      "embedded texture",
+      "hierarchy"
+    ]
+  },
+  {
+    "id": "obj-resources",
+    "name": "带贴图资源的 OBJ 手提包",
+    "description": "OBJ、MTL 和 textures 子目录，验证相对贴图路径；ZIP。",
+    "file": "canvas-tote-resources.zip",
+    "license": "CC0-1.0",
+    "features": [
+      "OBJ",
+      "MTL",
+      "relative texture paths"
+    ]
+  },
+  {
+    "id": "missing-sideways",
+    "name": "侧放且缺贴图的金属盘",
+    "description": "故意缺失 MTL 贴图且侧向摆放，验证警告、回退与旋转修正；ZIP。",
+    "file": "sideways-missing-texture.zip",
+    "license": "CC0-1.0",
+    "features": [
+      "OBJ",
+      "missing texture",
+      "wrong orientation"
+    ]
+  }
+]

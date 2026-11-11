@@ -1,0 +1,1579 @@
+{
+  "success": true,
+  "features": {
+    "dimensions": [
+      0.4050000011920929,
+      0.18000000715255737,
+      0.4762076735496521
+    ],
+    "aspect_ratio": 2.6455980812603337,
+    "elongated": false,
+    "flat": false,
+    "multipart": true,
+    "mesh_count": 43,
+    "symmetry": "unknown",
+    "surfaces": [
+      "metal",
+      "dielectric"
+    ],
+    "has_animation": false,
+    "has_armature": false
+  },
+  "bounds": {
+    "min": [
+      -0.20250000059604645,
+      -0.09000000357627869,
+      0.0
+    ],
+    "max": [
+      0.20250000059604645,
+      0.09000000357627869,
+      0.4762076735496521
+    ]
+  },
+  "dimensions": {
+    "value": [
+      0.4050000011920929,
+      0.18000000715255737,
+      0.4762076735496521
+    ],
+    "unit": "m",
+    "source": "glTF specification",
+    "reliability": "declared"
+  },
+  "objects": [
+    {
+      "name": "Tote bag assembly",
+      "type": "EMPTY",
+      "parent": null,
+      "dimensions": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": []
+    },
+    {
+      "name": "Base seam stitch",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.1599999964237213,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.001",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.1476999968290329,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.002",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.13539999723434448,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.003",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.12309999763965607,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.004",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.11079999804496765,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.005",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.09849999845027924,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.006",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.08619999885559082,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.007",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.0738999992609024,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.008",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.06159999966621399,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.009",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.049300000071525574,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.010",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.03700000047683716,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.011",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.024700000882148743,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.012",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -0.012400000356137753,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.013",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        -9.999999747378752e-05,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.014",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.012199999764561653,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.015",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.02449999935925007,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.016",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.03680000081658363,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.017",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.04910000041127205,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.018",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.061400000005960464,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.019",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.07370000332593918,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.020",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.0860000029206276,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.021",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.09830000251531601,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.022",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.11060000211000443,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.023",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.12290000170469284,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.024",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.13519999384880066,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.025",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.14749999344348907,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base seam stitch.026",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.006000000052154064,
+        0.001500000013038516,
+        0.001500000013038516
+      ],
+      "location": [
+        0.1597999930381775,
+        -0.08100000023841858,
+        0.04699999839067459
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 650,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 768,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass handle rivet",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.012000000104308128,
+        0.012000001966953278,
+        0.0040000006556510925
+      ],
+      "location": [
+        -0.14499999582767487,
+        -0.08799999952316284,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 964,
+      "faces": 1532,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed brass hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 390,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass handle rivet.001",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.012000000104308128,
+        0.012000001966953278,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.14499999582767487,
+        -0.08799999952316284,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 964,
+      "faces": 1532,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed brass hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 390,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass handle rivet.002",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.012000000104308128,
+        0.012000001966953278,
+        0.0040000006556510925
+      ],
+      "location": [
+        -0.14499999582767487,
+        0.08799999952316284,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 964,
+      "faces": 1532,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed brass hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 390,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass handle rivet.003",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.012000000104308128,
+        0.012000001966953278,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.14499999582767487,
+        0.08799999952316284,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 964,
+      "faces": 1532,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed brass hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 390,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Canvas body",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.4000000059604645,
+        0.15000000596046448,
+        0.28999999165534973
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.14499999582767487
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 542,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Woven canvas — sand"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 688,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Canvas piping",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.38967272639274597,
+        0.0040000081062316895,
+        0.21580030024051666
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 2533,
+      "faces": 4628,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 432,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Front leather patch",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.09000000357627869,
+        0.00800000037997961,
+        0.04500000178813934
+      ],
+      "location": [
+        0.0,
+        -0.07900000363588333,
+        0.1850000023841858
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 568,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 776,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Label_MORA",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.044832006096839905,
+        0.011200002394616604,
+        0.0006000000867061317
+      ],
+      "location": [
+        0.0,
+        -0.08399999886751175,
+        0.17900000512599945
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 878,
+      "faces": 860,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm cotton stitching"
+      ],
+      "non_manifold_edges": 1,
+      "raw_non_manifold_edges": 878,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather base",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.4050000011920929,
+        0.1550000011920929,
+        0.04600000008940697
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.023000000044703484
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 551,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 728,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather handle anchor",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.03200000151991844,
+        0.012000000104308128,
+        0.07000000029802322
+      ],
+      "location": [
+        -0.14499999582767487,
+        -0.07900000363588333,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 542,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 712,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather handle anchor.001",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.03200000151991844,
+        0.012000000104308128,
+        0.07000000029802322
+      ],
+      "location": [
+        0.14499999582767487,
+        -0.07900000363588333,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 542,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 712,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather handle anchor.002",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.03200000151991844,
+        0.012000000104308128,
+        0.07000000029802322
+      ],
+      "location": [
+        -0.14499999582767487,
+        0.07900000363588333,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 542,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 712,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather handle anchor.003",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.03200000151991844,
+        0.012000000104308128,
+        0.07000000029802322
+      ],
+      "location": [
+        0.14499999582767487,
+        0.07900000363588333,
+        0.25
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 542,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 712,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather rolled handle",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.32232409715652466,
+        0.02199999988079071,
+        0.19829502701759338
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 1285,
+      "faces": 2324,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 240,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather rolled handle.001",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.32232409715652466,
+        0.02199999988079071,
+        0.19829502701759338
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 1285,
+      "faces": 2324,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 240,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather top binding",
+      "type": "MESH",
+      "parent": "Tote bag assembly",
+      "dimensions": [
+        0.4000000059604645,
+        0.1509999930858612,
+        0.02500000037252903
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.27900001406669617
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 525,
+      "faces": 428,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown leather trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 636,
+      "degenerate_faces": 0
+    }
+  ],
+  "materials": [
+    {
+      "name": "Warm cotton stitching",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.6499999761581421,
+        0.5199999809265137,
+        0.3400000035762787,
+        1.0
+      ],
+      "roughness": 0.8999999761581421,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 0.0,
+      "textures": []
+    },
+    {
+      "name": "Brushed brass hardware",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "brushed_metal",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.5199999809265137,
+        0.3100000023841858,
+        0.0949999988079071,
+        1.0
+      ],
+      "roughness": 0.25,
+      "metallic": 0.8999999761581421,
+      "transmission": 0.0,
+      "emission": 0.0,
+      "textures": []
+    },
+    {
+      "name": "Woven canvas — sand",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "roughness": 0.8600000143051147,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 0.0,
+      "textures": [
+        {
+          "name": "canvas-weave",
+          "path": "",
+          "color_space": "sRGB",
+          "packed": true,
+          "missing": false
+        }
+      ]
+    },
+    {
+      "name": "Brown leather trim",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.10000000149011612,
+        0.03700000047683716,
+        0.017000000923871994,
+        1.0
+      ],
+      "roughness": 0.4699999988079071,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 0.0,
+      "textures": []
+    }
+  ],
+  "warnings": [
+    "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+    "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+  ],
+  "animations": [],
+  "blender_version": "5.0.1"
+}

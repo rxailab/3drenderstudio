@@ -1,0 +1,152 @@
+{
+  "success": true,
+  "device": {
+    "status": "ready",
+    "type": "GPU",
+    "backend": "OPTIX",
+    "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+    "blender_version": "5.0.1"
+  },
+  "files": {
+    "png": "test_bottle.png",
+    "jpg": "test_bottle.jpg",
+    "blend": "test_bottle.blend"
+  },
+  "width": 512,
+  "height": 512,
+  "checks": {
+    "method": "projected evaluated bounding boxes",
+    "kind": "complete_product",
+    "clipped": false,
+    "projected_bounds": [
+      0.2933160960674286,
+      0.1219811961054802,
+      0.7002705931663513,
+      0.8290964365005493
+    ],
+    "occupancy": 0.7071152403950691,
+    "margin": 0.12,
+    "corrections": 0,
+    "detail_target": null,
+    "manual_review": [],
+    "ground_contact": 0.0
+  },
+  "warnings": [],
+  "operations": [
+    {
+      "operation": "working_transform",
+      "rotation_degrees": [
+        0,
+        0,
+        0
+      ],
+      "uniform_scale": 2.9828487074059016,
+      "translation": [
+        -0.0,
+        0.001938849687576294,
+        -0.0
+      ]
+    }
+  ],
+  "camera": {
+    "position": [
+      3.3614590167999268,
+      -4.800660610198975,
+      2.9042000770568848
+    ],
+    "rotation": [
+      1.2566372156143188,
+      -3.481715893371984e-08,
+      0.6108653545379639
+    ],
+    "focal_length": 70.0,
+    "target": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "dof": false
+  },
+  "studio": {
+    "style": "white",
+    "lights": [
+      {
+        "name": "Key softbox",
+        "position": [
+          -3,
+          -4,
+          5
+        ],
+        "energy": 156.0,
+        "size": 3,
+        "color": [
+          1,
+          0.94,
+          0.87
+        ]
+      },
+      {
+        "name": "Fill softbox",
+        "position": [
+          4,
+          -2,
+          3
+        ],
+        "energy": 91.2,
+        "size": 3,
+        "color": [
+          0.86,
+          0.93,
+          1
+        ]
+      },
+      {
+        "name": "Edge softbox",
+        "position": [
+          1.2,
+          3,
+          4
+        ],
+        "energy": 204.0,
+        "size": 2,
+        "color": [
+          0.9,
+          0.95,
+          1
+        ]
+      },
+      {
+        "name": "Top reflection",
+        "position": [
+          -0.5,
+          0,
+          6
+        ],
+        "energy": 72.0,
+        "size": 2.5,
+        "color": [
+          1,
+          1,
+          1
+        ]
+      }
+    ],
+    "environment_strength": 0.22,
+    "color_management": {
+      "view_transform": "Standard",
+      "look": "None",
+      "exposure": 0.0,
+      "display": "sRGB"
+    }
+  },
+  "quality": "preview",
+  "render_seconds": 2.089,
+  "render_settings": {
+    "engine": "CYCLES",
+    "samples": 24,
+    "noise_threshold": 0.07000000029802322,
+    "time_limit": 0.0,
+    "denoising": true
+  },
+  "blender_version": "5.0.1"
+}

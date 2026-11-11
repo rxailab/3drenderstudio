@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-09",
+  "frontend": {
+    "tests": 33,
+    "passed": 33,
+    "runtime": "Node v24.22.1; jsdom 31.0.0",
+    "kind": "Actual HTML and JavaScript DOM/state tests with mocked APIs",
+    "failures": 0
+  },
+  "backend": {
+    "tests": 211,
+    "passed": 209,
+    "errors_due_to_missing_original_fixture": 2,
+    "new_regression_tests": 17,
+    "new_regression_passed": 17,
+    "missing_fixture": "validation/ai-cabinet-exact-debug.json",
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "new_round2_regression_tests": 2,
+    "new_round2_regression_passed": 2,
+    "network_blocked": true,
+    "uploaded_env_not_read": true
+  },
+  "visual_browser_verification": false,
+  "real_blender_render_verification": false,
+  "real_ai_requests_sent": false,
+  "missing_uploaded_components": [
+    "blender/worker.py",
+    "blender/pick_surface.py",
+    "blender/export_scene.py",
+    "c4d/convert_scene.py",
+    "samples/index.json"
+  ],
+  "static_checks": {
+    "ids": 229,
+    "duplicates": [],
+    "missingLiteralJSReferences": [],
+    "brokenAria": [],
+    "nestedForms": 0,
+    "globalForms": 1,
+    "globalFormInAdjustment": 1,
+    "diagnosticInputs": 0,
+    "removedBottomForm": true,
+    "removedRedundantIds": [
+      "instructionChips",
+      "instructionMode",
+      "realismAskForm",
+      "realismQuestion",
+      "emptyPreview",
+      "imageStamp",
+      "previewScope",
+      "renderSelection",
+      "planVersion"
+    ],
+    "directBlendInDialog": true,
+    "cssParseErrors": []
+  },
+  "offline_preview": {
+    "status": "passed",
+    "revision": "v2",
+    "verified": true,
+    "kind": "jsdom DOM and state checks; no browser visual verification",
+    "previousVersionStarts": true,
+    "actualAppStarts": true,
+    "globalInstructionForms": 1,
+    "diagnosticInputs": 0,
+    "readOnlyReviewPreservesPlanVersionAndJobs": true,
+    "instructionSavesThenQueuesOneShotPreview": true,
+    "placeholderExplicitlyLabelled": true,
+    "comparisonVersions": 2,
+    "viewportOptions": 5,
+    "inlineScriptsParse": true,
+    "errors": [],
+    "mockJobMessage": "界面演示：任务已排队（不执行渲染）图组进度 0/1 张取消任务查看真实执行日志"
+  },
+  "revision": "v2"
+}

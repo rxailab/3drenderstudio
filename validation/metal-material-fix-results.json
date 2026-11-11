@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "blender": "5.0.1",
+  "metallic": 1.0,
+  "roughness": 0.2800000011920929,
+  "base_color_alpha_normal_preserved": true,
+  "metal_key_light_shape": "RECTANGLE",
+  "fallback_marker_checks": true
+}

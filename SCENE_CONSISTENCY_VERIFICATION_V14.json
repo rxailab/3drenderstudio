@@ -1,0 +1,719 @@
+{
+  "revision": "v14",
+  "verified_at": "2026-11-11",
+  "scope": "Resolve reproducible floating-point scene mismatch; render final from accepted candidate; recover completed old failed jobs without repeat AI/rendering",
+  "backend": {
+    "tests_run": 820,
+    "passed": 818,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "elapsed_seconds": 96.697,
+    "network_blocked": true,
+    "uploaded_env_not_read": true
+  },
+  "new_tests": 8,
+  "new_tests_passed": 8,
+  "original_missing_fixture_errors": [
+    {
+      "id": "test_ai_client.AIClientTests.test_review_captured_broken_json_realism_is_never_trimmed_or_accepted",
+      "traceback": "Traceback (most recent call last):\n  File \"/workspace/scratch/0f2302ce6b73/render_studio/tests/test_ai_client.py\", line 376, in test_review_captured_broken_json_realism_is_never_trimmed_or_accepted\n    captured=json.loads((Path(__file__).resolve().parents[1]/'validation'/'ai-cabinet-exact-debug.json').read_text(encoding='utf-8'))\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/0f2302ce6b73/qa/run_v14_tests.py\", line 24, in safe_text\n    return '' if path.resolve()==uploaded_env else original_text(path,*a,**kw)\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/scratch/0f2302ce6b73/render_studio/validation/ai-cabinet-exact-debug.json'\n"
+    },
+    {
+      "id": "test_ai_client.AIClientTests.test_review_captured_diagnostic_extra_field_is_safely_ignored",
+      "traceback": "Traceback (most recent call last):\n  File \"/workspace/scratch/0f2302ce6b73/render_studio/tests/test_ai_client.py\", line 361, in test_review_captured_diagnostic_extra_field_is_safely_ignored\n    captured=json.loads((Path(__file__).resolve().parents[1]/'validation'/'ai-cabinet-exact-debug.json').read_text(encoding='utf-8'))\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/0f2302ce6b73/qa/run_v14_tests.py\", line 24, in safe_text\n    return '' if path.resolve()==uploaded_env else original_text(path,*a,**kw)\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/scratch/0f2302ce6b73/render_studio/validation/ai-cabinet-exact-debug.json'\n"
+    }
+  ],
+  "native_targeted": {
+    "tests_run": 13,
+    "passed": 13,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "service_targeted": {
+    "tests_run": 22,
+    "passed": 22,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "changed": false,
+    "retested_this_revision": false,
+    "previous_tests_passed": 152
+  },
+  "reference_file_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+  "reproduction": {
+    "passed": true,
+    "meaning": "v13 failure reproduced after real low-sample rendering, saving and reopening",
+    "source_unchanged": true,
+    "source_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+    "blender": "5.0.1",
+    "samples": 2,
+    "live_ai_requests_sent": 0,
+    "recipe": {
+      "version": 1,
+      "camera": {
+        "occupancy": 0.81,
+        "focal_length": 75,
+        "azimuth_delta": -5,
+        "elevation_delta": -2
+      },
+      "lighting": {
+        "key": {
+          "azimuth": -45,
+          "elevation": 40,
+          "power": 1.35,
+          "width": 1.7,
+          "height": 2
+        },
+        "fill": {
+          "azimuth": 25,
+          "elevation": 30,
+          "power": 0.75,
+          "width": 1.5,
+          "height": 1.5
+        },
+        "rim": {
+          "azimuth": 135,
+          "elevation": 55,
+          "power": 0.5,
+          "width": 1.35,
+          "height": 1.1
+        },
+        "reflection": {
+          "enabled": true,
+          "power": 0.03,
+          "width": 0.9,
+          "height": 0.4
+        },
+        "environment": 0.14
+      },
+      "background": {
+        "clean_white": true,
+        "contact_strength": 0.28,
+        "contact_distance": 0.12
+      },
+      "surfaces": []
+    },
+    "geometry_meshes": 105,
+    "candidate_state_sha256": "def18d8ea1084cfa6417f2b73f58610bb51685ad398c21ad9b312aeb8f6b4d57",
+    "final_state_sha256": "34e40a373198df655c3ef67b96c33b5191b55750951a0d8b908bdbe4c1edf7fa",
+    "camera_shift_x": {
+      "candidate": 0.016893381252884865,
+      "final": 0.016893338412046432,
+      "absolute_difference": 4.284083843231201e-08
+    },
+    "native_proofs_all_passed": true,
+    "elapsed_seconds": 10.742,
+    "evidence_root": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/old_failed_case"
+  },
+  "recipe_scan": {
+    "cases": 6,
+    "mismatching_cases": 2,
+    "camera_recipes": [
+      {
+        "case": 0,
+        "camera_recipe": {
+          "occupancy": 0.85,
+          "focal_length": 85,
+          "azimuth_delta": -3,
+          "elevation_delta": -3
+        },
+        "hash_equal": true
+      },
+      {
+        "case": 1,
+        "camera_recipe": {
+          "occupancy": 0.84,
+          "focal_length": 80.5,
+          "azimuth_delta": 0,
+          "elevation_delta": -3
+        },
+        "hash_equal": true
+      },
+      {
+        "case": 2,
+        "camera_recipe": {
+          "occupancy": 0.86,
+          "focal_length": 87,
+          "azimuth_delta": -2,
+          "elevation_delta": -4
+        },
+        "hash_equal": true
+      },
+      {
+        "case": 3,
+        "camera_recipe": {
+          "occupancy": 0.83,
+          "focal_length": 92.7,
+          "azimuth_delta": -1.3,
+          "elevation_delta": -2.6
+        },
+        "hash_equal": true
+      },
+      {
+        "case": 4,
+        "camera_recipe": {
+          "occupancy": 0.875,
+          "focal_length": 96.3,
+          "azimuth_delta": 2.3,
+          "elevation_delta": -1.7
+        },
+        "hash_equal": false
+      },
+      {
+        "case": 5,
+        "camera_recipe": {
+          "occupancy": 0.81,
+          "focal_length": 75,
+          "azimuth_delta": -5,
+          "elevation_delta": -2
+        },
+        "hash_equal": false
+      }
+    ]
+  },
+  "fresh_native_comparison": {
+    "passed": true,
+    "real_old_v13_files_reinspected": true,
+    "tiny_roundoff_accepted": {
+      "protocol": "hero-scene-state-v2",
+      "equivalent": true,
+      "exact_match": false,
+      "roundoff_only": true,
+      "differences": [],
+      "roundoff_fields": [
+        {
+          "path": "$.camera.shift_x",
+          "delta": -4.284083843231201e-08,
+          "tolerance": 2e-06
+        }
+      ],
+      "difference_count": 0,
+      "roundoff_count": 1,
+      "reason": "equivalent_with_roundoff"
+    },
+    "actual_key_energy_change_rejected": {
+      "protocol": "hero-scene-state-v2",
+      "equivalent": false,
+      "exact_match": false,
+      "roundoff_only": false,
+      "differences": [
+        {
+          "path": "$.lights[7].energy",
+          "before": 358.02001953125,
+          "after": 429.6240234375,
+          "kind": "value",
+          "tolerance": 0.0008592480468749999
+        }
+      ],
+      "roundoff_fields": [
+        {
+          "path": "$.camera.shift_x",
+          "delta": -4.284083843231201e-08,
+          "tolerance": 2e-06
+        }
+      ],
+      "difference_count": 1,
+      "roundoff_count": 1,
+      "reason": "scene_fields_changed"
+    },
+    "renders_performed": 0,
+    "live_ai_requests_sent": 0,
+    "elapsed_seconds": 2.538
+  },
+  "real_integration": {
+    "passed": true,
+    "live_ai_requests_sent": 0,
+    "low_sample_smoke": true,
+    "samples": 2,
+    "cases": {
+      "existing_final_recovery": {
+        "phase": "retry",
+        "live_ai_requests_sent": 0,
+        "mocked_ai": true,
+        "samples": 2,
+        "native_calls": [
+          {
+            "action": "inspect",
+            "stage": "recovery_source",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+            "recipe": null
+          },
+          {
+            "action": "inspect",
+            "stage": "recovery_candidate",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/candidate/scene.blend",
+            "recipe": null
+          },
+          {
+            "action": "inspect",
+            "stage": "recovery_final",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/final/scene.blend",
+            "recipe": null
+          }
+        ],
+        "retry_of": "5beacdd2e1d244e8a14005eae09caada",
+        "job_id": "c3f586a1efad48a39c661ff421c45d5a",
+        "status": "completed",
+        "error": null,
+        "version": 2,
+        "history_count": 1,
+        "ai_function_calls": [],
+        "llm_calls": 0,
+        "recovery_status": "reused_final",
+        "reused_final_from": "5beacdd2e1d244e8a14005eae09caada",
+        "elapsed_seconds": 2.958,
+        "outputs": [
+          {
+            "job_id": "original",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/original/image.png",
+            "blend_url": "/files/cabinet/runs/original/scene.blend",
+            "blend_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+            "width": null,
+            "height": null
+          },
+          {
+            "job_id": "c3f586a1efad48a39c661ff421c45d5a",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/baseline/image.png",
+            "blend_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/baseline/scene.blend",
+            "blend_sha256": "28142e0d87299d4f5d44bb603db0ff74c873bf9db5f37a2da894f0fb2a63023d",
+            "width": 768,
+            "height": 768
+          },
+          {
+            "job_id": "c3f586a1efad48a39c661ff421c45d5a",
+            "version": 2,
+            "quality": "hero",
+            "png_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/final/image.png",
+            "blend_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/final/scene.blend",
+            "blend_sha256": "228250018ce0f0cc1088c41f062e59aa01d58dbefe9bf71d3dfe4f0f8cf2fd6b",
+            "width": 2000,
+            "height": 2000
+          }
+        ],
+        "duplicate_retry_reused_same_job": true,
+        "passed": true
+      },
+      "changed_final_not_reused": {
+        "phase": "stale_final",
+        "live_ai_requests_sent": 0,
+        "mocked_ai": true,
+        "samples": 2,
+        "native_calls": [
+          {
+            "action": "inspect",
+            "stage": "recovery_source",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+            "recipe": null
+          },
+          {
+            "action": "inspect",
+            "stage": "recovery_candidate",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/candidate/scene.blend",
+            "recipe": null
+          },
+          {
+            "action": "render",
+            "stage": "final",
+            "resolution": 2000,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/candidate/scene.blend",
+            "recipe": {}
+          }
+        ],
+        "retry_of": "5beacdd2e1d244e8a14005eae09caada",
+        "job_id": "211b8acb893344faa20fcb86398c8dfe",
+        "status": "completed",
+        "error": null,
+        "version": 2,
+        "history_count": 1,
+        "ai_function_calls": [],
+        "llm_calls": 0,
+        "recovery_status": "rerendered_final",
+        "reused_final_from": null,
+        "elapsed_seconds": 8.068,
+        "outputs": [
+          {
+            "job_id": "original",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/original/image.png",
+            "blend_url": "/files/cabinet/runs/original/scene.blend",
+            "blend_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+            "width": null,
+            "height": null
+          },
+          {
+            "job_id": "211b8acb893344faa20fcb86398c8dfe",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/baseline/image.png",
+            "blend_url": "/files/cabinet/runs/5beacdd2e1d244e8a14005eae09caada/baseline/scene.blend",
+            "blend_sha256": "28142e0d87299d4f5d44bb603db0ff74c873bf9db5f37a2da894f0fb2a63023d",
+            "width": 768,
+            "height": 768
+          },
+          {
+            "job_id": "211b8acb893344faa20fcb86398c8dfe",
+            "version": 2,
+            "quality": "hero",
+            "png_url": "/files/cabinet/runs/211b8acb893344faa20fcb86398c8dfe/final/image.png",
+            "blend_url": "/files/cabinet/runs/211b8acb893344faa20fcb86398c8dfe/final/scene.blend",
+            "blend_sha256": "6a83ff2f0f825ca99c90fb05323a36fead4ccd5e50b0fdd1e52dd45c80d8f3f2",
+            "width": 2000,
+            "height": 2000
+          }
+        ],
+        "duplicate_retry_reused_same_job": true,
+        "passed": true
+      },
+      "fresh_from_candidate": {
+        "phase": "fresh",
+        "live_ai_requests_sent": 0,
+        "mocked_ai": true,
+        "samples": 2,
+        "native_calls": [
+          {
+            "action": "inspect",
+            "stage": "inspect",
+            "resolution": null,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/fresh_fixture/app/data/cabinet/runs/original/scene.blend",
+            "recipe": null
+          },
+          {
+            "action": "render",
+            "stage": "baseline",
+            "resolution": 768,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/fresh_fixture/app/data/cabinet/runs/original/scene.blend",
+            "recipe": {}
+          },
+          {
+            "action": "render",
+            "stage": "candidate",
+            "resolution": 768,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/fresh_fixture/app/data/cabinet/runs/original/scene.blend",
+            "recipe": {
+              "version": 1,
+              "camera": {
+                "occupancy": 0.81,
+                "focal_length": 75,
+                "azimuth_delta": -5,
+                "elevation_delta": -2
+              },
+              "lighting": {
+                "key": {
+                  "azimuth": -45,
+                  "elevation": 40,
+                  "power": 1.35,
+                  "width": 1.7,
+                  "height": 2
+                },
+                "fill": {
+                  "azimuth": 25,
+                  "elevation": 30,
+                  "power": 0.75,
+                  "width": 1.5,
+                  "height": 1.5
+                },
+                "rim": {
+                  "azimuth": 135,
+                  "elevation": 55,
+                  "power": 0.5,
+                  "width": 1.35,
+                  "height": 1.1
+                },
+                "reflection": {
+                  "enabled": true,
+                  "power": 0.03,
+                  "width": 0.9,
+                  "height": 0.4
+                },
+                "environment": 0.14
+              },
+              "background": {
+                "clean_white": true,
+                "contact_strength": 0.28,
+                "contact_distance": 0.12
+              },
+              "surfaces": []
+            }
+          },
+          {
+            "action": "render",
+            "stage": "final",
+            "resolution": 2000,
+            "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/fresh_fixture/app/data/cabinet/runs/54d7a0d180db4006ac4d73ed129ea507/candidate/scene.blend",
+            "recipe": {}
+          }
+        ],
+        "job_id": "54d7a0d180db4006ac4d73ed129ea507",
+        "status": "completed",
+        "error": null,
+        "version": 2,
+        "history_count": 1,
+        "ai_function_calls": [
+          "planning",
+          "comparison"
+        ],
+        "llm_calls": 2,
+        "recovery_status": null,
+        "reused_final_from": null,
+        "elapsed_seconds": 12.405,
+        "outputs": [
+          {
+            "job_id": "original",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/original/image.png",
+            "blend_url": "/files/cabinet/runs/original/scene.blend",
+            "blend_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+            "width": null,
+            "height": null
+          },
+          {
+            "job_id": "54d7a0d180db4006ac4d73ed129ea507",
+            "version": 1,
+            "quality": "preview",
+            "png_url": "/files/cabinet/runs/54d7a0d180db4006ac4d73ed129ea507/baseline/image.png",
+            "blend_url": "/files/cabinet/runs/54d7a0d180db4006ac4d73ed129ea507/baseline/scene.blend",
+            "blend_sha256": "162a2a7bffd1298e2d95b81bcaca34ce9e6bb4d82b3296acc42b661f4f91eb66",
+            "width": 768,
+            "height": 768
+          },
+          {
+            "job_id": "54d7a0d180db4006ac4d73ed129ea507",
+            "version": 2,
+            "quality": "hero",
+            "png_url": "/files/cabinet/runs/54d7a0d180db4006ac4d73ed129ea507/final/image.png",
+            "blend_url": "/files/cabinet/runs/54d7a0d180db4006ac4d73ed129ea507/final/scene.blend",
+            "blend_sha256": "9cee17a3e37b8bb48da983e880d8b5cacd9d168f9b38a998f07d3d00ee021d5a",
+            "width": 2000,
+            "height": 2000
+          }
+        ],
+        "passed": true
+      }
+    },
+    "original_v13_failure": {
+      "phase": "old",
+      "live_ai_requests_sent": 0,
+      "mocked_ai": true,
+      "samples": 2,
+      "native_calls": [
+        {
+          "action": "inspect",
+          "stage": "inspect",
+          "resolution": null,
+          "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+          "recipe": null
+        },
+        {
+          "action": "render",
+          "stage": "baseline",
+          "resolution": 768,
+          "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+          "recipe": {}
+        },
+        {
+          "action": "render",
+          "stage": "candidate",
+          "resolution": 768,
+          "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+          "recipe": {
+            "version": 1,
+            "camera": {
+              "occupancy": 0.81,
+              "focal_length": 75,
+              "azimuth_delta": -5,
+              "elevation_delta": -2
+            },
+            "lighting": {
+              "key": {
+                "azimuth": -45,
+                "elevation": 40,
+                "power": 1.35,
+                "width": 1.7,
+                "height": 2
+              },
+              "fill": {
+                "azimuth": 25,
+                "elevation": 30,
+                "power": 0.75,
+                "width": 1.5,
+                "height": 1.5
+              },
+              "rim": {
+                "azimuth": 135,
+                "elevation": 55,
+                "power": 0.5,
+                "width": 1.35,
+                "height": 1.1
+              },
+              "reflection": {
+                "enabled": true,
+                "power": 0.03,
+                "width": 0.9,
+                "height": 0.4
+              },
+              "environment": 0.14
+            },
+            "background": {
+              "clean_white": true,
+              "contact_strength": 0.28,
+              "contact_distance": 0.12
+            },
+            "surfaces": []
+          }
+        },
+        {
+          "action": "render",
+          "stage": "final",
+          "resolution": 2000,
+          "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v14_repro/flow_fixture/app/data/cabinet/runs/original/scene.blend",
+          "recipe": {
+            "version": 1,
+            "camera": {
+              "occupancy": 0.81,
+              "focal_length": 75,
+              "azimuth_delta": -5,
+              "elevation_delta": -2
+            },
+            "lighting": {
+              "key": {
+                "azimuth": -45,
+                "elevation": 40,
+                "power": 1.35,
+                "width": 1.7,
+                "height": 2
+              },
+              "fill": {
+                "azimuth": 25,
+                "elevation": 30,
+                "power": 0.75,
+                "width": 1.5,
+                "height": 1.5
+              },
+              "rim": {
+                "azimuth": 135,
+                "elevation": 55,
+                "power": 0.5,
+                "width": 1.35,
+                "height": 1.1
+              },
+              "reflection": {
+                "enabled": true,
+                "power": 0.03,
+                "width": 0.9,
+                "height": 0.4
+              },
+              "environment": 0.14
+            },
+            "background": {
+              "clean_white": true,
+              "contact_strength": 0.28,
+              "contact_distance": 0.12
+            },
+            "surfaces": []
+          }
+        }
+      ],
+      "job_id": "5beacdd2e1d244e8a14005eae09caada",
+      "status": "failed",
+      "error": "高清输出与已选候选的场景状态不一致，原方案保留。",
+      "version": 1,
+      "history_count": 0,
+      "ai_function_calls": [
+        "planning",
+        "comparison"
+      ],
+      "llm_calls": 2,
+      "recovery_status": null,
+      "reused_final_from": null,
+      "elapsed_seconds": 11.217,
+      "outputs": [
+        {
+          "job_id": "original",
+          "version": 1,
+          "quality": "preview",
+          "png_url": "/files/cabinet/runs/original/image.png",
+          "blend_url": "/files/cabinet/runs/original/scene.blend",
+          "blend_sha256": "302a2c0558ed6f4a7101d83f9919f4022c3e07c15d3e57c4ac849b13bb6c08c0",
+          "width": null,
+          "height": null
+        }
+      ],
+      "passed": true
+    },
+    "started_at": 1794369091.5527701,
+    "frozen_source_sha256": {
+      "hero_optimizer.py": "f5ac6f0dd4c600de870f5fb60e7c521055e016476f2cc9b372cc20d188c1ae1b",
+      "hero_state.py": "8d3bafaa15ba9a2350ee61b592c480b115568a671cebee1f1ddaa852c4b3f34a",
+      "blender/hero_scene.py": "8a5d4c7f48a90b40b5f6f1eae3a8967da539e496ba0112f74f0dccaabcdc1556",
+      "engine.py": "dda77349a2e82a14a2dfd611ef68bea87517febc866c1f9f9efb62e26159ca21",
+      "app.py": "69450ffd71c42d7ec16849fbe54655851ad6b51f77d932a32ef0dc0369a69629"
+    },
+    "original_attachment_unchanged": true,
+    "source_product_meshes": 105,
+    "elapsed_seconds": 24.384
+  },
+  "real_ai_requests_sent": false,
+  "user_windows_app_modified": false,
+  "high_sample_visual_quality_acceptance": false,
+  "browser_visual_acceptance": false,
+  "source_manifest_sha256": {
+    "ai_client.py": "b40556baae1d3d6eee3653369b44eeb4417828318070b68dfe102f3514edfa3e",
+    "ai_config.py": "f08663569ae549edcc816afe874363e7aff49eb3351348232de87346e1f84365",
+    "ai_model_policy.py": "822d4b365c16063c879081a9edcdc6f1f78fac011293b1d182ad3fe31e078c92",
+    "app.py": "69450ffd71c42d7ec16849fbe54655851ad6b51f77d932a32ef0dc0369a69629",
+    "asset_provenance.py": "2e32758604e013634712815a3c7d9d53ddeeba717eb38b63762c489bd4681ae6",
+    "blender/hero_scene.py": "8a5d4c7f48a90b40b5f6f1eae3a8967da539e496ba0112f74f0dccaabcdc1556",
+    "blender/inspect_lighting.py": "946c9b8019e5fe8ee442c2879715e7f8342e853cf4a46531622e98ba91bbc662",
+    "blender/inspect_parts.py": "317c21feb52beee393bf6c39757a69ef5899a846a5b3a1f2f573b8db29191c86",
+    "blender/light_direction.py": "8a33e34893347e05f04fda5b2aa67a91d960cccc72ea1034a88e0aaef3e3a9a0",
+    "blender/render_entry.py": "988f0d6b13f9b7df5e56a88ccad0e95613d6e3b6cb1fe4418a3cfda889c34a1c",
+    "engine.py": "dda77349a2e82a14a2dfd611ef68bea87517febc866c1f9f9efb62e26159ca21",
+    "hero_ai.py": "e5f1616a883ece9a9e0caad5d2f59aa76005381389b1f9062a01cbab814f84a5",
+    "hero_optimizer.py": "f5ac6f0dd4c600de870f5fb60e7c521055e016476f2cc9b372cc20d188c1ae1b",
+    "hero_recipe.py": "4223203e884a4686b326b509194605c447b70b73183f112f6532987f320c2046",
+    "hero_state.py": "8d3bafaa15ba9a2350ee61b592c480b115568a671cebee1f1ddaa852c4b3f34a",
+    "instruction_service.py": "29aff97cb33451c00244d3d0473797ea0ed9c8226d99b2f37c0469224ca9e02f",
+    "intelligence_rules.py": "ea18e0393f1708852165d631d2956bed9b840769c013c0a1e212f82891b2044a",
+    "lighting_controls.py": "e8d982cd023c8b1fcc0fc56594d81cb471cbea36614d02fdd72f358bbb1b95d8",
+    "material_agent.py": "b71e1a28b158984c729a90982df4b2b8c456fc058b0fecfcf46b1fa59629509b",
+    "material_edit.py": "8b8588d3ac4ad7c98fa8bf78fdd9f1e850baa3cb8c3e07d1046b557bec839159",
+    "material_intent.py": "7a9f42e62baf4175006c434854f824bd1cd83583fdbedc0fc543d85c848c0a08",
+    "planner.py": "9f03093904d0c158940173e0c67e2eb8bc52ff14aeb07938362ad1e02e57915f",
+    "project_lifecycle.py": "92ffb929408be77a125c6ec0ff663997785aef9f72b8dbb3e247667b76402ac3",
+    "quality_gate.py": "bc4578ccbb37c92a65324fb3528c98a65e75fbb8ea30a79caf11dcfd7d8e69fe",
+    "review_actions.py": "49efaf982eca07f8e7c19262ad7a52b19433f56c741c27097a7704cf6bfc088c",
+    "scene_exports.py": "d0d047c0758170cd2568024ffbe195b20bf1b5965088c508ea20b058f51a6fc6",
+    "scene_parts.py": "dec6bb5839c422e509bb6a94f9ee23d6c12cda7a30a606842e9732a98768a17e",
+    "static/app.js": "188b65cf9c3aac6bea00198324e7d5c60adb1f4f33cbfc187411cfa90ad86468",
+    "static/index.html": "85f9fc0bf7d24206fd7218bf47cae470d5adf8f5474f2c2f30308e8e4ddf69ae",
+    "static/styles.css": "a7c1198e6a4e68f1ead7082ba8d6a513cd6567e3379e18b564e9e41423be19d5",
+    "studio_store.py": "77184718153ec7bd8c0473a78be0f9135723402ee480b1568e72f1f38cce4972",
+    "target_evidence.py": "8da20e2eec47afe4e26ea2b8c0b73a8eb5f86376a9afef1bac628cede4b7ff85"
+  },
+  "notes": [
+    "The exact local task files in the user Windows installation were not accessible; the same failure class was reproduced using the supplied original cabinet and delivered v13 code.",
+    "New final renders read candidate/scene.blend with an empty recipe; they do not repeat camera fitting at another resolution.",
+    "Fresh state inspection uses explicit field-specific tolerances for numerical roundoff and exact protected product hashes. Missing or invalid state cannot establish equivalence.",
+    "Old recovery validates recorded requests, image/scene hashes, source/plan/version and prior accepted comparison before reinspection and commit.",
+    "Valid old final files are adopted without another model request or render. Invalid final files alone are regenerated from a valid candidate. Invalid source/candidate evidence cannot be reused.",
+    "Recovery reuses original PNG and Blender bytes and performs one version/history commit; repeated retry reuses that task.",
+    "Live model success, high-sample product quality and user Windows hardware timing are not claimed.",
+    "The two missing original-fixture errors are not counted as passes. Frontend source is byte-identical to v13; UI tests were not rerun for this backend-only fix."
+  ]
+}

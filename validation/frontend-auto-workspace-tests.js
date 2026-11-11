@@ -1,0 +1,112 @@
+// Run: node validation/frontend-auto-workspace-tests.js
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const html=fs.readFileSync('static/index.html','utf8'),source=fs.readFileSync('static/app.js','utf8');
+assert(!html.includes('reviewFindMaterial'),'No manual material-search step in diagnosis');
+assert(/<details id="materialAgentPanel"[^>]*>/.test(html));
+assert(!/<details id="materialAgentPanel"[^>]*\bopen/.test(html),'Optional manual search starts closed');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
+assert.equal(ids.length,new Set(ids).size);
+const element=()=>({value:'',disabled:false,hidden:false,textContent:'',innerHTML:'',classList:{toggle(){}},setAttribute(name,value){this[name]=value;},getAttribute(name){return this[name];},querySelector(){return null;},querySelectorAll(){return [];}});
+const elements=Object.fromEntries(ids.map(id=>[id,element()]));
+const storage=new Map(),calls=[],messages=[];
+const context=vm.createContext({console,URL,FormData:class{},crypto:{randomUUID:()=> 'unique-request'},localStorage:{setItem:(key,value)=>storage.set(key,value),getItem:key=>storage.get(key)},document:{getElementById:id=>elements[id],querySelectorAll:()=>[]},setTimeout(){},clearTimeout(){}});
+vm.runInContext(source.replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/,''),context);
+const run=code=>vm.runInContext(code,context),plain=value=>JSON.parse(JSON.stringify(value));
+context.calls=calls;context.messages=messages;
+run(`renderFeedback=()=>{};renderReview=()=>{};stashCamera=()=>{};toast=(message,error)=>messages.push({message,error});
+current={id:'p',version:2,analysis:{},jobs:[],plan:{style:'soft',visual_review:true,max_corrections:2,shots:[{id:'hero',label:'白底主图',kind:'full',style:'white'},{id:'campaign',label:'棚拍宣传',kind:'full'},{id:'side',label:'侧面',kind:'full'}]},outputs:[
+ {job_id:'j1',shot_id:'campaign',version:1,quality:'preview',created_at:1,png_url:'/campaign-v1.png',jpg_url:'/campaign-v1.jpg',width:512,height:512},
+ {job_id:'j2',shot_id:'campaign',version:2,quality:'preview',created_at:2,png_url:'/campaign-v2.png',jpg_url:'/campaign-v2.jpg',width:512,height:512},
+ {job_id:'hero',shot_id:'hero',version:1,quality:'preview',created_at:5,png_url:'/hero-v1.png',width:512,height:512}
+]};draft=clone(current.plan);activeShot='hero';cameraShot='hero';selectedShots=new Set(['hero']);system={ai_mode:'ai'};`);
+
+assert.equal(run("focusStyleShot('dark','soft')"),true);
+assert.equal(run('activeShot'),'campaign','A style change displays its affected campaign shot');
+assert(run("selectedShots.has('campaign')"),'The affected shot will actually be rendered');
+assert.equal(run("current.plan.shots[0].style"),'white','Hero remains white');
+assert.equal(storage.get('wuying-shot-p'),'campaign');
+run("activeShot='side';focusStyleShot('soft','dark');");
+assert.equal(run('activeShot'),'side','An explicitly selected non-hero angle stays selected');
+run("activeShot='campaign';styleFocusNotice='';renderViewer();");
+assert.equal(elements.renderImage.src,'/campaign-v2.png');
+assert.equal(elements.downloadPng.href,'/campaign-v2.png?download=1');
+assert.equal(elements.comparePreview.hidden,false);
+assert.equal(run('previousOutput(currentOutput).shot_id'),'campaign','Comparison never uses a different angle');
+run('comparePrevious=true;renderViewer();');
+assert.equal(elements.renderImage.src,'/campaign-v1.png');
+assert.equal(elements.downloadPng.href,'/campaign-v1.png?download=1','Downloads match the displayed snapshot');
+assert(elements.previewNotice.textContent.includes('上一版 v1'));
+run("current.version=3;current.outputs.push({job_id:'j3',shot_id:'campaign',version:3,quality:'preview',created_at:3,png_url:'/campaign-v3.png',width:512,height:512});renderViewer();");
+assert.equal(elements.renderImage.src,'/campaign-v3.png','A newly completed real render automatically replaces the old image');
+assert.equal(run('comparePrevious'),false,'New results leave historical comparison');
+run("current.jobs=[{id:'render',status:'running',shot_ids:['campaign']}];renderViewer();");
+assert(elements.previewNotice.textContent.includes('暂时显示 v3'));
+assert.equal(elements.renderImage.src,'/campaign-v3.png','A running job does not invent a new image');
+run("current.jobs=[];currentOutput.corrections=[{round:0,applied:true},{round:1,applied:false}];renderViewer();");
+assert(elements.previewNotice.textContent.includes('未优于本轮初始预览'),'Retained within-round baseline is explicit');
+run(`current.jobs=[{id:'j4',status:'completed',review_notice:'新版灯光从新预览开始比较，未自动比较旧引擎图；旧图保留，可查看前后结果。',automatic_previous_preview:{job_id:'j3',shot_id:'campaign',version:3,png_url:'/campaign-v3.png'}}];
+current.outputs.push({job_id:'j4',shot_id:'campaign',version:3,quality:'preview',created_at:4,png_url:'/campaign-v3-new.png',jpg_url:'/campaign-v3-new.jpg',width:512,height:512,corrections:[{round:0,applied:true},{round:1,applied:false}]});renderViewer();`);
+assert.equal(elements.renderImage.src,'/campaign-v3-new.png');
+assert.equal(elements.comparePreview.textContent,'对比优化前');
+assert(elements.previewNotice.textContent.includes('未自动比较旧引擎图'),'Cross-engine comparison is never implied');
+assert(elements.previewNotice.textContent.includes('本轮初始结果'),'Candidate comparison identifies the true baseline');
+run('comparePrevious=true;renderViewer();');
+assert.equal(elements.renderImage.src,'/campaign-v3.png','Same-version comparison selects exact recorded prior snapshot');
+assert(elements.previewNotice.textContent.includes('优化前的真实预览'));
+assert.equal(elements.imageStamp.textContent,'优化前 · v3');
+run('comparePrevious=false;current.jobs=[];');
+run("current.auto_material={status:'running',task_id:'auto-1',stage:'下载已许可的金属贴图'};renderAutomaticMaterialStatus([]);");
+assert.equal(elements.autoMaterialStage.textContent,'下载已许可的金属贴图');
+assert.equal(run('automaticMaterialBusy()'),true);
+run("current.jobs=[{id:'render',kind:'preview',status:'completed',stage:'已完成',shot_ids:['campaign'],completed:['campaign']}];renderJob();renderViewer();");
+assert(elements.jobPanel.innerHTML.includes('下载已许可的金属贴图'),'Global task strip reflects ongoing automatic work');
+assert(elements.jobPanel.innerHTML.includes('data-cancel-auto-material="auto-1"'));
+assert(!elements.jobPanel.className.includes('is-complete'));
+assert(elements.previewNotice.textContent.includes('当前真实图片保留'));
+run("current.auto_material={status:'reverted',stage:'已保留优化前的材质',notice:'候选贴图未改善可读性'};renderAutomaticMaterialStatus([]);");
+assert.equal(run('automaticMaterialBusy()'),false);
+assert.equal(elements.autoMaterialNotice.textContent,'候选贴图未改善可读性');
+run("current.auto_material={origin_job_id:'previous-render',status:'unchanged',stage:'材质判断不足，保留现有材质',notes:['材质判断不足，保留现有材质','材质判断不足，保留现有材质']};renderAutomaticMaterialStatus([]);");
+assert.equal(elements.autoMaterialNotice.textContent,'','Stage text is not repeated in the notice');
+assert.equal(elements.autoMaterialNotice.hidden,true);
+run("current.jobs=[{id:'next-render',kind:'preview',status:'running',shot_ids:['campaign']}];renderAutomaticMaterialStatus([]);");
+assert.equal(elements.autoMaterialStage.textContent,'当前预览完成后自动检查材质','A new preview supersedes the previous chain outcome');
+assert(!elements.autoMaterialNotice.textContent.includes('判断不足'));
+run("current.auto_material={origin_job_id:'previous-render',status:'rendering',task_id:'auto-rerender',stage:'材质已应用，等待真实预览'};current.jobs[0].request_key='material-agent:auto-rerender';renderAutomaticMaterialStatus([]);");
+assert.equal(elements.autoMaterialStage.textContent,'材质已应用，等待真实预览','A material trial render keeps its actual chain stage even before task polling catches up');
+run("current.jobs=[];current.auto_material={status:'reverted'};renderAutomaticMaterialStatus([]);");
+assert.equal(elements.autoMaterialStage.textContent,'已恢复优化前的材质与图片','Restoration does not falsely claim a candidate was worse');
+run("materialAgentRecords.set('p',[{id:'auto-2',origin:'automatic',status:'running',stage:'正在定位真实部件'}]);renderAutomaticMaterialStatus(materialAgentRecords.get('p'));");
+assert.equal(elements.autoMaterialStage.textContent,'正在定位真实部件');
+assert.equal(run('automaticMaterialBusy()'),true);
+run("materialAgentRecords.clear();delete current.auto_material;current.jobs=[];");
+
+async function main(){
+  run(`renderProject=()=>{};syncSettings=()=>{draft=clone(current.plan);dirty=false;};savePlan=async()=>{};
+  api=async(path,options={})=>{calls.push({path,body:options.body,headers:options.headers});
+    if(path.endsWith('/instruct'))return {...current,version:4,plan:{...current.plan,style:'dark'}};
+    if(path.endsWith('/jobs'))return {id:'real-preview',status:'queued'};
+    return {...current,jobs:[{id:'real-preview',status:'queued',shot_ids:['hero','campaign']}]};};
+  current.plan.style='soft';draft=clone(current.plan);activeShot='hero';selectedShots=new Set(['hero']);`);
+  elements.instructionInput.value='换成深色棚拍';
+  const submitted=run('applyInstructionAndPreview({preventDefault(){}})');
+  await run('applyInstructionAndPreview({preventDefault(){}})');
+  await submitted;
+  assert.equal(calls.filter(call=>call.path.endsWith('/instruct')).length,1,'Duplicate submits are blocked');
+  const render=calls.find(call=>call.path.endsWith('/jobs'));
+  assert.deepEqual(plain(render.body),{kind:'preview',quality:'preview',shot_ids:['hero','campaign']},'Natural-language Apply queues the affected real preview automatically');
+  assert(render.headers['Idempotency-Key']);
+  assert.equal(run('activeShot'),'campaign');
+  assert.equal(elements.instructionInput.value,'');
+  assert(messages.at(-1).message.includes('重新生成预览'));
+  assert.equal(run('busy'),false);
+
+  calls.length=0;messages.length=0;
+  run("current.jobs=[];api=async(path)=>{calls.push({path});if(path.endsWith('/instruct'))return {...current,version:5};if(path.endsWith('/jobs'))throw new Error('真实任务队列不可用');return current;};");
+  elements.instructionInput.value='反光柔和一点';
+  await run('applyInstructionAndPreview({preventDefault(){}})');
+  assert(messages.at(-1).message.includes('参数已保存，但预览未启动'));
+  assert(messages.at(-1).error,'Render failure is surfaced without claiming a changed image');
+  console.log('Automatic workspace UI passed: no manual prerequisite, affected-shot focus, actual snapshot comparison, live image replacement, retained-result notices, automatic progress/cancel, and natural-language Apply-to-preview.');
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

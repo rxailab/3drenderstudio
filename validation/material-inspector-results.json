@@ -1,0 +1,60 @@
+{
+  "blender_version": "5.0.1",
+  "real_scene_pick": [
+    {
+      "id": "front",
+      "x": 0.5,
+      "y": 0.5,
+      "hit": true,
+      "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory",
+      "material_info": {
+        "name": "Paper label — ivory",
+        "render_name": "Paper label — ivory",
+        "color": "#F6F5ED",
+        "roughness": 0.72,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "editable": true,
+        "supported": true,
+        "warnings": []
+      },
+      "slot_index": 0,
+      "face_index": 1,
+      "position": [
+        -0.17885719239711761,
+        -0.2289266735315323,
+        1.1173741817474365
+      ]
+    },
+    {
+      "id": "background",
+      "x": 0.01,
+      "y": 0.01,
+      "hit": false,
+      "message": "此位置没有命中产品表面"
+    }
+  ],
+  "source_sha256_unchanged": true,
+  "linked_channel_is_explicit_default_not_texel": true,
+  "srgb_color_round_trip": true,
+  "wood_preset_preserves_original_label": true,
+  "preset_preserves_unlinked_product_color": true,
+  "unsupported_shader_requires_explicit_preset": true,
+  "explicit_preset_replaces_active_shader_not_orphan": true,
+  "subsequent_edit_targets_active_shader": true
+}

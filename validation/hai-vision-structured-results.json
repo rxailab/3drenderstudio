@@ -1,0 +1,110 @@
+{
+  "passed": true,
+  "model": "gpt-5.5-2026-04-23",
+  "provider": "openai",
+  "project": "fb50b3a68d194f28af84b5d7b598599f",
+  "actual_preview": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/905102ea6b5843c585950b9a42af4d45/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+  "summary": "整体产品识别清楚：红色带轮工具柜、台面、抽屉拉手、门把手和脚轮都可辨认；无产品裁切，主体占画面约七成，白底允许高亮。曝光正常，产品采样无不透明裁切。主要可改进点不是曝光，而是金属台面与红色大面的微表面/反射层次：台面反光方向清楚但细节偏少，红色柜体反光偏均匀，底部小五金金属感较弱。安全自动改善宜优先做同材质家族的粗糙度/法线微纹理试验，不自动改颜色、相机、几何或材质身份。",
+  "causes": [
+    {
+      "aspect": "台面金属高光与反射可读性",
+      "evidence": "可见事实：顶部不锈钢台面有明显斜向亮带和边缘高光，右前区域较亮但没有吞掉台面轮廓；产品不透明裁切为 0.0。推测：当前反射足以表达金属，但台面大面积过于连续平滑，细微拉丝方向在主图中不明显。",
+      "confidence": 0.72,
+      "suggestion": "可安全尝试为 G-不锈钢台面_2 / 亮光金属_6 添加同属 metal 的细微 brushed roughness/OpenGL normal 微纹理，保留原颜色和金属身份，只增加很轻的方向性表面变化；不建议自动改曝光。",
+      "requires_user": false
+    },
+    {
+      "aspect": "红色柜体表面反光层次",
+      "evidence": "可见事实：正面抽屉、双门和右侧板红色区域颜色均匀，只有柔和明暗过渡，几乎看不到局部细小高光破碎或微起伏；当前可见材质读数显示多个红色塑料目标 roughness 0.8、无 normal 贴图。推测：较高粗糙度加无微表面使大面积红面显得偏平。",
+      "confidence": 0.68,
+      "suggestion": "可安全试用同属 plastic 的非常细微 roughness/normal 微纹理，让红色表面出现轻微塑料/喷涂质感变化；必须保持红色基色、标签和几何不变，不改成金属漆。",
+      "requires_user": false
+    },
+    {
+      "aspect": "小五金与脚轮支架金属感",
+      "evidence": "可见事实：底部脚轮支架、刹车片和侧面小螺钉在图中呈浅灰小块，镜面反射不明显；可见目标中 2.5寸轮子支架_2_3、2.5寸轮子刹车片_3 等读数为 metallic 0.0、roughness 0.8。推测：若这些部件预期为金属，当前材质参数会削弱金属识别。",
+      "confidence": 0.74,
+      "suggestion": "不要自动把这些部件改为金属；先由用户确认这些具体部件的材质身份。确认后可手动或受控调整 metallic/roughness，而不是仅靠下载 normal 贴图解决。",
+      "requires_user": true
+    },
+    {
+      "aspect": "光比与填充",
+      "evidence": "可见事实：画面左前下方有柔和投影，红色侧板和正面仍有体积明暗；灯光数据中主光、边缘光较强，填充较低，环境适中。没有出现产品大面积过曝或死黑。",
+      "confidence": 0.81,
+      "suggestion": "当前光比对产品主图是可接受的；不建议为了反光问题自动提高曝光或大幅加柔光。若后续近景材质图需要更强反射形状，可单独增加可控反射板而非全局提亮。",
+      "requires_user": false
+    },
+    {
+      "aspect": "接触阴影与落地感",
+      "evidence": "可见事实：四个脚轮下方可见灰色接触阴影，左前方向有软阴影延伸，柜体没有漂浮感；白色背景渐变自然。",
+      "confidence": 0.86,
+      "suggestion": "保持当前地面阴影强度与白底；无需自动调整曝光或阴影强度。",
+      "requires_user": false
+    },
+    {
+      "aspect": "构图、裁切与细节可见性",
+      "evidence": "可见事实：完整产品在画面内，顶部台面、抽屉、门、把手、锁和脚轮均可见；度量显示 clipped=false、occupancy≈0.712，主体占比适合电商主图。",
+      "confidence": 0.9,
+      "suggestion": "主图构图可保留。若要展示台面拉丝或红面微纹理，应使用已有计划中的 detail shot，而不是自动改当前主图相机。",
+      "requires_user": false
+    }
+  ],
+  "score": 0.82,
+  "patch": {},
+  "material_requests": [
+    {
+      "query": "subtle brushed metal roughness normal fine anisotropic",
+      "targets": [
+        {
+          "object_name": "G-不锈钢台面_2",
+          "material_name": "亮光金属_6"
+        },
+        {
+          "object_name": "铝条_7",
+          "material_name": "铝_1"
+        },
+        {
+          "object_name": "铝条_8",
+          "material_name": "铝_1"
+        }
+      ],
+      "reason": "画面中台面和前部铝条已有金属高光，但大面积反射较连续，细微拉丝/微表面变化不明显；这些目标属于已确认 metal 家族，适合只添加粗糙度和OpenGL法线微纹理来提升反光可读性。",
+      "confidence": 0.64
+    },
+    {
+      "query": "fine smooth plastic roughness normal subtle orange peel",
+      "targets": [
+        {
+          "object_name": "G-07C左边板_2",
+          "material_name": "红色塑料_4"
+        },
+        {
+          "object_name": "G-07C盖子_2",
+          "material_name": "红色塑料_4"
+        },
+        {
+          "object_name": "G-07C抽屉(2)_7",
+          "material_name": "红色塑料.1_4"
+        },
+        {
+          "object_name": "G-07C抽屉(2)_8",
+          "material_name": "红色塑料.1_4"
+        },
+        {
+          "object_name": "镜向左边板_2",
+          "material_name": "红色塑料_10"
+        },
+        {
+          "object_name": "布尔",
+          "material_name": "红色塑料.1_1"
+        },
+        {
+          "object_name": "布尔.1",
+          "material_name": "红色塑料.1_1"
+        }
+      ],
+      "reason": "红色柜体大面在主图中反光较均匀、缺少细微表面变化；这些目标属于已确认 plastic 家族，适合尝试很轻的同族微表面粗糙度/法线贴图，保留原红色和材质身份。",
+      "confidence": 0.58
+    }
+  ]
+}

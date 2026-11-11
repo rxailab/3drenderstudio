@@ -1,0 +1,1558 @@
+{
+  "success": true,
+  "features": {
+    "dimensions": [
+      0.4050000011920929,
+      0.18000003695487976,
+      0.47620800137519836
+    ],
+    "aspect_ratio": 2.6455994644854903,
+    "elongated": false,
+    "flat": false,
+    "multipart": true,
+    "mesh_count": 43,
+    "symmetry": "unknown",
+    "surfaces": [
+      "metal",
+      "dielectric"
+    ],
+    "has_animation": false,
+    "has_armature": false
+  },
+  "bounds": {
+    "min": [
+      -0.20250000059604645,
+      -0.08999998867511749,
+      -5.851087614416883e-09
+    ],
+    "max": [
+      0.20250000059604645,
+      0.09000004082918167,
+      0.47620800137519836
+    ]
+  },
+  "dimensions": {
+    "value": [
+      0.4050000011920929,
+      0.18000003695487976,
+      0.47620800137519836
+    ],
+    "unit": "unknown",
+    "source": "unknown",
+    "reliability": "unknown"
+  },
+  "objects": [
+    {
+      "name": "Base_seam_stitch",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.001",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.002",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.003",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000004708766937,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.004",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.005",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.006",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.007",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.008",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.009",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.010",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.011",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.0059999991208314896,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.012",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000000052154064,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.013",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000000052154064,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.014",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000000052154064,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.015",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.0059999991208314896,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.016",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000000983476639,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.017",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.018",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000000983476639,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.019",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000004708766937,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.020",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000004708766937,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.021",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.006000004708766937,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.022",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.023",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.024",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.025",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Base_seam_stitch.026",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.00599999725818634,
+        0.001499999314546585,
+        0.0014999955892562866
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass_handle_rivet",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.01199999451637268,
+        0.012000009417533875,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 768,
+      "faces": 674,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed_brass_hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass_handle_rivet.001",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.01199999451637268,
+        0.012000009417533875,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 768,
+      "faces": 674,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed_brass_hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass_handle_rivet.002",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.01199999451637268,
+        0.012000009417533875,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 768,
+      "faces": 674,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed_brass_hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Brass_handle_rivet.003",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.01199999451637268,
+        0.012000009417533875,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 768,
+      "faces": 674,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed_brass_hardware"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Canvas_body",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.4000000059604645,
+        0.28999999165534973,
+        0.15000000596046448
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Woven_canvas_—_sand"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Canvas_piping",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.38967201113700867,
+        0.21580000221729279,
+        0.0040000006556510925
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 2340,
+      "faces": 2324,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 48,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Front_leather_patch",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.09000000357627869,
+        0.04500000178813934,
+        0.007999993860721588
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Label_MORA",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.04483199864625931,
+        0.011199995875358582,
+        0.0005999952554702759
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 864,
+      "faces": 644,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Warm_cotton_stitching"
+      ],
+      "non_manifold_edges": 1,
+      "raw_non_manifold_edges": 864,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_base",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.4050000011920929,
+        0.04600000008940697,
+        0.1550000011920929
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_handle_anchor",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.03200000524520874,
+        0.06999999284744263,
+        0.012000001966953278
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_handle_anchor.001",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.03200000524520874,
+        0.06999999284744263,
+        0.012000001966953278
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_handle_anchor.002",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.03200000524520874,
+        0.06999999284744263,
+        0.012000001966953278
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_handle_anchor.003",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.03200000524520874,
+        0.06999999284744263,
+        0.012000001966953278
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_rolled_handle",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.3223240077495575,
+        0.198294997215271,
+        0.02199999988079071
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 1188,
+      "faces": 1172,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 48,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_rolled_handle.001",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.3223240077495575,
+        0.198294997215271,
+        0.02199999988079071
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 1188,
+      "faces": 1172,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 48,
+      "degenerate_faces": 0
+    },
+    {
+      "name": "Leather_top_binding",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.4000000059604645,
+        0.025000005960464478,
+        0.1509999930858612
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 216,
+      "faces": 218,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brown_leather_trim"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 0,
+      "degenerate_faces": 0
+    }
+  ],
+  "materials": [
+    {
+      "name": "Warm_cotton_stitching",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.6499999761581421,
+        0.5199999809265137,
+        0.3400000035762787,
+        1.0
+      ],
+      "roughness": 0.8999999761581421,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 1.0,
+      "textures": []
+    },
+    {
+      "name": "Brushed_brass_hardware",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "brushed_metal",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.5199999809265137,
+        0.3100000023841858,
+        0.0949999988079071,
+        1.0
+      ],
+      "roughness": 0.25,
+      "metallic": 0.8999999165534973,
+      "transmission": 0.0,
+      "emission": 1.0,
+      "textures": []
+    },
+    {
+      "name": "Woven_canvas_—_sand",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "roughness": 0.8600000143051147,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 1.0,
+      "textures": [
+        {
+          "name": "canvas-weave.png",
+          "path": "D:\\模型渲染\\samples\\obj-with-resources\\textures/canvas-weave.png",
+          "color_space": "sRGB",
+          "packed": false,
+          "missing": false
+        }
+      ]
+    },
+    {
+      "name": "Brown_leather_trim",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "matte_plastic",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.10000000149011612,
+        0.03700000047683716,
+        0.017000000923871994,
+        1.0
+      ],
+      "roughness": 0.4699999690055847,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "emission": 1.0,
+      "textures": []
+    }
+  ],
+  "warnings": [
+    "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+    "OBJ 没有可靠单位信息；真实尺寸未知，工作场景统一缩放用于拍摄",
+    "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+  ],
+  "animations": [],
+  "blender_version": "5.0.1"
+}

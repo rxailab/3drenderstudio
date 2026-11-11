@@ -1,0 +1,52 @@
+// Run: node validation/frontend-ai-tests.js. No network, credentials or Blender required.
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const html=fs.readFileSync('static/index.html','utf8'),source=fs.readFileSync('static/app.js','utf8');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
+assert.equal(new Set(ids).size,ids.length,'DOM IDs must be unique');
+for(const match of source.matchAll(/\$\('([^']+)'\)/g))assert(ids.includes(match[1]),'Missing DOM ID '+match[1]);
+const elements=Object.fromEntries(ids.map(id=>[id,{value:'',checked:false,disabled:false,hidden:false,textContent:'',innerHTML:'',style:{},classList:{toggle(){}},setAttribute(){},getBoundingClientRect(){return {left:0,top:0,width:1000,height:500};},reportValidity(){return true;}}]));
+elements.renderImage.hidden=true;
+let calls=[];
+const settings={enabled:true,provider:'anthropic',base_url:'https://api.hai.network/anthropic',model:'claude-sonnet-4-6',key_configured:true,status:'configured',message:'尚未验证'};
+const context=vm.createContext({console,document:{getElementById:id=>elements[id]},FormData:class{},clearTimeout(){},setTimeout(){},crypto:{randomUUID:()=>String(Math.random())},localStorage:{setItem(){throw new Error('Credential must not be stored in browser');}},fetch:async(path,options)=>{calls.push({path,options});return {ok:true,json:async()=>settings};}});
+vm.runInContext(source.replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/,''),context);
+function run(code){return vm.runInContext(code,context);}
+elements.renderImage.hidden=false;elements.renderImage.naturalWidth=512;elements.renderImage.naturalHeight=512;
+assert.deepEqual(JSON.parse(JSON.stringify(run('imageContentRect()'))),{left:250,top:0,width:500,height:500});
+assert.equal(run('pointFromClient(249,250)'),null,'Letterbox must not be selectable');
+assert.equal(run('pointFromClient(751,250)'),null,'Right letterbox must not be selectable');
+assert.deepEqual(JSON.parse(JSON.stringify(run('pointFromClient(500,250)'))),{x:.5,y:.5});
+elements.renderImage.naturalWidth=1600;elements.renderImage.naturalHeight=400;
+assert.equal(run('pointFromClient(500,100)'),null,'Horizontal image top letterbox must not be selectable');
+assert.deepEqual(JSON.parse(JSON.stringify(run('pointFromClient(0,125)'))),{x:0,y:0});
+elements.renderImage.hidden=true;
+assert.equal(run('imageContentRect()'),null);
+run("system={ai_mode:'ai',ai:{enabled:true,key_configured:true,model:'claude-text',status:'verified',vision_config:{enabled:true,key_configured:true,model:'gpt-vision',status:'verified'}}};updateAiMode()");
+assert(elements.instructionMode.textContent.includes('claude-text'),'Text label shows the text model');assert(elements.visionModelStatus.textContent.includes('gpt-vision'),'Vision label shows the independent image model');assert(elements.visionModelStatus.textContent.includes('已验证'));
+run("currentOutput={review:{source:'ai',model:'previous-vision'}};updateVisionStatus()");assert(elements.visionModelStatus.textContent.includes('gpt-vision') && elements.visionModelStatus.textContent.includes('本图诊断：previous-vision'),'Configured vision and actual historical review are distinguished');run('currentOutput=null');
+run("system.ai.vision_config={enabled:true,key_configured:false,model:'gpt-vision',status:'missing_key'};updateAiMode();renderReview();renderAutomaticMaterialStatus([])");
+assert(elements.visionModelStatus.textContent.includes('缺少 Key'));assert(elements.realismAskHint.textContent.includes('缺少 Key'));assert(elements.autoMaterialStage.textContent.includes('等待可用'));
+run("system.ai.vision_config={enabled:true,key_configured:true,model:'gpt-vision',status:'error'};updateAiMode();renderReview();renderAutomaticMaterialStatus([])");
+assert(elements.visionModelStatus.textContent.includes('最近调用失败'));assert(elements.realismAskHint.textContent.includes('失败'));assert(elements.autoMaterialNotice.textContent.includes('失败'));
+run("system={ai_mode:'ai',ai:{enabled:true,key_configured:true,model:'old-model',status:'verified'}};updateAiMode()");assert(elements.visionModelStatus.textContent.includes('old-model'),'Older backend inherits the text model');
+async function main(){
+  elements.aiProvider.value='anthropic';elements.aiBaseUrl.value=settings.base_url;elements.aiModel.value=settings.model;elements.aiEnabled.checked=true;elements.aiApiKey.value='test-placeholder-not-a-real-key';
+  await run('saveAiSettings(false)');
+  assert.equal(calls.length,1);assert.equal(calls[0].path,'/api/ai/settings');assert.equal(calls[0].options.method,'PUT');
+  const body=JSON.parse(calls[0].options.body);assert.equal(body.api_key,'test-placeholder-not-a-real-key');
+  assert.equal(elements.aiApiKey.value,'','Key input is cleared after save');
+  assert.equal(run('JSON.stringify(aiSettings).includes("test-placeholder")'),false,'Public state never retains submitted key');
+  calls=[];await run('saveAiSettings(false)');assert(!('api_key' in JSON.parse(calls[0].options.body)),'Blank key preserves existing key');
+  calls=[];elements.aiClearKey.checked=true;await run('saveAiSettings(false)');assert.equal(JSON.parse(calls[0].options.body).clear_key,true);
+  calls=[];elements.aiClearKey.checked=false;elements.visionEnabled.checked=true;elements.visionProvider.value='openai';elements.visionBaseUrl.value='https://api.hai.network/openai';elements.visionModel.value='gpt-5.5-2026-04-23';
+  await run("saveAiSettings('vision')");const visionBody=JSON.parse(calls[0].options.body);assert.equal(visionBody.vision_enabled,true);assert.equal(visionBody.vision_provider,'openai');assert.equal(visionBody.vision_model,'gpt-5.5-2026-04-23');assert(!('vision_api_key' in visionBody),'Shared HAI token must not be sent to browser');assert.equal(calls[1].path,'/api/ai/vision/test');
+  calls=[];elements.visionApiKey.value='vision-test-placeholder';await run('saveAiSettings(false)');assert.equal(JSON.parse(calls[0].options.body).vision_api_key,'vision-test-placeholder');assert.equal(elements.visionApiKey.value,'','Vision key input is cleared after save');assert.equal(run('JSON.stringify(aiSettings).includes("vision-test-placeholder")'),false,'Public state never retains vision key');
+  calls=[];await run('saveAiSettings(false)');assert(!('vision_api_key' in JSON.parse(calls[0].options.body)),'Blank vision key preserves saved secret');calls=[];elements.visionClearKey.checked=true;await run('saveAiSettings(false)');assert.equal(JSON.parse(calls[0].options.body).vision_clear_key,true,'Vision secret can be explicitly cleared');
+  calls=[];run("aiSettings.vision_config={enabled:true,inherits:false,provider:'openai',base_url:'https://api.hai.network/openai',model:'gpt-5.5-2026-04-23'}");elements.visionEnabled.checked=false;await run('saveAiSettings(false)');const inherited=JSON.parse(calls[0].options.body);assert.equal(inherited.vision_enabled,'');assert.equal(inherited.vision_provider,'');assert.equal(inherited.vision_base_url,'');assert.equal(inherited.vision_model,'');
+  run('current={id:"p",version:2,jobs:[],analysis:{},plan:{shots:[]}};currentOutput={job_id:"j",shot_id:"hero",version:1,quality:"preview"};feedbackMode=true;feedbackSource={projectId:"p",key:sceneOutputKey(currentOutput),snapshot:feedbackSnapshot()};feedbackPoints=[{id:"a",x:.5,y:.5,hit:true}];');
+  run('renderFeedback()');assert.equal(elements.feedbackSubmit.disabled,true,'Old render must not accept new-plan feedback');
+  run('currentOutput={...currentOutput,shot_id:"other"};renderFeedback()');
+  assert.equal(run('feedbackPoints.length'),0,'Changing displayed shot clears points');assert.equal(run('feedbackMode'),false);
+  console.log('Frontend checks passed: DOM, contain-image coordinates, secret lifecycle, snapshot binding.');
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

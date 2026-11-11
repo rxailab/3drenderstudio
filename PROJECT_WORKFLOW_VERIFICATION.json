@@ -1,0 +1,278 @@
+{
+  "revision": "v4",
+  "scope": "Project lifecycle, automatic initial hero scheduling and UI interaction; not a real-render or pixel acceptance run",
+  "backend": {
+    "tests": 347,
+    "passed": 345,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "new_v4_tests": 50,
+    "new_v4_tests_passed": 50,
+    "errors_due_to_missing_original_fixture": 2,
+    "missing_fixture": "validation/ai-cabinet-exact-debug.json",
+    "errored_test_ids": [
+      "test_ai_client.AIClientTests.test_review_captured_broken_json_realism_is_never_trimmed_or_accepted",
+      "test_ai_client.AIClientTests.test_review_captured_diagnostic_extra_field_is_safely_ignored"
+    ],
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "kind": "Actual modules, Flask test clients and temporary SQLite/file projects with mocked runtime boundaries"
+  },
+  "frontend": {
+    "tests": 69,
+    "passed": 69,
+    "failures": 0,
+    "skipped": 0,
+    "new_v4_tests": 17,
+    "new_v4_tests_passed": 17,
+    "runtime": "Node v24.22.1; jsdom 31.0.0",
+    "kind": "Actual HTML/JavaScript DOM/state tests with mocked APIs",
+    "test_file": "tests/test_ui_state.cjs"
+  },
+  "focused_backend": {
+    "initial_preview_tests": 17,
+    "project_lifecycle_tests": 33,
+    "passed": 50
+  },
+  "static_checks": {
+    "revision": "v4",
+    "kind": "HTML references, ARIA reference integrity, JavaScript syntax and CSS parsing; no pixel/browser accessibility audit",
+    "ids": 235,
+    "duplicates": [],
+    "missingLiteralJSReferences": [],
+    "brokenAria": [],
+    "nestedForms": 0,
+    "globalForms": 1,
+    "diagnosticInputs": 0,
+    "removedBottomForm": true,
+    "receiptPanel": true,
+    "receiptDetailsCollapsedInitially": true,
+    "preservationExampleInPlaceholder": "例如：反光柔和一点，颜色和角度不变",
+    "cssParseErrors": [],
+    "javascriptSyntax": "passed"
+  },
+  "offline_preview": {
+    "status": "passed",
+    "revision": "v4",
+    "verified": true,
+    "kind": "Generated offline pages: jsdom DOM/state checks and JS/CSS parsing; no browser visual verification",
+    "node": "v24.22.1",
+    "checkedFiles": {
+      "v3": "qa/wuying-v3-compare.inner.html",
+      "v4": "deliverables/wuying-project-preview-v4.inner.html",
+      "comparison": "deliverables/wuying-project-preview-v4.html"
+    },
+    "checksPassed": 19,
+    "checks": [
+      {
+        "name": "Inline JS and CSS parse and match the actual v3/v4 source snapshots",
+        "status": "passed"
+      },
+      {
+        "name": "Comparison switches exact versions and five iframe sizes with explicit offline labels",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup, one command input, and controls at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup, one command input, and controls at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup, one command input, and controls at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup, one command input, and controls at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup, one command input, and controls at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "v4 startup, one command input, and controls at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v4 startup, one command input, and controls at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v4 startup, one command input, and controls at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v4 startup, one command input, and controls at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v4 startup, one command input, and controls at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "Exit survives a late project poll, preserves the project, and clears the reopen selection",
+        "status": "passed"
+      },
+      {
+        "name": "Brand home action exits instead of triggering the legacy mock reload",
+        "status": "passed"
+      },
+      {
+        "name": "Cancelling sidebar deletion makes no request and retains both projects",
+        "status": "passed"
+      },
+      {
+        "name": "Deleting another project preserves the active project and its unsaved draft",
+        "status": "passed"
+      },
+      {
+        "name": "Deleting the active project returns home and does not reopen another project",
+        "status": "passed"
+      },
+      {
+        "name": "Active-task deletion shows 409; cancelling that exact job allows a later explicit deletion",
+        "status": "passed"
+      },
+      {
+        "name": "Upload form starts one server-side mock hero flow that completes after exit without a jobs POST",
+        "status": "passed"
+      }
+    ],
+    "observations": {
+      "syntax": {
+        "scripts": 4,
+        "styles": 3,
+        "media": {
+          "v3": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "v4": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "comparison": []
+        },
+        "actualSourceEmbedded": true
+      },
+      "comparison": {
+        "versions": [
+          "v3",
+          "v4"
+        ],
+        "viewports": [
+          {
+            "width": 1280,
+            "height": 900
+          },
+          {
+            "width": 1440,
+            "height": 960
+          },
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 768,
+            "height": 1024
+          },
+          {
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "switchCombinations": 10
+      },
+      "exit": {
+        "latePollIgnored": true,
+        "projectRetained": true,
+        "noCancelOrDeleteRequest": true,
+        "reopenWorks": true
+      },
+      "deletion": {
+        "confirmationRequired": true,
+        "cancelMakesNoRequest": true,
+        "otherProjectDraftPreserved": true,
+        "currentDeletionReturnsHome": true,
+        "remainingProjectsStayClosed": true
+      },
+      "activeDeletion": {
+        "conflictRetainsProject": true,
+        "exactJobCancelled": true,
+        "secondExplicitDeleteSucceeds": true
+      },
+      "upload": {
+        "actualFormUsed": true,
+        "uploadPosts": 1,
+        "frontendJobsPosts": 0,
+        "backgroundStages": [
+          "queued",
+          "running",
+          "completed"
+        ],
+        "exitDidNotCancel": true,
+        "onlyHero": true,
+        "quality": "preview",
+        "reopenedWithPlaceholder": true,
+        "realUpload": false,
+        "realRendering": false
+      }
+    },
+    "limitations": [
+      "Both revisions and five iframe dimensions were exercised. jsdom does not verify responsive pixel layout, clipping or visual appearance.",
+      "The upload is a local FormData demonstration and the background progression uses labelled fixture timers. No real files were uploaded to a server, no external AI was invoked, and Blender was not executed."
+    ]
+  },
+  "visual_browser_verification": false,
+  "real_blender_render_verification": false,
+  "real_c4d_export_verification": false,
+  "real_ai_requests_sent": false,
+  "real_user_projects_deleted": false,
+  "missing_uploaded_components": [
+    "blender/worker.py",
+    "blender/pick_surface.py",
+    "blender/export_scene.py",
+    "c4d/convert_scene.py",
+    "samples/index.json"
+  ],
+  "source_manifest_sha256": {
+    "ai_client.py": "67fb5672fd241b9f27211f98277e2882e33c7df3d0a11e272ecb3d82c3104c47",
+    "ai_config.py": "0327f17929b285f71229416583f1a5c4a2e65986bbada0558699b336e121be89",
+    "app.py": "5cda880bea67a37a42aa5cd7c5c718c160f41176cee6fdbc151412a5f9f05ffc",
+    "asset_provenance.py": "2e32758604e013634712815a3c7d9d53ddeeba717eb38b63762c489bd4681ae6",
+    "engine.py": "82f2ff6dc59fbfbd2fac4f27b06130d270c263058bf2a0f5cc7ee462255f7dbe",
+    "instruction_service.py": "8c494f50e5a870ef7d64638bc025e7009de0d4cae7f21bfe893bc66fd59f3f58",
+    "intelligence_rules.py": "880b1ee8a267d6fefe561f11210d03e7f2c36e1eda2f999ffd3da40c5637eb5c",
+    "material_agent.py": "b71e1a28b158984c729a90982df4b2b8c456fc058b0fecfcf46b1fa59629509b",
+    "material_edit.py": "8b8588d3ac4ad7c98fa8bf78fdd9f1e850baa3cb8c3e07d1046b557bec839159",
+    "planner.py": "1416616814db3ed3024ad35e495f1261f5b9aeb3efe6121861e5d41c6150a115",
+    "project_lifecycle.py": "92ffb929408be77a125c6ec0ff663997785aef9f72b8dbb3e247667b76402ac3",
+    "quality_gate.py": "bc4578ccbb37c92a65324fb3528c98a65e75fbb8ea30a79caf11dcfd7d8e69fe",
+    "review_actions.py": "49efaf982eca07f8e7c19262ad7a52b19433f56c741c27097a7704cf6bfc088c",
+    "scene_exports.py": "8910c096c70422cd2b40f941ded2e83d8b3661fa45c98b9c1778e204dd5ba44d",
+    "static/app.js": "d9954df9f2fa81b58be01121abd7680da5c2ca0681e0b2333ddae45c2b20d458",
+    "static/index.html": "23f6dfca509f3b2a77b05fd60b42f4688687b3d56e501fbbcce894e6df187bc3",
+    "static/styles.css": "d6442b5ef8847831e81c795b4debd7464a997f67463d91ac008f10718e82d2fd",
+    "studio_store.py": "77184718153ec7bd8c0473a78be0f9135723402ee480b1568e72f1f38cce4972"
+  },
+  "notes": [
+    "First automatic image is the existing preview quality and hero shot only; 4K stays on demand.",
+    "Exit is client navigation; background tasks continue while the local app service is running.",
+    "Deletion is rejected while a real worker or guarded request still uses project files.",
+    "Crash recovery tests simulate the concrete journal/rename/commit interruption states; no live user data is removed.",
+    "The two known missing-fixture errors are not counted as passes.",
+    "Offline image and upload/render progress are labelled fixtures, not real product output."
+  ]
+}

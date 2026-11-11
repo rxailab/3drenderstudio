@@ -1,0 +1,104 @@
+{
+  "success": true,
+  "features": {
+    "dimensions": [
+      0.4699999988079071,
+      0.28999999165534973,
+      0.05000000074505806
+    ],
+    "aspect_ratio": 9.399999836087229,
+    "elongated": false,
+    "flat": true,
+    "multipart": false,
+    "mesh_count": 1,
+    "symmetry": "unknown",
+    "surfaces": [
+      "metal"
+    ],
+    "has_animation": false,
+    "has_armature": false
+  },
+  "bounds": {
+    "min": [
+      -0.23499999940395355,
+      -0.14499999582767487,
+      0.0
+    ],
+    "max": [
+      0.23499999940395355,
+      0.14499999582767487,
+      0.05000000074505806
+    ]
+  },
+  "dimensions": {
+    "value": [
+      0.4699999988079071,
+      0.28999999165534973,
+      0.05000000074505806
+    ],
+    "unit": "m",
+    "source": "glTF specification",
+    "reliability": "declared"
+  },
+  "objects": [
+    {
+      "name": "Single-mesh utility tray",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.4699999988079071,
+        0.28999999165534973,
+        0.05000000074505806
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.02500000037252903
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 1093,
+      "faces": 708,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Brushed stainless steel"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 1240,
+      "degenerate_faces": 0
+    }
+  ],
+  "materials": [
+    {
+      "name": "Brushed stainless steel",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "brushed_metal",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.5199999809265137,
+        0.5699999928474426,
+        0.6200000047683716,
+        1.0
+      ],
+      "roughness": 0.28999999165534973,
+      "metallic": 1.0,
+      "transmission": 0.0,
+      "emission": 0.0,
+      "textures": []
+    }
+  ],
+  "warnings": [
+    "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+  ],
+  "animations": [],
+  "blender_version": "5.0.1"
+}

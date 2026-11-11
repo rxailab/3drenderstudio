@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "device": {
+    "status": "ready",
+    "type": "CPU",
+    "backend": "CPU",
+    "name": "CPU",
+    "reason": "用户指定或 GPU 不可用",
+    "blender_version": "5.0.1"
+  }
+}

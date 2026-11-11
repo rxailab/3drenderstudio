@@ -1,0 +1,37 @@
+{
+  "blender_version": "5.0.1",
+  "passed": true,
+  "local_isolation": true,
+  "original_label_preserved": true,
+  "original_alpha_and_ior_preserved": true,
+  "channel_color_spaces_verified": true,
+  "original_image_color_space_unchanged": true,
+  "mapping_scale_rotation_verified": true,
+  "tangent_normal_direction_rotation_verified": true,
+  "provenance_recorded": true,
+  "uv_maps": [
+    {
+      "channel": "roughness",
+      "path": "D:\\模型渲染\\validation\\pbr-check-n13wza2h\\label.png",
+      "applied": true,
+      "color_space": "Non-Color",
+      "mapping": "UV",
+      "scale": 2.5,
+      "rotation_degrees": 30
+    },
+    {
+      "channel": "normal",
+      "path": "D:\\模型渲染\\validation\\pbr-check-n13wza2h\\normal.png",
+      "applied": true,
+      "color_space": "Non-Color",
+      "mapping": "UV",
+      "scale": 2.5,
+      "rotation_degrees": 30
+    }
+  ],
+  "packed_scene_resources_verified": true,
+  "no_uv_tangent_normal_skipped": true,
+  "no_uv_box_projection_verified": true,
+  "no_uv_warning_recorded": true,
+  "explicit_base_color_replacement_verified": true
+}

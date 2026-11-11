@@ -1,0 +1,323 @@
+{
+  "revision": "v6",
+  "verified_at": "2026-11-10",
+  "scope": "Original-clause compound intent, unsupported suggestion rejection, validated partial proposal and explicit confirmation, remaining request continuity and retained v1-v5 behavior",
+  "backend": {
+    "tests": 483,
+    "passed": 481,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "new_v6_tests": 76,
+    "new_v6_tests_passed": 76,
+    "errors_due_to_missing_original_fixture": 2,
+    "missing_fixture": "validation/ai-cabinet-exact-debug.json",
+    "errored_test_ids": [
+      "test_ai_client.AIClientTests.test_review_captured_broken_json_realism_is_never_trimmed_or_accepted",
+      "test_ai_client.AIClientTests.test_review_captured_diagnostic_extra_field_is_safely_ignored"
+    ],
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "kind": "Actual Python modules and Flask test clients with temporary SQLite/file projects; external AI, Blender and transport mocked at tested boundaries"
+  },
+  "frontend": {
+    "tests": 96,
+    "passed": 96,
+    "failures": 0,
+    "skipped": 0,
+    "new_v6_tests": 18,
+    "new_v6_tests_passed": 18,
+    "runtime": "Node v24.22.1; jsdom 31.0.0",
+    "kind": "Actual app HTML and JavaScript with mocked APIs",
+    "test_file": "tests/test_ui_state.cjs"
+  },
+  "static_checks": {
+    "revision": "v6",
+    "kind": "HTML references, ARIA reference integrity, JavaScript syntax and CSS parsing; no pixel/browser accessibility audit",
+    "ids": 245,
+    "duplicates": [],
+    "missingLiteralJSReferences": [],
+    "brokenAria": [],
+    "nestedForms": 0,
+    "globalForms": 1,
+    "diagnosticInputs": 0,
+    "removedBottomForm": true,
+    "receiptPanel": true,
+    "receiptDetailsCollapsedInitially": true,
+    "preservationExampleInPlaceholder": "例如：反光柔和一点，颜色和角度不变",
+    "cssParseErrors": [],
+    "javascriptSyntax": "passed"
+  },
+  "offline_preview": {
+    "status": "passed",
+    "revision": "v6",
+    "verified": true,
+    "kind": "Generated offline pages: jsdom DOM/state checks and JS/CSS parsing; no browser visual verification",
+    "node": "v24.22.1",
+    "checkedFiles": {
+      "v5": "qa/wuying-v5-compare.inner.html",
+      "v6": "deliverables/wuying-smart-preview-v6.inner.html",
+      "comparison": "deliverables/wuying-smart-preview-v6.html"
+    },
+    "checksPassed": 23,
+    "checks": [
+      {
+        "name": "Inline JS and CSS parse and match the actual v5/v6 source snapshots",
+        "status": "passed"
+      },
+      {
+        "name": "Comparison switches exact versions and five iframe sizes with explicit offline labels",
+        "status": "passed"
+      },
+      {
+        "name": "v5 startup, one command input, and controls at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v5 startup, one command input, and controls at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v5 startup, one command input, and controls at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v5 startup, one command input, and controls at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v5 startup, one command input, and controls at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "v6 startup, one command input, and controls at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v6 startup, one command input, and controls at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v6 startup, one command input, and controls at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v6 startup, one command input, and controls at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v6 startup, one command input, and controls at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "Exit survives a late project poll, preserves the project, and clears the reopen selection",
+        "status": "passed"
+      },
+      {
+        "name": "Brand home action exits instead of triggering the legacy mock reload",
+        "status": "passed"
+      },
+      {
+        "name": "Cancelling sidebar deletion makes no request and retains both projects",
+        "status": "passed"
+      },
+      {
+        "name": "Deleting another project preserves the active project and its unsaved draft",
+        "status": "passed"
+      },
+      {
+        "name": "Deleting the active project returns home and does not reopen another project",
+        "status": "passed"
+      },
+      {
+        "name": "Active-task deletion shows 409; cancelling that exact job allows a later explicit deletion",
+        "status": "passed"
+      },
+      {
+        "name": "Upload form starts one server-side mock hero flow that completes after exit without a jobs POST",
+        "status": "passed"
+      },
+      {
+        "name": "Model presets change only the settings draft, clear an old typed key, and inherit vision",
+        "status": "passed"
+      },
+      {
+        "name": "Saved demo model configuration remains local and connection testing is explicitly a mock",
+        "status": "passed"
+      },
+      {
+        "name": "A saved prohibited model stays editable but cannot start a connection test",
+        "status": "passed"
+      },
+      {
+        "name": "Compound request produces an unapplied proposal and explicit confirmation preserves the remaining request",
+        "status": "passed"
+      }
+    ],
+    "observations": {
+      "syntax": {
+        "scripts": 4,
+        "styles": 3,
+        "media": {
+          "v5": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "v6": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "comparison": []
+        },
+        "actualSourceEmbedded": true
+      },
+      "comparison": {
+        "versions": [
+          "v5",
+          "v6"
+        ],
+        "viewports": [
+          {
+            "width": 1280,
+            "height": 900
+          },
+          {
+            "width": 1440,
+            "height": 960
+          },
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 768,
+            "height": 1024
+          },
+          {
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "switchCombinations": 10
+      },
+      "exit": {
+        "latePollIgnored": true,
+        "projectRetained": true,
+        "noCancelOrDeleteRequest": true,
+        "reopenWorks": true
+      },
+      "deletion": {
+        "confirmationRequired": true,
+        "cancelMakesNoRequest": true,
+        "otherProjectDraftPreserved": true,
+        "currentDeletionReturnsHome": true,
+        "remainingProjectsStayClosed": true
+      },
+      "activeDeletion": {
+        "conflictRetainsProject": true,
+        "exactJobCancelled": true,
+        "secondExplicitDeleteSucceeds": true
+      },
+      "upload": {
+        "actualFormUsed": true,
+        "uploadPosts": 1,
+        "frontendJobsPosts": 0,
+        "backgroundStages": [
+          "queued",
+          "running",
+          "completed"
+        ],
+        "exitDidNotCancel": true,
+        "onlyHero": true,
+        "quality": "preview",
+        "reopenedWithPlaceholder": true,
+        "realUpload": false,
+        "realRendering": false
+      },
+      "modelDraft": {
+        "presets": 6,
+        "oneSelector": true,
+        "crossEndpointTypedKeyCleared": true,
+        "noMutationBeforeSave": true,
+        "cancelRestoresSavedValues": true,
+        "visionInherits": true
+      },
+      "demoModelSave": {
+        "localOnly": true,
+        "connectionMockLabel": true,
+        "noExternalRequests": true
+      },
+      "blockedModel": {
+        "savedValueRemainsVisible": true,
+        "connectionRequestPrevented": true
+      },
+      "compoundInstruction": {
+        "proposalUnapplied": true,
+        "actualFormUsed": true,
+        "explicitConfirmationRequired": true,
+        "initialRequests": 1,
+        "confirmationRequests": 1,
+        "remainingOriginalText": true,
+        "repeatDoesNotReapply": true,
+        "realAI": false
+      }
+    },
+    "limitations": [
+      "Both revisions and five iframe dimensions were exercised. jsdom does not verify responsive pixel layout, clipping or visual appearance.",
+      "The upload is a local FormData demonstration and the background progression uses labelled fixture timers. No real files were uploaded to a server, no external AI was invoked, and Blender was not executed."
+    ]
+  },
+  "visual_browser_verification": false,
+  "real_blender_render_verification": false,
+  "real_c4d_export_verification": false,
+  "real_ai_requests_sent": false,
+  "real_user_projects_deleted": false,
+  "actual_model_benchmark_performed": false,
+  "missing_uploaded_components": [
+    "blender/worker.py",
+    "blender/pick_surface.py",
+    "blender/export_scene.py",
+    "c4d/convert_scene.py",
+    "samples/index.json"
+  ],
+  "source_manifest_sha256": {
+    "ai_client.py": "4769cf8afc87766e57dce6753b90273a973e0830615dc04d1d8f3c49416ff1d7",
+    "ai_config.py": "f08663569ae549edcc816afe874363e7aff49eb3351348232de87346e1f84365",
+    "ai_model_policy.py": "822d4b365c16063c879081a9edcdc6f1f78fac011293b1d182ad3fe31e078c92",
+    "app.py": "964187c289dd6f9c25a8c4e14940a7a22262effba22421115d0102e49b9f9626",
+    "asset_provenance.py": "2e32758604e013634712815a3c7d9d53ddeeba717eb38b63762c489bd4681ae6",
+    "engine.py": "e7f467d7804f4bd04047f811a336578b8a080d61f69acf95a145b0dcf067d335",
+    "instruction_service.py": "447a4d21386d18a2f85f8e0928d06a31b0aa3e5df6d652583fc8b6275bc9d1da",
+    "intelligence_rules.py": "880b1ee8a267d6fefe561f11210d03e7f2c36e1eda2f999ffd3da40c5637eb5c",
+    "material_agent.py": "b71e1a28b158984c729a90982df4b2b8c456fc058b0fecfcf46b1fa59629509b",
+    "material_edit.py": "8b8588d3ac4ad7c98fa8bf78fdd9f1e850baa3cb8c3e07d1046b557bec839159",
+    "planner.py": "538db6db6e2e5f5fe211f8e47f42fdd6ededc06c438c16bcfc45908a00673821",
+    "project_lifecycle.py": "92ffb929408be77a125c6ec0ff663997785aef9f72b8dbb3e247667b76402ac3",
+    "quality_gate.py": "bc4578ccbb37c92a65324fb3528c98a65e75fbb8ea30a79caf11dcfd7d8e69fe",
+    "review_actions.py": "49efaf982eca07f8e7c19262ad7a52b19433f56c741c27097a7704cf6bfc088c",
+    "scene_exports.py": "8910c096c70422cd2b40f941ded2e83d8b3661fa45c98b9c1778e204dd5ba44d",
+    "static/app.js": "60b860194e3365178152ffb19c8a549a68faac5660b6a465d14512d683de217e",
+    "static/index.html": "16eb33e39b22f71d46127d1316c8c8d453c0d85ab214cd2e5db76d3c32105263",
+    "static/styles.css": "a09662829ae1d6588e394dbc02c9e8d4f35f414af4681af64f72de8a2a5ab6a6",
+    "studio_store.py": "77184718153ec7bd8c0473a78be0f9135723402ee480b1568e72f1f38cce4972",
+    "target_evidence.py": "16c0d38dda0fcdbeb4808da84167c0cd19c5240e3736f35fa380ef6447e1f576"
+  },
+  "notes": [
+    "Partial proposals are not applied until the separate explicit confirmation API is called; confirmation reuses the stored candidate and never calls an AI provider.",
+    "Known original task blockers are retained; unrequested bevel, microtexture and independent-shadow suggestions trigger a bounded correction rather than silent omission.",
+    "Version, real source image, target sampling and scene guards prevent a saved proposal from being applied to changed evidence. Read-only diagnostic timestamps do not invalidate geometry evidence.",
+    "Remaining original clauses and applicable preservation constraints survive partial application; completed relative edits are not replayed as new intent.",
+    "Public project responses hide service-private candidate plans and evidence digests.",
+    "Real hidden-wheel completeness and actual provider semantic accuracy remain unbenchmarked; trusted surface samples do not prove unseen geometry.",
+    "The source .env is preserved byte-for-byte in the full source archive and excluded from the cumulative patch; actual configuration contents were not read by the test harness.",
+    "The two historical missing-fixture errors are not counted as passes.",
+    "Offline interactions and images are explicitly simulated. jsdom viewport checks do not establish browser pixel layout or render appearance."
+  ]
+}

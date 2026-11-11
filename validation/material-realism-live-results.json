@@ -1,0 +1,723 @@
+{
+  "audited_at": "2026-11-06T15:46:27.059434+00:00",
+  "project_id": "d2ae89ec57a74a4b8ccefdab05482118",
+  "project_version_at_snapshot": 4,
+  "status": "passed",
+  "scope": "Read-only audit of actual normal-UI renders; no project changes, new renders or API calls.",
+  "checks": {
+    "actual_png_jpg_512_square_and_complete": true,
+    "job_history_request_consistent": true,
+    "manual_multiselect_roughness_only": true,
+    "nl_selected_label_only": true,
+    "untouched_color_not_sent": true,
+    "unselected_body_preserved": true,
+    "actual_v3_label_shader_readback": true,
+    "actual_final_label_shader_readback": true,
+    "baseline_visual_ai_review": true,
+    "final_visual_ai_review": true,
+    "image_aware_nl_source_ai": true
+  },
+  "manual_edit": {
+    "id": "60aa9f39681d4cc297c064276578b610",
+    "kind": "edit",
+    "source": {
+      "output_id": "83d5f781a5c84e5d9ba501f6d78e7103",
+      "shot_id": "hero",
+      "quality": "preview",
+      "version": 2
+    },
+    "targets": [
+      {
+        "object_name": "Label substrate",
+        "material_name": "Paper label — ivory"
+      },
+      {
+        "object_name": "Bottle body",
+        "material_name": "Matte recycled plastic — teal"
+      }
+    ],
+    "patch": {
+      "roughness": 0.65
+    },
+    "version": 3,
+    "job_id": "b59c658361cc4942b7cb518884588ce5"
+  },
+  "natural_language_edit": {
+    "id": "115cbb1c46054d9c9326a6e3415e963a",
+    "source": {
+      "output_id": "b59c658361cc4942b7cb518884588ce5",
+      "shot_id": "hero",
+      "quality": "preview",
+      "version": 3
+    },
+    "text": "只把选中的标签部件粗糙度设为 0.35，保留标签颜色和文字；瓶身及其他部件保持原样。",
+    "scope": "选中网格的材质槽",
+    "version": 4,
+    "job_id": "8d8ea37d73fe492e9b1546f263f3ae3d",
+    "instruction": {
+      "text": "只把选中的标签部件粗糙度设为 0.35，保留标签颜色和文字；瓶身及其他部件保持原样。",
+      "source": "ai",
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "used_image": true,
+      "changes": [
+        {
+          "path": "object_material_overrides",
+          "before": [
+            {
+              "object_name": "Label substrate",
+              "material_name": "Paper label — ivory",
+              "preserve_original": true,
+              "roughness": 0.65,
+              "source": "user"
+            },
+            {
+              "object_name": "Bottle body",
+              "material_name": "Matte recycled plastic — teal",
+              "preserve_original": true,
+              "roughness": 0.65,
+              "source": "user"
+            }
+          ],
+          "after": [
+            {
+              "object_name": "Label substrate",
+              "material_name": "Paper label — ivory",
+              "preserve_original": true,
+              "roughness": 0.35,
+              "source": "ai"
+            },
+            {
+              "object_name": "Bottle body",
+              "material_name": "Matte recycled plastic — teal",
+              "preserve_original": true,
+              "roughness": 0.65,
+              "source": "user"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "renders": [
+    {
+      "version": 2,
+      "job": {
+        "id": "83d5f781a5c84e5d9ba501f6d78e7103",
+        "status": "completed",
+        "version": 2,
+        "quality": "preview",
+        "completed": [
+          "hero"
+        ],
+        "started_at": 1793979014.7021244,
+        "finished_at": 1793979031.3448312
+      },
+      "images": {
+        "png": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/83d5f781a5c84e5d9ba501f6d78e7103/材质与逼真度验收_hero_v2/材质与逼真度验收_hero_v2.png",
+          "format": "PNG",
+          "width": 512,
+          "height": 512,
+          "bytes": 139168,
+          "sha256": "c21f24a107e6c69975f199b338e1303c0f87b16ba59ecbeac6e8473e2bb323ac"
+        },
+        "jpg": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/83d5f781a5c84e5d9ba501f6d78e7103/材质与逼真度验收_hero_v2/材质与逼真度验收_hero_v2.jpg",
+          "format": "JPEG",
+          "width": 512,
+          "height": 512,
+          "bytes": 20591,
+          "sha256": "031ba6f9c6e0b2aa465e9d5c753a761b7f89ae2fad9805c2621149826bded278"
+        }
+      },
+      "blend": {
+        "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/83d5f781a5c84e5d9ba501f6d78e7103/材质与逼真度验收_hero_v2/材质与逼真度验收_hero_v2.blend",
+        "sha256": "84fdd72784afdef2534c7218b50726ed101847560dac3fe8400079ceeb379244"
+      },
+      "blender_version": "5.0.1",
+      "device": {
+        "status": "ready",
+        "type": "GPU",
+        "backend": "OPTIX",
+        "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+        "blender_version": "5.0.1"
+      },
+      "render_seconds": 2.747,
+      "applied_material_operations": [],
+      "review": {
+        "source": "ai",
+        "provider": "anthropic",
+        "model": "claude-haiku-5-5",
+        "status": "manual_review",
+        "score": 0.6,
+        "question": "为什么这张商品渲染可能不够逼真？",
+        "checked_at": 1793979031.3245776,
+        "needs_user": [
+          "是否需要保持哑光青绿色材质意图，或希望瓶身呈现更强的光泽/软质塑料感（材质意图需用户确认）。",
+          "瓶子的真实尺寸与瓶盖、标签的实际倒角半径未知，若要增强边缘倒角表现，需要用户提供真实尺寸或参考。",
+          "如需提升标签纸张与印刷质感，需要手动创建或调整纹理，属于人工操作。",
+          "已结束自动修正，仍有建议未采纳；请比较候选图并人工判断。"
+        ],
+        "realism": {
+          "summary": "整体为干净的棚拍产品图，构图完整、色彩稳定，已具备一定可信度；但瓶身明暗过渡偏平、边缘与接触阴影较软，塑料材质的反射可读性不足，导致真实感有所欠缺。",
+          "priority_actions": [
+            "使用近景镜头（材质细节）检查瓶身高光带与边缘反光，必要时手动调整主光与边缘光的相对强度。",
+            "检查瓶底接触阴影，手动收紧接触区域的遮挡或减弱过散的柔光。",
+            "如需增强塑料光泽或倒角线索，需用户确认材质意图并提供倒角参考，属于人工建模或材质编辑工作。",
+            "如需展示标签印刷细节，使用结构细节镜头进行近景渲染，而非依赖当前全景图。"
+          ],
+          "causes": [
+            {
+              "aspect": "光线层次与平光填充",
+              "evidence": "瓶身主体（中部至下部青绿色区域）亮度变化平缓，左右两侧缺少明显的明暗分界，高光带不突出。",
+              "confidence": 0.6,
+              "suggestion": "在不改变颜色的前提下，可考虑调整主光与边缘光的相对强度，使瓶身出现一条可读的柔和高光带；此为手动灯光调整，需人工评估。",
+              "requires_user": false
+            },
+            {
+              "aspect": "高光形状与反射可读性",
+              "evidence": "泵头与泵颈的奶白色表面高光弱，几乎没有可辨识的镜面反射形状；瓶身同样缺少清晰的高光轮廓。",
+              "confidence": 0.4,
+              "suggestion": "若希望更有塑料光泽，可在不改变材质预设的前提下检查高光灯的位置与尺寸；若要改变光泽度则属于材质意图，需用户确认。",
+              "requires_user": true
+            },
+            {
+              "aspect": "边缘轮廓与倒角线索",
+              "evidence": "瓶肩与瓶口过渡处的轮廓偏软，倒角区域没有形成明显亮边，泵头的边缘也缺少清晰的倒角线索。",
+              "confidence": 0.45,
+              "suggestion": "若模型确实存在倒角，可在建模阶段确认倒角半径；若没有，则需手动增加倒角几何，属于人工建模工作，需要用户确认。",
+              "requires_user": true
+            },
+            {
+              "aspect": "接触阴影与接地",
+              "evidence": "瓶底与地面之间的阴影较散，暗部过渡柔和，产品有轻微漂浮感。",
+              "confidence": 0.4,
+              "suggestion": "可尝试减小光源柔化程度或增加底部近距离的遮挡光，使接触阴影更紧凑；这属于灯光手动调整。",
+              "requires_user": false
+            },
+            {
+              "aspect": "标签细节与尺度",
+              "evidence": "标签文字 MORA、DAILY CARE 与 500 ml 在整图中很小，印刷细节和纸张纹理无法清楚辨识。",
+              "confidence": 0.5,
+              "suggestion": "如需展示标签细节，可使用材质细节或结构细节的近景镜头，而不是依赖全景图。",
+              "requires_user": false
+            }
+          ]
+        },
+        "issues": [
+          {
+            "code": "flat_body_shading",
+            "severity": "warning",
+            "message": "瓶身青绿色区域明暗过渡偏平，左侧与右侧仅有弱渐变，缺少清晰的高光带和边缘反光，塑料圆柱体的体积感不足。",
+            "confidence": 0.6,
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal"
+          },
+          {
+            "code": "weak_edge_definition",
+            "severity": "warning",
+            "message": "瓶身轮廓与白色背景之间的边缘较软，瓶肩和瓶口的倒角过渡缺少可读的亮边，产品轮廓略显模糊。",
+            "confidence": 0.45,
+            "object_name": "Bottle body"
+          },
+          {
+            "code": "contact_shadow_soft",
+            "severity": "warning",
+            "message": "瓶底落影偏散，接地处的暗部过渡不够紧凑，产品与地面的接触感较弱，略有漂浮感。",
+            "confidence": 0.4,
+            "object_name": "Bottle body"
+          },
+          {
+            "code": "pump_highlight_flat",
+            "severity": "warning",
+            "message": "泵头与泵颈为奶白色，表面高光不明显，塑料光泽和弱镜面反射几乎不可见，与瓶身的材质区分不足。",
+            "confidence": 0.4,
+            "object_name": "Pump dispenser",
+            "material_name": "Soft satin plastic — cream"
+          },
+          {
+            "code": "label_detail_small",
+            "severity": "warning",
+            "message": "标签上的文字（尤其是 500 ml 与 DAILY CARE）在整图中尺寸很小，细节可读性有限，标签印刷的边缘和纸张质感难以判断。",
+            "confidence": 0.5,
+            "object_name": "Label_500 ml"
+          },
+          {
+            "code": "occupancy_ok",
+            "severity": "warning",
+            "message": "产品占画面约 74%，未裁切，构图完整；但画面中产品偏小的细节（泵头与标签）需要近景辅助展示。",
+            "confidence": 0.3
+          }
+        ]
+      }
+    },
+    {
+      "version": 3,
+      "job": {
+        "id": "b59c658361cc4942b7cb518884588ce5",
+        "status": "completed",
+        "version": 3,
+        "quality": "preview",
+        "completed": [
+          "hero"
+        ],
+        "started_at": 1793979188.0647624,
+        "finished_at": 1793979203.5620172
+      },
+      "images": {
+        "png": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/b59c658361cc4942b7cb518884588ce5/材质与逼真度验收_hero_v3/材质与逼真度验收_hero_v3.png",
+          "format": "PNG",
+          "width": 512,
+          "height": 512,
+          "bytes": 139108,
+          "sha256": "0d5cb9808244d3c0371a17cc1f4a9a60a8fee8c39832432a11dda7d6dc101291"
+        },
+        "jpg": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/b59c658361cc4942b7cb518884588ce5/材质与逼真度验收_hero_v3/材质与逼真度验收_hero_v3.jpg",
+          "format": "JPEG",
+          "width": 512,
+          "height": 512,
+          "bytes": 20539,
+          "sha256": "f6eec60d9fbc0599da464e30e371bbbbe912da0b682375ff9c823700d2c3eac8"
+        }
+      },
+      "blend": {
+        "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/b59c658361cc4942b7cb518884588ce5/材质与逼真度验收_hero_v3/材质与逼真度验收_hero_v3.blend",
+        "sha256": "865d0a89f1bb188aa3683c219623670551e519109136cebc0a8d24eebdf4dd32"
+      },
+      "blender_version": "5.0.1",
+      "device": {
+        "status": "ready",
+        "type": "GPU",
+        "backend": "OPTIX",
+        "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+        "blender_version": "5.0.1"
+      },
+      "render_seconds": 2.793,
+      "applied_material_operations": [
+        {
+          "operation": "object_material_override",
+          "object": "Label substrate",
+          "parameters": {
+            "object_name": "Label substrate",
+            "material_name": "Paper label — ivory",
+            "preserve_original": true,
+            "roughness": 0.65,
+            "source": "user"
+          },
+          "applied_to": [
+            "Paper label — ivory.001"
+          ]
+        },
+        {
+          "operation": "object_material_override",
+          "object": "Bottle body",
+          "parameters": {
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal",
+            "preserve_original": true,
+            "roughness": 0.65,
+            "source": "user"
+          },
+          "applied_to": [
+            "Matte recycled plastic — teal.001"
+          ]
+        }
+      ],
+      "review": {
+        "source": "rules",
+        "status": "manual_review",
+        "score": 0.99142,
+        "question": "为什么这张商品渲染可能不够逼真？",
+        "checked_at": 1793979203.540853,
+        "ai_unavailable": true,
+        "needs_user": [
+          "基础规则没有视觉判断能力；光照层次、微表面纹理、倒角、接地阴影、透射厚度和材质真实感仍需视觉模型或人工检查。",
+          "视觉模型检查不可用：AI 参数类型无效，当前方案未修改。"
+        ],
+        "realism": {
+          "summary": "已检查可用的曝光与构图测量；这些数据不能单独证明照片级真实感。",
+          "priority_actions": [
+            "连接视觉模型后分析实际图像，或人工检查光照、材质和接地关系。"
+          ],
+          "causes": []
+        },
+        "issues": []
+      }
+    },
+    {
+      "version": 4,
+      "job": {
+        "id": "8d8ea37d73fe492e9b1546f263f3ae3d",
+        "status": "completed",
+        "version": 4,
+        "quality": "preview",
+        "completed": [
+          "hero"
+        ],
+        "started_at": 1793979424.0797675,
+        "finished_at": 1793979438.767839
+      },
+      "images": {
+        "png": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/8d8ea37d73fe492e9b1546f263f3ae3d/材质与逼真度验收_hero_v4/材质与逼真度验收_hero_v4.png",
+          "format": "PNG",
+          "width": 512,
+          "height": 512,
+          "bytes": 139226,
+          "sha256": "48ec95e11e9eb25ff3fdfbeac008e27f3c0f8bf7803fc7f041ab653d82b39a82"
+        },
+        "jpg": {
+          "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/8d8ea37d73fe492e9b1546f263f3ae3d/材质与逼真度验收_hero_v4/材质与逼真度验收_hero_v4.jpg",
+          "format": "JPEG",
+          "width": 512,
+          "height": 512,
+          "bytes": 20563,
+          "sha256": "1fd35c59b0d91758797ccefe757c6c71f998d3c8ea83ae3f8bf8bfcbdc630294"
+        }
+      },
+      "blend": {
+        "path": "data/d2ae89ec57a74a4b8ccefdab05482118/runs/8d8ea37d73fe492e9b1546f263f3ae3d/材质与逼真度验收_hero_v4/材质与逼真度验收_hero_v4.blend",
+        "sha256": "1eb674d3f701071f0ff13c8d4a2ea84a0ee6ede7618e4edb56c7cf8af4260810"
+      },
+      "blender_version": "5.0.1",
+      "device": {
+        "status": "ready",
+        "type": "GPU",
+        "backend": "OPTIX",
+        "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+        "blender_version": "5.0.1"
+      },
+      "render_seconds": 2.635,
+      "applied_material_operations": [
+        {
+          "operation": "object_material_override",
+          "object": "Label substrate",
+          "parameters": {
+            "object_name": "Label substrate",
+            "material_name": "Paper label — ivory",
+            "preserve_original": true,
+            "roughness": 0.35,
+            "source": "ai"
+          },
+          "applied_to": [
+            "Paper label — ivory.001"
+          ]
+        },
+        {
+          "operation": "object_material_override",
+          "object": "Bottle body",
+          "parameters": {
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal",
+            "preserve_original": true,
+            "roughness": 0.65,
+            "source": "user"
+          },
+          "applied_to": [
+            "Matte recycled plastic — teal.001"
+          ]
+        }
+      ],
+      "review": {
+        "source": "ai",
+        "provider": "anthropic",
+        "model": "claude-haiku-5-5",
+        "mode": "diagnostic_only",
+        "status": "manual_review",
+        "score": 0.62,
+        "question": "为什么这张瓶子的渲染还不够逼真？请根据图像说明光照、材质反射和接触阴影的问题。",
+        "checked_at": 1793979750.3519013,
+        "parameter_changes_applied": false,
+        "needs_user": [
+          "是否需要保持哑光瓶身的材质意图，还是希望加入更明显的塑料光泽？",
+          "标签和文字是否需要真实纸张纹理或更高分辨率印刷贴图（需要用户提供素材或手动制作）？",
+          "若要增加倒角或边缘高光，需要确认真实尺寸与是否允许修改几何体。"
+        ],
+        "realism": {
+          "summary": "产品主体识别度良好，构图完整，曝光没有明显过曝；不够逼真主要来自光照层次偏平、瓶身高光带不足、接触阴影偏弱，以及标签与泵头缺少表面细节。",
+          "priority_actions": [
+            "先调整灯光层次（减弱平光填充、强化边缘光与主光对比），使瓶身圆柱体产生清晰的明暗过渡，这是最有效的改善方向。",
+            "增强瓶底接触阴影，让瓶子与地面的衔接更自然。",
+            "确认泵头是否需要倒角或边缘细节；若需要，属于手动建模工作。",
+            "如需提高标签与材质的真实感，请提供纹理素材或确认材质意图，纹理制作需手动完成。"
+          ],
+          "causes": [
+            {
+              "aspect": "光照层次与平光填充",
+              "evidence": "瓶身青绿色区域（画面中部约x=205-310,y=180-420）明暗过渡较平缓，左右边缘没有明显的窄高光带；背景几乎纯白，产品与背景的明暗对比主要依赖颜色而非光线塑形。",
+              "confidence": 0.6,
+              "suggestion": "在不改变颜色的前提下，可尝试减弱填充光或调整主光与边缘光的角度，让圆柱瓶身出现连续的明暗过渡；这属于灯光设置调整，可人工试验。",
+              "requires_user": false
+            },
+            {
+              "aspect": "接触阴影与落地感",
+              "evidence": "瓶底（约x=210-300,y=400-435）与地面交界处只有淡灰色扩散阴影，缺少紧贴瓶底的深色接触线，画面左下方阴影较长但与瓶底衔接较弱。",
+              "confidence": 0.5,
+              "suggestion": "可增加一个近距离的接触阴影或地面投影软化度调整；若需要更强的落地感，可在场景中手动添加接触阴影。",
+              "requires_user": false
+            },
+            {
+              "aspect": "泵头轮廓与反射可读性",
+              "evidence": "奶油色泵头（约x=210-290,y=75-160）与白色背景亮度接近，顶部压片的边缘和泵杆过渡处缺少阴影或高光层次，形状辨识度偏低。",
+              "confidence": 0.45,
+              "suggestion": "可以检查泵头几何是否有倒角或边缘圆角；若缺少倒角，需要用户确认是否允许补充几何细节（属于手动建模）。",
+              "requires_user": true
+            },
+            {
+              "aspect": "标签纹理与印刷细节",
+              "evidence": "标签（约x=205-262,y=230-340）为纯白平面，文字 MORA、DAILY CARE、500 ml 尺寸较小，纸面没有可见的纹理或微弱反射变化。",
+              "confidence": 0.4,
+              "suggestion": "如需更真实的纸张质感，需要用户提供纸张纹理或高分辨率印刷贴图，或手动调整粗糙度；当前不建议自动修改材质。",
+              "requires_user": true
+            },
+            {
+              "aspect": "瓶身材质表面",
+              "evidence": "瓶身为哑光青绿色，画面中未见明显的微表面颗粒或细微划痕，整体表面较干净；材质粗糙度为0.58（模型给出），但光照下缺少可读的漫反射变化。",
+              "confidence": 0.35,
+              "suggestion": "这是材质意图问题：若想保持哑光回收塑料，则当前表现基本合理；若需要更真实的微表面，需要用户决定是否加入纹理（需手动创建）。",
+              "requires_user": true
+            }
+          ]
+        },
+        "issues": [
+          {
+            "code": "flat_body_shading",
+            "severity": "warning",
+            "message": "瓶身青绿色区域明暗过渡偏平，左侧和右侧边缘缺少清晰的高光带，圆柱体的体积感较弱。",
+            "confidence": 0.6,
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal"
+          },
+          {
+            "code": "weak_contact_shadow",
+            "severity": "warning",
+            "message": "瓶底与地面的接触处只有较淡的散射阴影，底部没有明显的暗色接触线，瓶子有轻微漂浮感。",
+            "confidence": 0.5,
+            "object_name": "Bottle body"
+          },
+          {
+            "code": "pump_head_low_separation",
+            "severity": "warning",
+            "message": "奶油色泵头与白色背景亮度接近，泵头顶部和边缘缺少阴影或反射层次，轮廓辨识度偏低。",
+            "confidence": 0.45,
+            "object_name": "Pump dispenser"
+          },
+          {
+            "code": "label_flat_print",
+            "severity": "warning",
+            "message": "标签为纯白平面，文字较小，印刷文字与纸面之间没有可见的纸张纹理或微弱反光变化，看起来像贴图平面。",
+            "confidence": 0.4,
+            "object_name": "Label substrate",
+            "material_name": "Paper label — ivory"
+          }
+        ]
+      }
+    }
+  ],
+  "actual_scene_picks": [
+    {
+      "version": 4,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/0859cadfa83b4e3cad910d10b3a9f564/result.json",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory.001",
+      "x": 0.5,
+      "y": 0.5,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#F6F5ED",
+        "roughness": 0.35,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 3,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/368b8dc5d6b54e14a74c5b7318dded12/result.json",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory.001",
+      "x": 0.5,
+      "y": 0.5,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#F6F5ED",
+        "roughness": 0.65,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 2,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/8a74d78e563044a19a4843370fa8f6d9/result.json",
+      "object_name": "Bottle body",
+      "material_name": "Matte recycled plastic — teal",
+      "material_render_name": "Matte recycled plastic — teal",
+      "x": 0.53,
+      "y": 0.75,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#3C908E",
+        "roughness": 0.58,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 2,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/a5265d50d9c246aaacf2e37571314a59/result.json",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory",
+      "x": 0.5,
+      "y": 0.5,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#F6F5ED",
+        "roughness": 0.72,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 2,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/a5265d50d9c246aaacf2e37571314a59/result.json",
+      "object_name": "Bottle body",
+      "material_name": "Matte recycled plastic — teal",
+      "material_render_name": "Matte recycled plastic — teal",
+      "x": 0.53,
+      "y": 0.75,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#3C908E",
+        "roughness": 0.58,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 2,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/d68e872b3f03481c90c718058037a58a/result.json",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory",
+      "x": 0.5,
+      "y": 0.5,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#F6F5ED",
+        "roughness": 0.72,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    },
+    {
+      "version": 3,
+      "result": "data/d2ae89ec57a74a4b8ccefdab05482118/feedback-picks/e68ca4ab04da44b489118997a7e7f026/result.json",
+      "object_name": "Label substrate",
+      "material_name": "Paper label — ivory",
+      "material_render_name": "Paper label — ivory.001",
+      "x": 0.5,
+      "y": 0.5,
+      "material_info": {
+        "source": "rendered_scene",
+        "value_basis": "principled_input_defaults",
+        "color": "#F6F5ED",
+        "roughness": 0.65,
+        "metallic": 0.0,
+        "transmission": 0.0,
+        "ior": 1.5,
+        "linked": {
+          "color": false,
+          "roughness": false,
+          "metallic": false,
+          "transmission": false,
+          "normal": false,
+          "ior": false
+        },
+        "textures": [],
+        "editable": true
+      }
+    }
+  ],
+  "pending": [],
+  "limits": [
+    "This checks 512px previews; it does not certify 4K output or visual realism.",
+    "AI appearance assessments are recorded observations and suggestions, not ground-truth material measurements."
+  ]
+}

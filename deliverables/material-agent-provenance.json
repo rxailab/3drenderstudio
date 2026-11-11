@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "task_id": "13a20b1998b448cd9c33b612b8e97044",
+  "project_id": "dab3b4cdf73f4232a7c36cb2cbd958e3",
+  "job_id": "355715f9e83742f286458545c15b6178",
+  "selection": {
+    "asset_id": "stretch_poplin",
+    "name": "Stretch Poplin",
+    "url": "https://polyhaven.com/a/stretch_poplin",
+    "license": "CC0-1.0",
+    "license_url": "https://polyhaven.com/license",
+    "reason": "User wants fine woven cotton with a fine, detailed fabric surface, and use_base_color=false keeps original colors. Stretch Poplin is described as cotton poplin with a fine, tight weave, which directly matches the fine woven cotton request. Its stretch is a minor extra but does not conflict with the request. Other cotton candidates like Book Pattern and Rough Linen have coarser or linen-type weaves, so they fit less well.",
+    "mode": "ai",
+    "query": "fine woven cotton fabric seamless PBR"
+  },
+  "targets": [
+    {
+      "object_name": "Canvas body",
+      "material_name": "Woven canvas — sand"
+    }
+  ],
+  "downloaded_files": [
+    {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/stretch_poplin/stretch_poplin_nor_gl_1k.png",
+      "path": "D:\\模型渲染\\data\\dab3b4cdf73f4232a7c36cb2cbd958e3\\materials\\13a20b1998b448cd9c33b612b8e97044\\normal.png",
+      "sha256": "00a918963b9c30336a55367adb156fe11665ab5f51dc58086c891f2cada68935",
+      "md5": "d67cabb52eb8eb8fde2ea141f2e5c0c4",
+      "bytes": 5203013,
+      "width": 1024,
+      "height": 988,
+      "color_space": "Non-Color",
+      "channel": "normal"
+    }
+  ],
+  "actual_resources": [
+    {
+      "material": "Woven canvas — sand.001",
+      "maps": [
+        {
+          "channel": "normal",
+          "path": "D:\\模型渲染\\data\\dab3b4cdf73f4232a7c36cb2cbd958e3\\materials\\13a20b1998b448cd9c33b612b8e97044\\normal.png",
+          "applied": true,
+          "color_space": "Non-Color",
+          "mapping": "UV",
+          "scale": 1,
+          "rotation_degrees": 0
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "original_color_preserved": true,
+  "unrelated_photography_unchanged": true,
+  "native_preview_pixels": [
+    512,
+    512
+  ],
+  "render_seconds": 2.864,
+  "files": [
+    "D:\\模型渲染\\deliverables\\material-agent-canvas-preview.png",
+    "D:\\模型渲染\\deliverables\\material-agent-canvas-preview.jpg",
+    "D:\\模型渲染\\deliverables\\material-agent-canvas-preview.blend"
+  ],
+  "review_source": "ai",
+  "warnings": [
+    "几何检查不证明曝光、噪点、反射和材质辨识度正确；请结合后续预览检查报告判断"
+  ],
+  "no_new_4k_validation": true
+}

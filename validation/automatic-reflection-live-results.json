@@ -1,0 +1,80 @@
+{
+  "project": "fb50b3a68d194f28af84b5d7b598599f",
+  "job": "051a1ad588b44977934ceb0439a62c06",
+  "started_from_ui": true,
+  "before": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/81bd61bfccdc48718efb7edffbf712ae/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+  "after": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/051a1ad588b44977934ceb0439a62c06/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+  "same_plan_version": true,
+  "pixel_difference_mean_255": 3.808812459309896,
+  "light": {
+    "name": "Metal reflection softbox",
+    "position": [
+      -1.0502517223358154,
+      2.378812789916992,
+      2.425384998321533
+    ],
+    "energy": 1.100000023841858,
+    "size": 1.0399999618530273,
+    "color": [
+      1,
+      1,
+      1
+    ],
+    "shape": "RECTANGLE",
+    "size_y": 0.35199999809265137,
+    "target_object": "G-不锈钢台面_2",
+    "target": [
+      0.298971563577652,
+      0.19762541353702545,
+      1.99875009059906
+    ],
+    "method": "visible metal face reflected camera direction"
+  },
+  "corrections": [
+    {
+      "round": 0,
+      "exposure": 0.0,
+      "light_softness": 0.8,
+      "lighting": {
+        "key_power": 2.2,
+        "fill_power": 0.4,
+        "rim_power": 1.8,
+        "environment": 1
+      },
+      "score": 0.6,
+      "png_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/051a1ad588b44977934ceb0439a62c06/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+      "applied": true
+    },
+    {
+      "round": 1,
+      "exposure": 0.0,
+      "light_softness": 0.8,
+      "lighting": {
+        "key_power": 2.64,
+        "fill_power": 0.36,
+        "rim_power": 1.8,
+        "environment": 1
+      },
+      "score": 0.6,
+      "png_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/051a1ad588b44977934ceb0439a62c06/08_G07C_G02M_combo_hero_v12_review1/08_G07C_G02M_combo_hero_v12_review1.png",
+      "applied": false
+    },
+    {
+      "round": 2,
+      "exposure": 0.0,
+      "light_softness": 0.8,
+      "lighting": {
+        "key_power": 3,
+        "fill_power": 0.324,
+        "rim_power": 1.8,
+        "environment": 1
+      },
+      "score": 0.6,
+      "png_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/051a1ad588b44977934ceb0439a62c06/08_G07C_G02M_combo_hero_v12_review2/08_G07C_G02M_combo_hero_v12_review2.png",
+      "applied": false
+    }
+  ],
+  "review_notice": "新版灯光从新预览开始比较，未自动比较旧引擎图；旧图保留，可查看前后结果。",
+  "red_body_roughness_automatically_changed": false,
+  "new_4k_test": false
+}

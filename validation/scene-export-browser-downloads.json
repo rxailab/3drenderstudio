@@ -1,0 +1,18 @@
+[
+  {
+    "download": "C:\\Users\\Sam\\Downloads\\Blender-scene-v2.zip",
+    "deliverable": "D:\\模型渲染\\deliverables\\Blender-editable-project.zip",
+    "crc_verified": true,
+    "sha256_matches": true,
+    "contains_blend": true,
+    "contains_native_c4d": false
+  },
+  {
+    "download": "C:\\Users\\Sam\\Downloads\\Cinema4D-conversion-kit.zip",
+    "deliverable": "D:\\模型渲染\\deliverables\\Cinema4D-conversion-kit.zip",
+    "crc_verified": true,
+    "sha256_matches": true,
+    "contains_blend": true,
+    "contains_native_c4d": false
+  }
+]

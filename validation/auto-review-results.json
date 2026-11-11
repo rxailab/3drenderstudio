@@ -1,0 +1,1951 @@
+{
+  "project_id": "fc1e290ec5684a468b428006850ae0c6",
+  "job": {
+    "id": "9d84584efb5c4504b54ecf96291446ec",
+    "project_id": "fc1e290ec5684a468b428006850ae0c6",
+    "kind": "preview",
+    "quality": "preview",
+    "shot_ids": [
+      "hero"
+    ],
+    "status": "completed",
+    "stage": "已完成",
+    "progress": 100,
+    "current_shot": "白底主图",
+    "error": null,
+    "log_tail": [
+      "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+      "if mat and mat.use_nodes:",
+      "00:00.625  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library",
+      "EVENT:{\"stage\": \"使用 GPU 渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}}",
+      "EVENT:{\"stage\": \"正在打包可复现工程\"}",
+      "Info: No new files have been packed",
+      "Info: Saved as \"auto-exposure-validation_hero_v1_review2.blend\"",
+      "EVENT:{\"stage\": \"Cycles 正在渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}, \"shot\": \"hero\"}",
+      "00:03.234  render           | Saved: 'D:\\模型渲染\\data\\fc1e290ec5684a468b428006850ae0c6\\runs\\9d84584efb5c4504b54ecf96291446ec\\auto-exposure-validation_hero_v1_review2\\auto-exposure-validation_hero_v1_review2.png'",
+      "EVENT:{\"stage\": \"正在校验导出图片\"}",
+      "EVENT:{\"stage\": \"采样产品表面，排除背景曝光\"}",
+      "EVENT:{\"stage\": \"执行完成\"}",
+      "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+      "",
+      "Blender quit"
+    ],
+    "plan": {
+      "style": "soft",
+      "aspect": "1:1",
+      "margin": 0.12,
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "exposure": 4,
+      "light_softness": 1,
+      "texture_scale": 1,
+      "texture_rotation": 0,
+      "material_overrides": [],
+      "object_material_overrides": [],
+      "repair": {
+        "normals": false,
+        "smooth": false
+      },
+      "pose": {},
+      "time_budget": 1200,
+      "max_corrections": 2,
+      "source": "rules",
+      "visual_review": true,
+      "pending": [
+        "实际摆放方向与主展示面请在预览中确认",
+        "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+      ],
+      "shots": [
+        {
+          "id": "hero",
+          "label": "白底主图",
+          "kind": "full",
+          "azimuth": 35,
+          "elevation": 18,
+          "focal_length": 70,
+          "style": "white"
+        }
+      ],
+      "model_features": {
+        "dimensions": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ],
+        "aspect_ratio": 3.438461301571293,
+        "elongated": true,
+        "flat": false,
+        "multipart": true,
+        "mesh_count": 8,
+        "symmetry": "unknown",
+        "surfaces": [
+          "dielectric"
+        ],
+        "has_animation": false,
+        "has_armature": false
+      },
+      "material_suggestions": [
+        {
+          "name": "Matte recycled plastic — teal",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.04500000178813934,
+            0.2800000011920929,
+            0.27000001072883606,
+            1.0
+          ],
+          "roughness": 0.5799999833106995,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Soft satin plastic — cream",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.7799999713897705,
+            0.7400000095367432,
+            0.6200000047683716,
+            1.0
+          ],
+          "roughness": 0.33000001311302185,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Paper label — ivory",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.9200000166893005,
+            0.9100000262260437,
+            0.8500000238418579,
+            1.0
+          ],
+          "roughness": 0.7200000286102295,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Printed dark green ink",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.017999999225139618,
+            0.054999999701976776,
+            0.04500000178813934,
+            1.0
+          ],
+          "roughness": 0.6499999761581421,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        }
+      ]
+    },
+    "version": 1,
+    "created_at": 1793974768.1339195,
+    "request_key": null,
+    "retry_of": null,
+    "completed": [
+      "hero"
+    ],
+    "updated_at": 1793974779.708833,
+    "started_at": 1793974768.142913,
+    "sample_progress": 0,
+    "review_round": 2,
+    "adopted_version": 2,
+    "automatic_adjustments": {
+      "hero": {
+        "exposure_delta": -1.4
+      }
+    },
+    "finished_at": 1793974779.7048402
+  },
+  "original": {
+    "shot_id": "hero",
+    "shot_label": "白底主图",
+    "quality": "preview",
+    "version": 1,
+    "job_id": "9d84584efb5c4504b54ecf96291446ec",
+    "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.png",
+    "jpg_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.jpg",
+    "blend_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.blend",
+    "width": 512,
+    "height": 512,
+    "checks": {
+      "method": "projected evaluated bounding boxes",
+      "kind": "complete_product",
+      "clipped": false,
+      "projected_bounds": [
+        0.352754145860672,
+        0.12191631644964218,
+        0.6444187760353088,
+        0.8576451539993286
+      ],
+      "occupancy": 0.7357288375496864,
+      "margin": 0.12,
+      "corrections": 0,
+      "detail_target": null,
+      "projection_test_points": [
+        [
+          -0.29082775115966797,
+          -0.2887919545173645,
+          0.0
+        ],
+        [
+          -0.29082775115966797,
+          -0.2887919545173645,
+          1.6703966856002808
+        ],
+        [
+          -0.29082775115966797,
+          0.29286354780197144,
+          1.6703966856002808
+        ],
+        [
+          -0.29082775115966797,
+          0.29286354780197144,
+          0.0
+        ],
+        [
+          0.29082775115966797,
+          -0.2887919545173645,
+          0.0
+        ],
+        [
+          0.29082775115966797,
+          -0.2887919545173645,
+          1.6703966856002808
+        ],
+        [
+          0.29082775115966797,
+          0.29286354780197144,
+          1.6703966856002808
+        ],
+        [
+          0.29082775115966797,
+          0.29286354780197144,
+          0.0
+        ],
+        [
+          -0.1415361613035202,
+          -0.13950036466121674,
+          1.600298285484314
+        ],
+        [
+          -0.1415361613035202,
+          -0.13950036466121674,
+          1.7643550634384155
+        ],
+        [
+          -0.1415361613035202,
+          0.14357195794582367,
+          1.7643550634384155
+        ],
+        [
+          -0.1415361613035202,
+          0.14357195794582367,
+          1.600298285484314
+        ],
+        [
+          0.1415361613035202,
+          -0.13950036466121674,
+          1.600298285484314
+        ],
+        [
+          0.1415361613035202,
+          -0.13950036466121674,
+          1.7643550634384155
+        ],
+        [
+          0.1415361613035202,
+          0.14357195794582367,
+          1.7643550634384155
+        ],
+        [
+          0.1415361613035202,
+          0.14357195794582367,
+          1.600298285484314
+        ],
+        [
+          -0.04459358751773834,
+          -0.042557790875434875,
+          1.7404922246932983
+        ],
+        [
+          -0.04459358751773834,
+          -0.042557790875434875,
+          1.9343773126602173
+        ],
+        [
+          -0.04459358751773834,
+          0.04662938416004181,
+          1.9343773126602173
+        ],
+        [
+          -0.04459358751773834,
+          0.04662938416004181,
+          1.7404922246932983
+        ],
+        [
+          0.04459358751773834,
+          -0.042557790875434875,
+          1.7404922246932983
+        ],
+        [
+          0.04459358751773834,
+          -0.042557790875434875,
+          1.9343773126602173
+        ],
+        [
+          0.04459358751773834,
+          0.04662938416004181,
+          1.9343773126602173
+        ],
+        [
+          0.04459358751773834,
+          0.04662938416004181,
+          1.7404922246932983
+        ],
+        [
+          -0.12117822468280792,
+          -0.24032065272331238,
+          1.8956003189086914
+        ],
+        [
+          -0.12117822468280792,
+          -0.24032065272331238,
+          2.0
+        ],
+        [
+          -0.12117822468280792,
+          0.12806114554405212,
+          2.0
+        ],
+        [
+          -0.12117822468280792,
+          0.12806114554405212,
+          1.8956003189086914
+        ],
+        [
+          0.12117822468280792,
+          -0.24032065272331238,
+          1.8956003189086914
+        ],
+        [
+          0.12117822468280792,
+          -0.24032065272331238,
+          2.0
+        ],
+        [
+          0.12117822468280792,
+          0.12806114554405212,
+          2.0
+        ],
+        [
+          0.12117822468280792,
+          0.12806114554405212,
+          1.8956003189086914
+        ],
+        [
+          -0.18372385203838348,
+          -0.29014915227890015,
+          0.6040268540382385
+        ],
+        [
+          -0.18372385203838348,
+          -0.29014915227890015,
+          1.1856824159622192
+        ],
+        [
+          -0.18372385203838348,
+          -0.22515922784805298,
+          1.1856824159622192
+        ],
+        [
+          -0.18372385203838348,
+          -0.22515922784805298,
+          0.6040268540382385
+        ],
+        [
+          0.18372385203838348,
+          -0.29014915227890015,
+          0.6040268540382385
+        ],
+        [
+          0.18372385203838348,
+          -0.29014915227890015,
+          1.1856824159622192
+        ],
+        [
+          0.18372385203838348,
+          -0.22515922784805298,
+          1.1856824159622192
+        ],
+        [
+          0.18372385203838348,
+          -0.22515922784805298,
+          0.6040268540382385
+        ],
+        [
+          -0.10317697376012802,
+          -0.27089282870292664,
+          1.0041730403900146
+        ],
+        [
+          -0.10317697376012802,
+          -0.29286351799964905,
+          1.0041730403900146
+        ],
+        [
+          -0.10317697376012802,
+          -0.29286354780197144,
+          1.0856047868728638
+        ],
+        [
+          -0.10317697376012802,
+          -0.270892858505249,
+          1.0856047868728638
+        ],
+        [
+          0.10869687795639038,
+          -0.27089282870292664,
+          1.0041730403900146
+        ],
+        [
+          0.10869687795639038,
+          -0.29286351799964905,
+          1.0041730403900146
+        ],
+        [
+          0.10869687795639038,
+          -0.29286354780197144,
+          1.0856047868728638
+        ],
+        [
+          0.10869687795639038,
+          -0.270892858505249,
+          1.0856047868728638
+        ],
+        [
+          -0.06242327392101288,
+          -0.28476470708847046,
+          0.8915495872497559
+        ],
+        [
+          -0.06242327392101288,
+          -0.29286354780197144,
+          0.8915495872497559
+        ],
+        [
+          -0.06242327392101288,
+          -0.29286354780197144,
+          0.916605532169342
+        ],
+        [
+          -0.06242327392101288,
+          -0.28476470708847046,
+          0.916605532169342
+        ],
+        [
+          0.0635167807340622,
+          -0.28476470708847046,
+          0.8915495872497559
+        ],
+        [
+          0.0635167807340622,
+          -0.29286354780197144,
+          0.8915495872497559
+        ],
+        [
+          0.0635167807340622,
+          -0.29286354780197144,
+          0.916605532169342
+        ],
+        [
+          0.0635167807340622,
+          -0.28476470708847046,
+          0.916605532169342
+        ],
+        [
+          -0.03620999678969383,
+          -0.2894642651081085,
+          0.7214735746383667
+        ],
+        [
+          -0.03620999678969383,
+          -0.29286354780197144,
+          0.7214735746383667
+        ],
+        [
+          -0.03620999678969383,
+          -0.29286354780197144,
+          0.7507054805755615
+        ],
+        [
+          -0.03620999678969383,
+          -0.2894642651081085,
+          0.7507054805755615
+        ],
+        [
+          0.03580283746123314,
+          -0.2894642651081085,
+          0.7214735746383667
+        ],
+        [
+          0.03580283746123314,
+          -0.29286354780197144,
+          0.7214735746383667
+        ],
+        [
+          0.03580283746123314,
+          -0.29286354780197144,
+          0.7507054805755615
+        ],
+        [
+          0.03580283746123314,
+          -0.2894642651081085,
+          0.7507054805755615
+        ]
+      ],
+      "manual_review": [
+        "几何检查不证明曝光、噪点、反射和材质辨识度正确；请结合后续预览检查报告判断"
+      ],
+      "ground_contact": 0.0,
+      "attempts": [
+        {
+          "attempt": 0,
+          "clipped": false,
+          "projected_bounds": [
+            0.352754145860672,
+            0.12191631644964218,
+            0.6444187760353088,
+            0.8576451539993286
+          ],
+          "safe_margin": true
+        }
+      ],
+      "automatic_check_status": "passed"
+    },
+    "metrics": {
+      "dark_fraction": 0.0,
+      "bright_fraction": 0.9992,
+      "luminance_mean": 254.98,
+      "product": {
+        "method": "camera-ray product samples, background excluded",
+        "product_samples": 279,
+        "eligible_opaque_samples": 233,
+        "opaque_clipped_fraction": 0.97425,
+        "product_mean": 254.76
+      }
+    },
+    "device": {
+      "status": "ready",
+      "type": "GPU",
+      "backend": "OPTIX",
+      "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+      "blender_version": "5.0.1"
+    },
+    "created_at": 1793974772.3752189,
+    "result_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/result.json",
+    "effective_plan": {
+      "style": "soft",
+      "aspect": "1:1",
+      "margin": 0.12,
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "exposure": 4,
+      "light_softness": 1,
+      "texture_scale": 1,
+      "texture_rotation": 0,
+      "material_overrides": [],
+      "object_material_overrides": [],
+      "repair": {
+        "normals": false,
+        "smooth": false
+      },
+      "pose": {},
+      "time_budget": 1200,
+      "max_corrections": 2,
+      "source": "rules",
+      "visual_review": true,
+      "pending": [
+        "实际摆放方向与主展示面请在预览中确认",
+        "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+      ],
+      "shots": [
+        {
+          "id": "hero",
+          "label": "白底主图",
+          "kind": "full",
+          "azimuth": 35,
+          "elevation": 18,
+          "focal_length": 70,
+          "style": "white"
+        }
+      ],
+      "model_features": {
+        "dimensions": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ],
+        "aspect_ratio": 3.438461301571293,
+        "elongated": true,
+        "flat": false,
+        "multipart": true,
+        "mesh_count": 8,
+        "symmetry": "unknown",
+        "surfaces": [
+          "dielectric"
+        ],
+        "has_animation": false,
+        "has_armature": false
+      },
+      "material_suggestions": [
+        {
+          "name": "Matte recycled plastic — teal",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.04500000178813934,
+            0.2800000011920929,
+            0.27000001072883606,
+            1.0
+          ],
+          "roughness": 0.5799999833106995,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Soft satin plastic — cream",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.7799999713897705,
+            0.7400000095367432,
+            0.6200000047683716,
+            1.0
+          ],
+          "roughness": 0.33000001311302185,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Paper label — ivory",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.9200000166893005,
+            0.9100000262260437,
+            0.8500000238418579,
+            1.0
+          ],
+          "roughness": 0.7200000286102295,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Printed dark green ink",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.017999999225139618,
+            0.054999999701976776,
+            0.04500000178813934,
+            1.0
+          ],
+          "roughness": 0.6499999761581421,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        }
+      ],
+      "shot_adjustments": {}
+    },
+    "review": {
+      "source": "rules",
+      "issues": [
+        {
+          "code": "opaque_highlight_clipping",
+          "severity": "warning",
+          "message": "产品不透明表面存在较大面积高光剪切",
+          "confidence": 0.95
+        }
+      ],
+      "patch": {
+        "exposure": 3.3
+      },
+      "score": 0.02575,
+      "needs_user": [
+        "规则仅检查不透明非金属、非发光且非白色产品区域的高光剪切；颜色、反射和质感需视觉或人工判断。"
+      ],
+      "status": "manual_review"
+    },
+    "corrections": [
+      {
+        "round": 0,
+        "exposure": 4,
+        "light_softness": 1,
+        "score": 0.02575,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.png",
+        "applied": false
+      },
+      {
+        "round": 1,
+        "exposure": 3.3,
+        "light_softness": 1,
+        "score": 0.65665,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review1/auto-exposure-validation_hero_v1_review1.png",
+        "applied": false
+      },
+      {
+        "round": 2,
+        "exposure": 2.6,
+        "light_softness": 1,
+        "score": 0.77682,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.png",
+        "applied": true
+      }
+    ],
+    "review_candidate": {
+      "record": {
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "quality": "preview",
+        "version": 1,
+        "job_id": "9d84584efb5c4504b54ecf96291446ec",
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.png",
+        "jpg_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.jpg",
+        "blend_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.blend",
+        "width": 512,
+        "height": 512,
+        "checks": {
+          "method": "projected evaluated bounding boxes",
+          "kind": "complete_product",
+          "clipped": false,
+          "projected_bounds": [
+            0.352754145860672,
+            0.12191631644964218,
+            0.6444187760353088,
+            0.8576451539993286
+          ],
+          "occupancy": 0.7357288375496864,
+          "margin": 0.12,
+          "corrections": 0,
+          "detail_target": null,
+          "projection_test_points": [
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              -0.10317697376012802,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              -0.10317697376012802,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7507054805755615
+            ]
+          ],
+          "manual_review": [
+            "几何检查不证明曝光、噪点、反射和材质辨识度正确；请结合后续预览检查报告判断"
+          ],
+          "ground_contact": 0.0,
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.352754145860672,
+                0.12191631644964218,
+                0.6444187760353088,
+                0.8576451539993286
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed"
+        },
+        "metrics": {
+          "dark_fraction": 0.0,
+          "bright_fraction": 0.923,
+          "luminance_mean": 253.27,
+          "product": {
+            "method": "camera-ray product samples, background excluded",
+            "product_samples": 279,
+            "eligible_opaque_samples": 233,
+            "opaque_clipped_fraction": 0.22318,
+            "product_mean": 239.0
+          }
+        },
+        "device": {
+          "status": "ready",
+          "type": "GPU",
+          "backend": "OPTIX",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "blender_version": "5.0.1"
+        },
+        "created_at": 1793974779.635828,
+        "result_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/result.json",
+        "effective_plan": {
+          "style": "soft",
+          "aspect": "1:1",
+          "margin": 0.12,
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "exposure": 2.6,
+          "light_softness": 1,
+          "texture_scale": 1,
+          "texture_rotation": 0,
+          "material_overrides": [],
+          "object_material_overrides": [],
+          "repair": {
+            "normals": false,
+            "smooth": false
+          },
+          "pose": {},
+          "time_budget": 1200,
+          "max_corrections": 2,
+          "source": "rules",
+          "visual_review": true,
+          "pending": [
+            "实际摆放方向与主展示面请在预览中确认",
+            "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+          ],
+          "shots": [
+            {
+              "id": "hero",
+              "label": "白底主图",
+              "kind": "full",
+              "azimuth": 35,
+              "elevation": 18,
+              "focal_length": 70,
+              "style": "white"
+            }
+          ],
+          "model_features": {
+            "dimensions": [
+              0.19500000774860382,
+              0.19636499881744385,
+              0.6704999804496765
+            ],
+            "aspect_ratio": 3.438461301571293,
+            "elongated": true,
+            "flat": false,
+            "multipart": true,
+            "mesh_count": 8,
+            "symmetry": "unknown",
+            "surfaces": [
+              "dielectric"
+            ],
+            "has_animation": false,
+            "has_armature": false
+          },
+          "material_suggestions": [
+            {
+              "name": "Matte recycled plastic — teal",
+              "source": "model",
+              "confidence": 1.0,
+              "suggested_preset": "matte_plastic",
+              "suggestion_source": "rules",
+              "suggestion_confidence": 0.55,
+              "color": [
+                0.04500000178813934,
+                0.2800000011920929,
+                0.27000001072883606,
+                1.0
+              ],
+              "roughness": 0.5799999833106995,
+              "metallic": 0.0,
+              "transmission": 0.0,
+              "emission": 0.0,
+              "textures": []
+            },
+            {
+              "name": "Soft satin plastic — cream",
+              "source": "model",
+              "confidence": 1.0,
+              "suggested_preset": "matte_plastic",
+              "suggestion_source": "rules",
+              "suggestion_confidence": 0.55,
+              "color": [
+                0.7799999713897705,
+                0.7400000095367432,
+                0.6200000047683716,
+                1.0
+              ],
+              "roughness": 0.33000001311302185,
+              "metallic": 0.0,
+              "transmission": 0.0,
+              "emission": 0.0,
+              "textures": []
+            },
+            {
+              "name": "Paper label — ivory",
+              "source": "model",
+              "confidence": 1.0,
+              "suggested_preset": "matte_plastic",
+              "suggestion_source": "rules",
+              "suggestion_confidence": 0.55,
+              "color": [
+                0.9200000166893005,
+                0.9100000262260437,
+                0.8500000238418579,
+                1.0
+              ],
+              "roughness": 0.7200000286102295,
+              "metallic": 0.0,
+              "transmission": 0.0,
+              "emission": 0.0,
+              "textures": []
+            },
+            {
+              "name": "Printed dark green ink",
+              "source": "model",
+              "confidence": 1.0,
+              "suggested_preset": "matte_plastic",
+              "suggestion_source": "rules",
+              "suggestion_confidence": 0.55,
+              "color": [
+                0.017999999225139618,
+                0.054999999701976776,
+                0.04500000178813934,
+                1.0
+              ],
+              "roughness": 0.6499999761581421,
+              "metallic": 0.0,
+              "transmission": 0.0,
+              "emission": 0.0,
+              "textures": []
+            }
+          ],
+          "shot_adjustments": {}
+        },
+        "review": {
+          "source": "rules",
+          "issues": [
+            {
+              "code": "opaque_highlight_clipping",
+              "severity": "warning",
+              "message": "产品不透明表面存在较大面积高光剪切",
+              "confidence": 0.95
+            }
+          ],
+          "patch": {
+            "exposure": 1.9
+          },
+          "score": 0.77682,
+          "needs_user": [
+            "规则仅检查不透明非金属、非发光且非白色产品区域的高光剪切；颜色、反射和质感需视觉或人工判断。",
+            "已结束自动修正，仍有建议未采纳；请比较候选图并人工判断。"
+          ],
+          "status": "manual_review"
+        },
+        "corrections": [
+          {
+            "round": 0,
+            "exposure": 4,
+            "light_softness": 1,
+            "score": 0.02575,
+            "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.png",
+            "applied": false
+          },
+          {
+            "round": 1,
+            "exposure": 3.3,
+            "light_softness": 1,
+            "score": 0.65665,
+            "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review1/auto-exposure-validation_hero_v1_review1.png",
+            "applied": false
+          },
+          {
+            "round": 2,
+            "exposure": 2.6,
+            "light_softness": 1,
+            "score": 0.77682,
+            "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.png",
+            "applied": true
+          }
+        ]
+      },
+      "adjustment": {
+        "exposure_delta": -1.4
+      },
+      "selected_round": 2
+    }
+  },
+  "adopted": {
+    "shot_id": "hero",
+    "shot_label": "白底主图",
+    "quality": "preview",
+    "version": 2,
+    "job_id": "9d84584efb5c4504b54ecf96291446ec",
+    "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.png",
+    "jpg_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.jpg",
+    "blend_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.blend",
+    "width": 512,
+    "height": 512,
+    "checks": {
+      "method": "projected evaluated bounding boxes",
+      "kind": "complete_product",
+      "clipped": false,
+      "projected_bounds": [
+        0.352754145860672,
+        0.12191631644964218,
+        0.6444187760353088,
+        0.8576451539993286
+      ],
+      "occupancy": 0.7357288375496864,
+      "margin": 0.12,
+      "corrections": 0,
+      "detail_target": null,
+      "projection_test_points": [
+        [
+          -0.29082775115966797,
+          -0.2887919545173645,
+          0.0
+        ],
+        [
+          -0.29082775115966797,
+          -0.2887919545173645,
+          1.6703966856002808
+        ],
+        [
+          -0.29082775115966797,
+          0.29286354780197144,
+          1.6703966856002808
+        ],
+        [
+          -0.29082775115966797,
+          0.29286354780197144,
+          0.0
+        ],
+        [
+          0.29082775115966797,
+          -0.2887919545173645,
+          0.0
+        ],
+        [
+          0.29082775115966797,
+          -0.2887919545173645,
+          1.6703966856002808
+        ],
+        [
+          0.29082775115966797,
+          0.29286354780197144,
+          1.6703966856002808
+        ],
+        [
+          0.29082775115966797,
+          0.29286354780197144,
+          0.0
+        ],
+        [
+          -0.1415361613035202,
+          -0.13950036466121674,
+          1.600298285484314
+        ],
+        [
+          -0.1415361613035202,
+          -0.13950036466121674,
+          1.7643550634384155
+        ],
+        [
+          -0.1415361613035202,
+          0.14357195794582367,
+          1.7643550634384155
+        ],
+        [
+          -0.1415361613035202,
+          0.14357195794582367,
+          1.600298285484314
+        ],
+        [
+          0.1415361613035202,
+          -0.13950036466121674,
+          1.600298285484314
+        ],
+        [
+          0.1415361613035202,
+          -0.13950036466121674,
+          1.7643550634384155
+        ],
+        [
+          0.1415361613035202,
+          0.14357195794582367,
+          1.7643550634384155
+        ],
+        [
+          0.1415361613035202,
+          0.14357195794582367,
+          1.600298285484314
+        ],
+        [
+          -0.04459358751773834,
+          -0.042557790875434875,
+          1.7404922246932983
+        ],
+        [
+          -0.04459358751773834,
+          -0.042557790875434875,
+          1.9343773126602173
+        ],
+        [
+          -0.04459358751773834,
+          0.04662938416004181,
+          1.9343773126602173
+        ],
+        [
+          -0.04459358751773834,
+          0.04662938416004181,
+          1.7404922246932983
+        ],
+        [
+          0.04459358751773834,
+          -0.042557790875434875,
+          1.7404922246932983
+        ],
+        [
+          0.04459358751773834,
+          -0.042557790875434875,
+          1.9343773126602173
+        ],
+        [
+          0.04459358751773834,
+          0.04662938416004181,
+          1.9343773126602173
+        ],
+        [
+          0.04459358751773834,
+          0.04662938416004181,
+          1.7404922246932983
+        ],
+        [
+          -0.12117822468280792,
+          -0.24032065272331238,
+          1.8956003189086914
+        ],
+        [
+          -0.12117822468280792,
+          -0.24032065272331238,
+          2.0
+        ],
+        [
+          -0.12117822468280792,
+          0.12806114554405212,
+          2.0
+        ],
+        [
+          -0.12117822468280792,
+          0.12806114554405212,
+          1.8956003189086914
+        ],
+        [
+          0.12117822468280792,
+          -0.24032065272331238,
+          1.8956003189086914
+        ],
+        [
+          0.12117822468280792,
+          -0.24032065272331238,
+          2.0
+        ],
+        [
+          0.12117822468280792,
+          0.12806114554405212,
+          2.0
+        ],
+        [
+          0.12117822468280792,
+          0.12806114554405212,
+          1.8956003189086914
+        ],
+        [
+          -0.18372385203838348,
+          -0.29014915227890015,
+          0.6040268540382385
+        ],
+        [
+          -0.18372385203838348,
+          -0.29014915227890015,
+          1.1856824159622192
+        ],
+        [
+          -0.18372385203838348,
+          -0.22515922784805298,
+          1.1856824159622192
+        ],
+        [
+          -0.18372385203838348,
+          -0.22515922784805298,
+          0.6040268540382385
+        ],
+        [
+          0.18372385203838348,
+          -0.29014915227890015,
+          0.6040268540382385
+        ],
+        [
+          0.18372385203838348,
+          -0.29014915227890015,
+          1.1856824159622192
+        ],
+        [
+          0.18372385203838348,
+          -0.22515922784805298,
+          1.1856824159622192
+        ],
+        [
+          0.18372385203838348,
+          -0.22515922784805298,
+          0.6040268540382385
+        ],
+        [
+          -0.10317697376012802,
+          -0.27089282870292664,
+          1.0041730403900146
+        ],
+        [
+          -0.10317697376012802,
+          -0.29286351799964905,
+          1.0041730403900146
+        ],
+        [
+          -0.10317697376012802,
+          -0.29286354780197144,
+          1.0856047868728638
+        ],
+        [
+          -0.10317697376012802,
+          -0.270892858505249,
+          1.0856047868728638
+        ],
+        [
+          0.10869687795639038,
+          -0.27089282870292664,
+          1.0041730403900146
+        ],
+        [
+          0.10869687795639038,
+          -0.29286351799964905,
+          1.0041730403900146
+        ],
+        [
+          0.10869687795639038,
+          -0.29286354780197144,
+          1.0856047868728638
+        ],
+        [
+          0.10869687795639038,
+          -0.270892858505249,
+          1.0856047868728638
+        ],
+        [
+          -0.06242327392101288,
+          -0.28476470708847046,
+          0.8915495872497559
+        ],
+        [
+          -0.06242327392101288,
+          -0.29286354780197144,
+          0.8915495872497559
+        ],
+        [
+          -0.06242327392101288,
+          -0.29286354780197144,
+          0.916605532169342
+        ],
+        [
+          -0.06242327392101288,
+          -0.28476470708847046,
+          0.916605532169342
+        ],
+        [
+          0.0635167807340622,
+          -0.28476470708847046,
+          0.8915495872497559
+        ],
+        [
+          0.0635167807340622,
+          -0.29286354780197144,
+          0.8915495872497559
+        ],
+        [
+          0.0635167807340622,
+          -0.29286354780197144,
+          0.916605532169342
+        ],
+        [
+          0.0635167807340622,
+          -0.28476470708847046,
+          0.916605532169342
+        ],
+        [
+          -0.03620999678969383,
+          -0.2894642651081085,
+          0.7214735746383667
+        ],
+        [
+          -0.03620999678969383,
+          -0.29286354780197144,
+          0.7214735746383667
+        ],
+        [
+          -0.03620999678969383,
+          -0.29286354780197144,
+          0.7507054805755615
+        ],
+        [
+          -0.03620999678969383,
+          -0.2894642651081085,
+          0.7507054805755615
+        ],
+        [
+          0.03580283746123314,
+          -0.2894642651081085,
+          0.7214735746383667
+        ],
+        [
+          0.03580283746123314,
+          -0.29286354780197144,
+          0.7214735746383667
+        ],
+        [
+          0.03580283746123314,
+          -0.29286354780197144,
+          0.7507054805755615
+        ],
+        [
+          0.03580283746123314,
+          -0.2894642651081085,
+          0.7507054805755615
+        ]
+      ],
+      "manual_review": [
+        "几何检查不证明曝光、噪点、反射和材质辨识度正确；请结合后续预览检查报告判断"
+      ],
+      "ground_contact": 0.0,
+      "attempts": [
+        {
+          "attempt": 0,
+          "clipped": false,
+          "projected_bounds": [
+            0.352754145860672,
+            0.12191631644964218,
+            0.6444187760353088,
+            0.8576451539993286
+          ],
+          "safe_margin": true
+        }
+      ],
+      "automatic_check_status": "passed"
+    },
+    "metrics": {
+      "dark_fraction": 0.0,
+      "bright_fraction": 0.923,
+      "luminance_mean": 253.27,
+      "product": {
+        "method": "camera-ray product samples, background excluded",
+        "product_samples": 279,
+        "eligible_opaque_samples": 233,
+        "opaque_clipped_fraction": 0.22318,
+        "product_mean": 239.0
+      }
+    },
+    "device": {
+      "status": "ready",
+      "type": "GPU",
+      "backend": "OPTIX",
+      "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+      "blender_version": "5.0.1"
+    },
+    "created_at": 1793974779.635828,
+    "result_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/result.json",
+    "effective_plan": {
+      "style": "soft",
+      "aspect": "1:1",
+      "margin": 0.12,
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "exposure": 2.6,
+      "light_softness": 1,
+      "texture_scale": 1,
+      "texture_rotation": 0,
+      "material_overrides": [],
+      "object_material_overrides": [],
+      "repair": {
+        "normals": false,
+        "smooth": false
+      },
+      "pose": {},
+      "time_budget": 1200,
+      "max_corrections": 2,
+      "source": "rules",
+      "visual_review": true,
+      "pending": [
+        "实际摆放方向与主展示面请在预览中确认",
+        "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+      ],
+      "shots": [
+        {
+          "id": "hero",
+          "label": "白底主图",
+          "kind": "full",
+          "azimuth": 35,
+          "elevation": 18,
+          "focal_length": 70,
+          "style": "white"
+        }
+      ],
+      "model_features": {
+        "dimensions": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ],
+        "aspect_ratio": 3.438461301571293,
+        "elongated": true,
+        "flat": false,
+        "multipart": true,
+        "mesh_count": 8,
+        "symmetry": "unknown",
+        "surfaces": [
+          "dielectric"
+        ],
+        "has_animation": false,
+        "has_armature": false
+      },
+      "material_suggestions": [
+        {
+          "name": "Matte recycled plastic — teal",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.04500000178813934,
+            0.2800000011920929,
+            0.27000001072883606,
+            1.0
+          ],
+          "roughness": 0.5799999833106995,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Soft satin plastic — cream",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.7799999713897705,
+            0.7400000095367432,
+            0.6200000047683716,
+            1.0
+          ],
+          "roughness": 0.33000001311302185,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Paper label — ivory",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.9200000166893005,
+            0.9100000262260437,
+            0.8500000238418579,
+            1.0
+          ],
+          "roughness": 0.7200000286102295,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        },
+        {
+          "name": "Printed dark green ink",
+          "source": "model",
+          "confidence": 1.0,
+          "suggested_preset": "matte_plastic",
+          "suggestion_source": "rules",
+          "suggestion_confidence": 0.55,
+          "color": [
+            0.017999999225139618,
+            0.054999999701976776,
+            0.04500000178813934,
+            1.0
+          ],
+          "roughness": 0.6499999761581421,
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "emission": 0.0,
+          "textures": []
+        }
+      ],
+      "shot_adjustments": {}
+    },
+    "review": {
+      "source": "rules",
+      "issues": [
+        {
+          "code": "opaque_highlight_clipping",
+          "severity": "warning",
+          "message": "产品不透明表面存在较大面积高光剪切",
+          "confidence": 0.95
+        }
+      ],
+      "patch": {
+        "exposure": 1.9
+      },
+      "score": 0.77682,
+      "needs_user": [
+        "规则仅检查不透明非金属、非发光且非白色产品区域的高光剪切；颜色、反射和质感需视觉或人工判断。",
+        "已结束自动修正，仍有建议未采纳；请比较候选图并人工判断。"
+      ],
+      "status": "manual_review"
+    },
+    "corrections": [
+      {
+        "round": 0,
+        "exposure": 4,
+        "light_softness": 1,
+        "score": 0.02575,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1/auto-exposure-validation_hero_v1.png",
+        "applied": false
+      },
+      {
+        "round": 1,
+        "exposure": 3.3,
+        "light_softness": 1,
+        "score": 0.65665,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review1/auto-exposure-validation_hero_v1_review1.png",
+        "applied": false
+      },
+      {
+        "round": 2,
+        "exposure": 2.6,
+        "light_softness": 1,
+        "score": 0.77682,
+        "png_url": "/files/fc1e290ec5684a468b428006850ae0c6/runs/9d84584efb5c4504b54ecf96291446ec/auto-exposure-validation_hero_v1_review2/auto-exposure-validation_hero_v1_review2.png",
+        "applied": true
+      }
+    ],
+    "adopted_from_version": 1,
+    "review_applied": true
+  },
+  "picks": {
+    "snapshot": {
+      "shot_id": "hero",
+      "quality": "preview",
+      "version": 2,
+      "job_id": "9d84584efb5c4504b54ecf96291446ec"
+    },
+    "hits": [
+      {
+        "id": "center",
+        "x": 0.5,
+        "y": 0.5,
+        "hit": true,
+        "message": "首个产品表面交点；透明表面后的部件需换角度选取",
+        "object_name": "Label substrate",
+        "material_name": "Paper label — ivory",
+        "material_render_name": "Paper label — ivory",
+        "face_index": 61,
+        "position": [
+          0.1666020303964615,
+          -0.23793216049671173,
+          1.094377040863037
+        ]
+      },
+      {
+        "id": "background",
+        "x": 0.02,
+        "y": 0.02,
+        "hit": false,
+        "message": "此位置没有命中产品表面"
+      }
+    ]
+  },
+  "final_uses_same_effective_settings": true,
+  "visual_ai_tested": false
+}

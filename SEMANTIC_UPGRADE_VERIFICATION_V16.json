@@ -1,0 +1,319 @@
+{
+  "revision": "v16",
+  "verified_at": "2026-11-11",
+  "scope": "Replace online keyword interpretation with complete LLM-owned semantics and data-only execution validation",
+  "backend": {
+    "tests_run": 918,
+    "passed": 916,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "elapsed_seconds": 101.504,
+    "network_blocked": true,
+    "uploaded_env_not_read": true
+  },
+  "new_backend_tests_passed": 67,
+  "new_semantic_tests": {
+    "tests_run": 67,
+    "passed": 67,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "successful": true,
+    "elapsed_seconds": 0.425,
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "failed_tests": [],
+    "errored_tests": [],
+    "log_file": "/workspace/scratch/0f2302ce6b73/qa/v16_new_semantic_tests.log"
+  },
+  "final_routing_followup": {
+    "tests_run": 72,
+    "passed": 72,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "successful": true,
+    "elapsed_seconds": 0.644,
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "failed_tests": [],
+    "errored_tests": [],
+    "log_file": "/workspace/scratch/0f2302ce6b73/qa/v16_routing_final_tests.log"
+  },
+  "original_missing_fixture_errors": [
+    {
+      "id": "test_ai_client.AIClientTests.test_review_captured_broken_json_realism_is_never_trimmed_or_accepted",
+      "traceback": "Traceback (most recent call last):\n  File \"/workspace/scratch/0f2302ce6b73/render_studio/tests/test_ai_client.py\", line 376, in test_review_captured_broken_json_realism_is_never_trimmed_or_accepted\n    captured=json.loads((Path(__file__).resolve().parents[1]/'validation'/'ai-cabinet-exact-debug.json').read_text(encoding='utf-8'))\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/0f2302ce6b73/qa/run_v14_tests.py\", line 24, in safe_text\n    return '' if path.resolve()==uploaded_env else original_text(path,*a,**kw)\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/scratch/0f2302ce6b73/render_studio/validation/ai-cabinet-exact-debug.json'\n"
+    },
+    {
+      "id": "test_ai_client.AIClientTests.test_review_captured_diagnostic_extra_field_is_safely_ignored",
+      "traceback": "Traceback (most recent call last):\n  File \"/workspace/scratch/0f2302ce6b73/render_studio/tests/test_ai_client.py\", line 361, in test_review_captured_diagnostic_extra_field_is_safely_ignored\n    captured=json.loads((Path(__file__).resolve().parents[1]/'validation'/'ai-cabinet-exact-debug.json').read_text(encoding='utf-8'))\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/0f2302ce6b73/qa/run_v14_tests.py\", line 24, in safe_text\n    return '' if path.resolve()==uploaded_env else original_text(path,*a,**kw)\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/scratch/0f2302ce6b73/render_studio/validation/ai-cabinet-exact-debug.json'\n"
+    }
+  ],
+  "native_targeted": {
+    "tests_run": 29,
+    "passed": 29,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "tests": 159,
+    "pass": 159,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 12580.33543,
+    "external_network_used": false,
+    "log_file": "/workspace/scratch/0f2302ce6b73/qa/v16_ui_consolidation_tests.log",
+    "browser_visual_acceptance": false
+  },
+  "semantic_service_pipeline": {
+    "tests_run": 24,
+    "passed": 24,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "successful": true,
+    "elapsed_seconds": 0.356,
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "failed_tests": [],
+    "errored_tests": [],
+    "log_file": "/workspace/scratch/0f2302ce6b73/qa/v16_pipeline_review_tests.log"
+  },
+  "real_cabinet_followup": {
+    "passed": true,
+    "live_ai_requests_sent": 0,
+    "model_responses_mocked": true,
+    "real_blender": "5.0.1",
+    "render_samples": 2,
+    "cases": [
+      {
+        "round": 1,
+        "passed": true,
+        "status": "completed",
+        "base_version": 2,
+        "version": 3,
+        "history_count": 2,
+        "material_target_count": 6,
+        "roughness_before": 0.3499999940395355,
+        "roughness_after": 0.2275,
+        "lighting": {
+          "key_power": 1.5,
+          "fill_power": 1.4,
+          "key_azimuth": -25,
+          "key_elevation": 35,
+          "fill_azimuth": 35,
+          "fill_elevation": 25
+        },
+        "measured_light_energy": {
+          "key": 537.030029296875,
+          "fill": 153.21600341796875,
+          "rim": 178.5
+        },
+        "protocol": "semantic_v2",
+        "source_spans_verified": true,
+        "lamp_angles_verified": true,
+        "camera_unchanged": true,
+        "product_preservation_verified": true,
+        "duplicate_replay_did_not_repeat_model": true,
+        "png_url": "/files/cabinet/runs/1e5ee8d25d334e9aa2db103030d57675/cabinet_hero_v3/image.png",
+        "blend_url": "/files/cabinet/runs/1e5ee8d25d334e9aa2db103030d57675/cabinet_hero_v3/scene.blend",
+        "width": 768,
+        "height": 768
+      },
+      {
+        "round": 2,
+        "passed": true,
+        "status": "completed",
+        "base_version": 3,
+        "version": 4,
+        "history_count": 3,
+        "material_target_count": 6,
+        "roughness_before": 0.22750000655651093,
+        "roughness_after": 0.147875,
+        "lighting": {
+          "key_power": 2.25,
+          "fill_power": 1.96,
+          "key_azimuth": -15,
+          "key_elevation": 30,
+          "fill_azimuth": 20,
+          "fill_elevation": 20
+        },
+        "measured_light_energy": {
+          "key": 805.5450439453125,
+          "fill": 214.50241088867188,
+          "rim": 178.5
+        },
+        "protocol": "semantic_v2",
+        "source_spans_verified": true,
+        "lamp_angles_verified": true,
+        "camera_unchanged": true,
+        "product_preservation_verified": true,
+        "duplicate_replay_did_not_repeat_model": true,
+        "png_url": "/files/cabinet/runs/27e725525c8344aeba13439151abee68/cabinet_hero_v4/image.png",
+        "blend_url": "/files/cabinet/runs/27e725525c8344aeba13439151abee68/cabinet_hero_v4/scene.blend",
+        "width": 768,
+        "height": 768
+      }
+    ],
+    "native_calls": [
+      {
+        "action": "render",
+        "resolution": 768,
+        "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v16_repro/app/data/cabinet/hero_checkpoints/c6a41951b08647d28fa7dda1475a9cba/scene.blend",
+        "output_dir": "/workspace/scratch/0f2302ce6b73/qa/v16_repro/app/data/cabinet/runs/1e5ee8d25d334e9aa2db103030d57675/cabinet_hero_v3"
+      },
+      {
+        "action": "render",
+        "resolution": 768,
+        "source_blend": "/workspace/scratch/0f2302ce6b73/qa/v16_repro/app/data/cabinet/hero_checkpoints/c6a41951b08647d28fa7dda1475a9cba/scene.blend",
+        "output_dir": "/workspace/scratch/0f2302ce6b73/qa/v16_repro/app/data/cabinet/runs/27e725525c8344aeba13439151abee68/cabinet_hero_v4"
+      }
+    ],
+    "model_calls": [
+      {
+        "original_instruction": "柜体光泽不够，灯光再亮点",
+        "current_roughness": [
+          0.3499999940395355,
+          0.3499999940395355,
+          0.3499999940395355,
+          0.3499999940395355,
+          0.3499999940395355,
+          0.3499999940395355
+        ],
+        "current_lighting": {
+          "key_power": 1,
+          "fill_power": 1,
+          "rim_power": 1,
+          "environment": 1,
+          "key_azimuth": -44.999998030745544,
+          "key_elevation": 40.000000830832704,
+          "fill_azimuth": 25.000000897981653,
+          "fill_elevation": 29.99999906029366,
+          "rim_azimuth": 135.0000028646367,
+          "rim_elevation": 54.99999963215073
+        },
+        "target_count": 6,
+        "source_version": 2,
+        "requested_lighting": {
+          "key_power": 1.5,
+          "fill_power": 1.4,
+          "key_azimuth": -25,
+          "key_elevation": 35,
+          "fill_azimuth": 35,
+          "fill_elevation": 25
+        },
+        "requested_roughness": 0.2275,
+        "used_actual_light_measurements": true
+      },
+      {
+        "original_instruction": "正脸有些闷，别让光躲到后面；这身红漆保持原色，面板要有柔和的润感。",
+        "current_roughness": [
+          0.22750000655651093,
+          0.22750000655651093,
+          0.22750000655651093,
+          0.22750000655651093,
+          0.22750000655651093,
+          0.22750000655651093
+        ],
+        "current_lighting": {
+          "key_power": 1.5,
+          "fill_power": 1.4,
+          "rim_power": 1,
+          "environment": 1,
+          "key_azimuth": -25,
+          "key_elevation": 35,
+          "fill_azimuth": 35,
+          "fill_elevation": 25,
+          "rim_azimuth": 135.0000028646367,
+          "rim_elevation": 54.99999963215073
+        },
+        "target_count": 6,
+        "source_version": 3,
+        "requested_lighting": {
+          "key_power": 2.25,
+          "fill_power": 1.96,
+          "key_azimuth": -15,
+          "key_elevation": 30,
+          "fill_azimuth": 20,
+          "fill_elevation": 20
+        },
+        "requested_roughness": 0.147875,
+        "used_actual_light_measurements": true
+      }
+    ],
+    "frozen_source_sha256": {
+      "semantic_planner.py": "af9232ba37a2e37d81416dea504ccae338e9e177e85d81f95f619c8f19ca5322",
+      "planner.py": "f4e090d50f3d7dcebe55872669f1eb9f7575325c5eb418d40db00f8cb00fa66a",
+      "app.py": "3cf030e6fb888465ccb4ee1f6621121084513210ced2ab4aca931283ca05d432",
+      "ai_client.py": "6a38a05a40a050cf993d0b31c473d832b4ae7876170cc4d8356861ddd8dab859",
+      "material_intent.py": "3ae89f79a352331dc093890eada0fdadf97d06dfbc50ff1d992a6e21c94dadff",
+      "intelligence_rules.py": "b3c2bce6a6a7e231888723d404c41d4f8331b6b8ac02e20c1e8f083a1c6d8d90",
+      "instruction_service.py": "db234d8d157f8e99964a08586bf207c0a77b8e06db38a3abf83f47d65b697bbe",
+      "scene_parts.py": "01a4da584f2dcf1e0a2676f7b8a2dc61db5409596d879fd0b4c009651e5c49f8",
+      "target_evidence.py": "5298d7e08c101fe07e1b231237e2443307df7148be802960f5b6abb05ed50d60",
+      "blender/inspect_parts.py": "9fd921063ba2a94f490a21c2794688eb61052eed2d4a97fd2ab63ea7edcb4065",
+      "blender/inspect_lighting.py": "2a28b73c5fbfe0459e87b6f575ceeb236f09eeb97788e8c39b49b83967c900b9",
+      "blender/hero_scene.py": "81dc0876e49fcece157107b15e9d748c139babf6ac55cae24b93fa0e2516f7ed",
+      "hero_optimizer.py": "f5ac6f0dd4c600de870f5fb60e7c521055e016476f2cc9b372cc20d188c1ae1b",
+      "engine.py": "dda77349a2e82a14a2dfd611ef68bea87517febc866c1f9f9efb62e26159ca21"
+    },
+    "original_attachment_unchanged": true,
+    "initial_optimized_scene_unchanged": true,
+    "elapsed_seconds": 13.485
+  },
+  "real_ai_requests_sent": false,
+  "user_windows_app_modified": false,
+  "high_sample_visual_quality_acceptance": false,
+  "browser_visual_acceptance": false,
+  "source_manifest_sha256": {
+    "ai_client.py": "6a38a05a40a050cf993d0b31c473d832b4ae7876170cc4d8356861ddd8dab859",
+    "ai_config.py": "f08663569ae549edcc816afe874363e7aff49eb3351348232de87346e1f84365",
+    "ai_model_policy.py": "822d4b365c16063c879081a9edcdc6f1f78fac011293b1d182ad3fe31e078c92",
+    "app.py": "3cf030e6fb888465ccb4ee1f6621121084513210ced2ab4aca931283ca05d432",
+    "asset_provenance.py": "2e32758604e013634712815a3c7d9d53ddeeba717eb38b63762c489bd4681ae6",
+    "blender/hero_scene.py": "81dc0876e49fcece157107b15e9d748c139babf6ac55cae24b93fa0e2516f7ed",
+    "blender/inspect_lighting.py": "2a28b73c5fbfe0459e87b6f575ceeb236f09eeb97788e8c39b49b83967c900b9",
+    "blender/inspect_parts.py": "9fd921063ba2a94f490a21c2794688eb61052eed2d4a97fd2ab63ea7edcb4065",
+    "blender/light_direction.py": "8a33e34893347e05f04fda5b2aa67a91d960cccc72ea1034a88e0aaef3e3a9a0",
+    "blender/render_entry.py": "988f0d6b13f9b7df5e56a88ccad0e95613d6e3b6cb1fe4418a3cfda889c34a1c",
+    "engine.py": "dda77349a2e82a14a2dfd611ef68bea87517febc866c1f9f9efb62e26159ca21",
+    "hero_ai.py": "e5f1616a883ece9a9e0caad5d2f59aa76005381389b1f9062a01cbab814f84a5",
+    "hero_optimizer.py": "f5ac6f0dd4c600de870f5fb60e7c521055e016476f2cc9b372cc20d188c1ae1b",
+    "hero_recipe.py": "4223203e884a4686b326b509194605c447b70b73183f112f6532987f320c2046",
+    "hero_state.py": "8d3bafaa15ba9a2350ee61b592c480b115568a671cebee1f1ddaa852c4b3f34a",
+    "instruction_service.py": "db234d8d157f8e99964a08586bf207c0a77b8e06db38a3abf83f47d65b697bbe",
+    "intelligence_rules.py": "b3c2bce6a6a7e231888723d404c41d4f8331b6b8ac02e20c1e8f083a1c6d8d90",
+    "lighting_controls.py": "e8d982cd023c8b1fcc0fc56594d81cb471cbea36614d02fdd72f358bbb1b95d8",
+    "material_agent.py": "b71e1a28b158984c729a90982df4b2b8c456fc058b0fecfcf46b1fa59629509b",
+    "material_edit.py": "8b8588d3ac4ad7c98fa8bf78fdd9f1e850baa3cb8c3e07d1046b557bec839159",
+    "material_intent.py": "3ae89f79a352331dc093890eada0fdadf97d06dfbc50ff1d992a6e21c94dadff",
+    "planner.py": "f4e090d50f3d7dcebe55872669f1eb9f7575325c5eb418d40db00f8cb00fa66a",
+    "project_lifecycle.py": "92ffb929408be77a125c6ec0ff663997785aef9f72b8dbb3e247667b76402ac3",
+    "quality_gate.py": "bc4578ccbb37c92a65324fb3528c98a65e75fbb8ea30a79caf11dcfd7d8e69fe",
+    "review_actions.py": "49efaf982eca07f8e7c19262ad7a52b19433f56c741c27097a7704cf6bfc088c",
+    "scene_exports.py": "d0d047c0758170cd2568024ffbe195b20bf1b5965088c508ea20b058f51a6fc6",
+    "scene_parts.py": "01a4da584f2dcf1e0a2676f7b8a2dc61db5409596d879fd0b4c009651e5c49f8",
+    "semantic_planner.py": "af9232ba37a2e37d81416dea504ccae338e9e177e85d81f95f619c8f19ca5322",
+    "static/app.js": "d1bd0152d1bf8f26812ad73caeb4212bb03d665f867a5c274fbbe64dc55ef2be",
+    "static/index.html": "23bc925a42f1c0403ac5ef98559e4dcc55c8517a240154012fa80d6d2b247125",
+    "static/styles.css": "4bc109ba30f460afe5065b55a04440be2eb5f48757afa81784c7839e2c5d392d",
+    "studio_store.py": "77184718153ec7bd8c0473a78be0f9135723402ee480b1568e72f1f38cce4972",
+    "target_evidence.py": "5298d7e08c101fe07e1b231237e2443307df7148be802960f5b6abb05ed50d60"
+  },
+  "notes": [
+    "Default online service protocol is semantic_v2. Legacy/offline handling is explicitly isolated; online response failures do not fall back to a keyword interpreter.",
+    "The model owns source segmentation, interpretation, domains, dependencies, structured protections, target IDs, numeric counts and concrete parameter values.",
+    "Execution validation checks exact quoted source coverage, supported data, real identity/geometry, bound target scope, conflicts and versioned evidence.",
+    "Ready independent targets can apply even when another target in the same material domain remains pending.",
+    "Normal planning plus correction or reference-context fetching share at most two total model calls. Validation used zero live AI requests.",
+    "The obsolete selected-part natural language UI has been removed; manual parameter editing and the main instruction/target-location flow remain.",
+    "Original attachment and initial optimized scene remain byte-identical. Low-sample native previews validate real parameter effects, file integrity and preservation, not aesthetic quality.",
+    "Two original missing-fixture errors are disclosed and not counted as passes. The source backup is not a complete independent installer; cumulative patch excludes user configuration and project data."
+  ]
+}

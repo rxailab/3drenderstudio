@@ -1,0 +1,117 @@
+{
+  "source_unchanged": true,
+  "exports": [
+    {
+      "conversion_package_url": null,
+      "counts": {
+        "cameras": 1,
+        "lights": 4,
+        "materials": 5,
+        "meshes": 9,
+        "objects": 15
+      },
+      "created_at": 1793968240.954489,
+      "download_url": "/files/fa395f959fd14321b60289804e3cb3af/exports/72c591dc9f1f44d192b3e13766d4e6ac/Blender-scene-v2.zip",
+      "error": null,
+      "fingerprint": "fa395f959fd14321b60289804e3cb3af:blend:86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f:84a1ccdf5a2b2124f468ddcf221a6f2d9139db6656468ae5e107384d5dcf4926",
+      "finished_at": 1793968248.3637848,
+      "format": "blend",
+      "id": "72c591dc9f1f44d192b3e13766d4e6ac",
+      "log_tail": [
+        "00:00.453  blend            | Read blend: \"D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\83637e937b204387b191f7ecfb6118c0\\哑光塑料按压瓶_hero_v2\\哑光塑料按压瓶_hero_v2.blend\"",
+        "00:00.531  blend            | Read blend: \"D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\exports\\72c591dc9f1f44d192b3e13766d4e6ac\\project\\scene.blend\"",
+        "D:\\模型渲染\\blender\\export_scene.py:160: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+        "  output = next((n for n in mat.node_tree.nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output), None) if mat.use_nodes else None",
+        "D:\\模型渲染\\blender\\export_scene.py:164: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+        "  if mat.use_nodes and not node:",
+        "D:\\模型渲染\\blender\\export_scene.py:243: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0",
+        "  if world and world.use_nodes:",
+        "Info: No new files have been packed",
+        "Info: Saved as \"scene.blend\"",
+        "",
+        "FBX export starting... 'D:\\\\模型渲染\\\\data\\\\fa395f959fd14321b60289804e3cb3af\\\\exports\\\\72c591dc9f1f44d192b3e13766d4e6ac\\\\project\\\\scene.fbx'",
+        "export finished in 0.1346 sec.",
+        "EXPORT_RESULT:{\"success\": true, \"files\": {\"blend\": \"scene.blend\", \"scene\": \"scene.json\", \"fbx\": \"scene.fbx\"}, \"counts\": {\"objects\": 15, \"meshes\": 9, \"cameras\": 1, \"lights\": 4, \"materials\": 5}, \"warnings\": [\"Cinema 4D uses different material, light and color-management systems; visual parity requires review. The packed Blender file preserves the original render setup.\"], \"blender_version\": \"5.0.1\", \"verified\": {\"blend_reopened\": true, \"source_unchanged\": true, \"source_sha256\": \"86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f\"}}",
+        "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+        "",
+        "Blender quit"
+      ],
+      "native_url": "/files/fa395f959fd14321b60289804e3cb3af/exports/72c591dc9f1f44d192b3e13766d4e6ac/project/scene.blend",
+      "output_id": "83637e937b204387b191f7ecfb6118c0",
+      "project_id": "fa395f959fd14321b60289804e3cb3af",
+      "quality": "standard",
+      "shot_id": "hero",
+      "shot_label": "白底主图",
+      "source_blend": "D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\83637e937b204387b191f7ecfb6118c0\\哑光塑料按压瓶_hero_v2\\哑光塑料按压瓶_hero_v2.blend",
+      "source_sha256": "86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f",
+      "stage": "场景工程导出完成",
+      "started_at": 1793968240.968551,
+      "status": "completed",
+      "updated_at": 1793968248.3647814,
+      "version": 2,
+      "warnings": [
+        "Cinema 4D uses different material, light and color-management systems; visual parity requires review. The packed Blender file preserves the original render setup."
+      ],
+      "verified_zip_files": [
+        "export-source.json",
+        "README.txt",
+        "result.json",
+        "scene.blend",
+        "scene.fbx",
+        "scene.json"
+      ]
+    },
+    {
+      "conversion_package_url": "/files/fa395f959fd14321b60289804e3cb3af/exports/07fcd35be89549cbb35a591b32c49fa3/Cinema4D-conversion-kit.zip",
+      "created_at": 1793968249.7975318,
+      "download_url": null,
+      "error": "Cinema 4D 命令行未配置可用授权，请在本机完成 c4dpy 授权后重试。",
+      "fingerprint": "fa395f959fd14321b60289804e3cb3af:c4d:86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f:751472cba9231bf8020ff31e893832e8d77520773338c0ecb65e62b09772a7f5",
+      "finished_at": 1793968259.6334717,
+      "format": "c4d",
+      "id": "07fcd35be89549cbb35a591b32c49fa3",
+      "log_tail": [
+        "Error running authentication: No License Model defined [license_impl.cpp(132)]",
+        "----",
+        "Enter the license method:",
+        "  1) Maxon Account",
+        "  2) Maxon License Server",
+        "  3) RLM",
+        "  Q) Quit",
+        "Please select: "
+      ],
+      "native_url": null,
+      "output_id": "83637e937b204387b191f7ecfb6118c0",
+      "package_url": "/files/fa395f959fd14321b60289804e3cb3af/exports/07fcd35be89549cbb35a591b32c49fa3/Cinema4D-conversion-kit.zip",
+      "project_id": "fa395f959fd14321b60289804e3cb3af",
+      "quality": "standard",
+      "shot_id": "hero",
+      "shot_label": "白底主图",
+      "source_blend": "D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\83637e937b204387b191f7ecfb6118c0\\哑光塑料按压瓶_hero_v2\\哑光塑料按压瓶_hero_v2.blend",
+      "source_sha256": "86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f",
+      "stage": "场景导出未完成",
+      "started_at": 1793968249.8115327,
+      "status": "failed",
+      "updated_at": 1793968259.642475,
+      "version": 2,
+      "warnings": [
+        "Cinema 4D uses different material, light and color-management systems; visual parity requires review. The packed Blender file preserves the original render setup."
+      ],
+      "verified_zip_files": [
+        "C4D-使用说明.txt",
+        "convert_scene.py",
+        "export-source.json",
+        "result.json",
+        "scene.blend",
+        "scene.fbx",
+        "scene.json"
+      ]
+    }
+  ],
+  "capabilities": {
+    "blender_available": true,
+    "c4d_executable_found": true,
+    "c4d_message": "Cinema 4D 命令行未配置可用授权，请在本机完成 c4dpy 授权后重试。",
+    "c4d_status": "license_required"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "blender_version": "5.0.1",
+  "shared_mesh_isolated": true,
+  "shared_material_isolated": true,
+  "roughness_only_preserves_label": true,
+  "explicit_color_changes_selected_only": true,
+  "ior_untouched": true,
+  "unmaterialed_analysis_matches_render_slot": true
+}

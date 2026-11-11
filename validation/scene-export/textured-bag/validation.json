@@ -1,0 +1,17 @@
+{
+  "source": "D:\\模型渲染\\data\\915b67621edf43aaa60681ea2febefc0\\runs\\3d5fb986a74a4d18b427c92bc7a8073b\\带贴图资源的_OBJ_手提包_hero_v1\\带贴图资源的_OBJ_手提包_hero_v1.blend",
+  "counts": {
+    "objects": 50,
+    "meshes": 44,
+    "cameras": 1,
+    "lights": 4,
+    "materials": 5
+  },
+  "faces": 16383,
+  "textures": 1,
+  "warnings": [
+    "Cinema 4D uses different material, light and color-management systems; visual parity requires review. The packed Blender file preserves the original render setup."
+  ],
+  "source_sha256": "0614bd8563321d8ad5fee30749a0a9a5e561bb96996648587ddcbd69990ba26a",
+  "source_unchanged": true
+}

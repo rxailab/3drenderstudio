@@ -1,0 +1,119 @@
+{
+  "project_id": "5132c398215f4ed9aaa28cabc1e6eb30",
+  "checks": [
+    {
+      "shot": "hero",
+      "matching_settings": {
+        "camera": true,
+        "studio": true,
+        "operations": true
+      },
+      "dimensions": [
+        4096,
+        4096
+      ],
+      "normalized_srgb_difference": 0.0017713459488613154,
+      "render_seconds": 174.946,
+      "clipped": false
+    },
+    {
+      "shot": "campaign",
+      "matching_settings": {
+        "camera": true,
+        "studio": true,
+        "operations": true
+      },
+      "dimensions": [
+        4096,
+        4096
+      ],
+      "normalized_srgb_difference": 0.002330056982102737,
+      "render_seconds": 103.982,
+      "clipped": false
+    }
+  ],
+  "browser_downloads": [
+    {
+      "file": "C:\\Users\\Sam\\Downloads\\MORA_4K_成品验收_hero_v2.png",
+      "format": "PNG",
+      "size": [
+        4096,
+        4096
+      ],
+      "hash_matches_render": true
+    },
+    {
+      "file": "C:\\Users\\Sam\\Downloads\\MORA_4K_成品验收_hero_v2.jpg",
+      "format": "JPEG",
+      "size": [
+        4096,
+        4096
+      ],
+      "hash_matches_render": true
+    }
+  ],
+  "browser_bundle": {
+    "path": "C:\\Users\\Sam\\Downloads\\MORA_4K_成品验收_images.zip",
+    "entries": 30,
+    "crc_verified": true
+  },
+  "job_history": [
+    {
+      "id": "fdbb63b869ae445cb8a3d113a1d1ddd8",
+      "status": "completed",
+      "completed": [
+        "hero",
+        "campaign"
+      ],
+      "reused": [
+        "hero",
+        "hero"
+      ],
+      "retry_of": "33f0080ab7f34f53b616042813901e0a"
+    },
+    {
+      "id": "33f0080ab7f34f53b616042813901e0a",
+      "status": "interrupted",
+      "completed": [
+        "hero"
+      ],
+      "reused": [
+        "hero"
+      ],
+      "retry_of": "e3dd467e2f9d44b5937c1d1042eb2ec5"
+    },
+    {
+      "id": "e3dd467e2f9d44b5937c1d1042eb2ec5",
+      "status": "cancelled",
+      "completed": [
+        "hero"
+      ],
+      "reused": [],
+      "retry_of": null
+    },
+    {
+      "id": "b07764108814422facc3c6817e73b41e",
+      "status": "completed",
+      "completed": [
+        "hero",
+        "campaign",
+        "side",
+        "back",
+        "detail1",
+        "detail2"
+      ],
+      "reused": [],
+      "retry_of": null
+    },
+    {
+      "id": "71c584879c6449d984214edf26a15810",
+      "status": "completed",
+      "completed": [],
+      "reused": [],
+      "retry_of": null
+    }
+  ],
+  "resume_and_restart_verified": true,
+  "corrected_label_project_id": "fa395f959fd14321b60289804e3cb3af",
+  "corrected_label_4k_verified": true
+}

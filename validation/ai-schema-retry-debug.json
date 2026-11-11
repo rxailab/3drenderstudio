@@ -1,0 +1,115 @@
+{
+  "project_id": "d2ae89ec57a74a4b8ccefdab05482118",
+  "job_id": "8d8ea37d73fe492e9b1546f263f3ae3d",
+  "shot_id": "hero",
+  "version": 4,
+  "provider": "anthropic",
+  "model": "claude-haiku-5-5",
+  "started_at": 1793979746.8572123,
+  "network_calls": 1,
+  "responses": [
+    {
+      "structured_response": {
+        "issues": [
+          {
+            "code": "flat_fill_teal_body",
+            "severity": "warning",
+            "message": "瓶身青绿色大面积区域明度较均匀，左侧与右侧高光过渡偏弱，缺少明显的光线层级，显得略平。",
+            "confidence": 0.5,
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal"
+          },
+          {
+            "code": "weak_edge_bevel_cue",
+            "severity": "warning",
+            "message": "瓶肩与瓶口过渡处的轮廓较圆滑但缺少清晰的边缘高光带，轮廓的体积感不够突出。",
+            "confidence": 0.35,
+            "object_name": "Bottle body",
+            "material_name": "Matte recycled plastic — teal"
+          },
+          {
+            "code": "label_flat_print",
+            "severity": "warning",
+            "message": "白色标签区域较亮且平整，印刷文字的小字（DAILY CARE、500 ml）在预览分辨率下几乎不可读，细节层次不足。",
+            "confidence": 0.45,
+            "object_name": "Label substrate",
+            "material_name": "Paper label — ivory"
+          },
+          {
+            "code": "pump_highlight_flat",
+            "severity": "warning",
+            "message": "白色泵头与泵颈区域亮度接近白底，形状边界与背景融合，可读性下降。",
+            "confidence": 0.4,
+            "object_name": "Pump dispenser",
+            "material_name": "Soft satin plastic — cream"
+          },
+          {
+            "code": "background_clipping_expected",
+            "severity": "warning",
+            "message": "背景白底存在大面积过曝，这属于白底摄影的预期现象，不作为产品缺陷；产品本身裁切比例正常，未被裁切。",
+            "confidence": 0.6
+          }
+        ],
+        "patch": {
+          "exposure": 0,
+          "light_softness": 1
+        },
+        "score": 0.6,
+        "needs_user": [
+          "是否需要保留当前青绿色哑光塑料的材质意图（requires_user：材质意图确认）",
+          "标签印刷文字是否需要更大字号或更高分辨率贴图（属于纹理/贴图制作，需人工处理）",
+          "泵头与瓶口是否存在真实尺寸或参考图以确认结构细节（requires_user：真实尺寸/参考）"
+        ],
+        "realism": {
+          "summary": "整体构图完整、主体占比约74%，产品识别度高，青绿瓶身与白色泵头清晰可辨，白底与柔和地面投影使商品形象基本可信。主要不足在于瓶身光线层级偏平、标签小字在预览中不可读，以及白色泵头与白底亮度接近导致轮廓弱化。背景过曝属白底摄影的正常现象，不应视为缺陷。",
+          "causes": [
+            {
+              "aspect": "光线层级与平光填充",
+              "evidence": "瓶身青绿色主体区域（画面中部偏下）明暗过渡较平缓，左右两侧没有明显的高光带与暗部对比，整体像均匀受光。",
+              "confidence": 0.5,
+              "suggestion": "可在不改变颜色的前提下，人工调整关键光（Key softbox）与边缘光的强度比例，或减小补光（Fill softbox）能量，以拉开瓶身明暗层次。",
+              "requires_user": false
+            },
+            {
+              "aspect": "边缘轮廓与倒角提示",
+              "evidence": "瓶肩与瓶口处的圆角轮廓在画面中略显柔和，缺少清晰的边缘高光线，体积边界不够锐利。",
+              "confidence": 0.35,
+              "suggestion": "如有原始模型的倒角或圆角几何信息，可人工核对；若缺少倒角几何，需建模补充，属于人工工作，不能自动完成。",
+              "requires_user": true
+            },
+            {
+              "aspect": "标签小字可读性与纹理尺度",
+              "evidence": "标签区域 MORA 大字可辨，但 DAILY CARE 与 500 ml 小字在预览图中几乎无法辨认，印刷细节层次不足。",
+              "confidence": 0.45,
+              "suggestion": "提高渲染分辨率或在细节镜头（detail2）中单独检查印刷文字；若需更清晰字样，需人工调整贴图分辨率或字号，属于纹理制作。",
+              "requires_user": true
+            },
+            {
+              "aspect": "白色泵头与背景的亮度分离",
+              "evidence": "白色泵头（画面上部）亮度接近白底，泵头轮廓边缘与背景之间的对比偏弱，形状在上部边界处略显模糊。",
+              "confidence": 0.4,
+              "suggestion": "可尝试降低背景补光或略微加强泵头阴影侧的对比，以提升轮廓可读性；这属于灯光调整，可由执行器判断是否应用。",
+              "requires_user": false
+            },
+            {
+              "aspect": "背景过曝",
+              "evidence": "画面背景大面积接近纯白，但产品像素中被裁切的比例仅约0.86%，主体未见明显过曝。",
+              "confidence": 0.6,
+              "suggestion": "白底过曝属于白底摄影的预期现象，无需修正；若需保留地面阴影层次，可保持当前参数。",
+              "requires_user": false
+            }
+          ],
+          "priority_actions": [
+            "优先检查关键光与补光的比例，拉开瓶身明暗层次（可由执行器判断是否调整 light_softness）。",
+            "在细节镜头中确认标签小字的可读性，必要时提高渲染分辨率或人工调整贴图字号。",
+            "核对瓶肩与瓶口的倒角几何；若缺失需人工补充建模，不能自动完成。",
+            "适度降低背景补光或加强泵头侧影对比，提升白色泵头的轮廓可读性。",
+            "保持当前白底主图构图与裁切比例，主体占比约74%，未发现裁切问题。"
+          ]
+        }
+      }
+    }
+  ],
+  "success": true,
+  "finished_at": 1793979759.0181766
+}

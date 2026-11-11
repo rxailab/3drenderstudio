@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "device": {
+    "status": "ready",
+    "type": "GPU",
+    "backend": "OPTIX",
+    "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+    "blender_version": "5.0.1"
+  }
+}

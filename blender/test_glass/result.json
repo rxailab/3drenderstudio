@@ -1,0 +1,172 @@
+{
+  "success": true,
+  "device": {
+    "status": "ready",
+    "type": "GPU",
+    "backend": "OPTIX",
+    "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+    "blender_version": "5.0.1"
+  },
+  "files": {
+    "png": "test_glass.png",
+    "jpg": "test_glass.jpg",
+    "blend": "test_glass.blend"
+  },
+  "width": 512,
+  "height": 512,
+  "checks": {
+    "method": "projected evaluated bounding boxes",
+    "kind": "complete_product",
+    "clipped": false,
+    "projected_bounds": [
+      0.17148946225643158,
+      0.12216401100158691,
+      0.8439465761184692,
+      0.7930732369422913
+    ],
+    "occupancy": 0.6724571138620377,
+    "margin": 0.12,
+    "corrections": 0,
+    "detail_target": null,
+    "manual_review": [],
+    "ground_contact": 0.0
+  },
+  "warnings": [],
+  "operations": [
+    {
+      "operation": "working_transform",
+      "rotation_degrees": [
+        0,
+        0,
+        0
+      ],
+      "uniform_scale": 13.33333280351429,
+      "translation": [
+        -0.0,
+        -0.0,
+        -0.0
+      ]
+    }
+  ],
+  "camera": {
+    "position": [
+      -4.1877336502075195,
+      -5.360054969787598,
+      3.7481889724731445
+    ],
+    "rotation": [
+      1.1868239641189575,
+      -9.15706763748858e-08,
+      -0.6632250547409058
+    ],
+    "focal_length": 60.0,
+    "target": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "dof": false
+  },
+  "studio": {
+    "style": "soft",
+    "lights": [
+      {
+        "name": "Key softbox",
+        "position": [
+          -3,
+          -4,
+          5
+        ],
+        "energy": 650.0,
+        "size": 3.0,
+        "color": [
+          1,
+          0.94,
+          0.87
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      },
+      {
+        "name": "Fill softbox",
+        "position": [
+          4,
+          -2,
+          3
+        ],
+        "energy": 380.0,
+        "size": 3.0,
+        "color": [
+          0.86,
+          0.93,
+          1
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      },
+      {
+        "name": "Edge softbox",
+        "position": [
+          1.2,
+          3,
+          4
+        ],
+        "energy": 977.5,
+        "size": 0.6499999761581421,
+        "color": [
+          0.9,
+          0.95,
+          1
+        ],
+        "shape": "RECTANGLE",
+        "size_y": 3.5
+      },
+      {
+        "name": "Top reflection",
+        "position": [
+          -0.5,
+          0,
+          6
+        ],
+        "energy": 300.0,
+        "size": 2.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      }
+    ],
+    "material_features": [
+      {
+        "name": "Clear thick glass",
+        "metallic": 0.0,
+        "transmission": 1.0,
+        "luminance": 0.9650000135103861,
+        "emission": 0.0
+      }
+    ],
+    "rationale": [
+      "检测到透射材质：使用窄长轮廓软箱和暗反光板表现边缘，保留原模型厚度"
+    ],
+    "environment_strength": 0.22,
+    "color_management": {
+      "view_transform": "AgX",
+      "look": "AgX - Medium High Contrast",
+      "exposure": 0.0,
+      "display": "sRGB"
+    }
+  },
+  "quality": "preview",
+  "render_seconds": 1.812,
+  "render_settings": {
+    "engine": "CYCLES",
+    "samples": 24,
+    "noise_threshold": 0.07000000029802322,
+    "time_limit": 0.0,
+    "denoising": true
+  },
+  "blender_version": "5.0.1"
+}

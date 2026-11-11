@@ -1,0 +1,104 @@
+{
+  "success": true,
+  "features": {
+    "dimensions": [
+      0.15000000596046448,
+      0.15000000596046448,
+      0.15000000596046448
+    ],
+    "aspect_ratio": 1.0,
+    "elongated": false,
+    "flat": false,
+    "multipart": false,
+    "mesh_count": 1,
+    "symmetry": "unknown",
+    "surfaces": [
+      "transparent"
+    ],
+    "has_animation": false,
+    "has_armature": false
+  },
+  "bounds": {
+    "min": [
+      -0.07500000298023224,
+      -0.07500000298023224,
+      0.0
+    ],
+    "max": [
+      0.07500000298023224,
+      0.07500000298023224,
+      0.15000000596046448
+    ]
+  },
+  "dimensions": {
+    "value": [
+      0.15000000596046448,
+      0.15000000596046448,
+      0.15000000596046448
+    ],
+    "unit": "m",
+    "source": "glTF specification",
+    "reliability": "declared"
+  },
+  "objects": [
+    {
+      "name": "Thick-walled glass tumbler",
+      "type": "MESH",
+      "parent": null,
+      "dimensions": [
+        0.15000000596046448,
+        0.15000000596046448,
+        0.15000000596046448
+      ],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "animated": false,
+      "constraints": [],
+      "vertices": 2234,
+      "faces": 3328,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "materials": [
+        "Clear thick glass"
+      ],
+      "non_manifold_edges": 0,
+      "raw_non_manifold_edges": 1120,
+      "degenerate_faces": 0
+    }
+  ],
+  "materials": [
+    {
+      "name": "Clear thick glass",
+      "source": "model",
+      "confidence": 1.0,
+      "suggested_preset": "glass",
+      "suggestion_source": "rules",
+      "suggestion_confidence": 0.55,
+      "color": [
+        0.9200000166893005,
+        0.9750000238418579,
+        1.0,
+        1.0
+      ],
+      "roughness": 0.03500000014901161,
+      "metallic": 0.0,
+      "transmission": 1.0,
+      "emission": 0.0,
+      "textures": []
+    }
+  ],
+  "warnings": [
+    "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+  ],
+  "animations": [],
+  "blender_version": "5.0.1"
+}

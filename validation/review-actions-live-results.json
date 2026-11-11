@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "project_id": "d2ae89ec57a74a4b8ccefdab05482118",
+  "proposal_id": "d822204a34864b4890c40373f536f592",
+  "source_version": 4,
+  "applied_version": 5,
+  "answers": [
+    {
+      "index": 0,
+      "status": "answered",
+      "text": "保留现有哑光瓶身和所有原始颜色，本轮不修改材质。",
+      "question": "是否需要保持哑光瓶身的材质意图，还是希望加入更明显的塑料光泽？"
+    },
+    {
+      "index": 1,
+      "status": "skipped",
+      "text": "",
+      "question": "标签和文字是否需要真实纸张纹理或更高分辨率印刷贴图（需要用户提供素材或手动制作）？"
+    },
+    {
+      "index": 2,
+      "status": "skipped",
+      "text": "",
+      "question": "若要增加倒角或边缘高光，需要确认真实尺寸与是否允许修改几何体。"
+    }
+  ],
+  "origin": "ai",
+  "changes": [
+    {
+      "path": "shot_adjustments.hero",
+      "before": {},
+      "after": {
+        "lighting": {
+          "fill_power": 0.5
+        }
+      }
+    }
+  ],
+  "job_id": "958a31de86a647cbb5e27bfedd3c0b9c",
+  "job_status": "completed",
+  "real_light_energy_before": {
+    "Key softbox": 156.0,
+    "Fill softbox": 91.19999694824219,
+    "Edge softbox": 255.0,
+    "Top reflection": 72.0
+  },
+  "real_light_energy_after": {
+    "Key softbox": 156.0,
+    "Fill softbox": 45.599998474121094,
+    "Edge softbox": 255.0,
+    "Top reflection": 72.0
+  },
+  "images": [
+    {
+      "format": "PNG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "path": "data\\d2ae89ec57a74a4b8ccefdab05482118\\runs\\958a31de86a647cbb5e27bfedd3c0b9c\\材质与逼真度验收_hero_v5\\材质与逼真度验收_hero_v5.png"
+    },
+    {
+      "format": "JPEG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "path": "data\\d2ae89ec57a74a4b8ccefdab05482118\\runs\\958a31de86a647cbb5e27bfedd3c0b9c\\材质与逼真度验收_hero_v5\\材质与逼真度验收_hero_v5.jpg"
+    }
+  ],
+  "camera_unchanged": true,
+  "materials_and_geometry_unchanged": true,
+  "single_job_for_proposal": true,
+  "review_source_after_render": "rules",
+  "notes": "Replies and proposal were restored by browser reload before Apply. All changes were submitted through the normal UI."
+}

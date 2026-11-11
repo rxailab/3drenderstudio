@@ -1,0 +1,238 @@
+{
+  "success": true,
+  "device": {
+    "status": "ready",
+    "type": "GPU",
+    "backend": "OPTIX",
+    "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+    "blender_version": "5.0.1"
+  },
+  "files": {
+    "png": "test_missing.png",
+    "jpg": "test_missing.jpg",
+    "blend": "test_missing.blend"
+  },
+  "width": 512,
+  "height": 512,
+  "checks": {
+    "method": "projected evaluated bounding boxes",
+    "kind": "complete_product",
+    "clipped": false,
+    "projected_bounds": [
+      0.1298731118440628,
+      0.3355044722557068,
+      0.8780786991119385,
+      0.6186230778694153
+    ],
+    "occupancy": 0.7482055872678757,
+    "margin": 0.12,
+    "corrections": 0,
+    "detail_target": null,
+    "projection_test_points": [
+      [
+        -1.0,
+        0.6170212626457214,
+        0.21276596188545227
+      ],
+      [
+        -1.0,
+        0.6170212626457214,
+        0.0
+      ],
+      [
+        -1.0,
+        -0.6170212626457214,
+        3.9225909631568356e-08
+      ],
+      [
+        -1.0,
+        -0.6170212626457214,
+        0.21276600658893585
+      ],
+      [
+        1.0,
+        0.6170212626457214,
+        0.21276596188545227
+      ],
+      [
+        1.0,
+        0.6170212626457214,
+        0.0
+      ],
+      [
+        1.0,
+        -0.6170212626457214,
+        3.9225909631568356e-08
+      ],
+      [
+        1.0,
+        -0.6170212626457214,
+        0.21276600658893585
+      ]
+    ],
+    "manual_review": [
+      "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+    ],
+    "ground_contact": 0.0,
+    "attempts": [
+      {
+        "attempt": 0,
+        "clipped": false,
+        "projected_bounds": [
+          0.1298731118440628,
+          0.3355044722557068,
+          0.8780786991119385,
+          0.6186230778694153
+        ],
+        "safe_margin": true
+      }
+    ],
+    "automatic_check_status": "passed"
+  },
+  "warnings": [
+    "缺失贴图 brushed-steel-missing.png；已断开该贴图并回退材质参数，请补充资源后重试",
+    "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+  ],
+  "operations": [
+    {
+      "operation": "missing_texture_fallback",
+      "image": "brushed-steel-missing.png",
+      "path": "D:\\模型渲染\\samples\\obj-missing-texture\\textures/brushed-steel-missing.png"
+    },
+    {
+      "operation": "working_transform",
+      "rotation_degrees": [
+        90,
+        0,
+        0
+      ],
+      "uniform_scale": 4.255319159729225,
+      "translation": [
+        -0.0,
+        0.6170212626457214,
+        0.10638298094272614
+      ]
+    }
+  ],
+  "camera": {
+    "position": [
+      3.344313144683838,
+      -4.776174068450928,
+      2.0008702278137207
+    ],
+    "rotation": [
+      1.2566370964050293,
+      -9.338264561620235e-08,
+      0.6108652353286743
+    ],
+    "focal_length": 70.0,
+    "target": [
+      0.0,
+      0.0,
+      0.10638300329446793
+    ],
+    "dof": false
+  },
+  "studio": {
+    "style": "white",
+    "lights": [
+      {
+        "name": "Key softbox",
+        "position": [
+          -3,
+          -4,
+          5
+        ],
+        "energy": 156.0,
+        "size": 4.0,
+        "color": [
+          1,
+          0.94,
+          0.87
+        ],
+        "shape": "RECTANGLE",
+        "size_y": 2.5
+      },
+      {
+        "name": "Fill softbox",
+        "position": [
+          4,
+          -2,
+          3
+        ],
+        "energy": 91.19999694824219,
+        "size": 3.0,
+        "color": [
+          0.86,
+          0.93,
+          1
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      },
+      {
+        "name": "Edge softbox",
+        "position": [
+          1.2,
+          3,
+          4
+        ],
+        "energy": 204.0,
+        "size": 2.0,
+        "color": [
+          0.9,
+          0.95,
+          1
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      },
+      {
+        "name": "Top reflection",
+        "position": [
+          -0.5,
+          0,
+          6
+        ],
+        "energy": 72.0,
+        "size": 2.5,
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "shape": "DISK",
+        "size_y": 0.25
+      }
+    ],
+    "material_features": [
+      {
+        "name": "Brushed_stainless_steel",
+        "metallic": 1.0,
+        "transmission": 0.0,
+        "luminance": 0.5699999928474426,
+        "emission": 1.0
+      }
+    ],
+    "rationale": [
+      "检测到金属：主光使用宽矩形反射形状，保持侧面明暗分离"
+    ],
+    "environment_strength": 0.22,
+    "color_management": {
+      "view_transform": "Standard",
+      "look": "None",
+      "exposure": 0.0,
+      "display": "sRGB"
+    }
+  },
+  "quality": "preview",
+  "render_seconds": 2.226,
+  "render_settings": {
+    "engine": "CYCLES",
+    "samples": 24,
+    "noise_threshold": 0.07000000029802322,
+    "time_limit": 0.0,
+    "denoising": true
+  },
+  "blender_version": "5.0.1"
+}

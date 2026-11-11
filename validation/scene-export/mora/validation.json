@@ -1,0 +1,17 @@
+{
+  "source": "D:\\模型渲染\\deliverables\\MORA_hero_final_4096.blend",
+  "counts": {
+    "objects": 15,
+    "meshes": 9,
+    "cameras": 1,
+    "lights": 4,
+    "materials": 5
+  },
+  "faces": 94177,
+  "textures": 0,
+  "warnings": [
+    "Cinema 4D uses different material, light and color-management systems; visual parity requires review. The packed Blender file preserves the original render setup."
+  ],
+  "source_sha256": "86f5ff4f3ade89a60593ac19ae36ca88f0003b977c3ad0ddac3c34f211a6508f",
+  "source_unchanged": true
+}

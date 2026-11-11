@@ -1,0 +1,101 @@
+{
+  "provider": "anthropic",
+  "model": "claude-haiku-5-5",
+  "project_id": "fb50b3a68d194f28af84b5d7b598599f",
+  "shot_id": "hero",
+  "version": 3,
+  "image_path": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/f866b24d656d4a0094bc2370ddd696ac/08_G07C_G02M_combo_hero_v3/08_G07C_G02M_combo_hero_v3.png",
+  "started_at": 1793978985.0440702,
+  "structured_response": {
+    "issues": [
+      {
+        "code": "flat_fill_low_form",
+        "severity": "warning",
+        "message": "红色柜体的正面与左侧面明暗过渡较平，门板和抽屉面缺少明显的光影层次，立体感偏弱。",
+        "confidence": 0.6,
+        "object_name": "G-07C后板_2",
+        "material_name": "红色塑料_4"
+      },
+      {
+        "code": "matte_metal_reads_as_plastic",
+        "severity": "warning",
+        "message": "台面、轨道与拉手等金属件高光很弱、呈灰白平涂，缺少可读的金属高光形状，金属质感不足。",
+        "confidence": 0.55,
+        "object_name": "G-不锈钢台面_2",
+        "material_name": "亮光金属_6"
+      },
+      {
+        "code": "contact_shadow_weak",
+        "severity": "warning",
+        "message": "四个脚轮与地面之间的接触阴影较淡，底部接地感偏弱，产品略有悬浮感。",
+        "confidence": 0.45,
+        "object_name": "2.5寸轮子_2_3",
+        "material_name": "黑色.1_3"
+      },
+      {
+        "code": "small_hardware_low_detail",
+        "severity": "warning",
+        "message": "锁具、螺丝与拉手等小五金在整图中占比很小，边缘倒角与细节不易辨认。",
+        "confidence": 0.4,
+        "object_name": "180度转舌锁_3",
+        "material_name": "亮光金属_1"
+      }
+    ],
+    "needs_user": [
+      "若要让金属件呈现明确的高光与拉丝/磨砂质感，需要确认目标材质意图（不锈钢、哑光金属或塑料）。",
+      "是否需要为柜体边缘补充倒角或圆角几何，以增强轮廓高光，这属于几何修改，需人工确认。"
+    ],
+    "patch": {
+      "exposure": 0,
+      "light_softness": 1
+    },
+    "score": 0.6,
+    "realism": {
+      "summary": "整体构图完整、主体居中、曝光未明显过曝，红色柜体辨识度高；但光照偏平、金属件缺少可读高光、脚轮接地阴影偏弱，使图像更像干净的预览模型而非高可信产品摄影。",
+      "causes": [
+        {
+          "aspect": "光线层次与平涂填充",
+          "evidence": "柜体正面门板与侧板亮度接近，主要面之间的明暗对比不强，边缘高光不明显。",
+          "confidence": 0.6,
+          "suggestion": "可尝试降低补光(Fill)强度或略增大主光与边缘光的对比，使主光方向在门板与侧板上形成更清楚的明暗分界；此为灯光参数调整，可由执行器决定。",
+          "requires_user": false
+        },
+        {
+          "aspect": "金属高光与反射可读性",
+          "evidence": "台面顶部、轨道和拉手呈灰白均匀色块，缺少清晰的高光形状和环境反射变化。",
+          "confidence": 0.55,
+          "suggestion": "若需要更像金属，需先确认材质意图（不锈钢/哑光金属），再人工调整粗糙度与高光；当前不建议自动更换材质预设。",
+          "requires_user": true
+        },
+        {
+          "aspect": "接地阴影与脚轮",
+          "evidence": "四个脚轮与地面交界处阴影较淡，左前与右前脚轮周围几乎没有明显暗部。",
+          "confidence": 0.45,
+          "suggestion": "可增加地面接触阴影或加强底部柔和阴影，使脚轮与地面的接触更明确。",
+          "requires_user": false
+        },
+        {
+          "aspect": "小五金细节尺度",
+          "evidence": "锁具、螺丝、拉手在512像素整图中尺寸较小，细节和倒角难以辨认。",
+          "confidence": 0.4,
+          "suggestion": "若需展示五金细节，应使用材质细节或结构细节镜头单独拍摄，而非依赖整体主图。",
+          "requires_user": false
+        }
+      ],
+      "priority_actions": [
+        "先用细节镜头检查金属件高光与粗糙度的可读性，确认后再决定是否调整金属材质意图（需人工确认）。",
+        "适度降低补光或加强主光对比，改善门板与侧板的立体层次（灯光参数）。",
+        "加强脚轮与地面之间的接触阴影，提升接地感。",
+        "如需展示五金细节，使用单独的细节镜头，而不是在整机主图中放大小件。",
+        "倒角或圆角等几何改动属于人工建模工作，需单独确认。"
+      ]
+    }
+  },
+  "success": true,
+  "finished_at": 1793978994.7696736,
+  "failure_reproduced": false,
+  "live_calls": 1,
+  "captured_response_replay_passed": true,
+  "diagnostic_conclusion": "唯一一次真实复现调用成功，未观察到 null 或数值字符串，先前类型失败的根因尚未复现。新增防御性兼容仅将 issues[].object_name / material_name 的 null 视为未提供；不转换数值、布尔值、执行参数或必填字段。类型错误新增不含响应值的字段路径、期望类型和实际 JSON 类型，方便下一次失败定位。",
+  "validation": "python -m unittest discover -s tests -p test_ai_client.py -v：19 项通过；捕获的真实结构化响应以 mock 方式重放通过。"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "case": "collision",
+    "error": "Output scene.blend must be different from the original source project.",
+    "exit_code": 1
+  },
+  {
+    "case": "missing",
+    "error": "[WinError 2] 系统找不到指定的文件。: 'D:\\\\模型渲染\\\\validation\\\\scene-export\\\\failure-cases\\\\not-present.blend'",
+    "exit_code": 1
+  }
+]

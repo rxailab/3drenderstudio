@@ -1,0 +1,126 @@
+{
+  "project_id": "fb50b3a68d194f28af84b5d7b598599f",
+  "version": 3,
+  "output": {
+    "job_id": "f866b24d656d4a0094bc2370ddd696ac",
+    "shot_id": "hero",
+    "version": 3,
+    "quality": "preview",
+    "png_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/f866b24d656d4a0094bc2370ddd696ac/08_G07C_G02M_combo_hero_v3/08_G07C_G02M_combo_hero_v3.png"
+  },
+  "review": {
+    "issues": [
+      {
+        "code": "flat_fill_red_body",
+        "severity": "warning",
+        "message": "红色柜体（左侧面、正面门板）整体亮度较均匀，缺少明显的明暗过渡与高光成形，塑料面显得平、扁，立体感不足。",
+        "confidence": 0.6,
+        "material_name": "红色塑料_4",
+        "object_name": "G-07C后板_2"
+      },
+      {
+        "code": "weak_reflection_readability",
+        "severity": "warning",
+        "message": "红色柜体表面没有可读的高光形状或边缘反射，哑光感强，无法从画面中判断表面微观质感，真实塑料/喷涂金属的光泽层次缺失。",
+        "confidence": 0.5,
+        "material_name": "红色塑料.1_1",
+        "object_name": "G-07C左边板_2"
+      },
+      {
+        "code": "tabletop_highlight_flat",
+        "severity": "warning",
+        "message": "不锈钢台面整体呈均匀浅灰白，几乎没有方向性高光条带，金属感不足，与真实不锈钢台面的反射特征差距明显。",
+        "confidence": 0.45,
+        "material_name": "亮光金属_6",
+        "object_name": "G-不锈钢台面_2"
+      },
+      {
+        "code": "caster_contact_shadow_weak",
+        "severity": "warning",
+        "message": "脚轮与地面之间的接触阴影较淡，轮子看起来略微悬浮，接地感偏弱。",
+        "confidence": 0.4,
+        "object_name": "2.5寸轮子_2_3"
+      },
+      {
+        "code": "black_handle_detail_low",
+        "severity": "warning",
+        "message": "两侧黑色拉手在缩略尺度下细节不足，难以判断其倒角和哑光纹理。",
+        "confidence": 0.3,
+        "material_name": "黑色.1_2",
+        "object_name": "左拉手_1"
+      },
+      {
+        "code": "subject_occupancy_ok",
+        "severity": "warning",
+        "message": "产品完整在画幅内，占比约0.71，未被裁切；白色背景的亮部属于可接受的背景过曝，不计入产品缺陷。",
+        "confidence": 0.5
+      }
+    ],
+    "patch": {
+      "exposure": 0,
+      "light_softness": 1
+    },
+    "score": 0.6,
+    "needs_user": [
+      "是否需要保留哑光红色塑料的材质意图，还是希望增加漆面/喷涂光泽？这属于材质意图，需用户确认。",
+      "台面是否应为拉丝不锈钢或镜面不锈钢？当前导入材质为粗糙度0.8的哑光设定，需用户确认目标材质。",
+      "脚轮是否需要补充真实接地/倒角几何，或者用户是否允许手动调整接触阴影？"
+    ],
+    "realism": {
+      "summary": "整体构图和产品完整性良好，产品未被裁切，占比约0.71，白底背景的亮部可接受。主要的逼真度问题在于红色柜体与台面缺少可读的高光形状与反射层次，材质表现偏平；脚轮接触阴影偏弱。注意：导入材质的粗糙度0.8、金属度0等为导入基线值，尚未读取当前着色器的实际输出，不能据此断定当前反射参数。",
+      "causes": [
+        {
+          "aspect": "红色柜体的光照层次与平光",
+          "evidence": "右侧面和正面门板（画面中部偏右的红色大面）亮度分布较均匀，明暗过渡平缓，缺少明确的高光带或阴影边界，形成平面感。",
+          "confidence": 0.6,
+          "suggestion": "在不改变颜色的前提下，可考虑调整主光/边缘光的方向与软硬（light_softness 小幅降低以获得更清晰的高光形状），观察红色面是否出现可读的高光过渡。",
+          "requires_user": false
+        },
+        {
+          "aspect": "红色塑料表面的反射可读性",
+          "evidence": "柜体红色面和顶部边缘没有清晰的高光条或边缘反光，反射区域几乎不可辨，表面呈现纯哑光外观，微观质感无法从画面判断。",
+          "confidence": 0.5,
+          "suggestion": "若希望表现喷涂塑料的光泽，需用户明确材质意图后手动调整粗糙度/高光参数；在未确认前不建议自动修改材质预设。",
+          "requires_user": true
+        },
+        {
+          "aspect": "不锈钢台面的高光形状",
+          "evidence": "台面（画面顶部）呈均匀浅灰白，几乎没有方向性高光条带或边缘亮线，金属的镜面或拉丝特征不明显。",
+          "confidence": 0.45,
+          "suggestion": "台面材质的目标（拉丝/镜面）需用户确认；确认后可在顶面附近增加一条狭长的高光面光源以检验反射形状。",
+          "requires_user": true
+        },
+        {
+          "aspect": "脚轮接触阴影与接地",
+          "evidence": "底部两个脚轮（画面左下与右下）与地面之间的暗部较淡，轮子底边的接触阴影不够集中，视觉上略有悬浮。",
+          "confidence": 0.4,
+          "suggestion": "可检查地面投影或环境光遮蔽的强度；若需要更真实的接地，需要补充轮子与地面接触的几何或手动调整阴影，这属于手动操作。",
+          "requires_user": true
+        },
+        {
+          "aspect": "黑色拉手的细节可读性",
+          "evidence": "两侧和门板上的黑色拉手在512像素预览中尺寸很小，倒角与哑光纹理不易辨认。",
+          "confidence": 0.3,
+          "suggestion": "如需检查细节，可使用材质细节镜头（detail1/detail2）单独确认，而非在整机图中判断。",
+          "requires_user": false
+        }
+      ],
+      "priority_actions": [
+        "优先确认材质意图（红色哑光塑料还是漆面光泽；台面拉丝还是镜面），这是决定反射表现的前提，需用户确认。",
+        "在不改变颜色的前提下，小幅调整主光与边缘光的软硬，让红色柜体和台面产生可读的高光形状；当前 patch 保持 exposure=0、light_softness=1 不变，未做自动修改。",
+        "检查脚轮处的接触阴影或环境遮蔽强度，必要时手动补充接地细节。",
+        "使用材质细节镜头（detail1、detail2）检查拉手和台面的纹理尺度，而非依赖整机图。"
+      ]
+    },
+    "source": "ai",
+    "provider": "anthropic",
+    "model": "claude-haiku-5-5",
+    "status": "manual_review",
+    "question": "为什么现在渲染得不够逼真？请根据真实预览指出红色柜体的反光、台面高光和脚轮阴影的具体问题与改进优先级。",
+    "checked_at": 1793980396.9403315,
+    "mode": "diagnostic_only",
+    "parameter_changes_applied": false
+  },
+  "previous_review_count": 4,
+  "normal_interface_verified": true
+}

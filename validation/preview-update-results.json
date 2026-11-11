@@ -1,0 +1,43 @@
+{
+  "project_id": "fb50b3a68d194f28af84b5d7b598599f",
+  "cause": "style soft to dark affected campaign while UI stayed on white hero",
+  "ui_verified": {
+    "default_dark_focus": "campaign",
+    "before_after_switches_real_image_and_download": true
+  },
+  "pixel_comparisons": [
+    {
+      "shot": "hero",
+      "before_version": 5,
+      "after_version": 6,
+      "pixel_mean_difference_255": 4.1961669921875e-05,
+      "before_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/f67878bb30f4442daf399c685810ce37/08_G07C_G02M_combo_hero_v5/08_G07C_G02M_combo_hero_v5.png",
+      "after_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/7bf81baa0b204604b797e5848901342c/08_G07C_G02M_combo_hero_v6/08_G07C_G02M_combo_hero_v6.png"
+    },
+    {
+      "shot": "hero",
+      "before_version": 4,
+      "after_version": 5,
+      "pixel_mean_difference_255": 0.7426859537760416,
+      "before_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/1b69b6b60fe7405e8ed7c9e032486dbc/08_G07C_G02M_combo_hero_v4/08_G07C_G02M_combo_hero_v4.png",
+      "after_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/f67878bb30f4442daf399c685810ce37/08_G07C_G02M_combo_hero_v5/08_G07C_G02M_combo_hero_v5.png"
+    },
+    {
+      "shot": "campaign",
+      "before_version": 4,
+      "after_version": 6,
+      "pixel_mean_difference_255": 87.69357554117839,
+      "before_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/f4eb59ff44a14ad8a3caff2111f1c7c3/08_G07C_G02M_combo_campaign_v4/08_G07C_G02M_combo_campaign_v4.png",
+      "after_url": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/7bf81baa0b204604b797e5848901342c/08_G07C_G02M_combo_campaign_v6/08_G07C_G02M_combo_campaign_v6.png"
+    }
+  ],
+  "natural_language_apply_ui": {
+    "project_id": "7d273cdfb9ea4ebc804aa8fc93268a40",
+    "requested_margin": 0.2,
+    "saved_margin": 0.2,
+    "auto_submitted_job_id": "53b31915e5304804bdb1e0685c094667",
+    "displayed_png_url": "/files/7d273cdfb9ea4ebc804aa8fc93268a40/runs/53b31915e5304804bdb1e0685c094667/auto-cotton-cushion_hero_v2/auto-cotton-cushion_hero_v2.png",
+    "pixel_mean_difference_255": 8.941036224365234,
+    "without_extra_generate_click": true
+  }
+}

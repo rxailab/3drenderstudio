@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "requested_model": "gpt-5.5-2026-04-23",
+  "response_model": "gpt-5.5-2026-04-23",
+  "actual_preview": "/files/fb50b3a68d194f28af84b5d7b598599f/runs/905102ea6b5843c585950b9a42af4d45/08_G07C_G02M_combo_hero_v12/08_G07C_G02M_combo_hero_v12.png",
+  "answer": "主体物体是一个红色带轮工具柜，上方有灰色金属台面，前部有抽屉、双开柜门和拉手。\n\n金属台面表面较平整，反光呈长条状和块状的浅灰高光，主要集中在台面右侧和边缘位置。\n\n红色柜体表面较光滑，有柔和的反光和明暗渐变，正面和侧面能看到浅红色高光，使柜体显得有一定光泽。",
+  "usage": {
+    "prompt_tokens": 347,
+    "completion_tokens": 119,
+    "total_tokens": 466,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  }
+}

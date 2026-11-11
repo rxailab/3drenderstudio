@@ -1,0 +1,43 @@
+{
+  "project": "fb50b3a68d194f28af84b5d7b598599f",
+  "baseline_version": 12,
+  "independent_render": true,
+  "pipeline": 2,
+  "light": {
+    "name": "Metal reflection softbox",
+    "position": [
+      -1.0502517223358154,
+      2.378812789916992,
+      2.425384998321533
+    ],
+    "energy": 1.100000023841858,
+    "size": 1.0399999618530273,
+    "color": [
+      1,
+      1,
+      1
+    ],
+    "shape": "RECTANGLE",
+    "size_y": 0.35199999809265137,
+    "target_object": "G-不锈钢台面_2",
+    "target": [
+      0.298971563577652,
+      0.19762541353702545,
+      1.99875009059906
+    ],
+    "method": "visible metal face reflected camera direction"
+  },
+  "surface_pixel_metrics": {
+    "before": {
+      "mean": 128.515873015873,
+      "clipped": 0,
+      "samples": 84
+    },
+    "after": {
+      "mean": 150.0753968253968,
+      "clipped": 1,
+      "samples": 84
+    }
+  },
+  "limitation": "Single 512px preview; appearance requires human judgment."
+}

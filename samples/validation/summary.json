@@ -1,0 +1,187 @@
+[
+  {
+    "sample": "brushed-metal-tray",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.4699999988079071,
+        0.28999999165534973,
+        0.05000000074505806
+      ],
+      "aspect_ratio": 9.399999836087229,
+      "elongated": false,
+      "flat": true,
+      "multipart": false,
+      "mesh_count": 1,
+      "symmetry": "unknown",
+      "surfaces": [
+        "metal"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [],
+    "raw_non_manifold_edges": 1240,
+    "non_manifold_edges": 0,
+    "degenerate_faces": 0
+  },
+  {
+    "sample": "canvas-leather-tote",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.4050000011920929,
+        0.18000000715255737,
+        0.4762076735496521
+      ],
+      "aspect_ratio": 2.6455980812603337,
+      "elongated": false,
+      "flat": false,
+      "multipart": true,
+      "mesh_count": 43,
+      "symmetry": "unknown",
+      "surfaces": [
+        "metal",
+        "dielectric"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [],
+    "raw_non_manifold_edges": 29762,
+    "non_manifold_edges": 1,
+    "degenerate_faces": 0
+  },
+  {
+    "sample": "matte-pump-bottle",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.19500000774860382,
+        0.19636499881744385,
+        0.6704999804496765
+      ],
+      "aspect_ratio": 3.438461301571293,
+      "elongated": true,
+      "flat": false,
+      "multipart": true,
+      "mesh_count": 8,
+      "symmetry": "unknown",
+      "surfaces": [
+        "dielectric"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+      "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [],
+    "raw_non_manifold_edges": 136396,
+    "non_manifold_edges": 71,
+    "degenerate_faces": 0
+  },
+  {
+    "sample": "sideways-tray",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.4699999988079071,
+        0.05000002309679985,
+        0.28999999165534973
+      ],
+      "aspect_ratio": 9.399995633961787,
+      "elongated": false,
+      "flat": true,
+      "multipart": false,
+      "mesh_count": 1,
+      "symmetry": "unknown",
+      "surfaces": [
+        "metal"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "Brushed_stainless_steel：缺失贴图 brushed-steel-missing.png",
+      "OBJ 没有可靠单位信息；真实尺寸未知，工作场景统一缩放用于拍摄",
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [
+      "brushed-steel-missing.png"
+    ],
+    "raw_non_manifold_edges": 0,
+    "non_manifold_edges": 0,
+    "degenerate_faces": 0
+  },
+  {
+    "sample": "thick-glass-tumbler",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.15000000596046448,
+        0.15000000596046448,
+        0.15000000596046448
+      ],
+      "aspect_ratio": 1.0,
+      "elongated": false,
+      "flat": false,
+      "multipart": false,
+      "mesh_count": 1,
+      "symmetry": "unknown",
+      "surfaces": [
+        "transparent"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [],
+    "raw_non_manifold_edges": 1120,
+    "non_manifold_edges": 0,
+    "degenerate_faces": 0
+  },
+  {
+    "sample": "tote",
+    "success": true,
+    "features": {
+      "dimensions": [
+        0.4050000011920929,
+        0.18000003695487976,
+        0.47620800137519836
+      ],
+      "aspect_ratio": 2.6455994644854903,
+      "elongated": false,
+      "flat": false,
+      "multipart": true,
+      "mesh_count": 43,
+      "symmetry": "unknown",
+      "surfaces": [
+        "metal",
+        "dielectric"
+      ],
+      "has_animation": false,
+      "has_armature": false
+    },
+    "warnings": [
+      "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+      "OBJ 没有可靠单位信息；真实尺寸未知，工作场景统一缩放用于拍摄",
+      "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+    ],
+    "missing_textures": [],
+    "raw_non_manifold_edges": 1008,
+    "non_manifold_edges": 1,
+    "degenerate_faces": 0
+  }
+]

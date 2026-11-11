@@ -1,0 +1,426 @@
+{
+  "blender_version": "5.0.1",
+  "passed": true,
+  "legacy_default_energy_identical": true,
+  "absolute_shot_overrides": true,
+  "other_shot_preserved": true,
+  "camera_white_background_preserved": true,
+  "material_adaptation_preserved": true,
+  "environment_zero_supported": true,
+  "baseline": {
+    "lights": {
+      "Key softbox": 156.0,
+      "Fill softbox": 91.19999694824219,
+      "Edge softbox": 204.0,
+      "Top reflection": 72.0
+    },
+    "environment": 0.2199999988079071,
+    "record": {
+      "style": "white",
+      "lights": [
+        {
+          "name": "Key softbox",
+          "position": [
+            -3,
+            -4,
+            5
+          ],
+          "energy": 156.0,
+          "size": 3.0,
+          "color": [
+            1,
+            0.94,
+            0.87
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Fill softbox",
+          "position": [
+            4,
+            -2,
+            3
+          ],
+          "energy": 91.19999694824219,
+          "size": 3.0,
+          "color": [
+            0.86,
+            0.93,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Edge softbox",
+          "position": [
+            1.2,
+            3,
+            4
+          ],
+          "energy": 204.0,
+          "size": 2.0,
+          "color": [
+            0.9,
+            0.95,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Top reflection",
+          "position": [
+            -0.5,
+            0,
+            6
+          ],
+          "energy": 72.0,
+          "size": 2.5,
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        }
+      ],
+      "material_features": [],
+      "rationale": [
+        "以漫反射表面为主：大面积主光与补光保留柔和反光"
+      ],
+      "lighting_multipliers": {
+        "key_power": 1,
+        "fill_power": 1,
+        "rim_power": 1,
+        "environment": 1
+      },
+      "environment_strength": 0.2199999988079071,
+      "color_management": {
+        "view_transform": "Standard",
+        "look": "None",
+        "exposure": 0.0,
+        "display": "sRGB"
+      }
+    }
+  },
+  "adjusted": {
+    "lights": {
+      "Key softbox": 187.1999969482422,
+      "Fill softbox": 36.47999954223633,
+      "Edge softbox": 306.0,
+      "Top reflection": 72.0
+    },
+    "environment": 0.10999999940395355,
+    "record": {
+      "style": "white",
+      "lights": [
+        {
+          "name": "Key softbox",
+          "position": [
+            -3,
+            -4,
+            5
+          ],
+          "energy": 187.1999969482422,
+          "size": 3.0,
+          "color": [
+            1,
+            0.94,
+            0.87
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Fill softbox",
+          "position": [
+            4,
+            -2,
+            3
+          ],
+          "energy": 36.47999954223633,
+          "size": 3.0,
+          "color": [
+            0.86,
+            0.93,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Edge softbox",
+          "position": [
+            1.2,
+            3,
+            4
+          ],
+          "energy": 306.0,
+          "size": 2.0,
+          "color": [
+            0.9,
+            0.95,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Top reflection",
+          "position": [
+            -0.5,
+            0,
+            6
+          ],
+          "energy": 72.0,
+          "size": 2.5,
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        }
+      ],
+      "material_features": [],
+      "rationale": [
+        "以漫反射表面为主：大面积主光与补光保留柔和反光",
+        "已应用确认的主光、补光、轮廓光与物理环境倍率；白底相机背景保持不变"
+      ],
+      "lighting_multipliers": {
+        "key_power": 1.2,
+        "fill_power": 0.4,
+        "rim_power": 1.5,
+        "environment": 0.5
+      },
+      "environment_strength": 0.10999999940395355,
+      "color_management": {
+        "view_transform": "Standard",
+        "look": "None",
+        "exposure": 0.0,
+        "display": "sRGB"
+      }
+    }
+  },
+  "adapted_baseline": {
+    "lights": {
+      "Key softbox": 156.0,
+      "Fill softbox": 45.599998474121094,
+      "Edge softbox": 255.0,
+      "Top reflection": 72.0
+    },
+    "environment": 0.2199999988079071,
+    "record": {
+      "style": "white",
+      "lights": [
+        {
+          "name": "Key softbox",
+          "position": [
+            -3,
+            -4,
+            5
+          ],
+          "energy": 156.0,
+          "size": 3.0,
+          "color": [
+            1,
+            0.94,
+            0.87
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Fill softbox",
+          "position": [
+            4,
+            -2,
+            3
+          ],
+          "energy": 45.599998474121094,
+          "size": 3.0,
+          "color": [
+            0.86,
+            0.93,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Edge softbox",
+          "position": [
+            1.2,
+            3,
+            4
+          ],
+          "energy": 255.0,
+          "size": 2.0,
+          "color": [
+            0.9,
+            0.95,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Top reflection",
+          "position": [
+            -0.5,
+            0,
+            6
+          ],
+          "energy": 72.0,
+          "size": 2.5,
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        }
+      ],
+      "material_features": [
+        {
+          "name": "Dark emissive fixture",
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "luminance": 0.009999999776482582,
+          "emission": 2.0
+        }
+      ],
+      "rationale": [
+        "包含深色表面：增强轮廓光，帮助识别暗部边缘",
+        "检测到发光材质：降低补光以保留发光区域与主体差异"
+      ],
+      "lighting_multipliers": {
+        "key_power": 1,
+        "fill_power": 1,
+        "rim_power": 1,
+        "environment": 1
+      },
+      "environment_strength": 0.2199999988079071,
+      "color_management": {
+        "view_transform": "Standard",
+        "look": "None",
+        "exposure": 0.0,
+        "display": "sRGB"
+      }
+    }
+  },
+  "adapted": {
+    "lights": {
+      "Key softbox": 187.1999969482422,
+      "Fill softbox": 18.239999771118164,
+      "Edge softbox": 382.5,
+      "Top reflection": 72.0
+    },
+    "environment": 0.10999999940395355,
+    "record": {
+      "style": "white",
+      "lights": [
+        {
+          "name": "Key softbox",
+          "position": [
+            -3,
+            -4,
+            5
+          ],
+          "energy": 187.1999969482422,
+          "size": 3.0,
+          "color": [
+            1,
+            0.94,
+            0.87
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Fill softbox",
+          "position": [
+            4,
+            -2,
+            3
+          ],
+          "energy": 18.239999771118164,
+          "size": 3.0,
+          "color": [
+            0.86,
+            0.93,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Edge softbox",
+          "position": [
+            1.2,
+            3,
+            4
+          ],
+          "energy": 382.5,
+          "size": 2.0,
+          "color": [
+            0.9,
+            0.95,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        },
+        {
+          "name": "Top reflection",
+          "position": [
+            -0.5,
+            0,
+            6
+          ],
+          "energy": 72.0,
+          "size": 2.5,
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "shape": "DISK",
+          "size_y": 0.25
+        }
+      ],
+      "material_features": [
+        {
+          "name": "Dark emissive fixture",
+          "metallic": 0.0,
+          "transmission": 0.0,
+          "luminance": 0.009999999776482582,
+          "emission": 2.0
+        }
+      ],
+      "rationale": [
+        "包含深色表面：增强轮廓光，帮助识别暗部边缘",
+        "检测到发光材质：降低补光以保留发光区域与主体差异",
+        "已应用确认的主光、补光、轮廓光与物理环境倍率；白底相机背景保持不变"
+      ],
+      "lighting_multipliers": {
+        "key_power": 1.2,
+        "fill_power": 0.4,
+        "rim_power": 1.5,
+        "environment": 0.5
+      },
+      "environment_strength": 0.10999999940395355,
+      "color_management": {
+        "view_transform": "Standard",
+        "look": "None",
+        "exposure": 0.0,
+        "display": "sRGB"
+      }
+    }
+  }
+}

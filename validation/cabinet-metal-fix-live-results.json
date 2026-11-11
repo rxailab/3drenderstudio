@@ -1,0 +1,104 @@
+{
+  "passed": true,
+  "project_id": "fb50b3a68d194f28af84b5d7b598599f",
+  "before_version": 9,
+  "after_version": 11,
+  "before_job": "b9d857d8283a4f6ea48880cf672844c4",
+  "after_job": "bd355b0dc74a4e30bb504873407846a1",
+  "before": {
+    "G-不锈钢台面_2": {
+      "material": "亮光金属_6",
+      "metallic": 0.0,
+      "roughness": 0.800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    },
+    "铝条_7": {
+      "material": "铝_1",
+      "metallic": 0.0,
+      "roughness": 0.800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    },
+    "铝条_8": {
+      "material": "铝_1",
+      "metallic": 0.0,
+      "roughness": 0.800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    }
+  },
+  "after": {
+    "G-不锈钢台面_2": {
+      "material": "亮光金属_6",
+      "metallic": 1.0,
+      "roughness": 0.2800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    },
+    "铝条_7": {
+      "material": "铝_1",
+      "metallic": 1.0,
+      "roughness": 0.2800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    },
+    "铝条_8": {
+      "material": "铝_1",
+      "metallic": 1.0,
+      "roughness": 0.2800000011920929,
+      "metallic_linked": false,
+      "roughness_linked": false,
+      "color": [
+        0.550000011920929,
+        0.5899999737739563,
+        0.6299999952316284,
+        1.0
+      ],
+      "color_links": []
+    }
+  },
+  "product_meshes_checked": 117,
+  "geometry_uv_transforms_preserved": true,
+  "base_colors_preserved": true,
+  "camera_preserved": true,
+  "before_key_shape": "DISK",
+  "after_key_shape": "RECTANGLE",
+  "before_blend": "D:\\模型渲染\\data\\fb50b3a68d194f28af84b5d7b598599f\\runs\\b9d857d8283a4f6ea48880cf672844c4\\08_G07C_G02M_combo_hero_v9\\08_G07C_G02M_combo_hero_v9.blend",
+  "after_blend": "D:\\模型渲染\\data\\fb50b3a68d194f28af84b5d7b598599f\\runs\\bd355b0dc74a4e30bb504873407846a1\\08_G07C_G02M_combo_hero_v10_review2\\08_G07C_G02M_combo_hero_v10_review2.blend"
+}

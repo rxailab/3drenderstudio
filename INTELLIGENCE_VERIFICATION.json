@@ -1,0 +1,343 @@
+{
+  "revision": "v3",
+  "scope": "Code and execution-flow regression verification; model quality and actual rendered appearance are not benchmarked",
+  "backend": {
+    "tests": 297,
+    "passed": 295,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "successful": false,
+    "new_v3_tests": 86,
+    "new_v3_tests_passed": 86,
+    "errors_due_to_missing_original_fixture": 2,
+    "missing_fixture": "validation/ai-cabinet-exact-debug.json",
+    "errored_test_ids": [
+      "test_ai_client.AIClientTests.test_review_captured_broken_json_realism_is_never_trimmed_or_accepted",
+      "test_ai_client.AIClientTests.test_review_captured_diagnostic_extra_field_is_safely_ignored"
+    ],
+    "network_blocked": true,
+    "uploaded_env_not_read": true,
+    "kind": "Actual modules with temporary projects, mocked AI and rendering boundaries"
+  },
+  "frontend": {
+    "tests": 52,
+    "passed": 52,
+    "failures": 0,
+    "skipped": 0,
+    "new_v3_tests": 19,
+    "new_v3_tests_passed": 19,
+    "runtime": "Node v24.22.1; jsdom 31.0.0",
+    "kind": "Actual HTML/JavaScript DOM and state tests with mocked APIs",
+    "test_file": "tests/test_ui_state.cjs"
+  },
+  "static_checks": {
+    "revision": "v3",
+    "kind": "HTML references, ARIA reference integrity, JavaScript syntax and CSS parsing; no pixel/browser accessibility audit",
+    "ids": 233,
+    "duplicates": [],
+    "missingLiteralJSReferences": [],
+    "brokenAria": [],
+    "nestedForms": 0,
+    "globalForms": 1,
+    "diagnosticInputs": 0,
+    "removedBottomForm": true,
+    "receiptPanel": true,
+    "receiptDetailsCollapsedInitially": true,
+    "preservationExampleInPlaceholder": "例如：反光柔和一点，颜色和角度不变",
+    "cssParseErrors": [],
+    "javascriptSyntax": "passed"
+  },
+  "offline_preview": {
+    "status": "passed",
+    "revision": "v3",
+    "verified": true,
+    "kind": "Generated offline pages: jsdom DOM/state checks, JavaScript and CSS parsing; no browser visual verification",
+    "node": "v24.22.1",
+    "checkedFiles": {
+      "v2": "qa/wuying-v2-compare.inner.html",
+      "v3": "deliverables/wuying-intelligence-preview-v3.inner.html",
+      "comparison": "deliverables/wuying-intelligence-preview-v3.html"
+    },
+    "checksPassed": 19,
+    "checks": [
+      {
+        "name": "All embedded scripts and CSS parse; actual app snapshots are embedded",
+        "status": "passed"
+      },
+      {
+        "name": "Comparison switches both exact revisions and all five iframe viewport sizes",
+        "status": "passed"
+      },
+      {
+        "name": "v2 startup and single input at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v2 startup and single input at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v2 startup and single input at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v2 startup and single input at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v2 startup and single input at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup and single input at 1280 × 900",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup and single input at 1440 × 960",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup and single input at 1366 × 768",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup and single input at 768 × 1024",
+        "status": "passed"
+      },
+      {
+        "name": "v3 startup and single input at 390 × 844",
+        "status": "passed"
+      },
+      {
+        "name": "v2 recheck is diagnostic-only and preserves plan, version and jobs",
+        "status": "passed"
+      },
+      {
+        "name": "v3 recheck is diagnostic-only and preserves plan, version and jobs",
+        "status": "passed"
+      },
+      {
+        "name": "v3 captures the viewed shot, exact image and version while later viewing stays independent",
+        "status": "passed"
+      },
+      {
+        "name": "v3 saves a draft before instructing without relabelling the older viewed image",
+        "status": "passed"
+      },
+      {
+        "name": "v3 lost-response retry reuses the immutable request and only applies once",
+        "status": "passed"
+      },
+      {
+        "name": "v3 no-change instruction preserves the version and creates no preview task",
+        "status": "passed"
+      },
+      {
+        "name": "Unsupported demo requests preserve the input and make no partial changes",
+        "status": "passed"
+      }
+    ],
+    "observations": {
+      "inlineScripts": {
+        "count": 4,
+        "parsed": true
+      },
+      "inlineStyles": {
+        "count": 3,
+        "parsed": true,
+        "mediaQueries": {
+          "v2": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "v3": [
+            "(min-width:1680px)",
+            "(max-width:1320px) and (min-width:981px)",
+            "(max-width:980px)",
+            "(max-width:600px)",
+            "(prefers-reduced-motion:reduce)"
+          ],
+          "comparison": []
+        }
+      },
+      "comparison": {
+        "versions": [
+          "v2",
+          "v3"
+        ],
+        "viewportOptions": [
+          {
+            "width": 1280,
+            "height": 900
+          },
+          {
+            "width": 1440,
+            "height": 960
+          },
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 768,
+            "height": 1024
+          },
+          {
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "switchCombinations": 10
+      },
+      "startupCombinations": [
+        {
+          "revision": "v2",
+          "width": 1280,
+          "height": 900,
+          "status": "passed"
+        },
+        {
+          "revision": "v2",
+          "width": 1440,
+          "height": 960,
+          "status": "passed"
+        },
+        {
+          "revision": "v2",
+          "width": 1366,
+          "height": 768,
+          "status": "passed"
+        },
+        {
+          "revision": "v2",
+          "width": 768,
+          "height": 1024,
+          "status": "passed"
+        },
+        {
+          "revision": "v2",
+          "width": 390,
+          "height": 844,
+          "status": "passed"
+        },
+        {
+          "revision": "v3",
+          "width": 1280,
+          "height": 900,
+          "status": "passed"
+        },
+        {
+          "revision": "v3",
+          "width": 1440,
+          "height": 960,
+          "status": "passed"
+        },
+        {
+          "revision": "v3",
+          "width": 1366,
+          "height": 768,
+          "status": "passed"
+        },
+        {
+          "revision": "v3",
+          "width": 768,
+          "height": 1024,
+          "status": "passed"
+        },
+        {
+          "revision": "v3",
+          "width": 390,
+          "height": 844,
+          "status": "passed"
+        }
+      ],
+      "instruction": {
+        "capturedShot": "campaign",
+        "source": {
+          "output_id": "qa-placeholder-campaign",
+          "shot_id": "campaign",
+          "quality": "preview",
+          "version": 1
+        },
+        "expectedVersion": 1,
+        "appliedVersion": 2,
+        "previewVersion": 2,
+        "previewShots": [
+          "campaign"
+        ],
+        "independentKeys": true,
+        "oneInstructionOnePreview": true,
+        "leafChange": {
+          "path": "shot_adjustments.campaign.softness_multiplier",
+          "before": null,
+          "after": 1.4
+        },
+        "receiptSummary": "已调整：柔和度倍率 未设置 → 1.4",
+        "usedImage": false,
+        "usedReference": false,
+        "mockJobMessage": "界面演示：任务已排队（不执行渲染）图组进度 0/1 张取消任务查看真实执行日志"
+      },
+      "mockDedup": {
+        "instructionReplayKeepsVersion": true,
+        "previewReplayKeepsSingleJob": true,
+        "sameKeyDifferentBodyRejected": true
+      },
+      "lostResponse": {
+        "sameInstructionKey": true,
+        "sameRequestBody": true,
+        "appliedOnce": true,
+        "queuedOnce": true
+      },
+      "noChange": {
+        "versionPreserved": true,
+        "planPreserved": true,
+        "noJobs": true
+      }
+    },
+    "limitations": [
+      "Five viewport options and both revision documents were exercised; jsdom does not validate responsive geometry, clipping, or visual appearance.",
+      "All project data, image placeholders, diagnoses and queued tasks are explicitly labelled demonstrations; no AI image understanding, Blender rendering, upload, or external request was executed."
+    ]
+  },
+  "visual_browser_verification": false,
+  "real_blender_render_verification": false,
+  "real_c4d_export_verification": false,
+  "real_ai_requests_sent": false,
+  "quality_improvement_benchmark_performed": false,
+  "missing_uploaded_components": [
+    "blender/worker.py",
+    "blender/pick_surface.py",
+    "blender/export_scene.py",
+    "c4d/convert_scene.py",
+    "samples/index.json"
+  ],
+  "source_manifest_sha256": {
+    "ai_client.py": "67fb5672fd241b9f27211f98277e2882e33c7df3d0a11e272ecb3d82c3104c47",
+    "ai_config.py": "0327f17929b285f71229416583f1a5c4a2e65986bbada0558699b336e121be89",
+    "app.py": "e6fb06b137c445a70b08e5242b2bb7fe78f27f14613c2bcbabc2e15a5d24979b",
+    "asset_provenance.py": "2e32758604e013634712815a3c7d9d53ddeeba717eb38b63762c489bd4681ae6",
+    "engine.py": "74ed869a2dbd394c750afe32038a3d93349b3adea50ceffec478c9bdb82a2ba3",
+    "instruction_service.py": "8c494f50e5a870ef7d64638bc025e7009de0d4cae7f21bfe893bc66fd59f3f58",
+    "intelligence_rules.py": "880b1ee8a267d6fefe561f11210d03e7f2c36e1eda2f999ffd3da40c5637eb5c",
+    "material_agent.py": "1d9136f7b34e97eeb3d778613a2cd9669c499aa2a78cf62d1ede9d610dfdddce",
+    "material_edit.py": "8b8588d3ac4ad7c98fa8bf78fdd9f1e850baa3cb8c3e07d1046b557bec839159",
+    "planner.py": "1416616814db3ed3024ad35e495f1261f5b9aeb3efe6121861e5d41c6150a115",
+    "quality_gate.py": "bc4578ccbb37c92a65324fb3528c98a65e75fbb8ea30a79caf11dcfd7d8e69fe",
+    "review_actions.py": "49efaf982eca07f8e7c19262ad7a52b19433f56c741c27097a7704cf6bfc088c",
+    "scene_exports.py": "02d7cb3be62fb901145a4a52bb00451ea554b9c67793f710a5e2944d3c84a7c6",
+    "static/app.js": "67b44cdc8d503a1bac7ce59a6496f65525d7cb32594a8ab4d3bb279e3d3ca58f",
+    "static/index.html": "468999aea8db3a09d519842fafc55ba53e6155a0d63c0d7d531f8ead68e9944b",
+    "static/styles.css": "66b325e8aaa3a644d8da63efdb32bec27496c3fdf15c68e79ce06ff811dc3b67",
+    "studio_store.py": "77184718153ec7bd8c0473a78be0f9135723402ee480b1568e72f1f38cce4972"
+  },
+  "notes": [
+    "The 2 fixture errors predate this upgrade and remain disclosed, not counted as passes.",
+    "The 0.02 automatic adoption threshold is a heuristic, not a statistical or perceptual guarantee.",
+    "The offline preview is explicitly labelled demo data and placeholders, not generated product imagery.",
+    "Historical ACCEPTANCE.md and validation records do not represent new v3 real-render or network execution."
+  ]
+}

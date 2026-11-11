@@ -1,0 +1,3312 @@
+{
+  "project": {
+    "analysis": {
+      "animations": [],
+      "blender_version": "5.0.1",
+      "bounds": {
+        "max": [
+          0.09750000387430191,
+          0.09750000387430191,
+          0.6704999804496765
+        ],
+        "min": [
+          -0.09750000387430191,
+          -0.09886500239372253,
+          0.0
+        ]
+      },
+      "dimensions": {
+        "reliability": "declared",
+        "source": "glTF specification",
+        "unit": "m",
+        "value": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ]
+      },
+      "features": {
+        "aspect_ratio": 3.438461301571293,
+        "dimensions": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ],
+        "elongated": true,
+        "flat": false,
+        "has_animation": false,
+        "has_armature": false,
+        "mesh_count": 8,
+        "multipart": true,
+        "surfaces": [
+          "dielectric"
+        ],
+        "symmetry": "unknown"
+      },
+      "materials": [
+        {
+          "color": [
+            0.04500000178813934,
+            0.2800000011920929,
+            0.27000001072883606,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Matte recycled plastic — teal",
+          "roughness": 0.5799999833106995,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.7799999713897705,
+            0.7400000095367432,
+            0.6200000047683716,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Soft satin plastic — cream",
+          "roughness": 0.33000001311302185,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.9200000166893005,
+            0.9100000262260437,
+            0.8500000238418579,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Paper label — ivory",
+          "roughness": 0.7200000286102295,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.017999999225139618,
+            0.054999999701976776,
+            0.04500000178813934,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Printed dark green ink",
+          "roughness": 0.6499999761581421,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        }
+      ],
+      "objects": [
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.19500000774860382,
+            0.19500000774860382,
+            0.560000479221344
+          ],
+          "faces": 1920,
+          "location": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "materials": [
+            "Matte recycled plastic — teal"
+          ],
+          "name": "Bottle body",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 832,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 1386
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.09489999711513519,
+            0.09489999711513519,
+            0.054999999701976776
+          ],
+          "faces": 1532,
+          "location": [
+            0.0,
+            0.0,
+            0.5640000104904175
+          ],
+          "materials": [
+            "Soft satin plastic — cream"
+          ],
+          "name": "Pump collar",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 390,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 964
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.029899999499320984,
+            0.029899999499320984,
+            0.06499999761581421
+          ],
+          "faces": 1532,
+          "location": [
+            0.0,
+            0.0,
+            0.6159999966621399
+          ],
+          "materials": [
+            "Soft satin plastic — cream"
+          ],
+          "name": "Pump stem",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 390,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 964
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.08124999701976776,
+            0.12349999696016312,
+            0.03500000014901161
+          ],
+          "faces": 428,
+          "location": [
+            0.0,
+            -0.019499998539686203,
+            0.652999997138977
+          ],
+          "materials": [
+            "Soft satin plastic — cream"
+          ],
+          "name": "Pump dispenser",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 678,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 521
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.12318683415651321,
+            0.021787866950035095,
+            0.19500000774860382
+          ],
+          "faces": 64,
+          "location": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "materials": [
+            "Paper label — ivory"
+          ],
+          "name": "Label substrate",
+          "non_manifold_edges": 66,
+          "parent": null,
+          "raw_non_manifold_edges": 66,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 66
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.07103070616722107,
+            0.027300003916025162,
+            0.00736567797139287
+          ],
+          "faces": 21500,
+          "location": [
+            0.0,
+            -0.09866999834775925,
+            0.3370000123977661
+          ],
+          "materials": [
+            "Printed dark green ink"
+          ],
+          "name": "Label_MORA",
+          "non_manifold_edges": 5,
+          "parent": null,
+          "raw_non_manifold_edges": 33390,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 37617
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.04222140461206436,
+            0.008399994112551212,
+            0.002715130103752017
+          ],
+          "faces": 29400,
+          "location": [
+            0.0,
+            -0.09866999834775925,
+            0.29899999499320984
+          ],
+          "materials": [
+            "Printed dark green ink"
+          ],
+          "name": "Label_DAILY CARE",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 43510,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 49314
+        },
+        {
+          "animated": false,
+          "constraints": [],
+          "degenerate_faces": 0,
+          "dimensions": [
+            0.024142300710082054,
+            0.009800002910196781,
+            0.0011396066984161735
+          ],
+          "faces": 37800,
+          "location": [
+            0.0,
+            -0.09866999834775925,
+            0.24199999868869781
+          ],
+          "materials": [
+            "Printed dark green ink"
+          ],
+          "name": "Label_500 ml",
+          "non_manifold_edges": 0,
+          "parent": null,
+          "raw_non_manifold_edges": 57140,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "type": "MESH",
+          "uv_layers": [
+            "UVMap"
+          ],
+          "vertices": 64424
+        }
+      ],
+      "success": true,
+      "warnings": [
+        "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+      ]
+    },
+    "created_at": 1793966505.1679661,
+    "history": [
+      {
+        "at": 1793966508.268547,
+        "plan": {
+          "aspect": "1:1",
+          "exposure": 0,
+          "light_softness": 1,
+          "margin": 0.12,
+          "material_overrides": [],
+          "material_suggestions": [
+            {
+              "color": [
+                0.04500000178813934,
+                0.2800000011920929,
+                0.27000001072883606,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Matte recycled plastic — teal",
+              "roughness": 0.5799999833106995,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.7799999713897705,
+                0.7400000095367432,
+                0.6200000047683716,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Soft satin plastic — cream",
+              "roughness": 0.33000001311302185,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.9200000166893005,
+                0.9100000262260437,
+                0.8500000238418579,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Paper label — ivory",
+              "roughness": 0.7200000286102295,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.017999999225139618,
+                0.054999999701976776,
+                0.04500000178813934,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Printed dark green ink",
+              "roughness": 0.6499999761581421,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            }
+          ],
+          "max_corrections": 2,
+          "model_features": {
+            "aspect_ratio": 3.438461301571293,
+            "dimensions": [
+              0.19500000774860382,
+              0.19636499881744385,
+              0.6704999804496765
+            ],
+            "elongated": true,
+            "flat": false,
+            "has_animation": false,
+            "has_armature": false,
+            "mesh_count": 8,
+            "multipart": true,
+            "surfaces": [
+              "dielectric"
+            ],
+            "symmetry": "unknown"
+          },
+          "pending": [
+            "实际摆放方向与主展示面请在预览中确认",
+            "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+          ],
+          "pose": {},
+          "repair": {
+            "normals": false,
+            "smooth": false
+          },
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "azimuth": 35,
+              "elevation": 18,
+              "focal_length": 70,
+              "id": "hero",
+              "kind": "full",
+              "label": "白底主图",
+              "style": "white"
+            },
+            {
+              "azimuth": -38,
+              "elevation": 22,
+              "focal_length": 60,
+              "id": "campaign",
+              "kind": "full",
+              "label": "棚拍宣传"
+            },
+            {
+              "azimuth": 90,
+              "elevation": 12,
+              "focal_length": 70,
+              "id": "side",
+              "kind": "full",
+              "label": "侧面结构"
+            },
+            {
+              "azimuth": 155,
+              "elevation": 22,
+              "focal_length": 70,
+              "id": "back",
+              "kind": "full",
+              "label": "背面展示"
+            },
+            {
+              "azimuth": 30,
+              "elevation": 25,
+              "focal_length": 85,
+              "id": "detail1",
+              "kind": "detail",
+              "label": "材质细节",
+              "target_object": "Bottle body"
+            },
+            {
+              "azimuth": -60,
+              "elevation": 35,
+              "focal_length": 85,
+              "id": "detail2",
+              "kind": "detail",
+              "label": "结构细节",
+              "target_object": "Label_500 ml"
+            }
+          ],
+          "source": "rules",
+          "style": "soft",
+          "texture_rotation": 0,
+          "texture_scale": 1,
+          "time_budget": 1200
+        },
+        "reason": "界面参数修改",
+        "version": 1
+      }
+    ],
+    "id": "fa395f959fd14321b60289804e3cb3af",
+    "jobs": [
+      {
+        "completed": [
+          "hero",
+          "campaign"
+        ],
+        "created_at": 1793966517.4428115,
+        "current_shot": "棚拍宣传",
+        "error": null,
+        "finished_at": 1793966870.7361803,
+        "id": "83637e937b204387b191f7ecfb6118c0",
+        "kind": "render",
+        "log_tail": [
+          "mat=bpy.data.materials.new('Studio floor material');mat.use_nodes=True",
+          "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+          "if mat and mat.use_nodes:",
+          "00:00.766  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library",
+          "EVENT:{\"stage\": \"使用 GPU 渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}}",
+          "EVENT:{\"stage\": \"正在打包可复现工程\"}",
+          "Info: No new files have been packed",
+          "Info: Saved as \"哑光塑料按压瓶_campaign_v2.blend\"",
+          "EVENT:{\"stage\": \"Cycles 正在渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}, \"shot\": \"campaign\"}",
+          "02:09.203  render           | Saved: 'D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\83637e937b204387b191f7ecfb6118c0\\哑光塑料按压瓶_campaign_v2\\哑光塑料按压瓶_campaign_v2.png'",
+          "EVENT:{\"stage\": \"正在校验导出图片\"}",
+          "EVENT:{\"stage\": \"执行完成\"}",
+          "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+          "",
+          "Blender quit"
+        ],
+        "plan": {
+          "aspect": "1:1",
+          "exposure": 0,
+          "light_softness": 1,
+          "margin": 0.12,
+          "material_overrides": [],
+          "material_suggestions": [
+            {
+              "color": [
+                0.04500000178813934,
+                0.2800000011920929,
+                0.27000001072883606,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Matte recycled plastic — teal",
+              "roughness": 0.5799999833106995,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.7799999713897705,
+                0.7400000095367432,
+                0.6200000047683716,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Soft satin plastic — cream",
+              "roughness": 0.33000001311302185,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.9200000166893005,
+                0.9100000262260437,
+                0.8500000238418579,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Paper label — ivory",
+              "roughness": 0.7200000286102295,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.017999999225139618,
+                0.054999999701976776,
+                0.04500000178813934,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Printed dark green ink",
+              "roughness": 0.6499999761581421,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            }
+          ],
+          "max_corrections": 2,
+          "model_features": {
+            "aspect_ratio": 3.438461301571293,
+            "dimensions": [
+              0.19500000774860382,
+              0.19636499881744385,
+              0.6704999804496765
+            ],
+            "elongated": true,
+            "flat": false,
+            "has_animation": false,
+            "has_armature": false,
+            "mesh_count": 8,
+            "multipart": true,
+            "surfaces": [
+              "dielectric"
+            ],
+            "symmetry": "unknown"
+          },
+          "pending": [
+            "实际摆放方向与主展示面请在预览中确认",
+            "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+          ],
+          "pose": {},
+          "repair": {
+            "normals": false,
+            "smooth": false
+          },
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "azimuth": 10,
+              "elevation": 18,
+              "focal_length": 70,
+              "id": "hero",
+              "kind": "full",
+              "label": "白底主图",
+              "style": "white"
+            },
+            {
+              "azimuth": -38,
+              "elevation": 22,
+              "focal_length": 60,
+              "id": "campaign",
+              "kind": "full",
+              "label": "棚拍宣传"
+            },
+            {
+              "azimuth": 90,
+              "elevation": 12,
+              "focal_length": 70,
+              "id": "side",
+              "kind": "full",
+              "label": "侧面结构"
+            },
+            {
+              "azimuth": 155,
+              "elevation": 22,
+              "focal_length": 70,
+              "id": "back",
+              "kind": "full",
+              "label": "背面展示"
+            },
+            {
+              "azimuth": 30,
+              "elevation": 25,
+              "focal_length": 85,
+              "id": "detail1",
+              "kind": "detail",
+              "label": "材质细节",
+              "target_object": "Bottle body"
+            },
+            {
+              "azimuth": -60,
+              "elevation": 35,
+              "focal_length": 85,
+              "id": "detail2",
+              "kind": "detail",
+              "label": "结构细节",
+              "target_object": "Label_500 ml"
+            }
+          ],
+          "source": "user",
+          "style": "dark",
+          "texture_rotation": 0,
+          "texture_scale": 1,
+          "time_budget": 1200
+        },
+        "progress": 100,
+        "project_id": "fa395f959fd14321b60289804e3cb3af",
+        "quality": "standard",
+        "request_key": null,
+        "retry_of": null,
+        "sample_progress": 0,
+        "shot_ids": [
+          "hero",
+          "campaign"
+        ],
+        "stage": "已完成",
+        "started_at": 1793966517.4573421,
+        "status": "completed",
+        "updated_at": 1793966870.744688,
+        "version": 2
+      },
+      {
+        "completed": [
+          "hero",
+          "campaign"
+        ],
+        "created_at": 1793966508.3032374,
+        "current_shot": "棚拍宣传",
+        "error": null,
+        "finished_at": 1793966515.1954694,
+        "id": "17d98289d5a24270ac26e7678361d66d",
+        "kind": "preview",
+        "log_tail": [
+          "mat=bpy.data.materials.new('Studio floor material');mat.use_nodes=True",
+          "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+          "if mat and mat.use_nodes:",
+          "00:00.797  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library",
+          "EVENT:{\"stage\": \"使用 GPU 渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}}",
+          "EVENT:{\"stage\": \"正在打包可复现工程\"}",
+          "Info: No new files have been packed",
+          "Info: Saved as \"哑光塑料按压瓶_campaign_v2.blend\"",
+          "EVENT:{\"stage\": \"Cycles 正在渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}, \"shot\": \"campaign\"}",
+          "00:02.656  render           | Saved: 'D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\17d98289d5a24270ac26e7678361d66d\\哑光塑料按压瓶_campaign_v2\\哑光塑料按压瓶_campaign_v2.png'",
+          "EVENT:{\"stage\": \"正在校验导出图片\"}",
+          "EVENT:{\"stage\": \"执行完成\"}",
+          "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+          "",
+          "Blender quit"
+        ],
+        "plan": {
+          "aspect": "1:1",
+          "exposure": 0,
+          "light_softness": 1,
+          "margin": 0.12,
+          "material_overrides": [],
+          "material_suggestions": [
+            {
+              "color": [
+                0.04500000178813934,
+                0.2800000011920929,
+                0.27000001072883606,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Matte recycled plastic — teal",
+              "roughness": 0.5799999833106995,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.7799999713897705,
+                0.7400000095367432,
+                0.6200000047683716,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Soft satin plastic — cream",
+              "roughness": 0.33000001311302185,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.9200000166893005,
+                0.9100000262260437,
+                0.8500000238418579,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Paper label — ivory",
+              "roughness": 0.7200000286102295,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            },
+            {
+              "color": [
+                0.017999999225139618,
+                0.054999999701976776,
+                0.04500000178813934,
+                1.0
+              ],
+              "confidence": 1.0,
+              "emission": 0.0,
+              "metallic": 0.0,
+              "name": "Printed dark green ink",
+              "roughness": 0.6499999761581421,
+              "source": "model",
+              "suggested_preset": "matte_plastic",
+              "suggestion_confidence": 0.55,
+              "suggestion_source": "rules",
+              "textures": [],
+              "transmission": 0.0
+            }
+          ],
+          "max_corrections": 2,
+          "model_features": {
+            "aspect_ratio": 3.438461301571293,
+            "dimensions": [
+              0.19500000774860382,
+              0.19636499881744385,
+              0.6704999804496765
+            ],
+            "elongated": true,
+            "flat": false,
+            "has_animation": false,
+            "has_armature": false,
+            "mesh_count": 8,
+            "multipart": true,
+            "surfaces": [
+              "dielectric"
+            ],
+            "symmetry": "unknown"
+          },
+          "pending": [
+            "实际摆放方向与主展示面请在预览中确认",
+            "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+            "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+          ],
+          "pose": {},
+          "repair": {
+            "normals": false,
+            "smooth": false
+          },
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "azimuth": 10,
+              "elevation": 18,
+              "focal_length": 70,
+              "id": "hero",
+              "kind": "full",
+              "label": "白底主图",
+              "style": "white"
+            },
+            {
+              "azimuth": -38,
+              "elevation": 22,
+              "focal_length": 60,
+              "id": "campaign",
+              "kind": "full",
+              "label": "棚拍宣传"
+            },
+            {
+              "azimuth": 90,
+              "elevation": 12,
+              "focal_length": 70,
+              "id": "side",
+              "kind": "full",
+              "label": "侧面结构"
+            },
+            {
+              "azimuth": 155,
+              "elevation": 22,
+              "focal_length": 70,
+              "id": "back",
+              "kind": "full",
+              "label": "背面展示"
+            },
+            {
+              "azimuth": 30,
+              "elevation": 25,
+              "focal_length": 85,
+              "id": "detail1",
+              "kind": "detail",
+              "label": "材质细节",
+              "target_object": "Bottle body"
+            },
+            {
+              "azimuth": -60,
+              "elevation": 35,
+              "focal_length": 85,
+              "id": "detail2",
+              "kind": "detail",
+              "label": "结构细节",
+              "target_object": "Label_500 ml"
+            }
+          ],
+          "source": "user",
+          "style": "dark",
+          "texture_rotation": 0,
+          "texture_scale": 1,
+          "time_budget": 1200
+        },
+        "progress": 100,
+        "project_id": "fa395f959fd14321b60289804e3cb3af",
+        "quality": "preview",
+        "request_key": null,
+        "retry_of": null,
+        "sample_progress": 0,
+        "shot_ids": [
+          "hero",
+          "campaign"
+        ],
+        "stage": "已完成",
+        "started_at": 1793966508.3185568,
+        "status": "completed",
+        "updated_at": 1793966515.2014818,
+        "version": 2
+      },
+      {
+        "completed": [],
+        "created_at": 1793966505.1819577,
+        "current_shot": null,
+        "error": null,
+        "finished_at": 1793966506.4232943,
+        "id": "362696f06c0246caa08d7311d3cd5a6c",
+        "kind": "analyze",
+        "log_tail": [
+          "12:01:45 | INFO: Blender create Mesh node Cube.001",
+          "12:01:45 | INFO: Blender create Mesh node Curved label substrate",
+          "12:01:45 | INFO: Blender create Mesh node MORA",
+          "12:01:45 | INFO: Blender create Mesh node DAILY CARE",
+          "12:01:45 | INFO: Blender create Mesh node 500 ml",
+          "12:01:45 | INFO: glTF import finished in 0.17s",
+          "EVENT:{\"stage\": \"正在检查结构与资源\"}",
+          "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+          "if mat and mat.use_nodes:",
+          "D:\\模型渲染\\blender\\worker.py:105: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+          "for n in (mat.node_tree.nodes if mat.use_nodes else []) if n.type == 'TEX_IMAGE' and n.image]",
+          "EVENT:{\"stage\": \"执行完成\"}",
+          "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+          "",
+          "Blender quit"
+        ],
+        "plan": {
+          "aspect": "1:1",
+          "exposure": 0,
+          "light_softness": 1,
+          "margin": 0.12,
+          "material_overrides": [],
+          "max_corrections": 2,
+          "pending": [
+            "实际摆放方向与主展示面请在预览中确认"
+          ],
+          "pose": {},
+          "repair": {
+            "normals": false,
+            "smooth": false
+          },
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "azimuth": 35,
+              "elevation": 18,
+              "focal_length": 70,
+              "id": "hero",
+              "kind": "full",
+              "label": "白底主图",
+              "style": "white"
+            },
+            {
+              "azimuth": -38,
+              "elevation": 22,
+              "focal_length": 60,
+              "id": "campaign",
+              "kind": "full",
+              "label": "棚拍宣传"
+            },
+            {
+              "azimuth": 90,
+              "elevation": 12,
+              "focal_length": 70,
+              "id": "side",
+              "kind": "full",
+              "label": "侧面结构"
+            },
+            {
+              "azimuth": 155,
+              "elevation": 22,
+              "focal_length": 70,
+              "id": "back",
+              "kind": "full",
+              "label": "背面展示"
+            },
+            {
+              "azimuth": 30,
+              "elevation": 25,
+              "focal_length": 85,
+              "id": "detail1",
+              "kind": "detail",
+              "label": "材质细节"
+            },
+            {
+              "azimuth": -60,
+              "elevation": 35,
+              "focal_length": 85,
+              "id": "detail2",
+              "kind": "detail",
+              "label": "结构细节"
+            }
+          ],
+          "source": "rules",
+          "style": "soft",
+          "texture_rotation": 0,
+          "texture_scale": 1,
+          "time_budget": 1200
+        },
+        "progress": 100,
+        "project_id": "fa395f959fd14321b60289804e3cb3af",
+        "quality": "preview",
+        "request_key": null,
+        "retry_of": null,
+        "shot_ids": [
+          "hero",
+          "campaign",
+          "side",
+          "back",
+          "detail1",
+          "detail2"
+        ],
+        "stage": "已完成",
+        "started_at": 1793966505.1939738,
+        "status": "completed",
+        "updated_at": 1793966506.4282947,
+        "version": 1
+      }
+    ],
+    "metadata": {
+      "example_id": "matte-bottle",
+      "license": "CC0-1.0"
+    },
+    "model_path": "D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\originals\\matte-pump-bottle.glb",
+    "name": "哑光塑料按压瓶",
+    "outputs": [
+      {
+        "blend_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.3691946268081665,
+                0.12189365178346634,
+                0.6202911138534546,
+                0.8681356310844421
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7462419793009758,
+          "projected_bounds": [
+            0.3691946268081665,
+            0.12189365178346634,
+            0.6202911138534546,
+            0.8681356310844421
+          ],
+          "projection_test_points": [
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              -0.10317697376012802,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              -0.10317697376012802,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7507054805755615
+            ]
+          ]
+        },
+        "created_at": 1793966512.1545155,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 512,
+        "job_id": "17d98289d5a24270ac26e7678361d66d",
+        "jpg_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.744,
+          "dark_fraction": 0.0,
+          "luminance_mean": 238.81
+        },
+        "png_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.png",
+        "quality": "preview",
+        "result_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_hero_v2/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 2,
+        "width": 512
+      },
+      {
+        "blend_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.35025739669799805,
+                0.1218915805220604,
+                0.6519243121147156,
+                0.8637998104095459
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7419082298874855,
+          "projected_bounds": [
+            0.35025739669799805,
+            0.1218915805220604,
+            0.6519243121147156,
+            0.8637998104095459
+          ],
+          "projection_test_points": [
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              -0.10317697376012802,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              -0.10317697376012802,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7507054805755615
+            ]
+          ]
+        },
+        "created_at": 1793966515.1814785,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 512,
+        "job_id": "17d98289d5a24270ac26e7678361d66d",
+        "jpg_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.0012,
+          "dark_fraction": 0.1143,
+          "luminance_mean": 103.27
+        },
+        "png_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.png",
+        "quality": "preview",
+        "result_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/17d98289d5a24270ac26e7678361d66d/哑光塑料按压瓶_campaign_v2/result.json",
+        "shot_id": "campaign",
+        "shot_label": "棚拍宣传",
+        "version": 2,
+        "width": 512
+      },
+      {
+        "blend_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.3691946268081665,
+                0.12189365178346634,
+                0.6202911138534546,
+                0.8681356310844421
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7462419793009758,
+          "projected_bounds": [
+            0.3691946268081665,
+            0.12189365178346634,
+            0.6202911138534546,
+            0.8681356310844421
+          ],
+          "projection_test_points": [
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              -0.10317697376012802,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              -0.10317697376012802,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7507054805755615
+            ]
+          ]
+        },
+        "created_at": 1793966739.5247848,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 4096,
+        "job_id": "83637e937b204387b191f7ecfb6118c0",
+        "jpg_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.7449,
+          "dark_fraction": 0.0,
+          "luminance_mean": 238.85
+        },
+        "png_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_hero_v2/哑光塑料按压瓶_hero_v2.png",
+        "quality": "standard",
+        "result_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_hero_v2/result.json",
+        "shot_id": "hero",
+        "shot_label": "白底主图",
+        "version": 2,
+        "width": 4096
+      },
+      {
+        "blend_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.blend",
+        "checks": {
+          "attempts": [
+            {
+              "attempt": 0,
+              "clipped": false,
+              "projected_bounds": [
+                0.35025739669799805,
+                0.1218915805220604,
+                0.6519243121147156,
+                0.8637998104095459
+              ],
+              "safe_margin": true
+            }
+          ],
+          "automatic_check_status": "passed",
+          "clipped": false,
+          "corrections": 0,
+          "detail_target": null,
+          "ground_contact": 0.0,
+          "kind": "complete_product",
+          "manual_review": [
+            "曝光、噪点、反射、穿插和材质辨识度需目视判断；此版本未配置视觉 AI 检查"
+          ],
+          "margin": 0.12,
+          "method": "projected evaluated bounding boxes",
+          "occupancy": 0.7419082298874855,
+          "projected_bounds": [
+            0.35025739669799805,
+            0.1218915805220604,
+            0.6519243121147156,
+            0.8637998104095459
+          ],
+          "projection_test_points": [
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              -0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              -0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              0.0
+            ],
+            [
+              0.29082775115966797,
+              -0.2887919545173645,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              1.6703966856002808
+            ],
+            [
+              0.29082775115966797,
+              0.29286354780197144,
+              0.0
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              -0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              -0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.600298285484314
+            ],
+            [
+              0.1415361613035202,
+              -0.13950036466121674,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.7643550634384155
+            ],
+            [
+              0.1415361613035202,
+              0.14357195794582367,
+              1.600298285484314
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              -0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              -0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.7404922246932983
+            ],
+            [
+              0.04459358751773834,
+              -0.042557790875434875,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.9343773126602173
+            ],
+            [
+              0.04459358751773834,
+              0.04662938416004181,
+              1.7404922246932983
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              -0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              -0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              1.8956003189086914
+            ],
+            [
+              0.12117822468280792,
+              -0.24032065272331238,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              2.0
+            ],
+            [
+              0.12117822468280792,
+              0.12806114554405212,
+              1.8956003189086914
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              -0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              -0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              0.6040268540382385
+            ],
+            [
+              0.18372385203838348,
+              -0.29014915227890015,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              1.1856824159622192
+            ],
+            [
+              0.18372385203838348,
+              -0.22515922784805298,
+              0.6040268540382385
+            ],
+            [
+              -0.10317697376012802,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              -0.10317697376012802,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              -0.10317697376012802,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.27089282870292664,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286351799964905,
+              1.0041730403900146
+            ],
+            [
+              0.10869687795639038,
+              -0.29286354780197144,
+              1.0856047868728638
+            ],
+            [
+              0.10869687795639038,
+              -0.270892858505249,
+              1.0856047868728638
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              -0.06242327392101288,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              -0.06242327392101288,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.8915495872497559
+            ],
+            [
+              0.0635167807340622,
+              -0.29286354780197144,
+              0.916605532169342
+            ],
+            [
+              0.0635167807340622,
+              -0.28476470708847046,
+              0.916605532169342
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              -0.03620999678969383,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              -0.03620999678969383,
+              -0.2894642651081085,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7214735746383667
+            ],
+            [
+              0.03580283746123314,
+              -0.29286354780197144,
+              0.7507054805755615
+            ],
+            [
+              0.03580283746123314,
+              -0.2894642651081085,
+              0.7507054805755615
+            ]
+          ]
+        },
+        "created_at": 1793966870.7178702,
+        "device": {
+          "backend": "OPTIX",
+          "blender_version": "5.0.1",
+          "name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "status": "ready",
+          "type": "GPU"
+        },
+        "height": 4096,
+        "job_id": "83637e937b204387b191f7ecfb6118c0",
+        "jpg_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.jpg",
+        "metrics": {
+          "bright_fraction": 0.001,
+          "dark_fraction": 0.1149,
+          "luminance_mean": 103.06
+        },
+        "png_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_campaign_v2/哑光塑料按压瓶_campaign_v2.png",
+        "quality": "standard",
+        "result_url": "/files/fa395f959fd14321b60289804e3cb3af/runs/83637e937b204387b191f7ecfb6118c0/哑光塑料按压瓶_campaign_v2/result.json",
+        "shot_id": "campaign",
+        "shot_label": "棚拍宣传",
+        "version": 2,
+        "width": 4096
+      }
+    ],
+    "plan": {
+      "aspect": "1:1",
+      "exposure": 0,
+      "light_softness": 1,
+      "margin": 0.12,
+      "material_overrides": [],
+      "material_suggestions": [
+        {
+          "color": [
+            0.04500000178813934,
+            0.2800000011920929,
+            0.27000001072883606,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Matte recycled plastic — teal",
+          "roughness": 0.5799999833106995,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.7799999713897705,
+            0.7400000095367432,
+            0.6200000047683716,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Soft satin plastic — cream",
+          "roughness": 0.33000001311302185,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.9200000166893005,
+            0.9100000262260437,
+            0.8500000238418579,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Paper label — ivory",
+          "roughness": 0.7200000286102295,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        },
+        {
+          "color": [
+            0.017999999225139618,
+            0.054999999701976776,
+            0.04500000178813934,
+            1.0
+          ],
+          "confidence": 1.0,
+          "emission": 0.0,
+          "metallic": 0.0,
+          "name": "Printed dark green ink",
+          "roughness": 0.6499999761581421,
+          "source": "model",
+          "suggested_preset": "matte_plastic",
+          "suggestion_confidence": 0.55,
+          "suggestion_source": "rules",
+          "textures": [],
+          "transmission": 0.0
+        }
+      ],
+      "max_corrections": 2,
+      "model_features": {
+        "aspect_ratio": 3.438461301571293,
+        "dimensions": [
+          0.19500000774860382,
+          0.19636499881744385,
+          0.6704999804496765
+        ],
+        "elongated": true,
+        "flat": false,
+        "has_animation": false,
+        "has_armature": false,
+        "mesh_count": 8,
+        "multipart": true,
+        "surfaces": [
+          "dielectric"
+        ],
+        "symmetry": "unknown"
+      },
+      "pending": [
+        "实际摆放方向与主展示面请在预览中确认",
+        "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+        "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+      ],
+      "pose": {},
+      "repair": {
+        "normals": false,
+        "smooth": false
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "shots": [
+        {
+          "azimuth": 10,
+          "elevation": 18,
+          "focal_length": 70,
+          "id": "hero",
+          "kind": "full",
+          "label": "白底主图",
+          "style": "white"
+        },
+        {
+          "azimuth": -38,
+          "elevation": 22,
+          "focal_length": 60,
+          "id": "campaign",
+          "kind": "full",
+          "label": "棚拍宣传"
+        },
+        {
+          "azimuth": 90,
+          "elevation": 12,
+          "focal_length": 70,
+          "id": "side",
+          "kind": "full",
+          "label": "侧面结构"
+        },
+        {
+          "azimuth": 155,
+          "elevation": 22,
+          "focal_length": 70,
+          "id": "back",
+          "kind": "full",
+          "label": "背面展示"
+        },
+        {
+          "azimuth": 30,
+          "elevation": 25,
+          "focal_length": 85,
+          "id": "detail1",
+          "kind": "detail",
+          "label": "材质细节",
+          "target_object": "Bottle body"
+        },
+        {
+          "azimuth": -60,
+          "elevation": 35,
+          "focal_length": 85,
+          "id": "detail2",
+          "kind": "detail",
+          "label": "结构细节",
+          "target_object": "Label_500 ml"
+        }
+      ],
+      "source": "user",
+      "style": "dark",
+      "texture_rotation": 0,
+      "texture_scale": 1,
+      "time_budget": 1200
+    },
+    "slug": "哑光塑料按压瓶",
+    "status": "ready",
+    "updated_at": 1793966870.720875,
+    "version": 2
+  },
+  "jobs": [
+    {
+      "completed": [
+        "hero",
+        "campaign"
+      ],
+      "created_at": 1793966508.3032374,
+      "current_shot": "棚拍宣传",
+      "error": null,
+      "finished_at": 1793966515.1954694,
+      "id": "17d98289d5a24270ac26e7678361d66d",
+      "kind": "preview",
+      "log_tail": [
+        "mat=bpy.data.materials.new('Studio floor material');mat.use_nodes=True",
+        "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+        "if mat and mat.use_nodes:",
+        "00:00.797  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library",
+        "EVENT:{\"stage\": \"使用 GPU 渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}}",
+        "EVENT:{\"stage\": \"正在打包可复现工程\"}",
+        "Info: No new files have been packed",
+        "Info: Saved as \"哑光塑料按压瓶_campaign_v2.blend\"",
+        "EVENT:{\"stage\": \"Cycles 正在渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}, \"shot\": \"campaign\"}",
+        "00:02.656  render           | Saved: 'D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\17d98289d5a24270ac26e7678361d66d\\哑光塑料按压瓶_campaign_v2\\哑光塑料按压瓶_campaign_v2.png'",
+        "EVENT:{\"stage\": \"正在校验导出图片\"}",
+        "EVENT:{\"stage\": \"执行完成\"}",
+        "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+        "",
+        "Blender quit"
+      ],
+      "plan": {
+        "aspect": "1:1",
+        "exposure": 0,
+        "light_softness": 1,
+        "margin": 0.12,
+        "material_overrides": [],
+        "material_suggestions": [
+          {
+            "color": [
+              0.04500000178813934,
+              0.2800000011920929,
+              0.27000001072883606,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Matte recycled plastic — teal",
+            "roughness": 0.5799999833106995,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.7799999713897705,
+              0.7400000095367432,
+              0.6200000047683716,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Soft satin plastic — cream",
+            "roughness": 0.33000001311302185,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.9200000166893005,
+              0.9100000262260437,
+              0.8500000238418579,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Paper label — ivory",
+            "roughness": 0.7200000286102295,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.017999999225139618,
+              0.054999999701976776,
+              0.04500000178813934,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Printed dark green ink",
+            "roughness": 0.6499999761581421,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          }
+        ],
+        "max_corrections": 2,
+        "model_features": {
+          "aspect_ratio": 3.438461301571293,
+          "dimensions": [
+            0.19500000774860382,
+            0.19636499881744385,
+            0.6704999804496765
+          ],
+          "elongated": true,
+          "flat": false,
+          "has_animation": false,
+          "has_armature": false,
+          "mesh_count": 8,
+          "multipart": true,
+          "surfaces": [
+            "dielectric"
+          ],
+          "symmetry": "unknown"
+        },
+        "pending": [
+          "实际摆放方向与主展示面请在预览中确认",
+          "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+          "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+          "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+        ],
+        "pose": {},
+        "repair": {
+          "normals": false,
+          "smooth": false
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "shots": [
+          {
+            "azimuth": 10,
+            "elevation": 18,
+            "focal_length": 70,
+            "id": "hero",
+            "kind": "full",
+            "label": "白底主图",
+            "style": "white"
+          },
+          {
+            "azimuth": -38,
+            "elevation": 22,
+            "focal_length": 60,
+            "id": "campaign",
+            "kind": "full",
+            "label": "棚拍宣传"
+          },
+          {
+            "azimuth": 90,
+            "elevation": 12,
+            "focal_length": 70,
+            "id": "side",
+            "kind": "full",
+            "label": "侧面结构"
+          },
+          {
+            "azimuth": 155,
+            "elevation": 22,
+            "focal_length": 70,
+            "id": "back",
+            "kind": "full",
+            "label": "背面展示"
+          },
+          {
+            "azimuth": 30,
+            "elevation": 25,
+            "focal_length": 85,
+            "id": "detail1",
+            "kind": "detail",
+            "label": "材质细节",
+            "target_object": "Bottle body"
+          },
+          {
+            "azimuth": -60,
+            "elevation": 35,
+            "focal_length": 85,
+            "id": "detail2",
+            "kind": "detail",
+            "label": "结构细节",
+            "target_object": "Label_500 ml"
+          }
+        ],
+        "source": "user",
+        "style": "dark",
+        "texture_rotation": 0,
+        "texture_scale": 1,
+        "time_budget": 1200
+      },
+      "progress": 100,
+      "project_id": "fa395f959fd14321b60289804e3cb3af",
+      "quality": "preview",
+      "request_key": null,
+      "retry_of": null,
+      "sample_progress": 0,
+      "shot_ids": [
+        "hero",
+        "campaign"
+      ],
+      "stage": "已完成",
+      "started_at": 1793966508.3185568,
+      "status": "completed",
+      "updated_at": 1793966515.2014818,
+      "version": 2
+    },
+    {
+      "completed": [
+        "hero",
+        "campaign"
+      ],
+      "created_at": 1793966517.4428115,
+      "current_shot": "棚拍宣传",
+      "error": null,
+      "finished_at": 1793966870.7361803,
+      "id": "83637e937b204387b191f7ecfb6118c0",
+      "kind": "render",
+      "log_tail": [
+        "mat=bpy.data.materials.new('Studio floor material');mat.use_nodes=True",
+        "D:\\模型渲染\\blender\\worker.py:55: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0",
+        "if mat and mat.use_nodes:",
+        "00:00.766  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library",
+        "EVENT:{\"stage\": \"使用 GPU 渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}}",
+        "EVENT:{\"stage\": \"正在打包可复现工程\"}",
+        "Info: No new files have been packed",
+        "Info: Saved as \"哑光塑料按压瓶_campaign_v2.blend\"",
+        "EVENT:{\"stage\": \"Cycles 正在渲染\", \"device\": {\"status\": \"ready\", \"type\": \"GPU\", \"backend\": \"OPTIX\", \"name\": \"NVIDIA GeForce RTX 3070 Laptop GPU\", \"blender_version\": \"5.0.1\"}, \"shot\": \"campaign\"}",
+        "02:09.203  render           | Saved: 'D:\\模型渲染\\data\\fa395f959fd14321b60289804e3cb3af\\runs\\83637e937b204387b191f7ecfb6118c0\\哑光塑料按压瓶_campaign_v2\\哑光塑料按压瓶_campaign_v2.png'",
+        "EVENT:{\"stage\": \"正在校验导出图片\"}",
+        "EVENT:{\"stage\": \"执行完成\"}",
+        "Blender 5.0.1 (hash a3db93c5b259 built 2025-12-16 01:32:30)",
+        "",
+        "Blender quit"
+      ],
+      "plan": {
+        "aspect": "1:1",
+        "exposure": 0,
+        "light_softness": 1,
+        "margin": 0.12,
+        "material_overrides": [],
+        "material_suggestions": [
+          {
+            "color": [
+              0.04500000178813934,
+              0.2800000011920929,
+              0.27000001072883606,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Matte recycled plastic — teal",
+            "roughness": 0.5799999833106995,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.7799999713897705,
+              0.7400000095367432,
+              0.6200000047683716,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Soft satin plastic — cream",
+            "roughness": 0.33000001311302185,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.9200000166893005,
+              0.9100000262260437,
+              0.8500000238418579,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Paper label — ivory",
+            "roughness": 0.7200000286102295,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          },
+          {
+            "color": [
+              0.017999999225139618,
+              0.054999999701976776,
+              0.04500000178813934,
+              1.0
+            ],
+            "confidence": 1.0,
+            "emission": 0.0,
+            "metallic": 0.0,
+            "name": "Printed dark green ink",
+            "roughness": 0.6499999761581421,
+            "source": "model",
+            "suggested_preset": "matte_plastic",
+            "suggestion_confidence": 0.55,
+            "suggestion_source": "rules",
+            "textures": [],
+            "transmission": 0.0
+          }
+        ],
+        "max_corrections": 2,
+        "model_features": {
+          "aspect_ratio": 3.438461301571293,
+          "dimensions": [
+            0.19500000774860382,
+            0.19636499881744385,
+            0.6704999804496765
+          ],
+          "elongated": true,
+          "flat": false,
+          "has_animation": false,
+          "has_armature": false,
+          "mesh_count": 8,
+          "multipart": true,
+          "surfaces": [
+            "dielectric"
+          ],
+          "symmetry": "unknown"
+        },
+        "pending": [
+          "实际摆放方向与主展示面请在预览中确认",
+          "Label substrate：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+          "Label_MORA：存在开放或非流形边；可能是薄片/中空结构，不自动封闭",
+          "朝向、主展示面、法线方向与真实支撑面需通过预览确认；原始资产不做修改"
+        ],
+        "pose": {},
+        "repair": {
+          "normals": false,
+          "smooth": false
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "shots": [
+          {
+            "azimuth": 10,
+            "elevation": 18,
+            "focal_length": 70,
+            "id": "hero",
+            "kind": "full",
+            "label": "白底主图",
+            "style": "white"
+          },
+          {
+            "azimuth": -38,
+            "elevation": 22,
+            "focal_length": 60,
+            "id": "campaign",
+            "kind": "full",
+            "label": "棚拍宣传"
+          },
+          {
+            "azimuth": 90,
+            "elevation": 12,
+            "focal_length": 70,
+            "id": "side",
+            "kind": "full",
+            "label": "侧面结构"
+          },
+          {
+            "azimuth": 155,
+            "elevation": 22,
+            "focal_length": 70,
+            "id": "back",
+            "kind": "full",
+            "label": "背面展示"
+          },
+          {
+            "azimuth": 30,
+            "elevation": 25,
+            "focal_length": 85,
+            "id": "detail1",
+            "kind": "detail",
+            "label": "材质细节",
+            "target_object": "Bottle body"
+          },
+          {
+            "azimuth": -60,
+            "elevation": 35,
+            "focal_length": 85,
+            "id": "detail2",
+            "kind": "detail",
+            "label": "结构细节",
+            "target_object": "Label_500 ml"
+          }
+        ],
+        "source": "user",
+        "style": "dark",
+        "texture_rotation": 0,
+        "texture_scale": 1,
+        "time_budget": 1200
+      },
+      "progress": 100,
+      "project_id": "fa395f959fd14321b60289804e3cb3af",
+      "quality": "standard",
+      "request_key": null,
+      "retry_of": null,
+      "sample_progress": 0,
+      "shot_ids": [
+        "hero",
+        "campaign"
+      ],
+      "stage": "已完成",
+      "started_at": 1793966517.4573421,
+      "status": "completed",
+      "updated_at": 1793966870.744688,
+      "version": 2
+    }
+  ]
+}

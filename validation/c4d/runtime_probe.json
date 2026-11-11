@@ -1,0 +1,20 @@
+{
+  "native_export_verified": false,
+  "reason": "Both installed c4dpy runtimes require license initialization before Python scripts can run. No authentication or licensing configuration was attempted.",
+  "probes": [
+    {
+      "executable": "C:\\Program Files\\Maxon Cinema 4D R24\\c4dpy.exe",
+      "arguments": ["-c", "import c4d; print('C4DPY_READY', c4d.GetC4DVersion())"],
+      "observed_output": "Error running authentication: No License Model defined [license_impl.cpp(132)]\n----\nEnter the license method:\n  1) Maxon Account\n  2) Maxon License Server\n  3) RLM\n  Q) Quit\nPlease select:",
+      "process_exited": true
+    },
+    {
+      "executable": "C:\\Program Files\\Maxon Cinema 4D R22\\c4dpy.exe",
+      "arguments": ["-c", "import c4d; print('C4DPY_READY', c4d.GetC4DVersion())"],
+      "observed_output": "Error running authentication: No License Model defined [license_impl.cpp(129)]\n----\nEnter the license method:\n  1) Maxon Account\n  2) Maxon License Server\n  3) RLM\n  Q) Quit\nPlease select:",
+      "process_exited": true
+    }
+  ],
+  "converter_runtime": "Cinema 4D R24+ Python 3, or a licensed Cinema 4D Script Manager session",
+  "verification_gate": "success true is only emitted after native SaveDocument, LoadDocument and object/mesh/camera/light/material/UV/hierarchy counts match"
+}

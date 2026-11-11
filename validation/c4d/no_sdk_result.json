@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "error": "Cinema 4D Python SDK unavailable. Run this script with licensed c4dpy or Cinema 4D Script Manager.",
+  "warnings": [
+    "Cinema 4D Standard materials approximate Blender Principled BSDF; renderer output is not pixel-identical.",
+    "Light energy is mapped heuristically from Blender watts to C4D brightness; original values remain in User Data.",
+    "Modifiers are evaluated into editable polygons. Animation, constraints, procedural shader graphs and custom normals are not reconstructed.",
+    "Blender color management and world illumination are not identical in Cinema 4D; world color/texture becomes a luminous Sky."
+  ],
+  "verified": null,
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\模型渲染\\c4d\\convert_scene.py\", line 549, in main\n    result = converter.convert(display=not cli)\n  File \"D:\\模型渲染\\c4d\\convert_scene.py\", line 453, in convert\n    raise RuntimeError(\"Cinema 4D Python SDK unavailable. Run this script with licensed c4dpy or Cinema 4D Script Manager.\")\nRuntimeError: Cinema 4D Python SDK unavailable. Run this script with licensed c4dpy or Cinema 4D Script Manager.\n"
+}
