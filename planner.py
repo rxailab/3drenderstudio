@@ -137,8 +137,32 @@ def validate(plan):
             for v in pose[k]: number(v,-1000,1000,k)
     return p
 
+SHAPE_FRAMING={
+    'flat':({'hero':40,'campaign':36,'side':20,'back':34},'模型较扁平：完整镜头抬高为俯视角度，让顶面成为主展示面。'),
+    'tall':({'hero':12,'campaign':14,'side':8,'back':14},'模型细高：完整镜头降低视角，保持主体挺拔并减少顶部变形。'),
+}
+
+def frame_for_shape(plan, features):
+    """Choose the first full-shot heights from measured proportions (Z is up).
+
+    Only the untouched default plan of a new upload is adjusted. The reason is
+    stored with the plan, and every angle stays editable afterwards.
+    """
+    dims=features.get('dimensions') if isinstance(features,dict) else None
+    if (not isinstance(dims,(list,tuple)) or len(dims)!=3
+            or any(type(v) not in (int,float) or not math.isfinite(v) or v<=0 for v in dims)): return None
+    footprint=max(dims[0],dims[1]);height=dims[2]
+    shape='flat' if height<=footprint*.4 else 'tall' if height>=footprint*2.2 else None
+    if shape is None: return None
+    angles,reason=SHAPE_FRAMING[shape]
+    for shot in plan['shots']:
+        if shot.get('kind')=='full' and shot['id'] in angles: shot['elevation']=angles[shot['id']]
+    plan['auto_framing']={'shape':shape,'reason':reason}
+    return shape
+
 def enrich(plan, analysis):
     p=copy.deepcopy(plan)
+    if p.get('shots')==default_plan()['shots']: frame_for_shape(p,analysis.get('features',{}))
     objects=[o for o in analysis.get('objects',[]) if o.get('type','MESH')=='MESH']
     if objects:
         p['shots'][-2]['target_object']=objects[0]['name']

@@ -1,5 +1,43 @@
 # 本地接口与可复现性
 
+## v19 电商平台检查与套图导出
+
+`GET /api/system` 的 `runtime.capabilities` 增加 `matte`：本机 Blender 与 `blender/render_matte.py` 均可用时为 `true`，纯白底与透明底处理依赖它。
+
+`GET /api/ecommerce/platforms` 返回平台预设目录：`{reviewed,default,disclaimer,platforms:[…]}`。每个预设包含 `id,name,group,aspects,aspect,min_px,target_px,max_px,max_bytes,white,fill_min,fill_target,notes,sources,confidence`，部分平台另有 `white_slot`（独立白底图槽位）。`white` 取 `required / recommended / optional`。
+
+`GET /api/projects/{id}/ecommerce[?platform=amazon]` 按平台检查项目中每个镜头最新的真实渲染图，不修改项目。返回 `platform,settings,matte_available,main_shot_id,step,counts,plan_recommendation,shots`。`shots[].items[]` 为逐项结论 `{id,label,status,detail,action?}`：
+
+| `status` | 含义 |
+| --- | --- |
+| `pass` | 已满足平台要求 |
+| `auto` | 导出时自动处理（纯白背景、居中构图、补白或裁切到平台画幅） |
+| `warn` | 可导出但需留意（图片来自旧方案版本） |
+| `action` | 需要用户操作；`action` 为 `preview`、`render` 或 `background` |
+| `info` | 平台建议，不影响导出 |
+
+每个镜头取最新方案版本中像素最多的一张图；产品占比来自该图渲染结果中的真实顶点投影。`PUT` 同一地址保存 `{platform,background,shadow,transparent}` 并返回更新后的检查；`background` 取 `main_white / all_white / original`。
+
+```http
+POST /api/projects/{id}/ecommerce/adapt
+{"platform":"amazon","expected_version":4}
+```
+
+把平台建议的画幅与留白写入摄影方案，作为一个可回退的新版本（历史记录原因为「按「平台」调整画幅与留白」）。已接受的画幅不会被改动；没有差异时不产生新版本。有渲染任务排队或执行时返回 409。
+
+```http
+POST /api/projects/{id}/ecommerce/exports
+{"platform":"amazon","background":"main_white","shadow":true,"transparent":false,"shot_ids":["hero","side"]}
+```
+
+创建后台导出任务并返回 HTTP 202。`shot_ids` 省略时导出全部已出图镜头。任务记录字段：`id,project_id,platform,platform_name,options,status,stage,progress,error,warnings,files,download_url,created_at,finished_at,project_version`。`status` 为 `queued / running / completed / failed / cancelled / interrupted`。相同来源图片与相同设置的已完成任务会被直接复用。
+
+`files[]` 中每个文件给出 `name,label,role,width,height,bytes,background,shadow,framing,fill,pure_white,issues,url`。`role` 为 `main / angle / detail / white_slot / transparent`；`pure_white` 与尺寸、字节数均来自对已写入文件的重新读取；`issues` 列出仍不满足平台要求之处（例如只有预览分辨率）。`download_url` 指向包含全部文件、`manifest.json` 与 `README.txt` 的 ZIP。
+
+`GET /api/ecommerce/exports/{task_id}` 读取任务，`POST /api/ecommerce/exports/{task_id}/cancel` 取消并终止正在进行的蒙版渲染。`GET /api/projects/{id}` 附带 `ecommerce`（已保存的平台与导出设置）与 `ecommerce_exports`（最近三次任务）。每个项目保留最近若干次导出，更早的记录和文件自动清理；删除项目前需等待或取消进行中的导出。
+
+`POST /api/projects` 的表单新增可选字段 `platform`：新项目的画幅与留白直接按该平台设置；未知平台在保存任何文件前返回 400。
+
 ## v17 实时模型与相机回放
 
 `GET /api/system` 增加 `viewport:{available,format,projection,interactive}`。实时模型准备独立于 Cycles 出图任务，依赖本机 Blender 与 `blender/export_viewport.py`，不调用 LLM。

@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=18">
+<link rel="stylesheet" href="/static/styles.css?v=19">
 </head>
 <body>
 <a class="skip-link" href="#mainWorkspace">跳到摄影工作台</a>
@@ -191,6 +191,7 @@
 <button id="inspectorReviewTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorReview" data-inspector="review">画面调整</button>
 <button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">部件材质</button>
 <button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">摄影方案</button>
+<button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">电商出图</button>
 </div>
 <div id="inspectorBody" class="inspector-body">
 <section id="inspectorReview" role="tabpanel" aria-labelledby="inspectorReviewTab">
@@ -579,6 +580,37 @@
 </div>
 </details>
 </section>
+<section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>
+<label class="field-label" for="ecommercePlatform">销售平台</label>
+<select id="ecommercePlatform" aria-describedby="ecommercePlatformSummary"></select>
+<p id="ecommercePlatformSummary" class="field-help"></p>
+<details id="ecommercePlatformBasis" class="ecommerce-basis">
+<summary>平台规则与依据</summary>
+<div id="ecommercePlatformNotes"></div>
+</details>
+<section class="ecommerce-check" aria-labelledby="ecommerceCheckTitle">
+<div class="review-heading">
+<h2 id="ecommerceCheckTitle">平台检查</h2>
+<span id="ecommerceCheckShot" class="pill"></span>
+</div>
+<ul id="ecommerceChecks" class="ecommerce-checks"></ul>
+<p id="ecommerceShotsSummary" class="field-help"></p>
+<button id="ecommerceAdapt" type="button" class="text-button" hidden></button>
+</section>
+<fieldset class="ecommerce-options">
+<legend>导出设置</legend>
+<label class="check-label"><input type="radio" name="ecommerceBackground" value="main_white" checked>主图纯白底，其余镜头保持原样</label>
+<label class="check-label"><input type="radio" name="ecommerceBackground" value="all_white">全部镜头纯白底</label>
+<label class="check-label"><input type="radio" name="ecommerceBackground" value="original">保持渲染原样，只调整尺寸</label>
+<label class="check-label"><input id="ecommerceShadow" type="checkbox" checked>保留产品附近的柔和阴影</label>
+<label class="check-label"><input id="ecommerceTransparent" type="checkbox">附带透明底 PNG</label>
+<p class="field-help">纯白底与透明底只替换产品以外的背景，并自动居中、按平台占比构图；不会重新渲染产品。</p>
+</fieldset>
+<p id="ecommerceError" class="error-text" role="alert" hidden></p>
+<button id="ecommerceExport" type="button" class="button primary full-width" disabled>导出平台套图</button>
+<p id="ecommerceExportHint" class="field-help" role="status"></p>
+<section id="ecommerceResult" class="ecommerce-result" aria-label="最近一次导出" aria-live="polite" hidden></section>
+</section>
 </div>
 <div class="settings-footer">
 <button id="optimizeHeroButton" class="button primary" type="button" aria-describedby="optimizeHeroReason" hidden>自动优化主图</button>
@@ -610,6 +642,9 @@
 <div id="chosenFiles" class="chosen-files">
 </div>
 <p class="field-help">每次上传 1 个模型，文件合计不超过 512 MB。OBJ 请同时选择 MTL 与贴图，或将完整资源文件夹打成 ZIP。</p>
+<label class="upload-platform">销售平台<select id="uploadPlatform" name="platform" aria-describedby="uploadPlatformHint"><option value="">暂不指定</option></select>
+</label>
+<p id="uploadPlatformHint" class="field-help">选择后，首张主图会直接按该平台的画幅与产品占比构图；之后可随时更换。</p>
 <details class="optional-info">
 <summary>补充产品信息 <span>可选</span>
 </summary>
@@ -620,8 +655,9 @@
 <label>材质说明<textarea name="material_note" rows="2" placeholder="例如：主体为哑光塑料，盖子为拉丝金属">
 </textarea>
 </label>
-<label>产品类别<input name="product_category" placeholder="仅用于辅助理解">
+<label>产品类别<input name="product_category" list="productCategories" placeholder="例如：美妆个护">
 </label>
+<datalist id="productCategories"><option value="美妆个护"><option value="3C 数码"><option value="家居日用"><option value="厨房餐具"><option value="食品饮料"><option value="箱包配饰"><option value="珠宝首饰"><option value="母婴玩具"><option value="家用电器"><option value="家具灯具"><option value="运动户外"></datalist>
 <label>参考图片<input name="reference" type="file" accept="image/png,image/jpeg,image/webp">
 </label>
 <p class="field-help">参考图保留供人工对照；不会自动替换产品标识。</p>
@@ -773,7 +809,7 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=18" defer>
+<script src="/static/app.js?v=19" defer>
 </script>
 </body>
 </html>

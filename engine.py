@@ -47,6 +47,7 @@ RUNTIME_COMPONENTS={
     'inspect_parts':('blender/inspect_parts.py',),
     'export_blend':('blender/export_scene.py',),
     'export_c4d':('blender/export_scene.py','c4d/convert_scene.py'),
+    'matte':('blender/render_matte.py',),
 }
 
 def runtime_status():
@@ -86,6 +87,9 @@ def project_view(ident):
     p.pop('_instruction_proposals',None)
     p['jobs']=[j for j in all_records('job') if j['project_id']==ident]
     p['exports']=[e for e in all_records('export') if e['project_id']==ident]
+    import ecommerce
+    p['ecommerce']=ecommerce.settings(p)
+    p['ecommerce_exports']=ecommerce.project_exports(ident)
     return p
 
 class JobConflictError(ValueError):

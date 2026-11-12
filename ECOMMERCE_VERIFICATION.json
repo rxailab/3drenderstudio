@@ -1,0 +1,191 @@
+{
+  "date": "2026-11-12",
+  "environment": {
+    "os": "Linux container, 4 CPU cores, no GPU",
+    "blender": "5.0.1 (PyPI bpy module behind a CLI-compatible test launcher; not the official executable)",
+    "python": "3.13",
+    "pillow": "11.3.0",
+    "node": "22",
+    "jsdom": "26"
+  },
+  "tests": {
+    "python_unittest_discover": {
+      "ran": 1001,
+      "result": "OK",
+      "skipped": 0,
+      "note": "run with Blender available, so runtime tests executed"
+    },
+    "tests/test_ecommerce.py": {
+      "ran": 42,
+      "result": "OK",
+      "real_blender_tests": 2
+    },
+    "node tests/test_ui_state.cjs": {
+      "tests": 191,
+      "pass": 190,
+      "new_tests": 8,
+      "new_tests_pass": 8,
+      "remaining_failure": "file-level 'asynchronous activity after the test ended' from the pre-existing test 'AI apply first previews the saved live camera when the photo becomes stale'; identical on the unmodified code (183 tests, 182 pass)"
+    },
+    "node tests/test_viewport_math.mjs": {
+      "tests": 9,
+      "pass": 9
+    }
+  },
+  "render_once_fix": {
+    "sample": "samples/matte-pump-bottle.glb",
+    "shot": "hero",
+    "quality": "preview 512 px, CPU",
+    "before": {
+      "renders_per_shot": 3,
+      "job_seconds_about": 25,
+      "automatic_check_status": "manual_review",
+      "projected_bounds_source": "bounding-box corners"
+    },
+    "after": {
+      "renders_per_shot": 1,
+      "job_seconds_about": 10,
+      "automatic_check_status": "passed",
+      "occupancy": 0.8,
+      "margin": 0.1,
+      "projected_bounds_source": "product vertices in the rendered camera"
+    }
+  },
+  "real_export": {
+    "sample": "samples/matte-pump-bottle.glb",
+    "platform": "amazon",
+    "options": {
+      "background": "main_white",
+      "platform": "amazon",
+      "shadow": true,
+      "transparent": true
+    },
+    "sources": "hero: standard 4096 px render (one pass, about 24 minutes on CPU); campaign and detail1: 512 px previews",
+    "source_hero_border": {
+      "level": "not_white",
+      "pure_fraction": 0.61864,
+      "darkest": 213
+    },
+    "matte_4096_seconds_about": 23,
+    "export_seconds_about": 23,
+    "stage": "已导出 6 个文件，其中 2 个需要留意",
+    "files": [
+      {
+        "name": "01_hero_main_2000x2000.jpg",
+        "role": "main",
+        "width": 2000,
+        "height": 2000,
+        "bytes": 145756,
+        "background": "white",
+        "shadow": true,
+        "framing": "reframed",
+        "fill": 0.88,
+        "pure_white": true,
+        "issues": []
+      },
+      {
+        "name": "transparent/01_hero_3725x3725.png",
+        "role": "transparent",
+        "width": 3725,
+        "height": 3725,
+        "bytes": 2324562,
+        "background": "transparent",
+        "shadow": true,
+        "framing": "reframed",
+        "fill": 0.88,
+        "pure_white": null,
+        "issues": []
+      },
+      {
+        "name": "02_campaign_angle_512x512.jpg",
+        "role": "angle",
+        "width": 512,
+        "height": 512,
+        "bytes": 23307,
+        "background": "original",
+        "shadow": false,
+        "framing": "kept",
+        "fill": 0.8008,
+        "pure_white": null,
+        "issues": [
+          "长边 512 px，低于平台最低 1000 px；请先渲染 4K"
+        ]
+      },
+      {
+        "name": "transparent/02_campaign_466x466.png",
+        "role": "transparent",
+        "width": 466,
+        "height": 466,
+        "bytes": 128166,
+        "background": "transparent",
+        "shadow": false,
+        "framing": "reframed",
+        "fill": 0.8798,
+        "pure_white": null,
+        "issues": []
+      },
+      {
+        "name": "03_detail1_detail_512x512.jpg",
+        "role": "detail",
+        "width": 512,
+        "height": 512,
+        "bytes": 24628,
+        "background": "original",
+        "shadow": false,
+        "framing": "kept",
+        "fill": 0.9004,
+        "pure_white": null,
+        "issues": [
+          "长边 512 px，低于平台最低 1000 px；请先渲染 4K"
+        ]
+      },
+      {
+        "name": "transparent/03_detail1_512x512.png",
+        "role": "transparent",
+        "width": 512,
+        "height": 512,
+        "bytes": 159008,
+        "background": "transparent",
+        "shadow": false,
+        "framing": "kept",
+        "fill": 0.9004,
+        "pure_white": null,
+        "issues": []
+      }
+    ]
+  },
+  "smart_framing": {
+    "brushed-metal-tray.glb": {
+      "dimensions_m": [
+        0.47,
+        0.29,
+        0.05
+      ],
+      "shape": "flat",
+      "hero_elevation": {
+        "before": 18,
+        "after": 40
+      }
+    },
+    "matte-pump-bottle.glb": {
+      "dimensions_m": [
+        0.195,
+        0.196,
+        0.67
+      ],
+      "shape": "tall",
+      "hero_elevation": {
+        "before": 18,
+        "after": 12
+      }
+    },
+    "check": "both variants rendered once each and compared by eye"
+  },
+  "not_verified": [
+    "Windows",
+    "official Blender executable",
+    "GPU rendering and GPU matte",
+    "marketplace rule pages opened in full (values come from search excerpts; see ECOMMERCE_UPDATE.md)",
+    "upload to any marketplace"
+  ]
+}

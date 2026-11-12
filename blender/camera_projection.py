@@ -65,6 +65,31 @@ def same_snapshot(before,after):
     return all(same(before[key],after[key]) for key in before)
 
 
+def frame_bounds(scene,points):
+    """Normalised render-frame bounds of world points, for whole meshes at once.
+
+    Same convention as bpy_extras.object_utils.world_to_camera_view: (0,0) is
+    the lower-left frame corner. Returns ([xmin,ymin,xmax,ymax],behind), where
+    ``behind`` reports any point at or behind a perspective camera.
+    """
+    import numpy as np
+    camera=scene.camera
+    if camera is None or camera.type!='CAMERA':raise ValueError('当前场景缺少实际相机')
+    points=np.asarray(points,dtype=np.float64).reshape((-1,3))
+    if not len(points):raise ValueError('没有可测量的产品顶点')
+    inverse=np.asarray(camera.matrix_world.normalized().inverted(),dtype=np.float64)
+    local=(inverse@np.column_stack((points,np.ones(len(points)))).T).T[:,:3]
+    frame=camera.data.view_frame(scene=scene)
+    min_x,max_x=float(frame[2].x),float(frame[1].x);min_y,max_y=float(frame[1].y),float(frame[0].y)
+    depth=-local[:,2];behind=False
+    if camera.data.type=='ORTHO':scale=np.ones(len(local))
+    else:
+        behind=bool((depth<=1e-9).any())
+        scale=np.maximum(depth,1e-9)/max(-float(frame[0].z),1e-9)
+    x=(local[:,0]-min_x*scale)/((max_x-min_x)*scale);y=(local[:,1]-min_y*scale)/((max_y-min_y)*scale)
+    return [float(x.min()),float(y.min()),float(x.max()),float(y.max())],behind
+
+
 def apply_camera(scene,shot,products,margin=.12,points=None):
     """Apply a complete view. Explicit scale and pan never trigger auto-fit."""
     import bpy

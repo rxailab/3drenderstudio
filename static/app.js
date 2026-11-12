@@ -479,7 +479,7 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderRealtimeControls();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderRealtimeControls();renderEcommerce();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
@@ -1469,7 +1469,7 @@ function renderInspection() {
   if (!a) {$('inspectionContent').innerHTML='<p>模型检查尚未完成，请查看任务状态。</p>';return;}
   const f=a.features || {};const dim=current.plan.dimensions_mm?current.plan.dimensions_mm.join(' × ')+' mm（用户指定）':a.dimensions?.unit==='m'?a.dimensions.value.map(n=>(n*1000).toFixed(1)).join(' × ')+' mm（模型声明，需确认）':'未知；使用归一化工作尺度';
   const features=[f.elongated?'细长物体':null,f.flat?'扁平物体':null,f.multipart?'多部件':'单网格',f.has_animation?'已有动画':null,f.has_armature?'已有绑定':null].filter(Boolean);
-  $('inspectionContent').innerHTML=`<dl><dt>模型特征</dt><dd>${esc(features.join(' / '))}</dd><dt>真实尺寸</dt><dd>${esc(dim)}</dd><dt>方案来源</dt><dd>${esc(describeSource(current.plan.source))}</dd><dt>材质说明</dt><dd>${esc(current.metadata?.material_note || '未补充')}</dd></dl>${warnings.map(w=>`<p class="warning">• ${esc(w)}</p>`).join('')}<h3>部件层级</h3><table><thead><tr><th>部件</th><th>父部件</th><th>UV / 面数</th></tr></thead><tbody>${(a.objects || []).map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.parent || '根节点')}</td><td>${esc(Array.isArray(o.uv_layers)?o.uv_layers.join(', ') || '无 UV':o.uv_layers || '—')} / ${esc(o.faces ?? o.polygons ?? '—')}</td></tr>`).join('')}</tbody></table>${currentOutput?`<details><summary>当前图片的检查结果</summary><pre>${esc(JSON.stringify({checks:currentOutput.checks,image_metrics:currentOutput.metrics},null,2))}</pre></details>`:''}<h3>操作记录</h3>${current.history?.length?current.history.slice().reverse().slice(0,8).map(h=>`<p>v${h.version} · ${esc(h.reason)} · ${new Date(h.at*1000).toLocaleString('zh-CN')}</p>`).join(''):'<p>初始方案；尚未修改参数。</p>'}<details><summary>查看可复现拍摄方案 JSON</summary><pre>${esc(JSON.stringify(current.plan,null,2))}</pre></details>`;
+  $('inspectionContent').innerHTML=`<dl><dt>模型特征</dt><dd>${esc(features.join(' / '))}</dd><dt>真实尺寸</dt><dd>${esc(dim)}</dd><dt>方案来源</dt><dd>${esc(describeSource(current.plan.source))}</dd>${current.plan.auto_framing?.reason?`<dt>智能取景</dt><dd>${esc(current.plan.auto_framing.reason)}</dd>`:''}<dt>材质说明</dt><dd>${esc(current.metadata?.material_note || '未补充')}</dd></dl>${warnings.map(w=>`<p class="warning">• ${esc(w)}</p>`).join('')}<h3>部件层级</h3><table><thead><tr><th>部件</th><th>父部件</th><th>UV / 面数</th></tr></thead><tbody>${(a.objects || []).map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.parent || '根节点')}</td><td>${esc(Array.isArray(o.uv_layers)?o.uv_layers.join(', ') || '无 UV':o.uv_layers || '—')} / ${esc(o.faces ?? o.polygons ?? '—')}</td></tr>`).join('')}</tbody></table>${currentOutput?`<details><summary>当前图片的检查结果</summary><pre>${esc(JSON.stringify({checks:currentOutput.checks,image_metrics:currentOutput.metrics},null,2))}</pre></details>`:''}<h3>操作记录</h3>${current.history?.length?current.history.slice().reverse().slice(0,8).map(h=>`<p>v${h.version} · ${esc(h.reason)} · ${new Date(h.at*1000).toLocaleString('zh-CN')}</p>`).join(''):'<p>初始方案；尚未修改参数。</p>'}<details><summary>查看可复现拍摄方案 JSON</summary><pre>${esc(JSON.stringify(current.plan,null,2))}</pre></details>`;
   $('inspectionContent').querySelectorAll('details').forEach((d,i) => d.open = !!openSections[i]);
 }
 function renderProject() {
@@ -1487,7 +1487,7 @@ function renderProject() {
   $('undoButton').title=dirty?'先保存或放弃本次调整，再回退已保存版本':'回退上一版已保存方案';
   $('bundleButton').classList.toggle('disabled',!current.outputs?.length);$('bundleButton').setAttribute('aria-disabled',!current.outputs?.length);$('bundleButton').href=current.outputs?.length?`/api/projects/${current.id}/bundle`:'#';$('bundleButton').tabIndex=current.outputs?.length?0:-1;
   if(!dirty && !planSavePromise && syncSignature!==`${current.id}:${current.version}:${!!current.analysis}`)syncSettings();
-  updateAiMode();renderViewer();renderShots();renderJob();renderInspection();renderSceneExports();renderActionState();
+  updateAiMode();renderViewer();renderShots();renderJob();renderInspection();renderSceneExports();renderActionState();refreshEcommerce();
 }
 async function refreshList() { const request=++libraryRequest,projects=await api('/api/projects');if(request!==libraryRequest)return;allProjects=projects.filter(project=>!deletedProjectIds.has(project.id));allProjects.sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));renderLibrary(); }
 function leaveProjectView() {
@@ -1496,6 +1496,7 @@ function leaveProjectView() {
   pendingInstructionPreview=null;current=null;draft=null;dirty=false;draftBaseVersion=null;projectLoading=false;
   activeShot=null;selectedShots=new Set();selectedMaterial=null;cameraShot=null;currentOutput=null;syncSignature='';
   styleFocusNotice='';comparePrevious=false;viewerLatestKey='';editedMaterialColors.clear();
+  ecommerceView=null;ecommerceViewKey='';ecommerceError='';ecommerceRequest++;
   sceneExportSource=null;sceneExportProjectId=null;sceneExportJobsSignature='';sceneExportOptionsSignature='';
   for(const id of ['sceneExportDialog','imageDialog'])if($(id).open)$(id).close();
   clearFeedback(true);forget('wuying-project');renderProject();renderLibrary();$('uploadMain').focus();
@@ -1766,17 +1767,19 @@ async function readEntry(entry,path='') {
   if (entry.isFile) return new Promise((resolve,reject)=>entry.file(f=>{f._relativePath=path+f.name;resolve([f]);},reject));
   if (entry.isDirectory) {const reader=entry.createReader();let entries=[],batch;do {batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));entries.push(...batch);}while(batch.length);return (await Promise.all(entries.map(e=>readEntry(e,path+entry.name+'/')))).flat();}return [];
 }
-async function showUpload() {if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');if(!(await resolveUnsavedChanges()))return;$('uploadError').textContent=uploadValidation() || (!workerRenderReady()?runtimeReason():'');$('uploadDialog').showModal();renderActionState();}
+async function showUpload() {if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');if(!(await resolveUnsavedChanges()))return;ensureEcommerceCatalog().catch(()=>{});$('uploadError').textContent=uploadValidation() || (!workerRenderReady()?runtimeReason():'');$('uploadDialog').showModal();renderActionState();}
+const inspectorTabs=['review','material','plan','ecommerce'];
 function setInspectorTab(tab) {
-  if(!['review','material','plan'].includes(tab))return;
+  if(!inspectorTabs.includes(tab))return;
   if(tab!==inspectorTab){inspectorScrollPositions[inspectorTab]=$('inspectorBody').scrollTop || 0;$('inspectorBody').scrollTop=inspectorScrollPositions[tab] || 0;}
   inspectorTab=tab;
-  for(const name of ['review','material','plan']){
+  for(const name of inspectorTabs){
     const button=$('inspector'+name[0].toUpperCase()+name.slice(1)+'Tab');
     button.setAttribute('aria-selected',name===tab);button.tabIndex=name===tab?0:-1;
     $('inspector'+name[0].toUpperCase()+name.slice(1)).hidden=name!==tab;
   }
   if(tab==='material' && currentOutput && !feedbackMode){feedbackMode=true;renderFeedback();}
+  if(tab==='ecommerce'){renderEcommerce();refreshEcommerce(true);}
 }
 function storeMaterialTask(projectId,task) {
   materialAgentRecords.set(projectId,[task,...(materialAgentRecords.get(projectId) || []).filter(item=>item.id!==task.id)]);
@@ -1854,10 +1857,141 @@ async function submitMaterialAgent(event) {
   }catch(error){if(current?.id===source.projectId)$('materialAgentError').textContent=error.message;}
   finally{materialAgentSubmitting=false;renderProject();}
 }
+// v19 电商出图: marketplace choice, checks of the real renders, and the sized export.
+let ecommerceCatalog=null,ecommerceCatalogPromise=null,ecommerceView=null,ecommerceViewKey='',ecommerceRequest=0,ecommerceSubmitting=false,ecommerceError='';
+const ecommerceSeen=new Map();
+function ecommerceSize(bytes) { return bytes>=1048576?String(Math.round(bytes/104857.6)/10)+' MB':Math.max(1,Math.round(bytes/1024))+' KB'; }
+function ecommercePlatformLine(platform) {
+  const white={required:'主图须纯白底',recommended:'建议纯白底',optional:'背景不限'}[platform.white];
+  return [platform.aspects.join(' / '),`导出 ${platform.target_px} px`,white,platform.fill_min?`产品占比 ≥ ${Math.round(platform.fill_min*100)}%`:null,`≤ ${ecommerceSize(platform.max_bytes)}`].filter(Boolean).join(' · ');
+}
+function renderEcommercePlatformOptions() {
+  if(!ecommerceCatalog)return;
+  const groups=[...new Set(ecommerceCatalog.platforms.map(platform=>platform.group))];
+  const html=groups.map(group=>`<optgroup label="${esc(group)}">${ecommerceCatalog.platforms.filter(platform=>platform.group===group).map(platform=>`<option value="${esc(platform.id)}">${esc(platform.name)}</option>`).join('')}</optgroup>`).join('');
+  stableHTML($('ecommercePlatform'),html);
+  const chosen=$('uploadPlatform').value || recalled('wuying-platform') || '';
+  stableHTML($('uploadPlatform'),'<option value="">暂不指定</option>'+html);
+  $('uploadPlatform').value=ecommerceCatalog.platforms.some(platform=>platform.id===chosen)?chosen:'';
+}
+function ensureEcommerceCatalog() {
+  if(ecommerceCatalog)return Promise.resolve(ecommerceCatalog);
+  if(!ecommerceCatalogPromise)ecommerceCatalogPromise=api('/api/ecommerce/platforms').then(catalog=>{ecommerceCatalog=catalog;renderEcommercePlatformOptions();return catalog;}).catch(error=>{ecommerceCatalogPromise=null;throw error;});
+  return ecommerceCatalogPromise;
+}
+function ecommerceKey() {
+  if(!current)return '';
+  const outputs=current.outputs || [];
+  return [current.id,current.version,outputs.length,outputs.at(-1)?.created_at || 0,JSON.stringify(current.ecommerce || {})].join(':');
+}
+function ecommerceControls() {
+  return {platform:$('ecommercePlatform').value || ecommerceView?.settings?.platform || 'general',background:document.querySelector('[name=ecommerceBackground]:checked')?.value || 'main_white',shadow:$('ecommerceShadow').checked,transparent:$('ecommerceTransparent').checked};
+}
+async function refreshEcommerce(force=false) {
+  if(!current || inspectorTab!=='ecommerce')return;
+  const key=ecommerceKey();
+  if(!force && key===ecommerceViewKey)return;
+  const request=++ecommerceRequest,id=current.id;ecommerceViewKey=key;
+  try{
+    await ensureEcommerceCatalog();
+    const view=await api(`/api/projects/${id}/ecommerce`);
+    if(request!==ecommerceRequest || current?.id!==id)return;
+    ecommerceView={...view,project_id:id};ecommerceError='';
+  }catch(error){if(request!==ecommerceRequest || current?.id!==id)return;ecommerceError=error.message;}
+  renderEcommerce();
+}
+async function saveEcommerceSettings() {
+  if(!current)return;
+  const id=current.id,request=++ecommerceRequest;
+  try{
+    const view=await api(`/api/projects/${id}/ecommerce`,{method:'PUT',body:ecommerceControls()});
+    if(request!==ecommerceRequest || current?.id!==id)return;
+    ecommerceView={...view,project_id:id};current.ecommerce=view.settings;ecommerceViewKey=ecommerceKey();ecommerceError='';
+  }catch(error){if(request!==ecommerceRequest || current?.id!==id)return;ecommerceError=error.message;}
+  renderEcommerce();
+}
+function ecommerceLatestExport() { return (current?.ecommerce_exports || [])[0] || null; }
+function ecommerceExportRunning() { return (current?.ecommerce_exports || []).some(task=>['queued','running'].includes(task.status)); }
+function renderEcommerceResult() {
+  const task=ecommerceLatestExport(),box=$('ecommerceResult');
+  if(task){const before=ecommerceSeen.get(task.id);if(before && before!==task.status && task.status==='completed')toast('平台套图已导出，可以下载。');ecommerceSeen.set(task.id,task.status);}
+  box.hidden=!task || task.status==='cancelled';if(box.hidden)return;
+  const running=['queued','running'].includes(task.status),files=Array.isArray(task.files)?task.files:[];
+  const own=url=>typeof url==='string' && url.startsWith('/files/'+current.id+'/ecommerce/')?url:'';
+  const tiles=files.map(file=>{const url=own(file.url),picture=url && /\.jpg$/i.test(url),issue=!!file.issues?.length;
+    return `<li data-background="${esc(file.background || '')}" data-issue="${issue}"><a href="${esc(url || '#')}" target="_blank" rel="noopener" title="${esc(file.name)}">${picture?`<img src="${esc(url)}" alt="${esc(file.label)}" loading="lazy">`:`<img alt="${esc(file.label)}" ${url?`src="${esc(url)}" loading="lazy"`:''}>`}<span>${esc(file.label)}</span><small>${Number(file.width)} × ${Number(file.height)} · ${esc(ecommerceSize(Number(file.bytes) || 0))}</small></a></li>`;}).join('');
+  const issues=files.flatMap(file=>(file.issues || []).map(issue=>`<li>${esc(file.label)}：${esc(issue)}</li>`)).concat((task.warnings || []).map(warning=>`<li>${esc(warning)}</li>`)).join('');
+  const download=own(task.download_url);
+  stableHTML(box,`<div class="ecommerce-result-head"><strong>${esc(task.platform_name || '')}${task.status==='completed'?` · ${files.length} 个文件`:''}</strong>${running?`<button type="button" class="button subtle" data-cancel-ecommerce="${esc(task.id)}">取消导出</button>`:task.status==='completed' && download?`<a class="button secondary" href="${esc(download)}?download=1" download>下载 ZIP</a>`:''}</div>${running?`<div class="progress-track" role="progressbar" aria-label="套图导出进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Number(task.progress) || 0}"><span style="width:${Math.min(100,Math.max(0,Number(task.progress) || 0))}%"></span></div>`:''}<p>${esc(task.stage || '')}${task.project_version && task.project_version!==current.version && !running?` · 来自方案 v${Number(task.project_version)}`:''}</p>${task.error?`<p class="error-text">${esc(task.error)}</p>`:''}${tiles?`<ul class="ecommerce-files">${tiles}</ul>`:''}${issues?`<ul class="ecommerce-issues">${issues}</ul>`:''}`);
+}
+function renderEcommerce() {
+  if(!$('inspectorEcommerce'))return;
+  const view=current && ecommerceView?.project_id===current.id?ecommerceView:null;
+  const locked=!view || ecommerceSubmitting || busy || projectLoading || serviceDisconnected;
+  $('ecommercePlatform').disabled=locked;
+  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>{input.disabled=locked || (!view.matte_available && input.value!=='original');});
+  $('ecommerceShadow').disabled=locked || !view.matte_available;$('ecommerceTransparent').disabled=locked || !view.matte_available;
+  $('ecommerceError').textContent=ecommerceError;$('ecommerceError').hidden=!ecommerceError;
+  renderEcommerceResult();
+  if(!view){
+    setText('ecommercePlatformSummary',current?(ecommerceError?'':'正在读取平台要求…'):'打开项目后可按平台检查并导出。');
+    $('ecommercePlatformBasis').hidden=true;stableHTML($('ecommerceChecks'),'');setText('ecommerceCheckShot','');setText('ecommerceShotsSummary','');
+    $('ecommerceAdapt').hidden=true;$('ecommerceExport').disabled=true;setText('ecommerceExportHint','');return;
+  }
+  const platform=view.platform,settings=view.settings;
+  if(document.activeElement!==$('ecommercePlatform'))$('ecommercePlatform').value=platform.id;
+  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>input.checked=input.value===(view.matte_available?settings.background:'original'));
+  $('ecommerceShadow').checked=settings.shadow;$('ecommerceTransparent').checked=settings.transparent && view.matte_available;
+  setText('ecommercePlatformSummary',ecommercePlatformLine(platform));
+  $('ecommercePlatformBasis').hidden=false;
+  stableHTML($('ecommercePlatformNotes'),`<ul>${platform.notes.map(note=>`<li>${esc(note)}</li>`).join('')}</ul>${platform.sources.length?`<p>来源：${platform.sources.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">平台规则 ${index+1}</a>`).join('、')}</p>`:''}<p>${esc(ecommerceCatalog?.disclaimer || '')}</p>`);
+  const main=view.shots.find(shot=>shot.main);
+  const shot=view.shots.find(item=>item.shot_id===activeShot) || main || view.shots[0];
+  setText('ecommerceCheckShot',shot?shot.label+(shot.main?' · 主图':''):'');
+  const marks={pass:'✓',auto:'↻',action:'!',warn:'!',info:'i'},tags={auto:'导出时自动处理',action:'需要处理',warn:'请留意'};
+  stableHTML($('ecommerceChecks'),(shot?.items || []).map(item=>`<li data-status="${esc(item.status)}"><span class="mark" aria-hidden="true">${marks[item.status] || 'i'}</span><div><strong>${esc(item.label)}${tags[item.status]?`<span class="tag">${tags[item.status]}</span>`:''}</strong><span class="detail">${esc(item.detail)}</span></div></li>`).join(''));
+  const small=view.shots.filter(item=>item.items.some(check=>check.id==='resolution' && check.status==='action')).length,counts=view.counts;
+  setText('ecommerceShotsSummary',`${counts.rendered} / ${counts.shots} 个镜头已出图${small?`，其中 ${small} 个低于平台最低尺寸`:''}。点击画面下方的镜头可逐个查看。`);
+  const patch=view.plan_recommendation || {},changes=[patch.aspect?`画幅改为 ${patch.aspect}`:null,typeof patch.margin==='number'?`留白改为 ${Math.round(patch.margin*100)}%`:null].filter(Boolean);
+  $('ecommerceAdapt').hidden=!changes.length;$('ecommerceAdapt').disabled=locked || dirty || !!planSavePromise || !!activeJob() || automaticMaterialBusy() || !renderReady();
+  setText('ecommerceAdapt',changes.length?`按平台重新构图并预览（${changes.join('，')}）`:'');
+  const running=ecommerceExportRunning(),rendering=!!activeJob();
+  $('ecommerceExport').disabled=locked || running || rendering || !counts.rendered;
+  setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台套图');
+  const hint=!counts.rendered?'生成预览后即可导出。':rendering?'当前渲染完成后可导出。':small?`${small} 个镜头只有预览尺寸，导出的图片会低于平台最低要求；建议先渲染 4K。`:`将导出 ${counts.rendered} 个镜头，按 ${platform.name} 的尺寸与文件大小保存。`;
+  setText('ecommerceExportHint',hint);$('ecommerceExportHint').dataset.tone=small && counts.rendered && !rendering?'warn':'';
+}
+async function submitEcommerceExport() {
+  if(!current || ecommerceSubmitting || ecommerceExportRunning())return;
+  const id=current.id;ecommerceSubmitting=true;ecommerceError='';renderEcommerce();
+  try{
+    const task=await api(`/api/projects/${id}/ecommerce/exports`,{method:'POST',body:ecommerceControls()});
+    if(current?.id===id){ecommerceSeen.set(task.id,task.status);current.ecommerce_exports=[task,...(current.ecommerce_exports || []).filter(item=>item.id!==task.id)];toast(task.status==='completed'?'这组设置已经导出过，可直接下载。':'正在导出平台套图。');}
+  }catch(error){if(current?.id===id)ecommerceError=error.message;}
+  finally{ecommerceSubmitting=false;renderEcommerce();}
+}
+async function cancelEcommerceExport(taskId) {
+  if(!current)return;
+  const id=current.id;
+  try{const task=await api(`/api/ecommerce/exports/${encodeURIComponent(taskId)}/cancel`,{method:'POST'});if(current?.id===id){current.ecommerce_exports=(current.ecommerce_exports || []).map(item=>item.id===task.id?task:item);toast('已取消导出，渲染图片不受影响。');}}
+  catch(error){toast(error.message,true);}
+  renderEcommerce();
+}
+async function adaptEcommercePlan() {
+  if(!current || busy || planSavePromise || projectLoading || activeJob() || automaticMaterialBusy())return;
+  if(dirty)return toast('请先保存或放弃当前未保存的调整。',true);
+  const id=current.id;busy=true;renderProject();
+  try{
+    const project=await api(`/api/projects/${id}/ecommerce/adapt`,{method:'POST',body:{...ecommerceControls(),expected_version:current.version}});
+    if(current?.id===id){current=project;syncSettings();}
+  }catch(error){toast(error.message,true);busy=false;renderProject();return;}
+  busy=false;renderProject();
+  if(current?.id===id){toast('已按平台调整画幅与留白。');await run('preview');}
+}
 function installEvents() {
   // Validate after revealing the affected advanced panel, including folded inputs.
   $('settingsForm').noValidate=true;
-  document.querySelectorAll('[data-inspector]').forEach(button=>{button.onclick=()=>setInspectorTab(button.dataset.inspector);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),index=tabs.indexOf(inspectorTab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs[2]:tabs[(index+(event.key==='ArrowRight'?1:2))%3];setInspectorTab(next);document.querySelector('[data-inspector="'+next+'"]').focus();};});
+  document.querySelectorAll('[data-inspector]').forEach(button=>{button.onclick=()=>setInspectorTab(button.dataset.inspector);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),index=tabs.indexOf(inspectorTab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs[tabs.length-1]:tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];setInspectorTab(next);document.querySelector('[data-inspector="'+next+'"]').focus();};});
   $('comparePreview').onclick=()=>{realtime.mode='image';comparePrevious=!comparePrevious;feedbackMode=false;renderViewer();renderInspection();renderInstruction();};
   $('materialAgentForm').onsubmit=submitMaterialAgent;
   $('materialAgentTasks').addEventListener('toggle',event=>{const target=event.target;if(target.tagName==='DETAILS' && target.dataset.materialDetail)materialAgentDisclosures.set(target.dataset.materialProject+':'+target.dataset.materialDetail,target.open);},true);
@@ -1927,7 +2061,7 @@ function installEvents() {
     try{created=await api('/api/projects',{method:'POST',body:form});}
     catch(error){$('uploadError').textContent=error.message;}
     finally{uploadSubmitting=false;$('uploadForm').inert=false;$('uploadSubmit').textContent='上传并生成主图';renderActionState();}
-    if(created){$('uploadDialog').close();uploadFiles=[];$('uploadForm').reset();addFiles([]);try{await refreshList();}catch(error){toast('项目已创建，但项目列表暂未刷新：'+error.message,true);}await openProject(created.id);toast('模型已上传，分析完成后会自动生成白底主图。');}
+    if(created){if(form.get('platform'))remember('wuying-platform',form.get('platform'));else forget('wuying-platform');$('uploadDialog').close();uploadFiles=[];$('uploadForm').reset();$('uploadPlatform').value=recalled('wuying-platform') || '';addFiles([]);try{await refreshList();}catch(error){toast('项目已创建，但项目列表暂未刷新：'+error.message,true);}await openProject(created.id);toast('模型已上传，分析完成后会自动生成白底主图。');}
   };
   $('projectList').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const b=e.target.closest('[data-project]');if(b)openProject(b.dataset.project);};
   $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};
@@ -1957,6 +2091,10 @@ function installEvents() {
     catch(error){toast(error.message,true);}finally{busy=false;renderProject();}
   };
   $('instructionForm').onsubmit=applyInstructionAndPreview;
+  $('ecommercePlatform').onchange=saveEcommerceSettings;$('ecommerceShadow').onchange=saveEcommerceSettings;$('ecommerceTransparent').onchange=saveEcommerceSettings;
+  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>input.onchange=saveEcommerceSettings);
+  $('ecommerceExport').onclick=submitEcommerceExport;$('ecommerceAdapt').onclick=adaptEcommercePlan;
+  $('ecommerceResult').onclick=event=>{const button=event.target.closest('[data-cancel-ecommerce]');if(button)cancelEcommerceExport(button.dataset.cancelEcommerce);};
   $('instructionLocate').onclick=locatePendingInstruction;
   $('instructionInput').addEventListener('input',()=>{if(current){const value=$('instructionInput').value;instructionDrafts.set(current.id,value);if(instructionPreflightDrafts.has(current.id)){if(value.trim())instructionPreflightDrafts.set(current.id,value);else instructionPreflightDrafts.delete(current.id);persistInstructionPreflightDrafts();}}currentInstructionAttempt();$('instructionError').textContent='';$('instructionError').hidden=true;renderInstruction();});
   $('toggleGrid').onclick=()=>{$('compositionGrid').hidden=!$('compositionGrid').hidden;$('toggleGrid').setAttribute('aria-pressed',!$('compositionGrid').hidden);};
