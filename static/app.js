@@ -414,10 +414,7 @@ function currentHeroOptimizationAttempt() {
 function renderHeroOptimization() {
   const button=$('optimizeHeroButton'),reason=$('optimizeHeroReason'),shot=current && heroOptimizationShot();
   button.hidden=!shot;reason.hidden=true;reason.textContent='';
-  const primary=!!shot && heroOptimizationReady();
-  button.closest('.settings-footer').classList.toggle('has-hero-optimize',!!shot);
-  button.classList.toggle('primary',primary);button.classList.toggle('secondary',!primary);
-  $('renderButton').classList.toggle('primary',!primary);$('renderButton').classList.toggle('secondary',primary);
+  button.closest('.hero-optimize').hidden=!shot;
   button.disabled=true;button.textContent='自动优化主图';button.removeAttribute('aria-busy');
   if(!shot)return;
   const source=latestOutput(shot.id),attempt=currentHeroOptimizationAttempt(),job=activeJob();
@@ -432,8 +429,8 @@ function renderHeroOptimization() {
   button.disabled=locked || !heroOptimizationReady() || !source?.blend_url || !current.analysis;
   button.textContent=heroOptimizationSubmitting?'正在提交优化…':job?.kind==='hero_optimize'?'主图优化中…':attempt?'核对并继续优化':dirty?'保存并自动优化主图':'自动优化主图';
   if(heroOptimizationSubmitting)button.setAttribute('aria-busy','true');
-  reason.textContent=message || '自动检查、试渲染并输出 2000 px 主图。';reason.hidden=!!job && !message;
-  button.title=message;
+  reason.textContent=message;reason.hidden=!message;
+  button.title=message || '自动检查、试渲染并输出 2000 px 主图';
 }
 async function optimizeHero() {
   const shot=heroOptimizationShot();
@@ -471,10 +468,11 @@ function renderActionState() {
   const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || !!activeJob() || automaticMaterialBusy();
   const blocked=locked || !current?.analysis;
   $('previewButton').disabled=blocked || !renderReady() || !activeShot;$('renderButton').disabled=blocked || !selectedShots.size || [...selectedShots].some(id=>!renderReadyForShot(id));
-  $('previewButton').textContent=dirty?'保存并预览当前镜头':'预览当前镜头';
-  $('renderButton').textContent=selectedShots.size?`渲染 ${selectedShots.size} 张 4K`:'渲染 4K 成品';
+  $('previewButton').textContent=dirty?'保存并预览':'预览';$('previewButton').title=dirty?'保存当前参数并预览这个镜头':'预览当前镜头';
+  $('renderButton').textContent=selectedShots.size?`渲染 ${selectedShots.size} 张 4K`:'渲染 4K';
   const reason=renderReady() && current?.analysis && !locked && !selectedShots.size?'勾选镜头后可输出 4K。':'';
   setText('renderReason',reason);if($('renderReason'))$('renderReason').hidden=!reason;
+  $('renderButton').title=reason || '按勾选的镜头输出 4K 成品';
   $('savePlan').disabled=!dirty || locked || !current?.analysis;
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
@@ -625,8 +623,7 @@ function outputNotice(output,latest) {
   if(styleFocusNotice && activeShot!=='hero')return styleFocusNotice;
   const attempts=output?.corrections || [];
   if(attempts.length>1){const chosen=attempts.find(a=>a.applied);return chosen?.round?`已显示自动修正第 ${chosen.round} 轮的真实结果，可对比上一版。`:'自动候选未优于本轮初始预览，已保留本轮初始结果；可在诊断记录中查看比较。';}
-  if(activeShot==='hero' && current?.plan?.style!=='white')return '白底主图始终保持白底；棚拍风格的变化请查看「棚拍宣传」。';
-  return output?.version>1?'已显示最新实际渲染，可对比上一版查看变化。':'';
+  return '';
 }
 function filenameSize(bytes) { return bytes > 1024*1024 ? (bytes/1024/1024).toFixed(1)+' MB' : Math.ceil(bytes/1024)+' KB'; }
 function markDirty() { if(!current)return;dirty = true;currentInstructionAttempt();renderActionState();if(currentOutput){$('previewNotice').textContent=outputNotice(currentOutput,latestOutput(activeShot));$('previewNotice').hidden=false;} }
@@ -721,7 +718,7 @@ async function savePlan(silent = false) {
   if(realismBusy || materialAgentSubmitting || projectLoading || activeJob() || automaticMaterialBusy())throw new Error('当前任务完成后才能保存摄影方案，草稿已保留。');
   if(draftBaseVersion!==current.version)throw new Error('方案已在后台更新。当前草稿仍保留，请先记录需要的调整，再点击“放弃本次调整”载入最新方案。');
   const invalid=[...$('settingsForm').querySelectorAll('input,select')].find(input=>!input.disabled && (input.validity.badInput || input.validity.rangeUnderflow || input.validity.rangeOverflow || input.validity.valueMissing || input.validity.typeMismatch || (input.type==='number' && input.id!=='animationFrame' && !input.hasAttribute('data-light-direction') && input.value.trim()==='')));
-  if(invalid){setInspectorTab('plan');for(let node=invalid.parentElement;node;node=node.parentElement){if(node.tagName==='DETAILS')node.open=true;if(node.classList?.contains('tab-content'))document.querySelector('[data-tab="'+node.id.replace(/Tab$/,'')+'"]')?.click();}invalid.reportValidity();throw new Error('请检查摄影方案中标出的无效数值。');}
+  if(invalid){setInspectorTab('plan');for(let node=invalid.parentElement;node;node=node.parentElement){if(node.tagName==='DETAILS')node.open=true;if(node.classList?.contains('tab-content'))document.querySelector('[data-tab="'+node.id.replace(/Tab$/,'')+'"]')?.click();}invalid.reportValidity();throw new Error('请检查「参数」中标出的无效数值。');}
   const id=current.id,body=clone(gatherPlan()),baseVersion=draftBaseVersion;
   planSavePromise=(async()=>{
     const result=await api(`/api/projects/${id}/plan`,{method:'POST',headers:{'X-Plan-Version':String(baseVersion)},body});
@@ -917,7 +914,7 @@ function renderViewer() {
   if (currentOutput) {
     const o=currentOutput;if ($('renderImage').getAttribute('src') !== o.png_url) $('renderImage').src=o.png_url;
     $('renderImage').hidden=false;$('renderEmpty').hidden=true;
-    const old=o.version!==current.version;$('renderKind').textContent=sceneQualityLabel(o.quality,o)+(old?' · 旧版':'');
+    const old=o.version!==current.version;$('renderKind').textContent=sceneQualityLabel(o.quality,o)+(old?' · 旧版':'');$('viewer').dataset.quality=o.quality;
     $('imageMeta').textContent=`${o.width} × ${o.height} px`;
     $('imageDownloads').hidden=false;for (const [id,key] of [['downloadPng','png_url'],['downloadJpg','jpg_url']]) {$(id).hidden=!o[key];if(o[key])$(id).href=o[key]+'?download=1';}
     $('sceneExportButton').disabled=false;
@@ -1271,17 +1268,17 @@ function renderFeedback() {
   const targeting=!!instructionTargetSelection;
   $('instructionTargetControls').hidden=!targeting;
   $('manualPartControls').hidden=targeting;$('materialAgentPanel').hidden=targeting;
-  $('materialIntro').textContent=targeting?'点选一个需要修改的部位，帮助识别同类部件。':'点选部件可手动修改材质；其他调整要求在「画面调整」中描述。';
+  $('materialIntro').textContent=targeting?'点选一个需要修改的部位，帮助识别同类部件。':'在画面中点击部件，查看并修改它的材质。';
   $('feedbackTitle').textContent=targeting?'定位参考部位':'所选部件与材质';
   $('instructionTargetRequest').textContent=targeting?instructionTargetSelection.text:'';
   $('instructionTargetContinue').disabled=!targeting || !canLocateInstruction() || !instructionTargetPoints();
   $('instructionTargetCancel').disabled=interactionBusy;
   $('feedbackToggle').disabled=!canSelect || interactionBusy;
   $('feedbackToggle').setAttribute('aria-pressed',feedbackMode);
-  $('feedbackToggle').textContent=feedbackMode?'结束点选':'选择部件 / 材质';
+  $('feedbackToggle').title=feedbackMode?'结束点选':'选择部件 / 材质';$('feedbackToggle').setAttribute('aria-label',$('feedbackToggle').title);
   $('feedbackPanel').hidden=!feedbackMode;$('viewer').classList.toggle('feedback-selecting',feedbackMode);
   $('feedbackContext').textContent=currentOutput?`${sceneShotLabel(currentOutput.shot_id)} · 方案 v${currentOutput.version} · ${feedbackPoints.length}/12 个位置`:'';
-  $('feedbackSelection').innerHTML=feedbackPoints.length?feedbackPoints.map((point,index)=>`<li><span class="feedback-number">${index+1}</span><span>${point.pending?'正在定位实际部件…':point.error?esc(point.error):point.hit?`<strong>${esc(point.object_name || '部件')}</strong><small>材质：${esc(point.material_name || '未分配材质')}</small>`:esc(point.message || '没有命中产品，请移除后重新点选')}<small>位置 ${Math.round(point.x*100)}%, ${Math.round(point.y*100)}%</small></span><button type="button" class="text-button" data-remove-point="${esc(point.id)}" aria-label="移除位置 ${index+1}">移除</button></li>`).join(''):'<li class="feedback-empty">尚未选择位置。点击产品表面添加第一个位置。</li>';
+  $('feedbackSelection').innerHTML=feedbackPoints.length?feedbackPoints.map((point,index)=>`<li><span class="feedback-number">${index+1}</span><span>${point.pending?'正在定位实际部件…':point.error?esc(point.error):point.hit?`<strong>${esc(point.object_name || '部件')}</strong><small>材质：${esc(point.material_name || '未分配材质')}</small>`:esc(point.message || '没有命中产品，请移除后重新点选')}<small>位置 ${Math.round(point.x*100)}%, ${Math.round(point.y*100)}%</small></span><button type="button" class="text-button" data-remove-point="${esc(point.id)}" aria-label="移除位置 ${index+1}">移除</button></li>`).join(''):'<li class="feedback-empty">尚未选择部件。</li>';
   $('feedbackClear').disabled=!feedbackPoints.length || busy;
   $('feedbackAddPoint').disabled=!canSelect || interactionBusy;
   renderPartMaterial();renderFeedbackMarkers();renderMaterialAgent();
@@ -1317,21 +1314,21 @@ function renderPartMaterial() {
       $(id).value=field==='preset'?'':field==='color'?(common.value || '#808080'):(common.value ?? '');
     }
   }
-  $('partMaterialInfo').textContent=!selected.length?'点击预览中的部件，即可查看实际渲染材质。':`已选 ${selected.length} 个网格 / 材质槽 · 来自已保存的渲染场景`;
+  $('partMaterialInfo').textContent=!selected.length?'':`已选 ${selected.length} 个材质槽`;
   for(const [field,labelId] of [['color','partColorValue'],['roughness','partRoughnessValue'],['metallic','partMetallicValue'],['transmission','partTransmissionValue']]){
     const common=commonMaterialValue(materials,field),linked=materials.some(material=>material.linked?.[field]);
-    $(labelId).textContent=`当前：${common.label}${linked?' · 节点/贴图驱动，所列为输入默认值':''}`;
+    $(labelId).textContent=selected.length?`当前 ${common.label}${linked?' · 由贴图驱动':''}`:'';$(labelId).title=linked?'该参数由节点或贴图驱动，所列为输入默认值':'';
   }
   $('partIorValue').textContent=commonMaterialValue(materials,'ior').label;
   const warnings=[...new Set(materials.flatMap(material=>material.warnings || []))];
   const textures=[...new Set(materials.flatMap(material=>(material.textures || []).map(texture=>typeof texture==='string'?texture:texture.name)).filter(Boolean))];
   $('partMaterialResources').innerHTML=(textures.length?`<p>已关联贴图：${textures.map(esc).join('、')}</p>`:'')+warnings.map(warning=>`<p>${esc(warning)}</p>`).join('');
-  let note='手动材质编辑不需要 API Key。未勾选的参数与贴图保持原样。';
-  if(dirty)note='右侧方案有未保存调整，请先保存并重新预览后编辑部件。';
+  let note='';
+  if(dirty)note='「参数」有未保存的调整，请先保存并预览，再编辑部件。';
   else if(currentOutput && currentOutput.version!==current?.version)note='当前图片属于旧方案，请先生成最新预览。';
   else if(feedbackPoints.some(point=>point.pending))note='正在读取实际表面与材质，请稍候。';
   else if(feedbackPoints.some(point=>!point.hit || !point.material_name))note='请移除未命中产品或没有可编辑材质的点。';
-  else if(!selected.length)note=system?.runtime?.capabilities?.pick===false?'本机部件定位组件缺失，请查看运行环境。':'先点击预览中的一个或多个部件。';
+  else if(!selected.length)note=system?.runtime?.capabilities?.pick===false?'本机部件定位组件缺失，请查看运行环境。':'';
   const unsupported=materials.some(material=>material.editable===false || material.supported===false);
   const explicitPreset=partMaterialFields.has('preset') && !!presets[$('partPreset').value];
   if(unsupported && !partSelectionBlocked())note='所选材质含复杂或不支持的着色器，不能直接覆盖参数。请明确选择内置材质预设后再修改。';
@@ -1339,7 +1336,7 @@ function renderPartMaterial() {
   const blocked=partSelectionBlocked();
   for(const [id,use] of Object.values(partFieldControls)){$(id).disabled=blocked;$(use).disabled=blocked;}
   $('partMaterialSubmit').disabled=blocked || !partMaterialFields.size || (unsupported && !explicitPreset);
-  $('partMaterialSubmit').textContent=busy?'正在应用…':'应用材质并重新预览';
+  $('partMaterialSubmit').textContent=busy?'正在应用…':'应用并预览';
   const overrides=current?.plan?.object_material_overrides || [];
   $('partMaterialReset').disabled=blocked || !selected.some(point=>overrides.some(item=>item.object_name===point.object_name && item.material_name===point.material_name));
 }
@@ -1439,7 +1436,7 @@ function renderShots() {
   $('shotHint').textContent='点图查看 · 勾选输出 4K';
   stableHTML($('shotList'),shots().map((s,i)=>{
     const o=latestOutput(s.id),active=s.id===activeShot;
-    return `<div class="shot-card ${active?'active':''} ${selectedShots.has(s.id)?'selected':''}"><button type="button" data-shot="${esc(s.id)}" aria-pressed="${active}" aria-label="查看${esc(s.label)}${active?'（当前画面）':''}">${o?`<img src="${esc(o.jpg_url || o.png_url)}" alt="${esc(s.label)}的真实渲染" loading="lazy">`:(s.kind==='detail'?'⌕':'◇')}</button><label title="将${esc(s.label)}加入 4K 输出"><input type="checkbox" data-select-shot="${esc(s.id)}" aria-label="将${esc(s.label)}加入 4K 输出" ${selectedShots.has(s.id)?'checked':''}></label><strong>${String(i+1).padStart(2,'0')} ${esc(s.label)}</strong><small>${o?`${sceneQualityLabel(o.quality,o)} · v${o.version}${o.version!==current.version?' · 旧版':''}`:s.kind==='detail'?'细节镜头 · 未出图':'完整构图 · 未出图'}</small></div>`;
+    return `<div class="shot-card ${active?'active':''} ${selectedShots.has(s.id)?'selected':''}"><button type="button" data-shot="${esc(s.id)}" aria-pressed="${active}" aria-label="查看${esc(s.label)}${active?'（当前画面）':''}">${o?`<img src="${esc(o.jpg_url || o.png_url)}" alt="${esc(s.label)}的真实渲染" loading="lazy">`:''}</button><label title="将${esc(s.label)}加入 4K 输出"><input type="checkbox" data-select-shot="${esc(s.id)}" aria-label="将${esc(s.label)}加入 4K 输出" ${selectedShots.has(s.id)?'checked':''}></label><strong>${String(i+1).padStart(2,'0')} ${esc(s.label)}</strong><small>${o?`${sceneQualityLabel(o.quality,o)} · v${o.version}${o.version!==current.version?' · 旧版':''}`:'未出图'}</small></div>`;
   }).join(''));
   $('selectAllShots').checked=!!shots().length && selectedShots.size===shots().length;$('selectAllShots').indeterminate=selectedShots.size>0 && selectedShots.size<shots().length;
 }
@@ -1458,7 +1455,7 @@ function renderJob() {
   const candidates=hero && Array.isArray(job.hero_candidates || job.candidates)?(job.hero_candidates || job.candidates).slice(0,12):[];
   const candidatesHTML=candidates.length?`<details class="hero-optimization-candidates"><summary>查看试渲染记录</summary><div class="review-attempts">${candidates.map((candidate,index)=>{const url=typeof candidate.png_url==='string' && candidate.png_url.startsWith('/files/'+current.id+'/') && /\.(png|jpg)$/i.test(candidate.png_url)?candidate.png_url:'';return `<div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}" loading="lazy"></a>`:''}<span>${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}</span>${candidate.reason?`<small>${esc(candidate.reason)}</small>`:''}</div>`;}).join('')}</div></details>`:'';
   const progressText=hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
-  $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="已完成镜头进度" aria-valuenow="${Number(job.progress)||0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,Number(job.progress)||0))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>查看真实执行日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
+  $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="已完成镜头进度" aria-valuenow="${Number(job.progress)||0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,Number(job.progress)||0))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
   if (logWasOpen) $('jobPanel').querySelector('.job-log').open = true;
   if(candidatesWereOpen && $('jobPanel').querySelector('.hero-optimization-candidates'))$('jobPanel').querySelector('.hero-optimization-candidates').open=true;
 }
@@ -1817,7 +1814,7 @@ function renderAutomaticMaterialStatus(records) {
       if(typeof value!=='string' || !value.trim() || unique.has(value.trim()))return false;unique.add(value.trim());return true;
     }).join('；');
   }
-  else if(current?.plan?.visual_review===false || current?.plan?.max_corrections===0){stage='自动材质优化已关闭';notice='可在摄影方案中开启自动检查，并设置至少一轮自动修正。';}
+  else if(current?.plan?.visual_review===false || current?.plan?.max_corrections===0){stage='自动材质优化已关闭';notice='可在「参数 → 出图质量」中开启自动检查，并设置至少一轮自动修正。';}
   else if(!visionState().attemptable || visionState().status==='error'){stage='等待可用的 AI 视觉检查';notice=visionState().status==='error'?'视觉模型最近一次调用失败，下次检查会重试；无法分析时保留现有材质。':'视觉模型未配置时保留现有材质，基础渲染照常完成。';}
   else{stage=activeJob()?'预览完成后自动检查材质':'下一次生成预览时自动检查材质';}
   $('autoMaterialStage').textContent=stage || '自动检查材质';$('autoMaterialNotice').textContent=notice;$('autoMaterialNotice').hidden=!notice;
@@ -1857,7 +1854,7 @@ async function submitMaterialAgent(event) {
   }catch(error){if(current?.id===source.projectId)$('materialAgentError').textContent=error.message;}
   finally{materialAgentSubmitting=false;renderProject();}
 }
-// v19 电商出图: marketplace choice, checks of the real renders, and the sized export.
+// 导出 panel: marketplace choice, checks of the real renders, and the sized export.
 let ecommerceCatalog=null,ecommerceCatalogPromise=null,ecommerceView=null,ecommerceViewKey='',ecommerceRequest=0,ecommerceSubmitting=false,ecommerceError='';
 const ecommerceSeen=new Map();
 function ecommerceSize(bytes) { return bytes>=1048576?String(Math.round(bytes/104857.6)/10)+' MB':Math.max(1,Math.round(bytes/1024))+' KB'; }
@@ -1885,7 +1882,7 @@ function ecommerceKey() {
   return [current.id,current.version,outputs.length,outputs.at(-1)?.created_at || 0,JSON.stringify(current.ecommerce || {})].join(':');
 }
 function ecommerceControls() {
-  return {platform:$('ecommercePlatform').value || ecommerceView?.settings?.platform || 'general',background:document.querySelector('[name=ecommerceBackground]:checked')?.value || 'main_white',shadow:$('ecommerceShadow').checked,transparent:$('ecommerceTransparent').checked};
+  return {platform:$('ecommercePlatform').value || ecommerceView?.settings?.platform || 'general',background:$('ecommerceBackground').value || 'main_white',shadow:$('ecommerceShadow').checked,transparent:$('ecommerceTransparent').checked};
 }
 async function refreshEcommerce(force=false) {
   if(!current || inspectorTab!=='ecommerce')return;
@@ -1929,37 +1926,40 @@ function renderEcommerce() {
   const view=current && ecommerceView?.project_id===current.id?ecommerceView:null;
   const locked=!view || ecommerceSubmitting || busy || projectLoading || serviceDisconnected;
   $('ecommercePlatform').disabled=locked;
-  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>{input.disabled=locked || (!view.matte_available && input.value!=='original');});
+  $('ecommerceBackground').disabled=locked || !view.matte_available;
   $('ecommerceShadow').disabled=locked || !view.matte_available;$('ecommerceTransparent').disabled=locked || !view.matte_available;
   $('ecommerceError').textContent=ecommerceError;$('ecommerceError').hidden=!ecommerceError;
   renderEcommerceResult();
   if(!view){
-    setText('ecommercePlatformSummary',current?(ecommerceError?'':'正在读取平台要求…'):'打开项目后可按平台检查并导出。');
+    setText('ecommercePlatformSummary',current && !ecommerceError?'正在读取平台要求…':'');
     $('ecommercePlatformBasis').hidden=true;stableHTML($('ecommerceChecks'),'');setText('ecommerceCheckShot','');setText('ecommerceShotsSummary','');
     $('ecommerceAdapt').hidden=true;$('ecommerceExport').disabled=true;setText('ecommerceExportHint','');return;
   }
   const platform=view.platform,settings=view.settings;
   if(document.activeElement!==$('ecommercePlatform'))$('ecommercePlatform').value=platform.id;
-  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>input.checked=input.value===(view.matte_available?settings.background:'original'));
+  if(document.activeElement!==$('ecommerceBackground'))$('ecommerceBackground').value=view.matte_available?settings.background:'original';
+  $('ecommerceBackground').title=view.matte_available?'纯白底与透明底只替换产品以外的背景，并自动居中、按平台占比构图':'纯白底与透明底需要完整的 Blender 运行环境';
   $('ecommerceShadow').checked=settings.shadow;$('ecommerceTransparent').checked=settings.transparent && view.matte_available;
   setText('ecommercePlatformSummary',ecommercePlatformLine(platform));
   $('ecommercePlatformBasis').hidden=false;
   stableHTML($('ecommercePlatformNotes'),`<ul>${platform.notes.map(note=>`<li>${esc(note)}</li>`).join('')}</ul>${platform.sources.length?`<p>来源：${platform.sources.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">平台规则 ${index+1}</a>`).join('、')}</p>`:''}<p>${esc(ecommerceCatalog?.disclaimer || '')}</p>`);
   const main=view.shots.find(shot=>shot.main);
   const shot=view.shots.find(item=>item.shot_id===activeShot) || main || view.shots[0];
-  setText('ecommerceCheckShot',shot?shot.label+(shot.main?' · 主图':''):'');
-  const marks={pass:'✓',auto:'↻',action:'!',warn:'!',info:'i'},tags={auto:'导出时自动处理',action:'需要处理',warn:'请留意'};
-  stableHTML($('ecommerceChecks'),(shot?.items || []).map(item=>`<li data-status="${esc(item.status)}"><span class="mark" aria-hidden="true">${marks[item.status] || 'i'}</span><div><strong>${esc(item.label)}${tags[item.status]?`<span class="tag">${tags[item.status]}</span>`:''}</strong><span class="detail">${esc(item.detail)}</span></div></li>`).join(''));
+  setText('ecommerceCheckShot',shot?shot.label:'');
+  // One line per rule; the sentence appears only where the user has to act.
+  stableHTML($('ecommerceChecks'),(shot?.items || []).map(item=>`<li data-status="${esc(item.status)}" title="${esc(item.detail)}"><span class="mark" aria-hidden="true"></span><span class="name">${esc(item.label)}</span><span class="value">${esc(item.value || '')}</span>${['action','warn'].includes(item.status)?`<span class="detail">${esc(item.detail)}</span>`:`<span class="sr-only">${esc(item.detail)}</span>`}</li>`).join(''));
   const small=view.shots.filter(item=>item.items.some(check=>check.id==='resolution' && check.status==='action')).length,counts=view.counts;
-  setText('ecommerceShotsSummary',`${counts.rendered} / ${counts.shots} 个镜头已出图${small?`，其中 ${small} 个低于平台最低尺寸`:''}。点击画面下方的镜头可逐个查看。`);
-  const patch=view.plan_recommendation || {},changes=[patch.aspect?`画幅改为 ${patch.aspect}`:null,typeof patch.margin==='number'?`留白改为 ${Math.round(patch.margin*100)}%`:null].filter(Boolean);
+  setText('ecommerceShotsSummary',`已出图 ${counts.rendered} / ${counts.shots} 个镜头`);
+  const patch=view.plan_recommendation || {},changes=[patch.aspect?`画幅 ${patch.aspect}`:null,typeof patch.margin==='number'?`留白 ${Math.round(patch.margin*100)}%`:null].filter(Boolean);
   $('ecommerceAdapt').hidden=!changes.length;$('ecommerceAdapt').disabled=locked || dirty || !!planSavePromise || !!activeJob() || automaticMaterialBusy() || !renderReady();
-  setText('ecommerceAdapt',changes.length?`按平台重新构图并预览（${changes.join('，')}）`:'');
+  setText('ecommerceAdapt',changes.length?`按平台重新构图（${changes.join('，')}）`:'');
+  $('ecommerceAdapt').title='把平台建议的画幅与留白写入方案并重新预览；不执行也能导出，导出时会自动构图';
   const running=ecommerceExportRunning(),rendering=!!activeJob();
   $('ecommerceExport').disabled=locked || running || rendering || !counts.rendered;
   setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台套图');
-  const hint=!counts.rendered?'生成预览后即可导出。':rendering?'当前渲染完成后可导出。':small?`${small} 个镜头只有预览尺寸，导出的图片会低于平台最低要求；建议先渲染 4K。`:`将导出 ${counts.rendered} 个镜头，按 ${platform.name} 的尺寸与文件大小保存。`;
-  setText('ecommerceExportHint',hint);$('ecommerceExportHint').dataset.tone=small && counts.rendered && !rendering?'warn':'';
+  // Say something under the button only when the export is blocked or will miss a rule.
+  const hint=!counts.rendered?'生成预览后即可导出。':rendering?'渲染完成后可导出。':small?`${small} 个镜头只有预览尺寸，低于平台最低要求。`:'';
+  setText('ecommerceExportHint',hint);$('ecommerceExportHint').hidden=!hint;$('ecommerceExportHint').dataset.tone=small && counts.rendered && !rendering?'warn':'';
 }
 async function submitEcommerceExport() {
   if(!current || ecommerceSubmitting || ecommerceExportRunning())return;
@@ -2032,7 +2032,10 @@ function installEvents() {
   $('newProject').onclick=showUpload;$('uploadMain').onclick=()=>pickUploadFiles(false);$('homeBrowseFolder').onclick=()=>pickUploadFiles(true);
   $('exitProjectButton').onclick=exitProject;
   document.querySelector('.brand').onclick=event=>{event.preventDefault();exitProject();};
-  $('mobileDeleteProject').innerHTML=deleteProjectIcon;
+  $('mobileDeleteProject').innerHTML='<span>删除项目</span>';
+  // Menus are plain <details>; close them on an outside click, a chosen item or Escape.
+  document.addEventListener('click',event=>{for(const menu of document.querySelectorAll('details.menu[open]'))if(!menu.contains(event.target) || event.target.closest('.menu-item:not([data-keep-open])'))menu.open=false;});
+  document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;for(const menu of document.querySelectorAll('details.menu[open]')){menu.open=false;menu.querySelector('summary')?.focus();}});
   $('mobileDeleteProject').onclick=()=>{if(current)deleteProject(current.id);};
   $('mobileNewProject').onclick=showUpload;
   $('mobileProjectSelect').onchange=async()=>{const id=$('mobileProjectSelect').value;if(id)await openProject(id);$('mobileProjectSelect').value=current?.id || '';};
@@ -2092,7 +2095,7 @@ function installEvents() {
   };
   $('instructionForm').onsubmit=applyInstructionAndPreview;
   $('ecommercePlatform').onchange=saveEcommerceSettings;$('ecommerceShadow').onchange=saveEcommerceSettings;$('ecommerceTransparent').onchange=saveEcommerceSettings;
-  document.querySelectorAll('[name=ecommerceBackground]').forEach(input=>input.onchange=saveEcommerceSettings);
+  $('ecommerceBackground').onchange=saveEcommerceSettings;
   $('ecommerceExport').onclick=submitEcommerceExport;$('ecommerceAdapt').onclick=adaptEcommercePlan;
   $('ecommerceResult').onclick=event=>{const button=event.target.closest('[data-cancel-ecommerce]');if(button)cancelEcommerceExport(button.dataset.cancelEcommerce);};
   $('instructionLocate').onclick=locatePendingInstruction;
