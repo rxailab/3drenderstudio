@@ -3,24 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f2f5fa">
+<meta name="theme-color" content="#17181b">
+<meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
-<link rel="stylesheet" href="/static/styles.css?v=17">
+<link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/styles.css?v=18">
 </head>
 <body>
 <a class="skip-link" href="#mainWorkspace">跳到摄影工作台</a>
 <header class="topbar">
 <a class="brand" href="/" aria-label="物影 Studio 首页">
-<span class="brand-mark">物</span>
-<strong>物影 <span>Studio</span>
-</strong>
+<span class="brand-mark" aria-hidden="true">物</span>
+<span class="brand-name">物影</span>
+<span class="brand-sub">Studio</span>
 </a>
-<button id="aiSettingsButton" type="button" class="button secondary ai-settings-open">AI 设置</button>
-<div class="system-status">
-<span class="status-dot">
-</span>
+<div class="topbar-actions">
+<button id="systemInfo" type="button" class="system-status" title="查看本机运行环境">
+<span class="status-dot" aria-hidden="true"></span>
 <span id="systemLabel">连接本机引擎</span>
-<button id="systemInfo" class="icon-button" title="运行环境" aria-label="查看运行环境">ⓘ</button>
+</button>
+<button id="aiSettingsButton" type="button" class="button outline ai-settings-open">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></svg>
+<span>AI 设置</span>
+</button>
 </div>
 </header>
 <div class="app-shell">
@@ -58,19 +63,32 @@
 <section id="workspaceHint" class="workspace-notice" aria-label="需要处理" hidden=""><div>
 <strong id="workflowTitle"></strong><p id="workflowDescription"></p>
 </div>
-<button id="runtimeHelp" type="button" class="button secondary" hidden>查看运行环境</button></section><section id="welcomePanel" class="welcome-panel">
-<div class="welcome-copy">
-<h2>上传产品模型</h2>
+<button id="runtimeHelp" type="button" class="button secondary" hidden>查看运行环境</button></section><section id="welcomePanel" class="home" aria-label="上传与项目">
+<section id="homeDropzone" class="home-upload" aria-labelledby="homeUploadTitle">
+<span class="home-upload-icon" aria-hidden="true">
+<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V3M4.5 6L8 2.5 11.5 6M2.5 13.5h11"/></svg>
+</span>
+<div class="home-upload-copy">
+<h1 id="homeUploadTitle">上传产品模型</h1>
+<p>把模型和配套资源拖到这里。上传后自动生成一张白底主图预览。</p>
+<p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · ZIP 资源包 · 每次 1 个模型，合计不超过 512 MB · 文件保存在本机</p>
 </div>
-<button id="uploadMain" class="button primary large">＋ 上传模型</button>
-<p class="file-help">GLB · OBJ + MTL 与贴图 · ZIP 资源包<br>上传后自动生成白底主图预览</p>
-<div class="example-area" id="exampleArea" hidden="">
-<div class="example-heading">
-<strong>示例模型</strong>
+<div class="home-upload-actions">
+<button id="homeBrowseFolder" type="button" class="button outline large">选择资源文件夹</button>
+<button id="uploadMain" type="button" class="button primary large">选择文件</button>
 </div>
+</section>
+<section id="homeProjects" class="home-projects" aria-labelledby="homeProjectsTitle">
+<h2 id="homeProjectsTitle">我的摄影项目 <span id="homeProjectCount">0</span></h2>
+<div id="homeProjectGrid" class="home-project-grid">
+<p class="muted">正在读取本机项目…</p>
+</div>
+</section>
+<section id="exampleArea" class="home-examples" aria-labelledby="examplesTitle" hidden>
+<h2 id="examplesTitle">手边没有模型？用示例试一次：</h2>
 <div id="exampleList" class="example-list">
 </div>
-</div>
+</section>
 </section>
 <section id="projectPanel" class="project-panel" hidden>
 <div class="viewer-toolbar">
@@ -581,7 +599,7 @@
 <button type="button" class="icon-button close-dialog" aria-label="关闭上传窗口">×</button>
 </div>
 <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="选择或拖入模型文件">
-<span class="upload-symbol">⇧</span>
+<span class="upload-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V3M4.5 6L8 2.5 11.5 6M2.5 13.5h11"/></svg></span>
 <strong>将模型与配套资源拖到这里</strong>
 <span>支持 GLB、OBJ / MTL / 贴图，以及 ZIP 资源包</span>
 <button id="browseFiles" type="button" class="button secondary">选择文件</button>
@@ -755,7 +773,7 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=17" defer>
+<script src="/static/app.js?v=18" defer>
 </script>
 </body>
 </html>

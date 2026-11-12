@@ -735,6 +735,57 @@ function renderLibrary() {
   $('projectCount').textContent = allProjects.length;
   options($('mobileProjectSelect'),[{value:'',label:allProjects.length?'选择摄影项目':'尚无摄影项目'},...allProjects.map(p=>({value:p.id,label:p.name}))],current?.id || '');
   stableHTML($('projectList'),allProjects.length ? allProjects.map(p => {const out=p.outputs?.at(-1),status=['queued','running'].includes(p.initial_preview?.status)?'白底主图生成中':p.initial_preview?.status==='failed'?'白底主图需处理':statusNames[p.status] || p.status;return `<div class="project-row ${p.id===current?.id?'active':''}"><button type="button" class="project-item" data-project="${esc(p.id)}" ${p.id===current?.id?'aria-current="true"':''}><span class="project-thumb">${out ? `<img src="${esc(out.jpg_url || out.png_url)}" alt="" loading="lazy">` : '◇'}</span><span class="project-copy"><strong>${esc(p.name)}</strong><small>${esc(status)}${p.outputs?.length ? ' · '+p.outputs.length+' 张' : ''}</small></span></button><button type="button" class="icon-button project-delete" data-delete-project="${esc(p.id)}" aria-label="删除项目「${esc(p.name)}」" title="删除项目" ${navigationBlocked()?'disabled':''}>${deleteProjectIcon}</button></div>`;}).join('') : '<p class="muted">还没有摄影项目。<br>上传一个模型开始吧。</p>');
+  renderHomeProjects();
+}
+// Home cards (design 01 首页 · 上传与项目): latest hero image, plain status line,
+// amber progress while work continues in the background.
+const projectPlaceholderIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>';
+const projectWarningIcon='<svg class="card-warning" role="img" aria-label="需要处理" viewBox="0 0 16 16" focusable="false"><path d="M8 2.5l6 10.5H2zM8 6.5v3M8 11.3v.2"/></svg>';
+function projectCardImage(p) {
+  const outputs=p.outputs || [];
+  return [...outputs].reverse().find(output=>output.shot_id==='hero') || outputs.at(-1) || null;
+}
+function projectCardStatus(p) {
+  const outputs=p.outputs || [],finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,previews=outputs.length-finals,shotCount=p.plan?.shots?.length || 0;
+  const job=p.active_job || p.jobs?.find(item=>['running','queued'].includes(item.status)),initial=p.initial_preview?.status;
+  if(job || ['queued','running'].includes(initial) || p.status==='analyzing'){
+    const kind=job?.kind || (p.status==='analyzing'?'analyze':'preview'),queued=job?job.status==='queued':initial==='queued';
+    const label=kind==='render'?'正在渲染 4K':kind==='analyze'?'模型分析中':kind==='hero_optimize'?'正在优化主图':job?.origin==='initial_preview' || (!job && initial)?'白底主图生成中':'正在生成预览';
+    const value=Number(job?.progress),progress=!queued && job?.status==='running' && Number.isFinite(value) && value>0?Math.min(100,Math.round(value)):null;
+    return {tone:'active',text:queued?label.replace(/^正在/,'')+' · 已排队':label+' · 后台继续',progress};
+  }
+  if(['failed','interrupted','cancelled'].includes(p.status) && !p.analysis){
+    return {tone:'warning',text:p.status==='failed'?'分析失败 · 可重试':p.status==='cancelled'?'分析已取消 · 可继续':'分析已中断 · 可继续'};
+  }
+  if(['failed','interrupted'].includes(initial) && !outputs.length)return {tone:'warning',text:'白底主图需处理 · 可继续'};
+  if(finals)return {tone:'done',text:`${finals} 张 4K 成品${shotCount?` · ${shotCount} 个镜头`:''}`};
+  const base=statusNames[p.status] || p.status || '可开始拍摄';
+  return {tone:'ready',text:previews?`${base} · ${previews} 张预览`:base};
+}
+function renderHomeProjects() {
+  $('homeProjectCount').textContent=allProjects.length;
+  stableHTML($('homeProjectGrid'),allProjects.length ? allProjects.map(p=>{
+    const image=projectCardImage(p),status=projectCardStatus(p);
+    const marker=status.tone==='done'?'<span class="card-dot" aria-hidden="true"></span>':status.tone==='warning'?projectWarningIcon:'';
+    const progress=status.tone==='active'?`<span class="project-card-progress" aria-hidden="true" ${status.progress===null?'data-progress="indeterminate"':''}><span${status.progress===null?'':` style="width:${status.progress}%"`}></span></span>`:'';
+    return `<div class="project-card"><button type="button" class="project-card-open" data-open-project="${esc(p.id)}"><span class="project-card-media">${image?`<img src="${esc(image.jpg_url || image.png_url)}" alt="${esc(p.name)}${image.shot_id==='hero'?'白底主图':'预览'}" loading="lazy">`:projectPlaceholderIcon}</span><span class="project-card-body"><span class="project-card-name">${esc(p.name)}</span><span class="project-card-status" data-tone="${status.tone}">${marker}<span>${esc(status.text)}</span></span>${progress}</span></button><button type="button" class="icon-button project-card-delete" data-delete-project="${esc(p.id)}" aria-label="删除项目「${esc(p.name)}」" title="删除项目" ${navigationBlocked()?'disabled':''}>${deleteProjectIcon}</button></div>`;
+  }).join('') : '<p class="muted">还没有摄影项目。上传一个模型，或用下方示例试一次。</p>');
+}
+// Home upload zone: the buttons open the native pickers directly; chosen or
+// dropped files continue in the existing upload dialog for review and submit.
+function pickUploadFiles(folder) {
+  if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');
+  if(uploadSubmitting){$('uploadDialog').showModal();return;}
+  $(folder?'modelFolder':'modelFiles').click();
+}
+async function droppedFiles(event) {
+  const entries=[...(event.dataTransfer?.items || [])].map(item=>item.webkitGetAsEntry?.()).filter(Boolean);
+  return entries.length?(await Promise.all(entries.map(entry=>readEntry(entry)))).flat():[...(event.dataTransfer?.files || [])];
+}
+async function continueUpload(files) {
+  if(uploadSubmitting)return;
+  if(files?.length)addFiles(files);
+  if(!$('uploadDialog').open)await showUpload();
 }
 const deleteProjectIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
 function realtimeAvailable() { return !!window.WuyingViewport && !!current?.analysis && activeShot==='hero' && system?.viewport?.available!==false && system?.runtime?.capabilities?.viewport!==false; }
@@ -1544,7 +1595,7 @@ async function resumeInstructionPreflight() {
   await applyInstructionAndPreview({preventDefault(){}});
 }
 function updateSystemStatus() {
-  $('systemLabel').textContent=serviceDisconnected?'本机服务连接中断':system?.available?'本机渲染已就绪':system?.runtime?.missing_components?.length?'渲染组件缺失':!system?'正在检查运行环境':'未找到 Blender';
+  $('systemLabel').textContent=serviceDisconnected?'本机服务连接中断':system?.available?'本机 Blender 已就绪':system?.runtime?.missing_components?.length?'渲染组件缺失':!system?'正在检查运行环境':'未找到 Blender';
   document.querySelector('.system-status .status-dot').style.background=renderReady()?'var(--green)':'var(--amber)';
   $('systemInfo').title=runtimeReason() || '查看本机运行环境';
 }
@@ -1844,7 +1895,7 @@ function installEvents() {
   $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);
   const removePoint=e=>{const button=e.target.closest('[data-remove-point]');if(button && !busy){feedbackPoints=feedbackPoints.filter(point=>point.id!==button.dataset.removePoint);renderFeedback();renderInstruction();}};
   $('feedbackSelection').onclick=removePoint;$('feedbackMarkers').onclick=removePoint;
-  $('newProject').onclick=showUpload;$('uploadMain').onclick=showUpload;
+  $('newProject').onclick=showUpload;$('uploadMain').onclick=()=>pickUploadFiles(false);$('homeBrowseFolder').onclick=()=>pickUploadFiles(true);
   $('exitProjectButton').onclick=exitProject;
   document.querySelector('.brand').onclick=event=>{event.preventDefault();exitProject();};
   $('mobileDeleteProject').innerHTML=deleteProjectIcon;
@@ -1860,9 +1911,12 @@ function installEvents() {
   $('sceneExportSource').onchange=()=>{const output=current?.outputs?.find(item=>sceneOutputKey(item)===$('sceneExportSource').value);sceneExportSource=output?clone(output):null;$('sceneExportError').textContent='';renderSceneExportControls();};
   document.querySelectorAll('[name=sceneExportFormat]').forEach(input=>input.onchange=()=>{$('sceneExportError').textContent='';renderSceneExportControls();});
   $('browseFiles').onclick=e=>{e.stopPropagation();$('modelFiles').click();};$('browseFolder').onclick=e=>{e.stopPropagation();$('modelFolder').click();};$('dropzone').onclick=e=>{if(e.target===$('dropzone') || !e.target.closest('button'))$('modelFiles').click();};$('dropzone').onkeydown=e=>{if(e.target===$('dropzone') && (e.key==='Enter' || e.key===' ')){e.preventDefault();$('modelFiles').click();}};
-  $('modelFiles').onchange=e=>{addFiles(e.target.files);e.target.value='';};$('modelFolder').onchange=e=>{addFiles(e.target.files);e.target.value='';};
+  $('modelFiles').onchange=e=>{const files=[...e.target.files];e.target.value='';continueUpload(files);};$('modelFolder').onchange=e=>{const files=[...e.target.files];e.target.value='';continueUpload(files);};
   for (const event of ['dragenter','dragover']) $('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('dragging');});
-  $('dropzone').ondragleave=()=>$('dropzone').classList.remove('dragging');$('dropzone').ondrop=async e=>{e.preventDefault();$('dropzone').classList.remove('dragging');try{const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean);if(entries.length)addFiles((await Promise.all(entries.map(x=>readEntry(x)))).flat());else addFiles(e.dataTransfer.files);}catch(error){$('uploadError').textContent=error.message;}};
+  $('dropzone').ondragleave=()=>$('dropzone').classList.remove('dragging');$('dropzone').ondrop=async e=>{e.preventDefault();$('dropzone').classList.remove('dragging');try{addFiles(await droppedFiles(e));}catch(error){$('uploadError').textContent=error.message;}};
+  for (const event of ['dragenter','dragover']) $('homeDropzone').addEventListener(event,e=>{if(![...(e.dataTransfer?.types || [])].includes('Files'))return;e.preventDefault();$('homeDropzone').classList.add('dragging');});
+  $('homeDropzone').ondragleave=e=>{if(!$('homeDropzone').contains(e.relatedTarget))$('homeDropzone').classList.remove('dragging');};
+  $('homeDropzone').ondrop=async e=>{e.preventDefault();$('homeDropzone').classList.remove('dragging');if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');try{await continueUpload(await droppedFiles(e));}catch(error){toast(error.message,true);}};
   $('chosenFiles').onclick=e=>{const b=e.target.closest('[data-remove-file]');if(b){uploadFiles.splice(Number(b.dataset.removeFile),1);addFiles([]);}};
   $('uploadForm').onsubmit=async event=>{
     event.preventDefault();if(uploadSubmitting || !uploadFiles.length)return;
@@ -1876,6 +1930,7 @@ function installEvents() {
     if(created){$('uploadDialog').close();uploadFiles=[];$('uploadForm').reset();addFiles([]);try{await refreshList();}catch(error){toast('项目已创建，但项目列表暂未刷新：'+error.message,true);}await openProject(created.id);toast('模型已上传，分析完成后会自动生成白底主图。');}
   };
   $('projectList').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const b=e.target.closest('[data-project]');if(b)openProject(b.dataset.project);};
+  $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};
   $('exampleList').onclick=async e=>{const b=e.target.closest('[data-example]');if(!b || !workerRenderReady() || navigationBlocked())return;if(!(await resolveUnsavedChanges()))return;b.disabled=true;try{const p=await api('/api/examples/'+b.dataset.example+'/import',{method:'POST'});await refreshList();await openProject(p.id);toast('验收模型已导入，正在进行真实分析。');}catch(error){toast(error.message,true);}finally{b.disabled=false;}};
   $('optimizeHeroButton').onclick=optimizeHero;
   $('previewButton').onclick=()=>run('preview');$('renderButton').onclick=()=>run('render');
@@ -1940,7 +1995,7 @@ async function start() {
   const results=await Promise.allSettled([api('/api/system'),refreshList(),api('/api/examples')]);
   if(results[0].status==='fulfilled'){system=results[0].value;}else{serviceDisconnected=true;toast(results[0].reason.message,true);}updateSystemStatus();renderActionState();
   if(results[1].status==='rejected')toast(results[1].reason.message,true);
-  if(results[2].status==='fulfilled'){$('exampleArea').hidden=!results[2].value.length;$('exampleList').innerHTML=results[2].value.map((e,i)=>`<button class="example-button" data-example="${esc(e.id)}" ${workerRenderReady()?'':'disabled'}><span class="example-icon">${['♧','▱','♜','♧','◇','↻'][i%6]}</span><div><strong>${esc(e.name)}</strong><p>${esc(e.description)}</p></div></button>`).join('');}
+  if(results[2].status==='fulfilled'){$('exampleArea').hidden=!results[2].value.length;$('exampleList').innerHTML=results[2].value.map(e=>`<button type="button" class="example-chip" data-example="${esc(e.id)}" title="${esc(e.description)}" ${workerRenderReady()?'':'disabled'}>${esc(e.name)}</button>`).join('');}
   const saved=recalled('wuying-project');if(saved && allProjects.some(p=>p.id===saved))await openProject(saved);
   setInterval(poll,2000);
 }
