@@ -1,5 +1,29 @@
 # 本地接口与可复现性
 
+## v21 展示级首图、后台高清图与指令智能体
+
+**方案字段。** `plan.look` 为 `"classic"`（缺省，旧项目保持不变）或 `"showcase"`（新上传的项目）。`plan.auto_polish` 为布尔值：预览完成后是否在后台补渲一张高清 2K。`plan.lookdev` 是服务端写入的只读记录 `{version,source,summary,decisions:[{scope,material,object?,finish,label,reason,parts?,twin_of?}]}`，说明分析完成时为占位材质推断了哪些质感及依据。材质覆盖（`material_overrides`、`object_material_overrides`）新增可选的 `coat`（0–1，清漆层）；质感推断写入的条目带 `source:"lookdev"`、`lookdev_finish`、`lookdev_reason`。通过 `POST /api/projects/{id}/plan` 把旧项目的 `look` 改为 `showcase` 且方案尚无任何材质覆盖时，服务端按同样规则补一次质感推断。
+
+**画质 `showcase`。** `POST /api/projects/{id}/jobs` 的 `kind:"render"` 可使用 `quality:"showcase"`：长边 2048 px、160 采样。输出记录的 `quality` 为 `"showcase"`，可作为 `/instruct`、`/hero-optimize`、定位与导出接口的来源图片。`kind:"preview"` 不接受该画质。
+
+**后台高清图。** `look` 为 `showcase` 且 `auto_polish` 为真的项目，在某个镜头的预览任务完成、自动检查与自动材质链路都结束后，服务端自动为该镜头提交一个 `kind:"render", quality:"showcase"` 的任务，带 `origin:"auto_polish"`；同一方案版本、同一镜头只成功一次。项目详情的 `polish` 为 `{status,job_id,version,shot_id,error}`。这个任务不占用项目：任何新的 `/jobs` 提交，以及 `/plan`、`/undo`、`/instruct`、`/instruct/confirm`、`/feedback`、`/review/propose`、`/review/apply`、`/hero-optimize`、`/materials/import`、`/materials/selection/apply`、`/material-agent/tasks`、`/ecommerce/adapt` 的 POST 请求都会先取消它（任务记录带 `yielded:true`，状态为 `cancelled`），然后照常执行；之后下一次预览完成时会重新提交，最多 3 次。用户通过 `/api/jobs/{id}/cancel` 取消的不会重新提交。客户端不应把 `origin:"auto_polish"` 的活动任务当作需要等待的任务。
+
+**指令回执。** `instruction_result` 新增 `agent_trace`，只含固定代码与计数：
+
+```json
+[{"agent":"planner","calls":2,"ready":1,"pending":1},
+ {"agent":"verifier","checked":2,"narrowed":1,"removed":6,"result":"narrowed"},
+ {"agent":"specialists","requirement":"r2","locator":{"result":"located","targets":4,"groups":1,"confidence":0.94},"result":"resolved"},
+ {"agent":"specialists","calls":1},
+ {"agent":"executor","repairs":["localised_shared_material"]}]
+```
+
+`verifier.result` 为 `narrowed`（去掉了 `removed` 个部件）、`confirmed`、`disputed`（认为整组都不对，未改动）、`rejected` 或 `unavailable`。`specialists` 的 `result` 为 `resolved`、`pending`、`rejected`（附校验代码 `reason`）或 `unavailable`；`locator.result` 为 `located`、`unresolved`（`reason`：`not_in_catalogue`、`ambiguous`、`hidden_or_too_small`、`not_a_part`）或 `rejected`；`finisher.result` 为 `chosen` 或 `rejected`。`executor.repairs` 为 `localised_shared_material`、`extended_to_bound_targets`、`dropped_unbound_edit`。全部要求仍未能执行时，错误响应（`error_code:"instruction_targets_unresolved"`）同样带 `agent_trace`，`pending[].reason` 为智能体给出的具体原因。
+
+`target_bindings[]` 中，用户写明数量时仍为 `expected_instances`（必须与实测的 `instance_count` 相等）；模型自行估计的数量记为 `inferred_instances`，只作记录，不参与校验。
+
+**环境变量。** `AI_AGENT_TEAM=0` 关闭核对与专职智能体（规划器的两轮调用不受影响）；`AI_AGENT_VERIFY=0` 只关闭核对；`AI_AGENT_MAX_CALLS`（默认 6，上限 12）限制每条指令中专职智能体的模型调用次数。详见 [AUTOMATION_UPDATE.md](AUTOMATION_UPDATE.md)。
+
 ## v19 电商平台检查与套图导出
 
 `GET /api/system` 的 `runtime.capabilities` 增加 `matte`：本机 Blender 与 `blender/render_matte.py` 均可用时为 `true`，纯白底与透明底处理依赖它。
@@ -211,7 +235,7 @@ AI 的 `target_bindings` 需要把本次原文部位对应到这张表中的编�
 
 项目详情的 `exports` 包含独立场景导出任务。只有原生文件实际保存并重开成功时才返回 completed/native_url。C4D因授权失败时返回 failed/error，并可附带 `conversion_package_url`（兼容别名 `package_url`）下载手动转换资料；此包不是原生C4D工程。
 
-正式任务使用 `kind=render`，`quality=standard` 或 `fine`。`shot_ids` 省略时使用全部镜头，显式空数组返回 400。`kind=render` 未提供正式质量时默认 `standard`。提交可附带 `Idempotency-Key`，一个项目同时只允许一个活动任务。预览和正式任务使用同一计划；正式档位不把已有预览放大，而是重新原生渲染。
+正式任务使用 `kind=render`，`quality=standard` 或 `fine`（v21 另有 2K 的 `showcase`，见上文）。`shot_ids` 省略时使用全部镜头，显式空数组返回 400。`kind=render` 未提供正式质量时默认 `standard`。提交可附带 `Idempotency-Key`，一个项目同时只允许一个活动任务。预览和正式任务使用同一计划；正式档位不把已有预览放大，而是重新原生渲染。
 
 方案结构由 `planner.default_plan` 和 `planner.validate` 定义：风格、比例、留白、旋转、曝光、光源柔和度、纹理尺度/旋转、材质槽覆盖、部件局部覆盖 `object_material_overrides`、逐镜头调整 `shot_adjustments`、可回退修复、姿态、时间预算、自动检查 `visual_review`、修正次数、镜头数组和信息来源。每个镜头包含稳定 ID、名称、完整图/细节图类型、方位角、俯仰角、焦距和可选细节部件目标。当前状态操作支持给定部件旋转/位移与已有动画帧，不猜测机械运动。
 

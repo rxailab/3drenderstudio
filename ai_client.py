@@ -229,7 +229,7 @@ def patch_schema(plan, analysis):
     shot = obj({'id':{'type':'string','enum':[s['id'] for s in plan['shots']]},'azimuth':{'type':'number','minimum':-360,'maximum':360},'elevation':{'type':'number','minimum':-80,'maximum':90},'focal_length':{'type':'number','minimum':20,'maximum':200},'projection':{'type':'string','enum':list(PROJECTIONS)},'ortho_scale':{'type':'number','minimum':ORTHO_SCALE_LIMITS[0],'maximum':ORTHO_SCALE_LIMITS[1]},'camera_distance':{'type':'number','minimum':ORTHO_SCALE_LIMITS[0],'maximum':ORTHO_SCALE_LIMITS[1]},'target_offset':{'type':'array','items':{'type':'number','minimum':-10,'maximum':10},'minItems':3,'maxItems':3},'style':scalar['style'], **({'target_object':{'type':'string','enum':objects}} if objects else {})}, ['id'])
     scalar['shots'] = {'type':'array','items':shot,'maxItems':len(plan['shots'])}
     if materials:
-        material_values={'preset':{'type':'string','enum':PRESETS},'color':{'type':'string','pattern':'^#[0-9A-Fa-f]{6}$'},**{k:{'type':'number','minimum':0,'maximum':1} for k in ['roughness','metallic','transmission']}}
+        material_values={'preset':{'type':'string','enum':PRESETS},'color':{'type':'string','pattern':'^#[0-9A-Fa-f]{6}$'},**{k:{'type':'number','minimum':0,'maximum':1} for k in ['roughness','metallic','transmission','coat']}}
         scalar['material_overrides'] = {'type':'array','items':obj({'name':{'type':'string','enum':materials},**material_values},['name']),'maxItems':len(materials)}
         if objects:
             scalar['object_material_overrides']={'type':'array','items':obj({'object_name':{'type':'string','enum':objects},'material_name':{'type':'string','enum':materials},**material_values},['object_name','material_name']),'maxItems':1000}
@@ -353,7 +353,13 @@ def apply_patch(plan, patch, analysis=None):
                 if 'preset' in change: existing['preserve_original']=False
                 if existing.get('textures'):
                     for field in change: existing['textures'].pop('base_color' if field=='color' else field,None)
-                if existing!=before:existing['source']='ai'
+                if existing!=before:
+                    existing['source']='ai'
+                    for field in ('lookdev_finish','lookdev_reason'):existing.pop(field,None)
+                    # A decision about the whole material outranks the automatic
+                    # per-part finishes guessed for it at import.
+                    result['object_material_overrides']=[entry for entry in result.get('object_material_overrides',[])
+                        if not (entry.get('material_name')==change['name'] and entry.get('source')=='lookdev')]
         elif key == 'object_material_overrides':
             pairs={(o['name'],m) for o in (analysis or {}).get('objects',[]) for m in _object_materials(o)}
             seen=set()
@@ -374,7 +380,9 @@ def apply_patch(plan, patch, analysis=None):
                     existing['preserve_original']=False
                 if existing.get('textures'):
                     for field in change: existing['textures'].pop('base_color' if field=='color' else field,None)
-                if existing!=before:existing['source']='ai'
+                if existing!=before:
+                    existing['source']='ai'
+                    for field in ('lookdev_finish','lookdev_reason'):existing.pop(field,None)
         elif key == 'pose':
             result['pose'].update(copy.deepcopy(value))
             if ('rotation' in result['pose'] or 'translation' in result['pose']) and not result['pose'].get('object'):
@@ -389,9 +397,9 @@ def _prepare_material_replacement(existing,change):
     preset=change.get('preset')
     if not preset:return
     if existing.get('preset')!=preset:
-        for field in ('roughness','metallic','transmission'):
+        for field in ('roughness','metallic','transmission','coat'):
             if field not in change:existing.pop(field,None)
-        for field in ('textures','resource','license','texture_scale','texture_rotation'):
+        for field in ('textures','resource','license','texture_scale','texture_rotation','lookdev_finish','lookdev_reason'):
             existing.pop(field,None)
     elif preset=='rubber' and 'metallic' not in change and existing.get('metallic',0)>.05:
         # A stale metallic override is incompatible even if an earlier edit

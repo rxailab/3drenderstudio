@@ -208,6 +208,13 @@ def configure_material(mat, override, plan):
                 for link in list(bs.inputs[socket].links): links.remove(link)
             if not bs.inputs[socket].is_linked: bs.inputs[socket].default_value=override.get(key,value)
     if not preserve: bs.inputs['IOR'].default_value=1.46 if preset=='glass' else 1.5
+    # A clear coat is what separates sprayed or moulded gloss from flat diffuse colour.
+    coat=override.get('coat')
+    if coat is None and plan.get('look')=='showcase' and 'preset' in override and not preserve:
+        coat={'painted_metal':.6,'glossy_plastic':.3,'ceramic':.3}.get(preset)
+    if coat is not None:
+        for socket,value in (('Coat Weight',coat),('Coat Roughness',.06),('Coat IOR',1.5)):
+            if socket in bs.inputs and not bs.inputs[socket].is_linked: bs.inputs[socket].default_value=value
     if not preserve and 'Anisotropic IOR Level' in bs.inputs: bs.inputs['Anisotropic IOR Level'].default_value=.65 if preset=='brushed_metal' else 0
     texcoord=nodes.new('ShaderNodeTexCoord'); mapping=nodes.new('ShaderNodeMapping')
     mapping.inputs['Scale'].default_value=(plan.get('texture_scale',1),)*3
@@ -452,6 +459,81 @@ def metal_reflection_light(meshes, soft, white, key_multiplier):
     return None
 
 
+def soften_edges(meshes):
+    """Give hard CAD edges a hairline highlight without changing any geometry.
+
+    A Cycles bevel node rounds the shading normal at render time. Materials that
+    already drive their normal (bump, normal map) keep it.
+    """
+    lo,hi,_=bounds(meshes);radius=max(hi-lo)*.0022;count=0
+    for mat in {m.name:m for ob in meshes for m in ob.data.materials if m}.values():
+        bs=bsdf_of(mat)
+        if not bs or 'Normal' not in bs.inputs or bs.inputs['Normal'].is_linked: continue
+        bevel=mat.node_tree.nodes.new('ShaderNodeBevel');bevel.name='Studio edge highlight'
+        bevel.samples=4;bevel.inputs['Radius'].default_value=radius
+        mat.node_tree.links.new(bevel.outputs['Normal'],bs.inputs['Normal']);count+=1
+    return dict(operation='edge_highlight',radius=radius,materials=count)
+
+
+def showcase_rig(scene,shot,soft,white,dark,meshes=()):
+    """A product-photography set: contrast from a key, shape from rear strips.
+
+    Every lamp is placed relative to the camera, so each shot keeps the same
+    modelling whatever its viewing angle. Key, fill and edge keep the names the
+    light-direction controls look for. The product is normalised to two units,
+    so distances are fixed.
+    """
+    azimuth=math.radians(shot.get('azimuth',35));target=Vector((0,0,.85))
+    def place(relative,elevation,distance):
+        a=azimuth+math.radians(relative);e=math.radians(elevation)
+        return target+Vector((math.sin(a)*math.cos(e),-math.cos(a)*math.cos(e),math.sin(e)))*distance
+    def lamp(name,relative,elevation,distance,power,width,height,color,shadow=True):
+        entry=area(name,place(relative,elevation,distance),power,width,color,target)
+        light=bpy.data.lights[entry['name']];light.shape='RECTANGLE';light.size=width;light.size_y=height
+        light.use_shadow=shadow;light.spread=math.radians(150)
+        bpy.data.objects[entry['name']].visible_camera=False
+        entry.update(shape='RECTANGLE',size=width,size_y=height,relative_azimuth=relative,elevation=elevation,casts_shadow=shadow)
+        return entry
+    # The key faces the camera-left side, the fill only opens the other side:
+    # roughly two stops apart, which is what gives a box its volume.
+    level=.12 if white else .11 if not dark else .1
+    lights=[lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93)),
+            lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),shadow=False),
+            lamp('Edge softbox',140,32,6,1200*level,.75*soft,4*soft,(1,1,1),shadow=False),
+            lamp('Edge strip left',-130,24,6,1000*level,.6*soft,4*soft,(1,1,1),shadow=False),
+            lamp('Top reflection',0,82,5.4,420*level,4.2*soft,4.2*soft,(1,1,1))]
+    # Horizontal metal seen from the front mirrors what stands low behind the set.
+    # A wide card there is what makes a steel top read as steel.
+    card=lamp('Back reflection card',180,14,7.5,900*level,7*soft,3*soft,(1,1,1),shadow=False)
+    bpy.data.lights[card['name']].diffuse_factor=.15
+    # A vertical glossy panel mirrors the low area on the far side of its normal.
+    # A reflection-only card there, placed for the box face nearest the camera,
+    # sweeps a soft sheen over the upper part of the panel and leaves the rest deep.
+    degrees=shot.get('azimuth',35);facing=round(degrees/90)*90
+    sweep=lamp('Front sweep card',2*(facing-degrees),0,3,90*level,3.6*soft,1.1*soft,(1,1,1),shadow=False)
+    holder=bpy.data.objects[sweep['name']];holder.location.z=.45;aim(holder,(0,0,.7));holder.data.diffuse_factor=0
+    sweep['position']=list(holder.location)
+    lights+=[card,sweep]
+    if meshes and 'light_linking' in bpy.types.Object.bl_rna.properties:
+        # Shaping lamps light the product only; the floor shadow comes from key and top.
+        receivers=bpy.data.collections.new('Studio product receivers')
+        for ob in meshes: receivers.objects.link(ob)
+        for entry in lights:
+            if not entry['casts_shadow']: bpy.data.objects[entry['name']].light_linking.receiver_collection=receivers
+        floor=bpy.data.objects.get('Studio floor')
+        if floor and not white and not dark:
+            # Softboxes fall off within a few units and would leave a dark band where
+            # a low camera sees far floor. An even wash on the backdrop alone keeps it
+            # seamless; the product still blocks it, which deepens the contact shadow.
+            data=bpy.data.lights.new('Backdrop wash','SUN');data.energy=1.1;data.angle=math.radians(40)
+            wash=bpy.data.objects.new('Backdrop wash',data);scene.collection.objects.link(wash)
+            wash.location=(0,0,9);wash.rotation_euler=(0,0,0)
+            backdrop=bpy.data.collections.new('Studio backdrop receivers');backdrop.objects.link(floor)
+            wash.light_linking.receiver_collection=backdrop
+            lights.append(dict(name='Backdrop wash',position=[0,0,9],energy=1.1,size=0,color=[1,1,1],casts_shadow=True,shape='SUN'))
+    return lights
+
+
 def studio(plan,shot,meshes):
     scene=bpy.context.scene;style=shot.get('style',plan.get('style','soft'))
     dark=style=='dark';white=style=='white';soft=plan.get('light_softness',1)
@@ -473,14 +555,24 @@ def studio(plan,shot,meshes):
         mix=nodes.new('ShaderNodeMixShader')
         links.new(light_path.outputs['Is Camera Ray'],mix.inputs[0]);links.new(nodes['Background'].outputs[0],mix.inputs[1]);links.new(background.outputs[0],mix.inputs[2])
         links.new(mix.outputs[0],nodes['World Output'].inputs['Surface'])
-    lights=[area('Key softbox',(-3,-4,5),650,3*soft,(1,.94,.87)),
-            area('Fill softbox',(4,-2,3),380,3*soft,(.86,.93,1)),
-            area('Edge softbox',(1.2,3,4),850,2*soft,(.9,.95,1)),
-            area('Top reflection',(-.5,0,6),300,2.5*soft,(1,1,1))]
-    if white:
-        for entry in lights:
-            entry['energy']*=.24
-            bpy.data.lights[entry['name']].energy=entry['energy']
+    showcase=plan.get('look')=='showcase'
+    if showcase:
+        lights=showcase_rig(scene,shot,soft,white,dark,meshes)
+        # A dim neutral surround: enough for open shadows, never a flat wash.
+        scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.9,.93,1,1) if not dark else (.3,.36,.48,1)
+        scene.world.node_tree.nodes['Background'].inputs[1].default_value=.08 if not dark else .04
+        # A white sweep throws a lot of bounce back into the product and veils its
+        # colour. The catcher only reports shadow, so a darker floor costs nothing.
+        if white: bs.inputs['Base Color'].default_value=(.45,.45,.45,1)
+    else:
+        lights=[area('Key softbox',(-3,-4,5),650,3*soft,(1,.94,.87)),
+                area('Fill softbox',(4,-2,3),380,3*soft,(.86,.93,1)),
+                area('Edge softbox',(1.2,3,4),850,2*soft,(.9,.95,1)),
+                area('Top reflection',(-.5,0,6),300,2.5*soft,(1,1,1))]
+        if white:
+            for entry in lights:
+                entry['energy']*=.24
+                bpy.data.lights[entry['name']].energy=entry['energy']
     materials=list({m.name:m for ob in meshes for m in ob.data.materials if m}.values())
     surfaces=[]
     for material in materials:
@@ -492,6 +584,11 @@ def studio(plan,shot,meshes):
     if any(s['transmission']>.3 for s in surfaces):
         edge=bpy.data.lights['Edge softbox'];edge.shape='RECTANGLE';edge.size=.65*soft;edge.size_y=3.5*soft
         edge.energy*=1.15
+        if showcase and not dark:
+            # Glass shows what surrounds it. The dim surround that deepens an
+            # opaque product would turn clear glass smoky, so keep it bright.
+            if white: bs.inputs['Base Color'].default_value=(.92,.92,.92,1)
+            scene.world.node_tree.nodes['Background'].inputs[1].default_value=.22
         rationale.append('检测到透射材质：使用窄长轮廓软箱和暗反光板表现边缘，保留原模型厚度')
         for side in (-1,1):
             bpy.ops.mesh.primitive_plane_add(size=1,location=(side*2.6,.8,1.8),rotation=(0,math.pi/2,0))
@@ -500,7 +597,9 @@ def studio(plan,shot,meshes):
             flag.visible_shadow=False
             flagmat=bpy.data.materials.new(flag.name);flagmat.use_nodes=True;bsdf_of(flagmat).inputs['Base Color'].default_value=(.003,.003,.003,1)
             flag.data.materials.append(flagmat)
-    if any(s['metallic']>.5 for s in surfaces):
+    if showcase:
+        rationale.append('展示布光：主光与补光拉开明暗，两侧后方的条形灯勾出轮廓高光，顶光压出接地阴影')
+    elif any(s['metallic']>.5 for s in surfaces):
         key=bpy.data.lights['Key softbox'];key.shape='RECTANGLE';key.size=4*soft;key.size_y=2.5*soft
         rationale.append('检测到金属：主光使用宽矩形反射形状，保持侧面明暗分离')
     if any(s['luminance']<.07 for s in surfaces):
@@ -516,7 +615,7 @@ def studio(plan,shot,meshes):
     lighting={'key_power':1,'fill_power':1,'rim_power':1,'environment':1,**plan.get('lighting',{})}
     for setting,name in [('key_power','Key softbox'),('fill_power','Fill softbox'),('rim_power','Edge softbox')]:
         bpy.data.lights[name].energy*=lighting[setting]
-    if any(s['metallic']>.5 for s in surfaces):
+    if not showcase and any(s['metallic']>.5 for s in surfaces):
         reflection=metal_reflection_light(meshes,soft,white,lighting['key_power'])
         if reflection:
             lights.append(reflection)
@@ -526,9 +625,10 @@ def studio(plan,shot,meshes):
         rationale.append('已应用确认的主光、补光、轮廓光与物理环境倍率；白底相机背景保持不变')
     for entry in lights:
         light=bpy.data.lights[entry['name']]
+        if light.type!='AREA': entry.update(energy=light.energy);continue
         entry.update(energy=light.energy,shape=light.shape,size=light.size,size_y=light.size_y)
     scene.view_settings.view_transform='Standard' if white else 'AgX'
-    try: scene.view_settings.look='None' if white else 'AgX - Medium High Contrast'
+    try: scene.view_settings.look=('Medium High Contrast' if showcase else 'None') if white else 'AgX - Medium High Contrast'
     except TypeError: pass
     scene.view_settings.exposure=plan.get('exposure',0);scene.view_settings.gamma=1
     return dict(style=style,lights=lights,material_features=surfaces,rationale=rationale,lighting_multipliers=lighting,environment_strength=float(scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value),color_management=dict(view_transform=scene.view_settings.view_transform,look=scene.view_settings.look,exposure=scene.view_settings.exposure,display='sRGB'))
@@ -595,15 +695,16 @@ def render(req,objects,meshes):
     scene['studio_source_plan']=json.dumps(plan,ensure_ascii=False)
     plan=effective_render_plan(plan,shot['id'])
     scene['studio_product_objects']=json.dumps([ob.name for ob in objects])
-    quality=req.get('quality','preview');long=512 if quality=='preview' else 4096
+    quality=req.get('quality','preview');long={'preview':512,'showcase':2048}.get(quality,4096)
     aspect=plan.get('aspect','1:1');a,b=[int(x) for x in aspect.split(':')]
     scene.render.resolution_x=round(long*a/max(a,b));scene.render.resolution_y=round(long*b/max(a,b));scene.render.resolution_percentage=100
     operations,warnings=prepare(objects,meshes,plan)
+    if plan.get('look')=='showcase': operations.append(soften_edges(meshes))
     cam,checks=camera(plan,shot,meshes)
     settings=studio(plan,shot,meshes)
     dev=device(req.get('force_cpu',False))
-    scene.cycles.samples={'preview':24,'standard':128,'fine':1024}[quality]
-    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'preview':.07,'standard':.015,'fine':.005}[quality]
+    scene.cycles.samples={'preview':24,'showcase':160,'standard':128,'fine':1024}[quality]
+    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'preview':.07,'showcase':.015,'standard':.015,'fine':.005}[quality]
     scene.cycles.use_denoising=True;scene.cycles.max_bounces=12;scene.cycles.transmission_bounces=12
     scene.cycles.time_limit=0 if quality!='fine' else float(plan.get('time_budget',1200))
     scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGB';scene.render.image_settings.color_depth='8'

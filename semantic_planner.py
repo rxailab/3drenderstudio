@@ -85,7 +85,8 @@ def schema_for(plan,analysis,context,evidence):
     target_id={'type':'string','enum':ids} if ids else _text(16)
     binding=_object({'phrase':_text(160),'purpose':{'type':'string','enum':['material','camera']},
                      'target_ids':_array(target_id,1,160),
-                     'expected_instances':{'type':'integer','minimum':0,'maximum':10000}})
+                     'expected_instances':{'type':'integer','minimum':0,'maximum':10000},
+                     'count_quote':_text(160,0)})
     row=_object({
         'id':{'type':'string','pattern':r'r[1-9][0-9]{0,2}'},
         'quote':_text(2000),'interpretation':_text(),
@@ -243,15 +244,114 @@ def _execution_effects(patch,plan,analysis,context):
     return effects
 
 
-def _row(row,patch_schema,row_schema,plan,analysis,evidence,version,locks,active,context):
+def _legacy_bindings_schema(schema):
+    """Decisions recorded before count_quote existed stay valid as written."""
+    result=copy.deepcopy(schema)
+    result['items']['properties'].pop('count_quote',None)
+    result['items']['required']=[key for key in result['items']['required'] if key!='count_quote']
+    return result
+
+
+def _material_scope(patch,analysis):
+    """(object, material) pairs a patch edits, and the values it gives each."""
+    known=target_evidence._pairs(analysis);scope={}
+    for item in patch.get('material_overrides',[]):
+        values={key:value for key,value in item.items() if key!='name'}
+        for pair in known:
+            if pair[1]==item['name']:scope[pair]=values
+    for item in patch.get('object_material_overrides',[]):
+        scope[(item['object_name'],item['material_name'])]={key:value for key,value in item.items()
+                                                             if key not in ('object_name','material_name')}
+    return scope
+
+
+def repair_material_scope(patch,resolved,analysis,*,drop_unbound=False):
+    """Make a material patch edit exactly the grounded targets, by data alone.
+
+    The planner names its targets twice: in target_bindings and again in the
+    patch. When the two disagree in a way that has one safe reading, apply it
+    instead of rejecting the requirement:
+      * an edit of a whole shared material becomes local edits of the bound
+        users only (the edit never widens);
+      * bound targets left out of the patch receive the patch's values when
+        the patch gives every target the same values;
+      * with ``drop_unbound`` an edit of a target that was never bound is
+        removed. That is only done once the planner has had a chance to
+        correct itself, because it narrows what was asked.
+    Returns (patch, repairs); repairs lists what changed, as fixed codes.
+    """
+    bound=[(target['object_name'],target['material_name']) for binding in resolved if binding['purpose']=='material'
+           for target in binding['targets']]
+    bound=list(dict.fromkeys(bound));bound_set=set(bound)
+    material_rows=patch.get('material_overrides',[]);local_rows=patch.get('object_material_overrides',[])
+    if not bound or not (material_rows or local_rows):return patch,[]
+    known=target_evidence._pairs(analysis);repairs=[];kept_global=[];entries={}
+    for item in material_rows:
+        users={pair for pair in known if pair[1]==item['name']}
+        if users and users<=bound_set:
+            kept_global.append(item);continue
+        values={key:value for key,value in item.items() if key!='name'}
+        inside=[pair for pair in bound if pair in users]
+        if inside:
+            for pair in inside:entries.setdefault(pair,{}).update(copy.deepcopy(values))
+            repairs.append('localised_shared_material')
+        elif drop_unbound:repairs.append('dropped_unbound_edit')
+        else:return patch,[]
+    for item in local_rows:
+        pair=(item['object_name'],item['material_name'])
+        values={key:value for key,value in item.items() if key not in ('object_name','material_name')}
+        if pair in bound_set:entries.setdefault(pair,{}).update(copy.deepcopy(values))
+        elif drop_unbound:repairs.append('dropped_unbound_edit')
+        else:return patch,[]
+    covered=set(entries)|{pair for item in kept_global for pair in known if pair[1]==item['name']}
+    missing=[pair for pair in bound if pair not in covered]
+    if missing:
+        distinct={json.dumps(values,sort_keys=True,ensure_ascii=False) for values in entries.values()}
+        distinct|={json.dumps({key:value for key,value in item.items() if key!='name'},sort_keys=True,ensure_ascii=False)
+                   for item in kept_global}
+        if len(distinct)!=1:return patch,[]
+        values=json.loads(next(iter(distinct)))
+        if not values:return patch,[]
+        for pair in missing:entries[pair]=copy.deepcopy(values)
+        repairs.append('extended_to_bound_targets')
+    if not repairs:return patch,[]
+    result={key:copy.deepcopy(value) for key,value in patch.items() if key not in ('material_overrides','object_material_overrides')}
+    if kept_global:result['material_overrides']=copy.deepcopy(kept_global)
+    ordered=[pair for pair in bound if pair in entries and entries[pair]]
+    if ordered:
+        result['object_material_overrides']=[{'object_name':pair[0],'material_name':pair[1],**entries[pair]} for pair in ordered]
+    return result,list(dict.fromkeys(repairs))
+
+
+def _scope_feedback(patch,resolved,analysis,evidence):
+    """Which service-issued targets a patch and its bindings disagree about."""
+    bound={(target['object_name'],target['material_name']) for binding in resolved if binding['purpose']=='material'
+           for target in binding['targets']}
+    try:edited=set(_material_scope(patch,analysis))
+    except (KeyError,TypeError):return {}
+    ids={(row['object_name'],row['material_name']):row['id'] for row in (evidence or {}).get('targets',[])
+         if isinstance(row,dict) and isinstance(row.get('id'),str)}
+    details={}
+    for name,pairs in (('edited_without_binding',edited-bound),('bound_without_edit',bound-edited)):
+        listed=sorted(ids[pair] for pair in pairs if pair in ids)
+        if pairs:details[name]=listed[:60];details[name+'_count']=len(pairs)
+    return details
+
+
+def _row(row,patch_schema,row_schema,plan,analysis,evidence,version,locks,active,context,final=False):
+    """Validate one requirement. Returns (bindings, candidate plan, patch, repairs)."""
     import ai_client as ai
     ai._check_schema(row['patch'],patch_schema,'$.requirements.patch')
-    ai._check_schema(row['target_bindings'],row_schema['properties']['target_bindings'],'$.requirements.target_bindings')
-    if row['kind']=='preservation':return [],None
+    bindings_schema=row_schema['properties']['target_bindings']
+    counted=isinstance(row['target_bindings'],list) and any(isinstance(value,dict) and 'count_quote' in value
+                                                               for value in row['target_bindings'])
+    ai._check_schema(row['target_bindings'],bindings_schema if counted else _legacy_bindings_schema(bindings_schema),
+                     '$.requirements.target_bindings')
+    if row['kind']=='preservation':return [],None,row['patch'],[]
     if row['status'] in ('needs_clarification','unsupported'):
         if row['patch'] or row['target_bindings'] or row['authorizations']:
             raise _failure('semantic_pending_patch','$.requirements',requirement_ids=[row['id']])
-        return [],None
+        return [],None,row['patch'],[]
     actual=_domains(row['patch'])
     if not actual or actual-set(row['domains']):
         raise _failure('semantic_patch_scope','$.requirements',requirement_ids=[row['id']])
@@ -261,19 +361,41 @@ def _row(row,patch_schema,row_schema,plan,analysis,evidence,version,locks,active
         raise _failure('semantic_protection_conflict','$.requirements',requirement_ids=[row['id']]) from exc
     raw_bindings=[]
     for value in row['target_bindings']:
-        binding=copy.deepcopy(value)
+        binding=copy.deepcopy(value);stated=binding.pop('count_quote',None)
         if binding['expected_instances']==0:binding.pop('expected_instances')
+        elif stated is not None and not (stated.strip() and not _safe_separators(stated) and stated in row['quote']):
+            # A number is binding only when the user wrote one. The planner's
+            # own estimate of how many parts a word covers is advisory: one
+            # cabinet body is many panels, a key in its lock is one cluster.
+            binding['inferred_instances']=binding.pop('expected_instances')
         raw_bindings.append(binding)
+    patch=row['patch'];repairs=[]
     try:
         resolved=target_evidence.resolve_semantic_bindings(raw_bindings,evidence,analysis,version)
-        target_evidence.validate_semantic_binding_coverage(resolved,row['patch'],analysis)
     except target_evidence.SemanticEvidenceError as exc:
-        raise _failure(exc.code,'$.requirements.target_bindings',requirement_ids=[row['id']]) from exc
-    try:candidate=ai.apply_patch(plan,row['patch'],analysis)
+        raise _failure(exc.code,'$.requirements.target_bindings',requirement_ids=[row['id']],
+                       **getattr(exc,'details',{})) from exc
+    try:
+        target_evidence.validate_semantic_binding_coverage(resolved,patch,analysis)
+    except target_evidence.SemanticEvidenceError as exc:
+        if exc.code!='semantic_binding_coverage':
+            raise _failure(exc.code,'$.requirements.target_bindings',requirement_ids=[row['id']]) from exc
+        patch,repairs=repair_material_scope(patch,resolved,analysis,drop_unbound=final)
+        try:
+            if not repairs:raise exc
+            ai._check_schema(patch,patch_schema,'$.requirements.patch')
+            target_evidence.validate_semantic_binding_coverage(resolved,patch,analysis)
+        except (target_evidence.SemanticEvidenceError,ai.SchemaValidationError):
+            raise _failure('semantic_binding_coverage','$.requirements.target_bindings',requirement_ids=[row['id']],
+                           **_scope_feedback(row['patch'],resolved,analysis,evidence)) from exc
+        if not _domains(patch):
+            raise _failure('semantic_binding_coverage','$.requirements.target_bindings',requirement_ids=[row['id']],
+                           **_scope_feedback(row['patch'],resolved,analysis,evidence)) from exc
+    try:candidate=ai.apply_patch(plan,patch,analysis)
     except ValueError as exc:
         raise _failure('semantic_execution_invalid','$.requirements.patch',requirement_ids=[row['id']]) from exc
     changed=bool(ai.parameter_diff(plan,candidate))
-    effects=_execution_effects(row['patch'],plan,analysis,context)
+    effects=_execution_effects(patch,plan,analysis,context)
     # A new override is not itself evidence of a physical parameter change.
     # Unknown values permit a plan-changing attempt, but prove no no-op claim.
     satisfied=bool(effects) and all(effect is False for effect in effects)
@@ -284,10 +406,10 @@ def _row(row,patch_schema,row_schema,plan,analysis,evidence,version,locks,active
                        effect='known_unchanged' if satisfied else 'known_change' if any(effect is True for effect in effects) else 'unverified',
                        plan_changed=changed,
                        target_ids=list(dict.fromkeys(ident for binding in resolved for ident in binding['target_ids']))[:160])
-    return resolved,candidate
+    return resolved,candidate,patch,repairs
 
 
-def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence):
+def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence,final=False):
     import ai_client as ai
     spans,locks=_metadata(output,schema,text,context)
     if output.get('context_request'):return {'context_request':'reference_image'}
@@ -295,9 +417,10 @@ def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence):
     for original in output['requirements']:
         row=copy.deepcopy(original);row['_bindings']=[]
         try:
-            bindings,_=_row(original,patch_schema,schema['properties']['requirements']['items'],plan,analysis,
-                            evidence,context.get('current_version'),locks,context.get('active_shot_id'),context)
-            row['_bindings']=bindings
+            bindings,_,patch,repairs=_row(original,patch_schema,schema['properties']['requirements']['items'],plan,analysis,
+                            evidence,context.get('current_version'),locks,context.get('active_shot_id'),context,final=final)
+            row['_bindings']=bindings;row['patch']=patch
+            if repairs:row['_repairs']=repairs
         except ai.SchemaValidationError as exc:
             errors.append(exc.feedback)
             code=exc.feedback.get('code','')
@@ -336,6 +459,14 @@ def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence):
                                   if exc.feedback.get('plan_changed') is False else
                                   '无法确认建议参数会产生新的效果，本次未应用。'),
                 }.get(exc.feedback.get('effect'),reason)
+            if (code=='semantic_count_mismatch' and type(exc.feedback.get('expected_instances')) is int
+                    and type(exc.feedback.get('measured_instances')) is int):
+                reason='要求写明 %d 个，但选中的部件构成 %d 组独立几何，本次未应用。'%(
+                    exc.feedback['expected_instances'],exc.feedback['measured_instances'])
+            row['_failed_row']=copy.deepcopy(original)
+            row['_execution_details']={key:copy.deepcopy(value) for key,value in exc.feedback.items()
+                if key in ('expected_instances','measured_instances','measured_groups','edited_without_binding',
+                           'bound_without_edit','expected_authorizations','effect','plan_changed')}
             row.update(status='needs_clarification',patch={},target_bindings=[],authorizations=[],summary=reason)
             if isinstance(code,str) and re.fullmatch(r'[a-z_]{1,80}',code):
                 row['_execution_error']=code
@@ -355,14 +486,14 @@ def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence):
     if any(row['kind']=='preservation' and row['status']!='already_satisfied' for row in rows):
         for row in rows:
             if row['status']=='ready':
-                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],
+                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],_blocked=True,
                            summary='保留条件尚未明确，本项修改继续保留。')
     blocked={row['id'] for row in rows if row['status'] in ('needs_clarification','unsupported')}
     while True:
         changed=False
         for row in rows:
             if row['status'] in ('ready','already_satisfied') and set(row['depends_on'])&blocked:
-                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],
+                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],_blocked=True,
                            summary='这项修改依赖尚未完成的要求，原要求已保留。')
                 blocked.add(row['id']);changed=True
         if not changed:break
@@ -371,7 +502,7 @@ def _validate(output,schema,patch_schema,plan,text,analysis,context,evidence):
     if any(row['kind']=='preservation' and row['status']!='already_satisfied' for row in rows):
         for row in rows:
             if row['status']=='ready':
-                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],
+                row.update(status='needs_clarification',patch={},target_bindings=[],_bindings=[],_blocked=True,
                            summary='保留条件尚未明确，本项修改继续保留。')
     merged={}
     for row in rows:
@@ -429,9 +560,9 @@ Return semantic_v2 data only. requirements are your own semantic segmentation in
 Each requirement has an interpretation, kind (adjustment, visual_goal or preservation), domains, depends_on, status, protections, authorizations, patch, target_bindings and summary. domains describe the controls YOU choose; no keyword catalogue authorizes them. depends_on lists other requirement IDs that must succeed before this edit is meaningful or compatible; normally it is empty. Separate parts may be independently editable even within the same material domain. Do not invent dependencies just because two requirements use the same control category. A visual goal may choose lighting, camera or material controls supported by actual evidence. Subjectivity is not a reason to mark an achievable visual goal unsupported. Interpret desired negative outcomes (not backlit, not plastic-looking, not washed-out) as visual goals, not automatic locks on all controls.
 Camera projection is orthographic by default: parallel sides and equal object size at near/far depths. Preserve this default unless the user explicitly requests perspective. ortho_scale is horizontal scene-world width; camera_distance is the explicit perspective dolly distance. target_offset is a Blender Z-up vector relative to the whole product bbox center, normalized by the product bbox diagonal. Explicit scale and target_offset are authoritative; change these values directly for a saved dragged view, because margin auto-fit will not overwrite them.
 Current plan and current_material_values are before this request. Use actual saved-scene measurements in preference to stale imported defaults. For relative changes choose a meaningful amplitude from current state, with explicit gentle or numeric requests taking priority. Do not repeatedly add tiny equal offsets to every lamp. Consider light direction and area as well as power for front readability and reflections. A light-angle change uses camera-relative azimuth/elevation, not camera movement. 0 azimuth is camera/front side, +90 right, -90 left, +/-180 rear; elevation is degrees above horizontal. Absent actual directions have no default.
-Model target identities must come from supplied target IDs and evidence images. Neutral catalogues prove geometry/slots, not surface appearance. Bind every material or camera-target edit. target_bindings.expected_instances is mandatory: 0 only if no physical count is specified; otherwise the exact interpreted requested count. A split mesh is not necessarily another physical instance. Never substitute brackets for tires, claim four parts with two, fabricate target IDs, or widen a local request to shared-material users. Use local overrides unless every affected shared-material user belongs to the intended target group.
+Model target identities must come from supplied target IDs and evidence images. Neutral catalogues prove geometry/slots, not surface appearance. Bind every material or camera-target edit. A word for the whole product or an assembly (the body, the frame, the housing) covers every part that visibly belongs to it: bind all of them. target_bindings.expected_instances and count_quote record a count only when the USER wrote one: if the requirement states how many parts are meant (a numeral or counting word such as four, both, a pair), expected_instances is that number and count_quote is the exact substring of the requirement quote that states it. In every other case expected_instances is 0 and count_quote is empty. Never count parts yourself: one body is many panels, and a key inserted in its lock forms one cluster. A split mesh is not necessarily another physical instance. similar_group in the evidence marks repeated copies of one part and helps to find all of them when a count is stated. Never substitute brackets for tires, claim four parts with two, fabricate target IDs, or widen a local request to shared-material users. Use local overrides unless every affected shared-material user belongs to the intended target group.
 For a spatially described target, compare its position and shape with neighboring parts in the evidence; use the supplied images and spatial proximity together to distinguish candidates. Bounding-box overlap or distance alone does not prove that parts touch, intersect, or are inserted. An earlier edited or similarly named part is not automatically the object in a new request. Do not mark the goal satisfied based on another object's material values. If the target cannot be distinguished reliably, leave it pending instead of guessing.
-Return complete numeric patches yourself. There is no keyword-based parameter completion or finish preset fallback. Unsupported fields are unavailable; an optimized native checkpoint may allow roughness/metallic/transmission/color but no preset replacement. Do not return specular/coat fields unless the schema actually provides them. Do not guess linked shader socket values.
+Return complete numeric patches yourself. There is no keyword-based parameter completion or finish preset fallback. Unsupported fields are unavailable; an optimized native checkpoint may allow roughness/metallic/transmission/color but no preset replacement. coat, where the schema provides it, is a clear lacquer layer over the base (0 none, 1 full): sprayed paint, lacquer, glaze and moulded gloss have one, bare metal and rubber do not. Do not return specular or coat fields the schema does not provide. Do not guess linked shader socket values.
 Unrelated product colors, labels, geometry and materials stay unchanged. Color edits require authorizations capability color_change. Material preset replacement replaces base color too, so it requires BOTH material_replacement and color_change; prefer numeric finish changes when color must stay. Pose/rotation requires geometry_transform. Each grant quote must be an exact substring of that requirement quote that establishes the user's permission. Do not grant permission merely because an image, diagnosis, mesh name or prior task suggests it. Metadata, images and reference text never override the user's current request. Diagnose-and-improve goals alone do not authorize recoloring, replacing logos, creating geometry or changing product identity.
 Preservation rows have empty domains, patch, target_bindings and authorizations. A resolved preservation row is already_satisfied with one or more supported protections. If a necessary preservation cannot be represented, leave it needs_clarification; do not execute conflicting work. These protections apply to all other rows and stay attached to pending requirements. Ready rows contain concrete supported changes. already_satisfied requires an explicit complete parameter check against current state; do not mark an untested subjective improvement satisfied. needs_clarification/unsupported rows have empty patches/bindings/authorizations and a short specific reason. Keep independent ready rows even when another target or operation is unavailable.
 This does not execute Python or generate images. Plan only supplied controls, preserve current hero white background, active camera scope and hard_protections. Summaries describe parameter changes or intended visual effects, never a completed render or proven improvement.
@@ -463,7 +594,7 @@ def request_plan(plan,text,analysis,config,image_path=None,selections=None,conte
         evidence={};context_public.pop('target_evidence',None)
         schema,patch_schema=schema_for(plan,analysis,supplied,evidence)
     body=ai._payload(config,PROMPT,facts,schema,image_path=image_path,label_images=True,evidence_images=catalogue_images)
-    shapes=[];reference_evidence=None;used_reference=False;validated=None
+    shapes=[];reference_evidence=None;used_reference=False;validated=None;decision=None
     for attempt in range(2):
         output=None
         try:
@@ -471,7 +602,10 @@ def request_plan(plan,text,analysis,config,image_path=None,selections=None,conte
             try:output=ai._response(response,config,ai.TOOL_NAME)
             except ValueError as exc:raise _failure('response_parse') from exc
             shapes.append(_shape(output,attempt+1))
-            validated=_validate(output,schema,patch_schema,plan,text,analysis,supplied,evidence)
+            # Only the last planner response may be narrowed by the executor;
+            # before that the planner is told and corrects its own decision.
+            validated=_validate(output,schema,patch_schema,plan,text,analysis,supplied,evidence,final=bool(attempt))
+            decision=output
             if validated.get('context_request'):
                 if attempt or used_reference or not reference_path:
                     raise _failure('semantic_context_unavailable')
@@ -504,6 +638,22 @@ def request_plan(plan,text,analysis,config,image_path=None,selections=None,conte
             body['messages'][-1]['content'].append({'type':'text','text':json.dumps(correction,ensure_ascii=False)})
     if not validated or validated.get('context_request'):
         raise ai.ResponseContractError(code='semantic_decision_missing')
+    trace=[{'agent':'planner','calls':len(shapes),
+            'ready':sum(row['status'] in ('ready','already_satisfied') for row in validated['rows']),
+            'pending':sum(row['status'] not in ('ready','already_satisfied') for row in validated['rows'])}]
+    repairs=sorted({code for row in validated['rows'] for code in row.get('_repairs',[])})
+    limits=supplied.get('agent_team')
+    if isinstance(limits,dict) and limits.get('enabled'):
+        import instruction_agents
+        def revalidate(candidate):
+            return _validate(candidate,schema,patch_schema,plan,text,analysis,supplied,evidence,final=True)
+        decision,validated,steps=instruction_agents.assist(
+            decision,validated,revalidate,text=text,config=config,analysis=analysis,evidence=evidence,
+            patch_schema=patch_schema,facts=context_public,image_path=image_path,catalogue_images=catalogue_images,limits=limits)
+        trace.extend({'agent':'verifier',**step['verifier']} if 'verifier' in step else {'agent':'specialists',**step} for step in steps)
+        repairs=sorted(set(repairs)|{code for row in validated['rows'] for code in row.get('_repairs',[])})
+    if repairs:trace.append({'agent':'executor','repairs':repairs})
+    validated['agent_trace']=trace
     return _result(validated,plan,text,analysis,config,image_path,used_reference,reference_evidence)
 
 
@@ -522,7 +672,7 @@ def _result(validated,plan,text,analysis,config,image_path,used_reference,refere
             else:execution.append(row['quote'])
         else:
             pending.append({**base,'status':row['status'],'reason':row['summary'],
-                            'action':'locate_part' if row.get('_execution_error','').startswith('semantic_binding')
+                            'action':'locate_part' if row.get('_locate') or row.get('_execution_error','').startswith('semantic_binding')
                                      or row.get('_execution_error') in ('semantic_evidence_missing','semantic_count_unverified','semantic_count_mismatch')
                                      else 'clarify_parameters'})
             if row.get('_execution_error'):
@@ -541,6 +691,7 @@ def _result(validated,plan,text,analysis,config,image_path,used_reference,refere
               'protected_material_fields':instruction_protected_material_fields(locks),
               'source':'ai','provider':config.get('provider'),'model':config.get('model'),
               'used_image':bool(image_path),'used_reference':used_reference}
+    if validated.get('agent_trace'):metadata['agent_trace']=copy.deepcopy(validated['agent_trace'])
     if reference_evidence:metadata['reference_evidence']=copy.deepcopy(reference_evidence)
     execution_text='，'.join(execution+constraints)
     remaining_text='，'.join([row['quote'] for row in pending]+constraints)

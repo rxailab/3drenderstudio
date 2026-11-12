@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=20">
+<link rel="stylesheet" href="/static/styles.css?v=21">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -575,6 +575,14 @@
 </select>
 <label class="field-label" for="timeBudget">单张时间预算（秒）</label>
 <input id="timeBudget" type="number" value="1200" min="10" max="14400">
+<label class="field-label" for="lookMode">布光与质感</label>
+<select id="lookMode">
+<option value="showcase">展示级 · 明暗对比与轮廓高光</option>
+<option value="classic">经典 · 均匀柔光</option>
+</select>
+<label class="check-label">
+<input id="autoPolish" type="checkbox">预览后在后台生成高清 2K</label>
+<p class="field-help">空闲时自动进行，不影响继续操作。</p>
 <label class="check-label">
 <input id="visualReview" type="checkbox" checked>预览后自动检查并修正</label>
 <p class="field-help">自动修正会额外渲染，耗时更长。</p>
@@ -822,7 +830,7 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=20" defer>
+<script src="/static/app.js?v=21" defer>
 </script>
 </body>
 </html>

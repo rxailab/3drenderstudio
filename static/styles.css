@@ -731,3 +731,12 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
   .viewport-spinner, .render-activity-orbit { animation: none; border-style: dotted; }
   .render-activity[data-progress="indeterminate"] .render-activity-progress > span, .project-card-progress[data-progress="indeterminate"] > span { width: 100%; animation: none; opacity: .5; }
 }
+
+/* Look-dev record in the inspection panel */
+.lookdev-record { margin-top: 4px; }
+.lookdev-record summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.lookdev-record ul { margin: 6px 0; padding: 0; list-style: none; max-height: 220px; overflow: auto; }
+.lookdev-record li { padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+.lookdev-record li b { font-weight: 600; }
+.lookdev-record li small { display: block; color: var(--muted); }
+.lookdev-record p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }

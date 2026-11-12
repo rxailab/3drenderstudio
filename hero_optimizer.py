@@ -53,7 +53,7 @@ def _source(project,source,shot_id):
     if not isinstance(source,dict) or set(source)!={'output_id','shot_id','quality','version'}:
         raise ValueError('请选择当前镜头已经生成的明确场景版本。')
     if (not isinstance(source.get('output_id'),str) or not source['output_id']
-            or source.get('quality') not in ('preview','standard','fine','hero')
+            or source.get('quality') not in ('preview','showcase','standard','fine','hero')
             or type(source.get('version')) is not int or source['version']<1):
         raise ValueError('来源场景标识无效。')
     if source.get('shot_id')!=shot_id:
