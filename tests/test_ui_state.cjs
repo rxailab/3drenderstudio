@@ -39,8 +39,8 @@ function marketplaceView(h,p) {
     const output=[...p.outputs].filter(item=>item.shot_id===shot.id).sort((a,b)=>b.version-a.version)[0];
     if(!output)return {shot_id:shot.id,label:shot.label,kind:shot.kind,main:index===0,output:null,status:'missing',items:[{id:'render',status:'action',action:'preview',label:'尚未出图',detail:'这个镜头还没有渲染图片。'}]};
     const large=Math.max(output.width,output.height)>=platform.min_px;
-    const items=[large?{id:'resolution',status:'pass',label:'分辨率',detail:`将导出 ${platform.target_px} × ${platform.target_px} px。`}:{id:'resolution',status:'action',action:'render',label:'分辨率',detail:'当前只有预览图，渲染 4K 后即可导出。'},
-      {id:'background',status:'auto',label:'纯白背景',detail:'导出时自动处理为纯白 RGB 255。'}];
+    const items=[large?{id:'resolution',status:'pass',label:'分辨率',value:`${platform.target_px} × ${platform.target_px}`,detail:`将导出 ${platform.target_px} × ${platform.target_px} px。`}:{id:'resolution',status:'action',action:'render',label:'分辨率',value:`${Math.max(output.width,output.height)} px，需渲染 4K`,detail:'当前只有预览图，渲染 4K 后即可导出。'},
+      {id:'background',status:'auto',label:'纯白背景',value:'导出时处理',detail:'导出时自动处理为纯白 RGB 255。'}];
     return {shot_id:shot.id,label:shot.label,kind:shot.kind,main:index===0,output:{version:output.version,quality:output.quality,width:output.width,height:output.height},export:{aspect:'1:1',cut:index===0,reframe:true,size:[platform.target_px,platform.target_px]},status:large?'ready':'action',items};
   });
   const rendered=shots.filter(shot=>shot.output);
@@ -796,7 +796,7 @@ test('automatic optimization records stay contextual and selected materials have
   h.run("current.auto_material.status='completed';renderProject()");assert.equal(h.node('autoMaterialStatus').open,false);
   h.run("feedbackPoints=[{id:'p1',x:.5,y:.5,hit:true,object_name:'Body',material_name:'BodyMaterial',material_info:{color:'#ffffff'}}];renderPartMaterial()");
   assert.equal(h.node('partMaterialPanel').hidden,false);assert.match(h.node('partMaterialInfo').textContent,/已选 1 个/);
-  assert.match(h.node('materialIntro').textContent,/画面调整/);
+  assert.match(h.node('materialIntro').textContent,/点击部件/);
 });
 
 test('selected material parameters still submit an explicit local patch without a language request',async t=>{
@@ -2032,7 +2032,7 @@ test('one-click hero optimization saves a draft and submits the latest real sour
   const p=heroOptimizationProject();p.outputs.push({...p.outputs[0],job_id:'hero-new',created_at:40,png_url:'/files/a/runs/new/hero.png',blend_url:'/files/a/runs/new/hero.blend'});
   const h=await setup(t,{projects:[p]});enableHeroOptimization(h);await h.run("openProject('a')");
   input(h,'instructionInput','保留这段尚未提交的要求');input(h,'exposure','0.4');
-  assert.equal(h.node('optimizeHeroButton').hidden,false);assert.equal(h.node('optimizeHeroButton').disabled,false);assert.equal(h.node('renderButton').classList.contains('primary'),false);
+  assert.equal(h.node('optimizeHeroButton').hidden,false);assert.equal(h.node('optimizeHeroButton').disabled,false);assert.equal(h.node('renderButton').classList.contains('primary'),true);assert.equal(h.node('optimizeHeroButton').classList.contains('primary'),false);assert.equal(h.node('optimizeHeroButton').closest('[role="tabpanel"]').id,'inspectorReview');
   const pending=h.run('optimizeHero()');await tick();await h.run('optimizeHero()');await pending;
   const writes=h.calls.filter(call=>call.method==='POST');assert.deepEqual(writes.map(call=>call.url),['/api/projects/a/plan','/api/projects/a/hero-optimize']);
   const request=writes[1];assert.equal(request.body.expected_version,2);assert.equal(request.body.final_resolution,2000);assert.equal(request.body.shot_id,'hero');
@@ -2189,12 +2189,14 @@ test('电商出图 is the fourth inspector tab and asks the server only once it 
   assert.equal(h.node('ecommercePlatform').value,'general');
   assert.deepEqual([...h.node('ecommercePlatform').querySelectorAll('optgroup')].map(group=>group.label),['通用','跨境','国内']);
   assert.match(h.node('ecommercePlatformSummary').textContent,/导出 2000 px · 建议纯白底/);
-  assert.match(h.node('ecommerceCheckShot').textContent,/白底主图 · 主图/);
+  assert.equal(h.node('ecommerceCheckShot').textContent,'白底主图');
   const checks=[...h.node('ecommerceChecks').children];
   assert.deepEqual(checks.map(item=>item.dataset.status),['action','auto']);
-  assert.match(checks[0].textContent,/需要处理/);assert.match(checks[1].textContent,/导出时自动处理/);
+  assert.equal(checks[0].querySelector('.value').textContent,'512 px，需渲染 4K');assert.ok(checks[0].querySelector('.detail'),'a rule that needs the user shows its sentence');
+  assert.equal(checks[1].querySelector('.value').textContent,'导出时处理');assert.equal(checks[1].querySelector('.detail'),null,'a passing or automatic rule stays on one line');
+  assert.match(checks[1].title,/自动处理为纯白/);
   assert.equal(h.node('ecommerceExport').disabled,false,'a preview can still be exported');
-  assert.equal(h.node('ecommerceExportHint').dataset.tone,'warn');assert.match(h.node('ecommerceExportHint').textContent,/建议先渲染 4K/);
+  assert.equal(h.node('ecommerceExportHint').dataset.tone,'warn');assert.match(h.node('ecommerceExportHint').textContent,/只有预览尺寸/);
   await h.run('poll()');assert.equal(ecommerceCalls(h).length,2,'an unchanged project is not measured again');
 });
 
@@ -2211,7 +2213,7 @@ test('the last inspector tab is reachable from the keyboard',async t=>{
 
 test('marketplace and export options are saved with the project and drive the checks',async t=>{
   const h=await setup(t,{projects:[rendered('a')]});await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
-  assert.equal(h.node('ecommerceExportHint').dataset.tone,'');assert.match(h.node('ecommerceExportHint').textContent,/将导出 1 个镜头/);
+  assert.equal(h.node('ecommerceExportHint').hidden,true,'nothing to say when the export is ready');
   h.node('ecommercePlatform').value='amazon';h.node('ecommercePlatform').dispatchEvent(new h.w.Event('change'));await tick();
   const saved=h.calls.at(-1);assert.equal(saved.method+' '+saved.url,'PUT /api/projects/a/ecommerce');
   assert.deepEqual(saved.body,{platform:'amazon',background:'main_white',shadow:true,transparent:false});
@@ -2219,15 +2221,14 @@ test('marketplace and export options are saved with the project and drive the ch
   assert.equal(h.node('ecommercePlatformNotes').querySelector('a').getAttribute('rel'),'noopener noreferrer');
   h.node('ecommerceTransparent').checked=true;h.node('ecommerceTransparent').dispatchEvent(new h.w.Event('change'));await tick();
   assert.equal(h.calls.at(-1).body.transparent,true);assert.equal(h.node('ecommerceTransparent').checked,true);
-  h.w.document.querySelector('[name=ecommerceBackground][value=all_white]').checked=true;
-  h.w.document.querySelector('[name=ecommerceBackground][value=all_white]').dispatchEvent(new h.w.Event('change'));await tick();
+  h.node('ecommerceBackground').value='all_white';h.node('ecommerceBackground').dispatchEvent(new h.w.Event('change'));await tick();
   assert.equal(h.calls.at(-1).body.background,'all_white');assert.equal(h.records.get('a').ecommerce.background,'all_white');
 });
 
 test('without the matte runtime only the keep-as-rendered export is offered',async t=>{
   const h=await setup(t,{projects:[rendered('a')]});h.matteAvailable=false;await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
-  const radios=[...h.w.document.querySelectorAll('[name=ecommerceBackground]')];
-  assert.deepEqual(radios.map(input=>input.disabled),[true,true,false]);assert.equal(radios[2].checked,true);
+  assert.equal(h.node('ecommerceBackground').disabled,true);assert.equal(h.node('ecommerceBackground').value,'original');
+  h.node('ecommerceExport').click();await tick();assert.equal(h.calls.at(-1).body.background,'original');
   assert.equal(h.node('ecommerceTransparent').disabled,true);assert.equal(h.node('ecommerceShadow').disabled,true);
 });
 
@@ -2268,7 +2269,7 @@ test('a running export can be cancelled and a running render blocks a new export
 test('re-framing for a marketplace is one undoable plan change followed by one preview',async t=>{
   const h=await setup(t,{projects:[rendered('a',512)]});h.planRecommendation={margin:.06};
   await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
-  assert.equal(h.node('ecommerceAdapt').hidden,false);assert.match(h.node('ecommerceAdapt').textContent,/留白改为 6%/);
+  assert.equal(h.node('ecommerceAdapt').hidden,false);assert.match(h.node('ecommerceAdapt').textContent,/留白 6%/);
   h.planRecommendation={};
   await h.run('adaptEcommercePlan()');
   const adapt=h.calls.find(call=>call.url==='/api/projects/a/ecommerce/adapt');

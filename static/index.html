@@ -7,9 +7,21 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=19">
+<link rel="stylesheet" href="/static/styles.css?v=20">
 </head>
 <body>
+<svg class="icon-sprite" aria-hidden="true" focusable="false">
+<symbol id="i-back" viewBox="0 0 16 16"><path d="M9.5 3.5 5 8l4.5 4.5"/></symbol>
+<symbol id="i-undo" viewBox="0 0 16 16"><path d="M5.5 3.5 3 6l2.5 2.5M3 6h6.2a3.4 3.4 0 0 1 0 6.8H6"/></symbol>
+<symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.2"/></symbol>
+<symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 16 16"><path d="M2.5 2.5h11v11h-11zM6.2 2.5v11M9.8 2.5v11M2.5 6.2h11M2.5 9.8h11"/></symbol>
+<symbol id="i-expand" viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9.2 6.8M2.5 13.5l4.3-4.3"/></symbol>
+<symbol id="i-reset" viewBox="0 0 16 16"><path d="M2.8 8.2a5.2 5.2 0 1 0 1.5-3.9M2.6 2.4v2.9h2.9"/></symbol>
+<symbol id="i-target" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.3"/><path d="M8 1.5v2.7M8 11.8v2.7M1.5 8h2.7M11.8 8h2.7"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 16 16"><path d="m4.5 6.3 3.5 3.5 3.5-3.5"/></symbol>
+<symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 11V3M4.5 6 8 2.5 11.5 6M2.5 13.5h11"/></symbol>
+</svg>
 <a class="skip-link" href="#mainWorkspace">跳到摄影工作台</a>
 <header class="topbar">
 <a class="brand" href="/" aria-label="物影 Studio 首页">
@@ -17,19 +29,40 @@
 <span class="brand-name">物影</span>
 <span class="brand-sub">Studio</span>
 </a>
+<div class="project-bar project-only">
+<button id="exitProjectButton" type="button" class="icon-button" title="返回项目列表，后台任务继续运行" aria-label="返回项目列表" hidden><svg class="icon"><use href="#i-back"/></svg></button>
+<h1 id="projectTitle" class="sr-only">新建项目</h1>
+<select id="mobileProjectSelect" class="project-switch" aria-label="切换摄影项目" title="切换摄影项目">
+<option value="">选择摄影项目</option>
+</select>
+<span id="planState" class="plan-state" role="status" hidden=""></span>
+</div>
 <div class="topbar-actions">
+<button id="undoButton" type="button" class="icon-button project-only" disabled title="恢复上一版已保存方案" aria-label="恢复上一版已保存方案"><svg class="icon"><use href="#i-undo"/></svg></button>
+<details id="projectMenu" class="menu project-only">
+<summary class="icon-button" aria-label="更多项目操作" title="更多"><svg class="icon"><use href="#i-more"/></svg></summary>
+<div class="menu-panel" role="group" aria-label="项目操作">
+<a id="bundleButton" class="menu-item disabled" href="#" aria-disabled="true" title="包含本项目所有已有图片、历史版本、工程与参数">下载项目归档</a>
+<button id="mobileNewProject" type="button" class="menu-item">新建项目…</button>
+<button id="mobileDeleteProject" type="button" class="menu-item danger project-delete" aria-label="删除当前项目" hidden></button>
+</div>
+</details>
 <button id="systemInfo" type="button" class="system-status" title="查看本机运行环境">
 <span class="status-dot" aria-hidden="true"></span>
 <span id="systemLabel">连接本机引擎</span>
 </button>
-<button id="aiSettingsButton" type="button" class="button outline ai-settings-open">
-<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></svg>
+<button id="aiSettingsButton" type="button" class="button subtle ai-settings-open">
+<svg class="icon"><use href="#i-spark"/></svg>
 <span>AI 设置</span>
 </button>
+<span class="topbar-divider project-only" aria-hidden="true"></span>
+<button id="previewButton" class="button secondary project-only" type="button" aria-describedby="renderReason">预览</button>
+<button id="renderButton" class="button primary project-only" type="button" aria-describedby="renderReason">渲染 4K</button>
+<p id="renderReason" class="sr-only" role="status"></p>
 </div>
 </header>
 <div class="app-shell">
-<aside class="library">
+<aside class="library" aria-label="项目列表">
 <div class="library-heading">
 <h2>我的摄影项目</h2>
 <span id="projectCount">0</span>
@@ -41,72 +74,63 @@
 </div>
 </aside>
 <main id="mainWorkspace" class="workspace" tabindex="-1">
-<div class="mobile-project-toolbar">
-<label for="mobileProjectSelect">摄影项目</label>
-<select id="mobileProjectSelect" aria-label="切换摄影项目">
-<option value="">选择摄影项目</option>
-</select>
-<button id="mobileDeleteProject" type="button" class="icon-button project-delete" aria-label="删除当前项目" title="删除当前项目" hidden></button>
-<button id="mobileNewProject" type="button" class="button primary">＋ 新建</button>
-</div>
-<div class="workspace-heading">
-<div>
-<h1 id="projectTitle">新建项目</h1>
-</div>
-<div class="heading-actions">
-<button id="exitProjectButton" type="button" class="button subtle" title="返回上传首页，后台任务继续运行" hidden>退出项目</button>
-<span id="planState" class="plan-state" role="status" hidden=""></span>
-<button id="undoButton" class="button subtle" disabled title="恢复上一版已保存方案">↶ 恢复上一版</button>
-<a id="bundleButton" class="button secondary disabled" href="#" aria-disabled="true" title="包含本项目所有已有图片、历史版本、工程与参数">下载项目归档</a>
-</div>
-</div>
 <section id="workspaceHint" class="workspace-notice" aria-label="需要处理" hidden=""><div>
 <strong id="workflowTitle"></strong><p id="workflowDescription"></p>
 </div>
 <button id="runtimeHelp" type="button" class="button secondary" hidden>查看运行环境</button></section><section id="welcomePanel" class="home" aria-label="上传与项目">
 <section id="homeDropzone" class="home-upload" aria-labelledby="homeUploadTitle">
-<span class="home-upload-icon" aria-hidden="true">
-<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V3M4.5 6L8 2.5 11.5 6M2.5 13.5h11"/></svg>
-</span>
+<span class="home-upload-icon" aria-hidden="true"><svg class="icon"><use href="#i-upload"/></svg></span>
 <div class="home-upload-copy">
 <h1 id="homeUploadTitle">上传产品模型</h1>
-<p>把模型和配套资源拖到这里。上传后自动生成一张白底主图预览。</p>
-<p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · ZIP 资源包 · 每次 1 个模型，合计不超过 512 MB · 文件保存在本机</p>
+<p>拖入模型文件，自动生成白底主图。</p>
+<p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · ZIP 资源包 · 每次 1 个模型，不超过 512 MB · 文件只保存在本机</p>
 </div>
 <div class="home-upload-actions">
-<button id="homeBrowseFolder" type="button" class="button outline large">选择资源文件夹</button>
+<button id="homeBrowseFolder" type="button" class="button secondary large">选择文件夹</button>
 <button id="uploadMain" type="button" class="button primary large">选择文件</button>
 </div>
 </section>
 <section id="homeProjects" class="home-projects" aria-labelledby="homeProjectsTitle">
-<h2 id="homeProjectsTitle">我的摄影项目 <span id="homeProjectCount">0</span></h2>
+<h2 id="homeProjectsTitle">项目 <span id="homeProjectCount">0</span></h2>
 <div id="homeProjectGrid" class="home-project-grid">
 <p class="muted">正在读取本机项目…</p>
 </div>
 </section>
 <section id="exampleArea" class="home-examples" aria-labelledby="examplesTitle" hidden>
-<h2 id="examplesTitle">手边没有模型？用示例试一次：</h2>
+<h2 id="examplesTitle">示例模型</h2>
 <div id="exampleList" class="example-list">
 </div>
 </section>
 </section>
 <section id="projectPanel" class="project-panel" hidden>
+<aside class="shot-rail" aria-label="镜头">
+<div class="shots-heading">
+<h2><span class="sr-only">镜头图组 </span><span id="shotCount"></span></h2>
+<label class="check-label" title="勾选的镜头会输出 4K"><input id="selectAllShots" type="checkbox">全选</label>
+</div>
+<p id="shotHint" class="sr-only">点图查看 · 勾选输出 4K</p>
+<div id="shotList" class="shot-list" aria-label="镜头与输出选择">
+</div>
+<button id="selectCurrentShot" type="button" class="text-button">只选当前</button>
+</aside>
+<div class="stage">
 <div class="viewer-toolbar">
 <div class="viewer-title">
 <strong id="shotTitle">白底主图</strong>
 <span id="renderKind" class="pill">等待预览</span>
 </div>
 <div class="viewer-actions">
+<button id="applyViewportView" type="button" class="button accent" hidden>使用当前视角</button>
+<button id="comparePreview" type="button" class="button subtle compare-preview" aria-pressed="false" hidden>对比上一版</button>
 <div id="viewModeSwitch" class="view-mode-switch" role="group" aria-label="画面模式" hidden>
 <button id="liveViewButton" type="button" aria-pressed="true">实时 3D</button>
 <button id="savedViewButton" type="button" aria-pressed="false">渲染图</button>
 </div>
-<button id="applyViewportView" type="button" class="button secondary" hidden>使用当前视角</button>
-<button id="resetViewport" type="button" class="icon-button" title="复位视角" aria-label="复位视角" hidden>↺</button>
-<button id="comparePreview" type="button" class="button secondary compare-preview" aria-pressed="false" hidden>对比上一版</button>
-<button id="feedbackToggle" type="button" class="button secondary feedback-toggle" aria-pressed="false" aria-controls="feedbackPanel" disabled>选择部件 / 材质</button>
-<button id="toggleGrid" class="icon-button" title="切换构图网格" aria-label="切换构图网格">▦</button>
-<button id="zoomImage" class="icon-button" title="查看原图" aria-label="查看原图">⤢</button>
+<span class="toolbar-divider" aria-hidden="true"></span>
+<button id="resetViewport" type="button" class="icon-button" title="复位视角" aria-label="复位视角" hidden><svg class="icon"><use href="#i-reset"/></svg></button>
+<button id="feedbackToggle" type="button" class="icon-button feedback-toggle" title="选择部件 / 材质" aria-label="选择部件 / 材质" aria-pressed="false" aria-controls="feedbackPanel" disabled><svg class="icon"><use href="#i-target"/></svg></button>
+<button id="toggleGrid" type="button" class="icon-button" title="构图网格" aria-label="切换构图网格"><svg class="icon"><use href="#i-grid"/></svg></button>
+<button id="zoomImage" type="button" class="icon-button" title="查看原图" aria-label="查看原图"><svg class="icon"><use href="#i-expand"/></svg></button>
 </div>
 </div>
 <div id="viewer" class="viewer">
@@ -130,7 +154,6 @@
 <div class="render-activity-card">
 <div class="render-activity-symbol" aria-hidden="true">
 <span class="render-activity-orbit"></span>
-<svg viewBox="0 0 24 24" fill="none"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9M8 5.3l8 4.5"/></svg>
 </div>
 <div class="render-activity-copy">
 <strong id="renderActivityTitle"></strong>
@@ -146,63 +169,56 @@
 </div>
 <p id="renderActivityAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
 <div class="image-details">
-<div>
+<div class="image-info">
 <span id="imageMeta"></span>
 <p id="previewNotice" class="preview-notice" role="status" hidden>
 </p>
 </div>
+<div class="image-actions">
 <div id="imageDownloads" hidden>
-<a id="downloadPng" download>PNG</a>
-<a id="downloadJpg" download>JPG</a>
-<button id="sceneExportButton" type="button" class="text-button scene-export-open">更多导出</button>
+<a id="downloadPng" class="button subtle" download>PNG</a>
+<a id="downloadJpg" class="button subtle" download>JPG</a>
 </div>
+<details id="sceneMenu" class="menu menu-up">
+<summary class="button subtle">工程文件<svg class="icon"><use href="#i-chevron"/></svg></summary>
+<div class="menu-panel" role="group" aria-label="工程文件">
 <div id="latestSceneDownloads" class="latest-scene-downloads" hidden>
 <span id="latestSceneSource" class="latest-scene-source"></span>
 <div class="latest-scene-actions">
-<a id="downloadLatestBlend" class="button secondary" download aria-describedby="latestSceneSource">下载 Blender</a>
-<a id="downloadLatestC4d" class="button secondary" download aria-describedby="latestSceneSource" hidden>下载 C4D</a>
-<button id="generateLatestC4d" class="button secondary" type="button" aria-describedby="latestSceneSource latestSceneStatus">生成 C4D 文件</button>
-<button id="latestSceneDetails" class="text-button" type="button" hidden>查看详情</button>
+<a id="downloadLatestBlend" class="menu-item" download aria-describedby="latestSceneSource">下载 Blender 工程</a>
+<a id="downloadLatestC4d" class="menu-item" download aria-describedby="latestSceneSource" hidden>下载 C4D 工程</a>
+<button id="generateLatestC4d" class="menu-item" type="button" data-keep-open aria-describedby="latestSceneSource latestSceneStatus">生成 C4D 文件</button>
+<button id="latestSceneDetails" class="menu-item" type="button" hidden>查看详情</button>
 </div>
 <p id="latestSceneStatus" class="latest-scene-status" role="status" aria-live="polite" hidden></p>
+</div>
+<button id="sceneExportButton" type="button" class="menu-item scene-export-open">导出其他版本的工程…</button>
+</div>
+</details>
 </div>
 </div>
 <div id="jobPanel" class="job-panel" hidden>
 </div>
-<div class="shots-heading">
-<div>
-<h2>镜头图组 <span id="shotCount">
-</span>
-</h2>
-<p id="shotHint">点图查看 · 勾选输出 4K</p>
-</div>
-<div class="shot-selection-actions">
-<button id="selectCurrentShot" type="button" class="text-button">只选当前</button>
-<label class="check-label">
-<input id="selectAllShots" type="checkbox"> 全选</label>
-</div>
-</div>
-<div id="shotList" class="shot-list" aria-label="镜头与输出选择">
 </div>
 </section>
 </main>
 <aside class="settings inspector">
-<div class="inspector-tabs" role="tablist" aria-label="预览工作台面板">
-<button id="inspectorReviewTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorReview" data-inspector="review">画面调整</button>
-<button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">部件材质</button>
-<button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">摄影方案</button>
-<button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">电商出图</button>
+<div class="inspector-tabs" role="tablist" aria-label="工作台面板">
+<button id="inspectorReviewTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorReview" data-inspector="review">调整</button>
+<button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">材质</button>
+<button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">参数</button>
+<button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">导出</button>
 </div>
 <div id="inspectorBody" class="inspector-body">
 <section id="inspectorReview" role="tabpanel" aria-labelledby="inspectorReviewTab">
 <form id="instructionForm" class="instruction-form">
-<label for="instructionInput" class="field-label">调整要求</label><textarea id="instructionInput" rows="3" maxlength="2000" placeholder="例如：反光柔和一点，颜色和角度不变" aria-describedby="instructionContext instructionError"></textarea><p id="instructionContext" class="field-help" role="status" hidden></p>
+<label for="instructionInput" class="sr-only">调整要求</label><textarea id="instructionInput" rows="3" maxlength="2000" placeholder="描述想要的效果，例如：反光柔和一点，颜色和角度不变" aria-describedby="instructionContext instructionError"></textarea><p id="instructionContext" class="field-help" role="status" hidden></p>
 <p id="instructionError" class="error-text" role="alert" hidden></p>
 <details id="instructionErrorDisclosure" class="instruction-error-details" hidden><summary>问题详情</summary><div id="instructionErrorDetails"></div></details>
 <section id="instructionProposal" class="instruction-proposal" aria-labelledby="instructionProposalSummary" hidden>
 <p id="instructionProposalSummary" class="instruction-proposal-summary" role="status"></p>
 <div id="instructionReady"><p class="instruction-ready-label">可先完成</p><ul id="instructionReadyList" class="instruction-ready-list"></ul></div>
-<details id="instructionProposalDisclosure"><summary>查看原因与修改明细</summary><div id="instructionProposalDetails"></div></details>
+<details id="instructionProposalDisclosure"><summary>原因与明细</summary><div id="instructionProposalDetails"></div></details>
 </section>
 <div class="instruction-actions"><button id="instructionSubmit" class="button primary" type="submit">应用并预览</button><button id="instructionLocate" class="button secondary" type="button" aria-controls="feedbackPanel" hidden>定位待确认部位</button></div>
 </form>
@@ -210,8 +226,8 @@
 <p id="instructionReceiptSummary" class="instruction-receipt-summary" role="status"></p>
 <details id="instructionReceiptDisclosure"><summary>修改明细</summary><div id="instructionReceiptDetails"></div></details>
 </section>
-<section class="diagnosis-section" aria-labelledby="diagnosisTitle"><div class="review-heading">
-<h2 id="diagnosisTitle">画面诊断</h2>
+<section class="panel-section diagnosis-section" aria-labelledby="diagnosisTitle"><div class="review-heading">
+<h2 id="diagnosisTitle">诊断</h2>
 <button id="reviewRefreshButton" type="button" class="text-button" disabled>重新检查</button>
 </div>
 <p id="reviewEmptyState" class="inspector-empty">生成预览后显示诊断。</p>
@@ -219,7 +235,7 @@
 <section id="reviewPanel" class="review-panel" hidden=""><p id="reviewSummary">
 </p>
 <details class="review-evidence">
-<summary>查看依据与记录</summary>
+<summary>依据与记录</summary>
 <div id="reviewDetails">
 </div>
 </details>
@@ -229,10 +245,14 @@
 </p>
 <div id="materialAgentTasks" class="material-agent-tasks" aria-live="polite">
 </div>
-</details></section></section>
+</details></section>
+<section class="panel-section hero-optimize" aria-label="主图优化">
+<button id="optimizeHeroButton" class="button secondary full-width" type="button" aria-describedby="optimizeHeroReason" hidden>自动优化主图</button>
+<p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
+</section></section>
 <section id="inspectorMaterial" role="tabpanel" aria-labelledby="inspectorMaterialTab" hidden>
 <div class="material-intro">
-<p id="materialIntro">点选部件可手动修改材质；其他调整要求在「画面调整」中描述。</p>
+<p id="materialIntro">在画面中点击部件，查看并修改它的材质。</p>
 </div>
 <section id="feedbackPanel" class="feedback-panel" aria-labelledby="feedbackTitle" hidden>
 <div class="feedback-heading">
@@ -265,61 +285,59 @@
 <div class="feedback-actions"><button id="instructionTargetCancel" class="text-button" type="button">取消定位</button><button id="instructionTargetContinue" class="button primary" type="button" disabled>用选点继续识别</button></div>
 </section>
 <details id="manualPartControls" class="manual-part-controls" open>
-<summary>查看 / 手动调整材质</summary>
+<summary>材质参数</summary>
 <div id="partMaterialPanel">
-<p id="partMaterialInfo" class="field-help">选中部件后显示已渲染场景中的材质。</p>
+<p id="partMaterialInfo" class="field-help">选中部件后显示它的材质。</p>
 <div id="partMaterialResources" class="part-material-resources">
 </div>
 <form id="partMaterialForm">
 <div class="part-material-grid">
 <div class="part-material-field">
 <label class="check-label">
-<input id="partPresetUse" type="checkbox">修改材质预设</label>
+<input id="partPresetUse" type="checkbox">预设</label>
 <select id="partPreset" aria-label="所选部件材质预设">
 <option value="">保持现有材质</option>
 </select>
-<small>仅选择预设时修改材质类别</small>
 </div>
 <div class="part-material-field">
 <label class="check-label">
-<input id="partColorUse" type="checkbox">修改颜色</label>
+<input id="partColorUse" type="checkbox">颜色</label>
 <input id="partColor" aria-label="所选部件颜色" type="color" value="#808080">
 <small id="partColorValue">
 </small>
 </div>
 <div class="part-material-field">
 <label class="check-label">
-<input id="partRoughnessUse" type="checkbox">修改粗糙度</label>
+<input id="partRoughnessUse" type="checkbox">粗糙度</label>
 <input id="partRoughness" aria-label="所选部件粗糙度" type="number" min="0" max="1" step="any">
 <small id="partRoughnessValue">
 </small>
 </div>
 <div class="part-material-field">
 <label class="check-label">
-<input id="partMetallicUse" type="checkbox">修改金属度</label>
+<input id="partMetallicUse" type="checkbox">金属度</label>
 <input id="partMetallic" aria-label="所选部件金属度" type="number" min="0" max="1" step="any">
 <small id="partMetallicValue">
 </small>
 </div>
 <div class="part-material-field">
 <label class="check-label">
-<input id="partTransmissionUse" type="checkbox">修改透射</label>
+<input id="partTransmissionUse" type="checkbox">透射</label>
 <input id="partTransmission" aria-label="所选部件透射" type="number" min="0" max="1" step="any">
 <small id="partTransmissionValue">
 </small>
 </div>
 <div class="part-material-field part-material-readonly">
-<span>折射率 IOR · 只读</span>
+<span title="来自当前场景材质节点，只读">折射率 IOR</span>
 <strong id="partIorValue">—</strong>
-<small>来自当前场景材质节点</small>
 </div>
 </div>
-<p class="field-help">仅提交勾选的参数。单独调整粗糙度会保留颜色与标签；明确改色会覆盖该槽的颜色输入，请检查原有图案。恢复原材质仅移除部件局部覆盖，右侧全局设置仍保留。</p>
+<details class="help-note"><summary>修改规则</summary><p class="field-help">只提交勾选的参数。单独调整粗糙度会保留颜色与标签；改色会覆盖该槽的颜色输入，请检查原有图案。恢复原材质只移除这个部件的局部修改，全局设置保留。</p></details>
 <p id="partMaterialState" class="field-help">
 </p>
 <div class="feedback-actions">
-<button id="partMaterialReset" type="button" class="text-button" disabled>恢复所选部件原材质</button>
-<button id="partMaterialSubmit" class="button primary" type="submit" disabled>应用材质并重新预览</button>
+<button id="partMaterialReset" type="button" class="text-button" disabled>恢复原材质</button>
+<button id="partMaterialSubmit" class="button primary" type="submit" disabled>应用并预览</button>
 </div>
 <p id="partMaterialError" class="error-text" role="alert">
 </p>
@@ -328,7 +346,7 @@
 </details>
 </section>
 <details id="materialAgentPanel" class="material-agent-panel">
-<summary>高级：手动寻找其他材质</summary>
+<summary>寻找其他材质</summary>
 <form id="materialAgentForm">
 <label class="field-label" for="materialAgentPrompt">描述需要的表面</label>
 <textarea id="materialAgentPrompt" rows="2" maxlength="2000" placeholder="例如：细腻的拉丝铝，保留现在的颜色与标识" required>
@@ -346,8 +364,8 @@
 <div id="emptySettings" class="empty-settings"><p>上传模型后可调整摄影参数。</p></div>
 <form id="settingsForm" hidden>
 <div class="settings-scroll">
-<fieldset class="style-field">
-<legend>棚拍风格</legend>
+<fieldset class="style-field" title="白底主图固定为白底；其他镜头使用所选背景">
+<legend>背景</legend>
 <div class="style-options">
 <label class="style-option">
 <input type="radio" name="style" value="white">
@@ -355,7 +373,7 @@
 <i>
 </i>
 </span>
-<span>白底商品</span>
+<span>白底</span>
 </label>
 <label class="style-option">
 <input type="radio" name="style" value="soft" checked>
@@ -363,7 +381,7 @@
 <i>
 </i>
 </span>
-<span>浅色柔光</span>
+<span>浅色</span>
 </label>
 <label class="style-option">
 <input type="radio" name="style" value="dark">
@@ -371,41 +389,39 @@
 <i>
 </i>
 </span>
-<span>深色质感</span>
+<span>深色</span>
 </label>
 </div>
-<p class="field-help context-note">白底主图固定白色；其他镜头使用所选风格。</p>
 </fieldset>
 <fieldset>
-<legend>画幅比例</legend>
+<legend>画幅 <span id="outputSize" class="legend-value">成品 4096 × 4096 px</span></legend>
 <div class="segmented">
 <label>
 <input type="radio" name="aspect" value="1:1" checked>
-<span>□ 方图</span>
+<span>1:1</span>
 </label>
 <label>
 <input type="radio" name="aspect" value="4:3">
-<span>▭ 横图</span>
+<span>4:3</span>
 </label>
 <label>
 <input type="radio" name="aspect" value="3:4">
-<span>▯ 竖图</span>
+<span>3:4</span>
 </label>
 </div>
-<p id="outputSize" class="field-help">成品 4096 × 4096 px</p>
 </fieldset>
 <div class="range-field">
-<label for="margin">画面留白 <output id="marginValue">12%</output>
+<label for="margin">留白 <output id="marginValue">12%</output>
 </label>
 <input id="margin" type="range" min="3" max="40" value="12">
 </div>
 <div class="range-field">
-<label for="softness">反光柔和度 <output id="softnessValue">1.0</output>
+<label for="softness">柔和度 <output id="softnessValue">1.0</output>
 </label>
 <input id="softness" type="range" min="0.25" max="4" step="0.05" value="1">
 </div>
 <div class="range-field">
-<label for="exposure">曝光补偿 <output id="exposureValue">0 EV</output>
+<label for="exposure">曝光 <output id="exposureValue">0 EV</output>
 </label>
 <input id="exposure" type="range" min="-4" max="4" step="0.1" value="0">
 </div>
@@ -551,7 +567,7 @@
 <button id="discardPlan" type="button" class="text-button" disabled>放弃调整</button>
 </div>
 <details class="quality-settings">
-<summary>出图质量与自动检查</summary>
+<summary>出图质量</summary>
 <label class="field-label" for="quality">正式渲染档位</label>
 <select id="quality">
 <option value="standard">标准 4K · 128 采样</option>
@@ -573,7 +589,7 @@
 </div>
 </form>
 <details class="inspection">
-<summary>模型检查与拍摄记录 <span id="warningBadge">
+<summary>模型与记录 <span id="warningBadge">
 </span>
 </summary>
 <div id="inspectionContent">
@@ -581,44 +597,42 @@
 </details>
 </section>
 <section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>
-<label class="field-label" for="ecommercePlatform">销售平台</label>
+<div class="prop-row">
+<label for="ecommercePlatform">平台</label>
 <select id="ecommercePlatform" aria-describedby="ecommercePlatformSummary"></select>
+</div>
 <p id="ecommercePlatformSummary" class="field-help"></p>
 <details id="ecommercePlatformBasis" class="ecommerce-basis">
-<summary>平台规则与依据</summary>
+<summary>规则与依据</summary>
 <div id="ecommercePlatformNotes"></div>
 </details>
-<section class="ecommerce-check" aria-labelledby="ecommerceCheckTitle">
+<section class="panel-section ecommerce-check" aria-labelledby="ecommerceCheckTitle">
 <div class="review-heading">
-<h2 id="ecommerceCheckTitle">平台检查</h2>
+<h2 id="ecommerceCheckTitle">检查</h2>
 <span id="ecommerceCheckShot" class="pill"></span>
 </div>
 <ul id="ecommerceChecks" class="ecommerce-checks"></ul>
 <p id="ecommerceShotsSummary" class="field-help"></p>
 <button id="ecommerceAdapt" type="button" class="text-button" hidden></button>
 </section>
-<fieldset class="ecommerce-options">
-<legend>导出设置</legend>
-<label class="check-label"><input type="radio" name="ecommerceBackground" value="main_white" checked>主图纯白底，其余镜头保持原样</label>
-<label class="check-label"><input type="radio" name="ecommerceBackground" value="all_white">全部镜头纯白底</label>
-<label class="check-label"><input type="radio" name="ecommerceBackground" value="original">保持渲染原样，只调整尺寸</label>
-<label class="check-label"><input id="ecommerceShadow" type="checkbox" checked>保留产品附近的柔和阴影</label>
-<label class="check-label"><input id="ecommerceTransparent" type="checkbox">附带透明底 PNG</label>
-<p class="field-help">纯白底与透明底只替换产品以外的背景，并自动居中、按平台占比构图；不会重新渲染产品。</p>
+<fieldset class="panel-section ecommerce-options">
+<legend>输出</legend>
+<div class="prop-row">
+<label for="ecommerceBackground">背景</label>
+<select id="ecommerceBackground" name="ecommerceBackground" title="纯白底与透明底只替换产品以外的背景，并自动居中、按平台占比构图">
+<option value="main_white">主图纯白底</option>
+<option value="all_white">全部纯白底</option>
+<option value="original">保持渲染原样</option>
+</select>
+</div>
+<label class="check-label" title="保留产品附近的接地阴影，并在画面边缘前淡出"><input id="ecommerceShadow" type="checkbox" checked>保留柔和阴影</label>
+<label class="check-label" title="每个镜头另外输出一张透明底 PNG"><input id="ecommerceTransparent" type="checkbox">附带透明底 PNG</label>
 </fieldset>
 <p id="ecommerceError" class="error-text" role="alert" hidden></p>
 <button id="ecommerceExport" type="button" class="button primary full-width" disabled>导出平台套图</button>
 <p id="ecommerceExportHint" class="field-help" role="status"></p>
-<section id="ecommerceResult" class="ecommerce-result" aria-label="最近一次导出" aria-live="polite" hidden></section>
+<section id="ecommerceResult" class="panel-section ecommerce-result" aria-label="最近一次导出" aria-live="polite" hidden></section>
 </section>
-</div>
-<div class="settings-footer">
-<button id="optimizeHeroButton" class="button primary" type="button" aria-describedby="optimizeHeroReason" hidden>自动优化主图</button>
-<p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
-<button id="previewButton" class="button secondary" type="button" aria-describedby="renderReason">预览当前镜头</button>
-<button id="renderButton" class="button primary" type="button">渲染 4K 成品</button>
-<p id="renderReason" class="render-reason" role="status">
-</p>
 </div>
 </aside>
 </div>
@@ -631,9 +645,9 @@
 <button type="button" class="icon-button close-dialog" aria-label="关闭上传窗口">×</button>
 </div>
 <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="选择或拖入模型文件">
-<span class="upload-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V3M4.5 6L8 2.5 11.5 6M2.5 13.5h11"/></svg></span>
-<strong>将模型与配套资源拖到这里</strong>
-<span>支持 GLB、OBJ / MTL / 贴图，以及 ZIP 资源包</span>
+<span class="upload-symbol" aria-hidden="true"><svg class="icon"><use href="#i-upload"/></svg></span>
+<strong>拖入模型与配套资源</strong>
+<span>GLB，或 OBJ 连同 MTL 与贴图，也可以是 ZIP</span>
 <button id="browseFiles" type="button" class="button secondary">选择文件</button>
 <button id="browseFolder" type="button" class="text-button">选择资源文件夹</button>
 </div>
@@ -641,12 +655,11 @@
 <input id="modelFolder" type="file" multiple webkitdirectory hidden>
 <div id="chosenFiles" class="chosen-files">
 </div>
-<p class="field-help">每次上传 1 个模型，文件合计不超过 512 MB。OBJ 请同时选择 MTL 与贴图，或将完整资源文件夹打成 ZIP。</p>
 <label class="upload-platform">销售平台<select id="uploadPlatform" name="platform" aria-describedby="uploadPlatformHint"><option value="">暂不指定</option></select>
 </label>
-<p id="uploadPlatformHint" class="field-help">选择后，首张主图会直接按该平台的画幅与产品占比构图；之后可随时更换。</p>
+<p id="uploadPlatformHint" class="field-help">首张主图按该平台的画幅与占比构图，之后可以更换。</p>
 <details class="optional-info">
-<summary>补充产品信息 <span>可选</span>
+<summary>产品信息 <span>可选</span>
 </summary>
 <label>产品名称<input name="name" placeholder="例如：旅行保温杯">
 </label>
@@ -809,7 +822,7 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=19" defer>
+<script src="/static/app.js?v=20" defer>
 </script>
 </body>
 </html>

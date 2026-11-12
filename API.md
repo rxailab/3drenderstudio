@@ -6,7 +6,7 @@
 
 `GET /api/ecommerce/platforms` 返回平台预设目录：`{reviewed,default,disclaimer,platforms:[…]}`。每个预设包含 `id,name,group,aspects,aspect,min_px,target_px,max_px,max_bytes,white,fill_min,fill_target,notes,sources,confidence`，部分平台另有 `white_slot`（独立白底图槽位）。`white` 取 `required / recommended / optional`。
 
-`GET /api/projects/{id}/ecommerce[?platform=amazon]` 按平台检查项目中每个镜头最新的真实渲染图，不修改项目。返回 `platform,settings,matte_available,main_shot_id,step,counts,plan_recommendation,shots`。`shots[].items[]` 为逐项结论 `{id,label,status,detail,action?}`：
+`GET /api/projects/{id}/ecommerce[?platform=amazon]` 按平台检查项目中每个镜头最新的真实渲染图，不修改项目。返回 `platform,settings,matte_available,main_shot_id,step,counts,plan_recommendation,shots`。`shots[].items[]` 为逐项结论 `{id,label,value,status,detail,action?}`，其中 `value` 是用于一行显示的简短结果（如 `2000 × 2000`、`76% → 88%`），`detail` 是完整说明：
 
 | `status` | 含义 |
 | --- | --- |

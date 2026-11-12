@@ -204,7 +204,7 @@ def shot_report(project, shot, preset, options, capability):
     report = {'shot_id': shot['id'], 'label': shot.get('label', shot['id']), 'kind': shot.get('kind', 'full'),
               'main': main, 'output': None, 'items': [], 'status': 'missing'}
     if output is None:
-        report['items'].append({'id': 'render', 'status': 'action', 'action': 'preview', 'label': '尚未出图',
+        report['items'].append({'id': 'render', 'status': 'action', 'action': 'preview', 'label': '渲染图', 'value': '未出图',
                                 'detail': '这个镜头还没有渲染图片。'})
         return report
     measured = measure_output(project['id'], output) or {}
@@ -226,50 +226,56 @@ def shot_report(project, shot, preset, options, capability):
     report['export']['size'] = list(size)
     long_side = max(size)
     if long_side >= preset['min_px']:
-        items.append({'id': 'resolution', 'status': 'pass', 'label': '分辨率',
+        items.append({'id': 'resolution', 'status': 'pass', 'label': '分辨率', 'value': '%d × %d' % size,
                       'detail': '将导出 %d × %d px（平台最低 %d px）。' % (size[0], size[1], preset['min_px'])})
     else:
         preview = output.get('quality') == 'preview'
         items.append({'id': 'resolution', 'status': 'action', 'action': 'render', 'label': '分辨率',
+                      'value': '%d px，需渲染 4K' % max(width, height),
                       'detail': ('当前只有 %d px 预览图，' % max(width, height) if preview else '当前图片只有 %d px，' % max(width, height))
                                 + '平台最低 %d px。渲染 4K 后即可导出 %d px。' % (preset['min_px'], preset['target_px'])})
     if stale:
         items.append({'id': 'version', 'status': 'warn', 'action': 'preview', 'label': '方案版本',
+                      'value': 'v%s，当前 v%s' % (output.get('version'), project.get('version')),
                       'detail': '图片来自方案 v%s，当前方案 v%s 还没有渲染这个镜头。' % (output.get('version'), project.get('version'))})
     if aspect_now in preset['aspects']:
-        items.append({'id': 'aspect', 'status': 'pass', 'label': '画幅', 'detail': '%s 符合平台要求。' % aspect_now})
+        items.append({'id': 'aspect', 'status': 'pass', 'label': '画幅', 'value': aspect_now, 'detail': '%s 符合平台要求。' % aspect_now})
     elif cut:
-        items.append({'id': 'aspect', 'status': 'auto', 'label': '画幅',
+        items.append({'id': 'aspect', 'status': 'auto', 'label': '画幅', 'value': '%s → %s' % (aspect_now or '其他', aspect),
                       'detail': '当前 %s，导出时自动重新构图为 %s。' % (aspect_now or '非标准画幅', aspect)})
     else:
-        items.append({'id': 'aspect', 'status': 'auto', 'label': '画幅',
+        items.append({'id': 'aspect', 'status': 'auto', 'label': '画幅', 'value': '%s → %s' % (aspect_now or '其他', aspect),
                       'detail': '当前 %s，导出时围绕产品裁切为 %s；产品放不下时保持原画幅并提示。' % (aspect_now or '非标准画幅', aspect)})
     if main:
         border = measured.get('border', {})
         level = border.get('level')
         if cut:
             items.append({'id': 'background', 'status': 'pass' if level == 'pure' else 'auto', 'label': '纯白背景',
+                          'value': '纯白' if level == 'pure' else '导出时处理',
                           'detail': '边缘已是纯白 RGB 255。' if level == 'pure' else
                                     '渲染图边缘有阴影或灰度（最暗 %s），导出时自动处理为纯白 RGB 255。' % border.get('darkest', '—')})
         elif preset['white'] == 'required' and level != 'pure':
-            items.append({'id': 'background', 'status': 'action', 'action': 'background', 'label': '纯白背景',
+            items.append({'id': 'background', 'status': 'action', 'action': 'background', 'label': '纯白背景', 'value': '不是纯白',
                           'detail': '平台要求主图纯白底，而当前设置保持渲染原样（边缘最暗 %s）。请把背景处理改为「主图纯白底」。' % border.get('darkest', '—')
                                     if capability else '平台要求主图纯白底；纯白处理需要 Blender 运行环境完整可用。'})
         elif preset['white'] != 'optional':
             items.append({'id': 'background', 'status': 'pass' if level == 'pure' else 'info', 'label': '纯白背景',
+                          'value': '纯白' if level == 'pure' else '保持原样',
                           'detail': '边缘已是纯白。' if level == 'pure' else '平台建议主图使用纯白底；当前设置保持渲染原样。'})
         if shot.get('kind') != 'detail':
             target = preset['fill_target']
             if reframe:
                 items.append({'id': 'fill', 'status': 'auto' if fill is None or abs(fill - target) > .02 else 'pass', 'label': '产品占比',
+                              'value': ('%s → %s' % (_percent(fill), _percent(target))) if fill and abs(fill - target) > .02 else _percent(target),
                               'detail': ('渲染图中约占 %s，' % _percent(fill) if fill else '') +
                                         '导出时自动居中并构图到 %s%s。' % (_percent(target), '（平台要求不低于 %s）' % _percent(preset['fill_min']) if preset.get('fill_min') else '')})
             elif preset.get('fill_min') and fill is not None and fill + .005 < preset['fill_min']:
                 items.append({'id': 'fill', 'status': 'action', 'action': 'background', 'label': '产品占比',
+                              'value': '%s，需 ≥ %s' % (_percent(fill), _percent(preset['fill_min'])),
                               'detail': '约占 %s，平台要求不低于 %s。把背景处理改为「主图纯白底」即可自动构图。' % (_percent(fill), _percent(preset['fill_min']))})
             elif fill is not None:
-                items.append({'id': 'fill', 'status': 'pass', 'label': '产品占比', 'detail': '约占画面 %s。' % _percent(fill)})
-        items.append({'id': 'file', 'status': 'pass', 'label': '格式与大小',
+                items.append({'id': 'fill', 'status': 'pass', 'label': '产品占比', 'value': _percent(fill), 'detail': '约占画面 %s。' % _percent(fill)})
+        items.append({'id': 'file', 'status': 'pass', 'label': '文件', 'value': 'JPG ≤ ' + _megabytes(preset['max_bytes']),
                       'detail': '导出 JPG，自动压缩到 %s 以内；渲染图不含水印、边框或附加文字。' % _megabytes(preset['max_bytes'])})
     report['status'] = 'action' if any(item['status'] == 'action' for item in items) else 'ready'
     return report
