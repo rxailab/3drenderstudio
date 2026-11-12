@@ -98,14 +98,17 @@ class JobConflictError(ValueError):
 
 def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None,retry_of=None,force_review=False,review_question=None,review_source=None,expected_version=None):
     if kind not in ['analyze','preview','render']: raise ValueError('任务类型无效')
-    if quality not in ['preview','standard','fine']: raise ValueError('画质无效')
+    if quality not in ['preview','showcase','standard','fine']: raise ValueError('画质无效')
     if kind=='render' and quality=='preview': quality='standard'
+    if kind!='render' and quality=='showcase': raise ValueError('画质无效')
     if shot_ids is not None and (not isinstance(shot_ids,list) or not shot_ids or any(not isinstance(shot,str) for shot in shot_ids)):
         raise ValueError('请至少选择一个有效镜头')
     if expected_version is not None and (type(expected_version) is not int or expected_version < 1):
         raise ValueError('预览方案版本必须为正整数')
     with LOCK:
         p=get('project',ident)
+        # Background polish is a courtesy: any real request takes the renderer from it.
+        if not (request_key or '').startswith(POLISH_KEY): yield_to_user(ident)
         project_jobs=[j for j in all_records('job') if j['project_id']==ident]
         ids=list(dict.fromkeys([s['id'] for s in p['plan']['shots']] if shot_ids is None else shot_ids))
         desired_quality='preview' if kind=='preview' else quality
@@ -142,7 +145,7 @@ def cancel(ident):
         j=get('job',ident)
         if j['status'] in ['queued','running']:
             j['status']='cancelled';j['stage']='已取消';put('job',j)
-            _record_initial_preview_state(j)
+            _record_initial_preview_state(j);_record_polish_state(j)
             if j.get('kind')=='analyze':
                 project=get('project',j['project_id'])
                 if not project.get('analysis'): project['status']='cancelled';put('project',project)
@@ -156,7 +159,7 @@ def update_job(ident,**fields):
         if j['status']=='cancelled': return j
         previous_status=j['status']
         j.update(fields);put('job',j)
-        if j['status']!=previous_status: _record_initial_preview_state(j)
+        if j['status']!=previous_status: _record_initial_preview_state(j);_record_polish_state(j)
         return j
 
 
@@ -226,6 +229,75 @@ def schedule_initial_preview(project_id, analysis_job_id=None):
             put('project',project)
             update_job(analysis['id'],initial_preview_notice=state['error'])
             return None
+
+POLISH_ORIGIN='auto_polish'
+POLISH_KEY='auto-polish:'
+
+
+def _record_polish_state(job):
+    """Mirror the background high-quality pass into the project for the interface."""
+    if job.get('origin')!=POLISH_ORIGIN: return
+    try: project=get('project',job['project_id'])
+    except KeyError: return
+    state=project.get('polish')
+    if not isinstance(state,dict) or state.get('job_id')!=job['id']: return
+    state.update(status=job['status'],error=job.get('error'));put('project',project)
+
+
+def yield_to_user(project_id):
+    """Stop a background high-quality pass so a request never waits behind it.
+
+    The draft image it was polishing stays; the pass is offered again after the
+    next preview of the plan the request produces.
+    """
+    with LOCK:
+        stopped=False
+        for job in all_records('job'):
+            if job.get('project_id')==project_id and job.get('origin')==POLISH_ORIGIN and job.get('status') in ('queued','running'):
+                job['yielded']=True;put('job',job);cancel(job['id']);stopped=True
+        return stopped
+
+
+def schedule_polish(project_id,completed_job_id):
+    """Render the image the user is looking at once more at showcase quality.
+
+    Runs only after a draft preview has completed and every automatic check on
+    it has settled, only for projects that opted in, and at most once per plan
+    version and shot. It never blocks: see yield_to_user.
+    """
+    with LOCK:
+        try: project=get('project',project_id);done=get('job',completed_job_id)
+        except KeyError: return None
+        plan=project['plan']
+        if plan.get('look')!='showcase' or not plan.get('auto_polish',False): return None
+        if done.get('kind')!='preview' or done.get('status')!='completed': return None
+        if not project.get('analysis') or project.get('status')!='ready': return None
+        if any(job['project_id']==project_id and job.get('status') in ('queued','running') for job in all_records('job')): return None
+        if any(task.get('project_id')==project_id and task.get('status') in ('queued','running','rendering') for task in all_records('material_task')): return None
+        if project.get('auto_material',{}).get('status') in ('queued','running','rendering'): return None
+        version=project['version'];known={shot['id'] for shot in plan['shots']}
+        checkpoints=set(plan.get('scene_checkpoints',{}))
+        ids=[shot for shot in done.get('shot_ids',[]) if shot in known and shot not in checkpoints][:1]
+        if not ids: return None
+        outputs=[o for o in project.get('outputs',[]) if o.get('shot_id')==ids[0] and o.get('version')==version]
+        if not any(o.get('quality')=='preview' for o in outputs): return None
+        if any(o.get('quality')!='preview' for o in outputs): return None
+        base=POLISH_KEY+'%s:v%d:%s'%(project_id,version,ids[0])
+        prior=[job for job in all_records('job') if job['project_id']==project_id and (job.get('request_key') or '').startswith(base+':')]
+        # Offered again only after being pushed aside by a request; a pass that
+        # finished, failed or was cancelled by the user is never repeated.
+        if len(prior)>=3 or any(not job.get('yielded') for job in prior): return None
+        key=base+':%d'%len(prior)
+        try:
+            require_runtime('render')
+            job=submit(project_id,'render','showcase',ids,request_key=key,expected_version=version)
+        except (ValueError,OSError,JobConflictError): return None
+        job.update(origin=POLISH_ORIGIN,stage='等待生成高清图');put('job',job)
+        project=get('project',project_id)
+        project['polish']={'status':job['status'],'job_id':job['id'],'version':version,'shot_id':ids[0],'error':None}
+        put('project',project)
+        return job
+
 
 def execute(job,request,out):
     if (request.get('action')=='render'
@@ -710,6 +782,8 @@ def output_record(job,shot,out,result):
     if job['quality']=='hero':
         if job.get('final_resolution') not in (2000,4096) or size!=(job['final_resolution'],job['final_resolution']):
             raise RuntimeError('高清主图未按指定正方形尺寸输出')
+    elif job['quality']=='showcase':
+        if max(size)!=2048: raise RuntimeError('高清图长边不是 2048 像素')
     elif job['quality']!='preview' and max(size)!=4096: raise RuntimeError('成品长边不是原生 4096 像素')
     with Image.open(png) as im:
         gray=im.convert('L').resize((128,128));hist=gray.histogram()
@@ -759,6 +833,15 @@ def _run_job(ident):
                 p=get('project',p['id'])
                 if not p.get('analysis'):
                     p['plan']=apply_material_note(enrich(p['plan'],r),r,p.get('metadata',{}).get('material_note'))
+                    if p['plan'].get('look')=='showcase':
+                        # Placeholder CAD materials get real finishes before the first image.
+                        import lookdev
+                        from planner import validate
+                        try:
+                            developed,_=lookdev.apply(copy.deepcopy(p['plan']),r,p['model_path'])
+                            p['plan']=validate(developed)
+                        except (ValueError,KeyError,TypeError) as exc:
+                            update_job(ident,lookdev_notice='自动材质质感未应用：'+str(exc)[:200])
                 p['analysis']=r;p['status']='ready';put('project',p)
         else:
             shots=[s for s in j['plan']['shots'] if s['id'] in j['shot_ids']]
@@ -848,6 +931,9 @@ def _run_job(ident):
                 material_agent.schedule_after_preview(j['project_id'],ident)
             except Exception as exc:
                 update_job(ident,material_notice='自动材质检查未完成，原渲染结果已保留：'+str(exc)[:300])
+            try: schedule_polish(j['project_id'],ident)
+            except Exception as exc:
+                update_job(ident,polish_notice='高清图未自动开始：'+str(exc)[:200])
     except InterruptedError: pass
     except Exception as exc:
         update_job(ident,status='failed',stage='执行失败',error=str(exc),finished_at=time.time())
@@ -870,7 +956,9 @@ def worker():
 
 def start():
     for j in all_records('job'):
-        if j['status'] in ['running','queued']:
+        if j['status'] in ['running','queued'] and j.get('origin')==POLISH_ORIGIN:
+            j.update(status='cancelled',stage='已取消',yielded=True);put('job',j);_record_polish_state(j)
+        elif j['status'] in ['running','queued']:
             j.update(status='interrupted',stage='应用重启，等待继续',error='上次执行被中断，已完成图片保留。请继续未完成镜头。');put('job',j)
             _record_initial_preview_state(j)
             if j.get('kind')=='analyze':

@@ -355,14 +355,21 @@ class SemanticPipelineTests(unittest.TestCase):
         self.assert_unmodified()
 
     def test_global_shared_material_edit_cannot_escape_one_surface_binding(self):
+        # The planner bound one surface and then edited the material all four
+        # share. The edit is narrowed to the bound surface, never widened.
         text = '就这一大片看起来润一些。'
         value = wire(row('r1', text, kind='visual_goal', domains=['material'],
                          patch_value={'material_overrides': [{'name': 'Shared', 'roughness': .3}]},
                          bindings=[binding('这一大片', ['t1'])]))
-        with reject_legacy_language_calls(), self.assertRaises(ValueError):
-            self.apply(text, value)
-        self.assertLessEqual(self.send.call_count, 2)
-        self.assert_unmodified()
+        with reject_legacy_language_calls():
+            result = self.apply(text, value)
+        self.assertEqual(self.send.call_count, 1)
+        saved = store.get('project', 'fixture')['plan']
+        self.assertEqual(saved['material_overrides'], [])
+        self.assertEqual([(entry['object_name'], entry['roughness']) for entry in saved['object_material_overrides']],
+                         [('Opaque.001', .3)])
+        trace = result['instruction_result']['agent_trace']
+        self.assertIn({'agent': 'executor', 'repairs': ['localised_shared_material']}, trace)
 
     def test_numeric_part_commitment_requires_geometry_not_counted_visible_names(self):
         text = '让下面的四只脚都像刚擦拭过一样。'

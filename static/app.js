@@ -146,7 +146,7 @@ function currentInstructionAttempt() {
   }
   pendingInstructionPreview=attempt;return attempt;
 }
-const instructionFieldLabels={exposure:'曝光',light_softness:'反光柔和度',margin:'画面留白',style:'棚拍风格',aspect:'画幅比例',azimuth:'水平角',elevation:'俯仰角',focal_length:'焦距',target_object:'构图目标',rotation:'旋转角度',translation:'位移',texture_scale:'纹理尺度',texture_rotation:'纹理方向',color:'颜色',roughness:'粗糙度',metallic:'金属度',transmission:'透射',preset:'材质预设',key_power:'主光强度',fill_power:'补光强度',rim_power:'轮廓光强度',environment:'环境光强度',key_azimuth:'主光方位角',key_elevation:'主光俯仰角',fill_azimuth:'补光方位角',fill_elevation:'补光俯仰角',rim_azimuth:'轮廓光方位角',rim_elevation:'轮廓光俯仰角',exposure_delta:'曝光修正',softness_multiplier:'柔和度倍率',time_budget:'采样预算',visual_review:'自动检查',max_corrections:'自动修正次数',frame:'动画帧'};
+const instructionFieldLabels={coat:'清漆层',exposure:'曝光',light_softness:'反光柔和度',margin:'画面留白',style:'棚拍风格',aspect:'画幅比例',azimuth:'水平角',elevation:'俯仰角',focal_length:'焦距',target_object:'构图目标',rotation:'旋转角度',translation:'位移',texture_scale:'纹理尺度',texture_rotation:'纹理方向',color:'颜色',roughness:'粗糙度',metallic:'金属度',transmission:'透射',preset:'材质预设',key_power:'主光强度',fill_power:'补光强度',rim_power:'轮廓光强度',environment:'环境光强度',key_azimuth:'主光方位角',key_elevation:'主光俯仰角',fill_azimuth:'补光方位角',fill_elevation:'补光俯仰角',rim_azimuth:'轮廓光方位角',rim_elevation:'轮廓光俯仰角',exposure_delta:'曝光修正',softness_multiplier:'柔和度倍率',time_budget:'采样预算',visual_review:'自动检查',max_corrections:'自动修正次数',frame:'动画帧'};
 Object.assign(instructionFieldLabels,{projection:'投影方式',ortho_scale:'取景宽度',camera_distance:'镜头距离',target_offset:'画面平移'});
 function instructionValue(value,key='') {
   if(key==='projection')return value==='perspective'?'透视':value==='orthographic'?'正交':value==null?'正交（默认）':String(value);
@@ -252,6 +252,23 @@ function pendingInstructionLabel(pending) {
   const subject=labels.length && labels.length<=2?labels.join('、'):'有要求';
   return clarifications.length?subject+'仍需确认'+(unsupported.length?'；另有要求暂不支持':''):unsupported.length?subject+'暂不支持':'有要求仍需确认';
 }
+// Which agents worked on a request, from the service's fixed codes and counts.
+function agentTraceLabel(trace) {
+  if(!Array.isArray(trace) || !trace.length)return '';
+  const planner=trace.find(step=>step?.agent==='planner'),steps=trace.filter(step=>step?.agent==='specialists' && typeof step.requirement==='string');
+  const parts=[];
+  if(planner)parts.push(`理解要求 ${Number(planner.calls) || 1} 轮`);
+  const verifier=trace.find(step=>step?.agent==='verifier');
+  if(verifier?.result==='narrowed' && Number(verifier.removed)>0)parts.push(`核对定位，去掉 ${Number(verifier.removed)} 个不属于所指部位的部件`);
+  else if(verifier?.result==='confirmed' && Number(verifier.checked)>0)parts.push(`核对定位 ${Number(verifier.checked)} 组`);
+  const located=steps.filter(step=>step.locator?.result==='located').length,finished=steps.filter(step=>step.finisher?.result==='chosen').length,resolved=steps.filter(step=>step.result==='resolved').length;
+  if(located)parts.push(`自动定位部件 ${located} 项`);
+  if(finished)parts.push(`自动确定质感 ${finished} 项`);
+  if(steps.length)parts.push(`补全待定要求 ${resolved}/${steps.length} 项`);
+  const labels={localised_shared_material:'共用材质只改所指部件',extended_to_bound_targets:'补齐同组部件',dropped_unbound_edit:'去掉未定位部件的修改'};
+  for(const code of trace.find(step=>step?.agent==='executor')?.repairs || [])if(labels[code])parts.push(labels[code]);
+  return parts.length?'自动处理：'+parts.join(' · '):'';
+}
 function instructionPendingDetails(pending) {
   return (Array.isArray(pending)?pending:[]).filter(item=>item && typeof item==='object').map(item=>`<li>${item.quote?`<p><strong>${esc(item.quote)}</strong></p>`:''}<p>${esc(item.reason || (item.status==='unsupported'?'当前能力暂不支持此项。':item.action==='clarify_parameters'?'请补充或重新提交该项参数要求。':'请在预览中定位相关部位，或补充要求。'))}</p></li>`).join('');
 }
@@ -305,7 +322,8 @@ function renderInstructionGuidance(guidance) {
   $('instructionProposalDisclosure').querySelector('summary').textContent=applied?'查看详情':'查看原因与修改明细';
   if(applied){
     const rows=instructionDiffRows(applied);
-    stableHTML($('instructionProposalDetails'),`<p>待处理要求</p><ul>${instructionPendingDetails(applied.pending)}</ul>${rows.length?`<p>已完成的修改</p><ul class="instruction-diff-list">${instructionRowsHTML(rows)}</ul>`:''}`);
+    const worked=agentTraceLabel(applied.agent_trace);
+    stableHTML($('instructionProposalDetails'),`<p>待处理要求</p><ul>${instructionPendingDetails(applied.pending)}</ul>${rows.length?`<p>已完成的修改</p><ul class="instruction-diff-list">${instructionRowsHTML(rows)}</ul>`:''}${worked?`<p class="instruction-receipt-evidence">${esc(worked)}</p>`:''}`);
     return;
   }
   const rows=instructionDiffRows({changes:guidance.proposedChanges || []}),satisfied=(guidance.ready || []).filter(item=>item.status==='already_satisfied');
@@ -342,7 +360,7 @@ function renderInstructionReceipt(guidance=currentInstructionGuidance(),attempt=
   if(panel.dataset.receipt!==String(receipt.id || '')){$('instructionReceiptDisclosure').open=false;panel.dataset.receipt=String(receipt.id || '');}
   const notes=Array.isArray(receipt.notes)?receipt.notes:[];
   const rowsHtml=instructionRowsHTML(rows);
-  stableHTML($('instructionReceiptDetails'),`<p class="instruction-receipt-request">${esc(receipt.text || '')}</p>${receipt.summary?`<p>${esc(receipt.summary)}</p>`:''}${rows.length?`<ul class="instruction-diff-list">${rowsHtml}</ul>`:''}${receipt.partial && receipt.pending?.length?`<p>尚待确认的要求已保留在输入框。</p><ul>${instructionPendingDetails(receipt.pending)}</ul>`:''}${older?'<p>此记录对应原请求，后续方案已有变化。本次未为旧请求启动新的预览。</p>':''}<p class="instruction-receipt-evidence">${receipt.source==='ai'?'AI 解析':receipt.source==='rules'?'内置规则':'参数调整'} · 预览图：${receipt.used_image?'已使用':'未使用'} · 参考图：${receipt.used_reference?'已使用':'未使用'}</p>${notes.length?`<ul class="instruction-receipt-notes">${notes.map(note=>`<li>${esc(typeof note==='string'?note:JSON.stringify(note))}</li>`).join('')}</ul>`:''}`);
+  stableHTML($('instructionReceiptDetails'),`<p class="instruction-receipt-request">${esc(receipt.text || '')}</p>${receipt.summary?`<p>${esc(receipt.summary)}</p>`:''}${rows.length?`<ul class="instruction-diff-list">${rowsHtml}</ul>`:''}${receipt.partial && receipt.pending?.length?`<p>尚待确认的要求已保留在输入框。</p><ul>${instructionPendingDetails(receipt.pending)}</ul>`:''}${older?'<p>此记录对应原请求，后续方案已有变化。本次未为旧请求启动新的预览。</p>':''}${agentTraceLabel(receipt.agent_trace)?`<p class="instruction-receipt-evidence">${esc(agentTraceLabel(receipt.agent_trace))}</p>`:''}<p class="instruction-receipt-evidence">${receipt.source==='ai'?'AI 解析':receipt.source==='rules'?'内置规则':'参数调整'} · 预览图：${receipt.used_image?'已使用':'未使用'} · 参考图：${receipt.used_reference?'已使用':'未使用'}</p>${notes.length?`<ul class="instruction-receipt-notes">${notes.map(note=>`<li>${esc(typeof note==='string'?note:JSON.stringify(note))}</li>`).join('')}</ul>`:''}`);
 }
 function renderInstruction() {
   if(instructionProjectId!==(current?.id || '')){
@@ -502,7 +520,9 @@ async function api(path, options = {}) {
   return data;
 }
 function toast(message, error = false) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').className = 'toast' + (error ? ' error' : ''); $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, error ? 8000 : 4500); }
-function activeJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status)); }
+// The background high-quality pass never locks the workspace: any request pre-empts it.
+function activeJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status) && j.origin!=='auto_polish'); }
+function polishJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status) && j.origin==='auto_polish'); }
 function renderActivityState() {
   if(!current)return null;
   const job=activeJob(),task=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
@@ -690,7 +710,7 @@ function syncSettings() {
   document.querySelectorAll('[name=style]').forEach(el => el.checked = el.value === draft.style);document.querySelectorAll('[name=aspect]').forEach(el => el.checked = el.value === draft.aspect);
   setValue('margin',draft.margin*100);setValue('softness',draft.light_softness);setValue('exposure',draft.exposure);setValue('textureScale',draft.texture_scale);setValue('textureRotation',draft.texture_rotation);
   ['rotateX','rotateY','rotateZ'].forEach((id,i) => setValue(id,draft.rotation[i]));$('repairNormals').checked = !!draft.repair.normals;$('repairSmooth').checked = !!draft.repair.smooth;
-  setValue('timeBudget',draft.time_budget);setValue('maxCorrections',draft.max_corrections);$('visualReview').checked=draft.visual_review!==false;
+  setValue('timeBudget',draft.time_budget);setValue('maxCorrections',draft.max_corrections);$('visualReview').checked=draft.visual_review!==false;$('autoPolish').checked=draft.auto_polish===true;$('lookMode').value=draft.look==='showcase'?'showcase':'classic';
   const materials = current.analysis?.materials || [];
   if (!materials.some(m => m.name === selectedMaterial)) selectedMaterial = materials[0]?.name || null;
   options($('materialSlot'),materials.map(m => ({value:m.name,label:m.name})),selectedMaterial);
@@ -706,6 +726,8 @@ function syncSettings() {
 function gatherPlan() {
   stashMaterial();stashCamera();
   draft.visual_review=$('visualReview').checked;
+  if($('autoPolish').checked || Object.hasOwn(draft,'auto_polish'))draft.auto_polish=$('autoPolish').checked;
+  if($('lookMode').value==='showcase' || Object.hasOwn(draft,'look'))draft.look=$('lookMode').value;
   Object.assign(draft,{style:document.querySelector('[name=style]:checked').value,aspect:document.querySelector('[name=aspect]:checked').value,margin:readNumber('margin')/100,light_softness:readNumber('softness'),exposure:readNumber('exposure'),texture_scale:readNumber('textureScale'),texture_rotation:readNumber('textureRotation'),rotation:['rotateX','rotateY','rotateZ'].map(readNumber),repair:{normals:$('repairNormals').checked,smooth:$('repairSmooth').checked},time_budget:readNumber('timeBudget'),max_corrections:readNumber('maxCorrections')});
   draft.pose = {};
   if ($('poseObject').value) draft.pose = {object:$('poseObject').value,rotation:['poseX','poseY','poseZ'].map(readNumber),translation:['moveX','moveY','moveZ'].map(readNumber)};
@@ -743,11 +765,11 @@ function projectCardImage(p) {
   return [...outputs].reverse().find(output=>output.shot_id==='hero') || outputs.at(-1) || null;
 }
 function projectCardStatus(p) {
-  const outputs=p.outputs || [],finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,previews=outputs.length-finals,shotCount=p.plan?.shots?.length || 0;
+  const outputs=p.outputs || [],finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,polished=outputs.filter(output=>output.quality==='showcase').length,previews=outputs.length-finals-polished,shotCount=p.plan?.shots?.length || 0;
   const job=p.active_job || p.jobs?.find(item=>['running','queued'].includes(item.status)),initial=p.initial_preview?.status;
   if(job || ['queued','running'].includes(initial) || p.status==='analyzing'){
     const kind=job?.kind || (p.status==='analyzing'?'analyze':'preview'),queued=job?job.status==='queued':initial==='queued';
-    const label=kind==='render'?'正在渲染 4K':kind==='analyze'?'模型分析中':kind==='hero_optimize'?'正在优化主图':job?.origin==='initial_preview' || (!job && initial)?'白底主图生成中':'正在生成预览';
+    const label=job?.origin==='auto_polish'?'正在生成高清图':kind==='render'?'正在渲染 4K':kind==='analyze'?'模型分析中':kind==='hero_optimize'?'正在优化主图':job?.origin==='initial_preview' || (!job && initial)?'白底主图生成中':'正在生成预览';
     const value=Number(job?.progress),progress=!queued && job?.status==='running' && Number.isFinite(value) && value>0?Math.min(100,Math.round(value)):null;
     return {tone:'active',text:queued?label.replace(/^正在/,'')+' · 已排队':label+' · 后台继续',progress};
   }
@@ -756,6 +778,7 @@ function projectCardStatus(p) {
   }
   if(['failed','interrupted'].includes(initial) && !outputs.length)return {tone:'warning',text:'白底主图需处理 · 可继续'};
   if(finals)return {tone:'done',text:`${finals} 张 4K 成品${shotCount?` · ${shotCount} 个镜头`:''}`};
+  if(polished)return {tone:'done',text:`${polished} 张高清 2K${shotCount?` · ${shotCount} 个镜头`:''}`};
   const base=statusNames[p.status] || p.status || '可开始拍摄';
   return {tone:'ready',text:previews?`${base} · ${previews} 张预览`:base};
 }
@@ -931,6 +954,7 @@ function sceneOutputKey(output) {
 }
 function sceneQualityLabel(quality,output=null) {
   if(quality==='preview')return '快速预览';
+  if(quality==='showcase')return '高清 2K';
   const fourK=Math.max(Number(output?.width)||0,Number(output?.height)||0)>=4096;
   if(quality==='hero')return fourK?'4K 主图':'高清主图';
   if(quality==='fine')return fourK?'精细 4K':'精细成品';
@@ -1443,21 +1467,27 @@ function renderShots() {
 function renderJob() {
   const logWasOpen = !!$('jobPanel').querySelector('.job-log[open]');
   const candidatesWereOpen=!!$('jobPanel').querySelector('.hero-optimization-candidates[open]');
-  const jobs=[...(current.jobs || [])].sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));const job=activeJob() || jobs[0];
+  const jobs=[...(current.jobs || [])].sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));const job=activeJob() || polishJob() || jobs.find(item=>item.origin!=='auto_polish' || item.status==='failed') || jobs[0];
   $('jobPanel').hidden=!job;if (!job) return;
   const running=['running','queued'].includes(job.status),autoRunning=!running && automaticMaterialBusy();const done=job.status==='completed' && !autoRunning;const cancelled=['cancelled','interrupted'].includes(job.status);
   const total=job.shot_ids?.length || 1;const completed=job.completed?.length || 0;
   const hero=job.kind==='hero_optimize',sample=hero && !['preview','finalizing'].includes(job.workflow_phase)?null:job.sample_progress;
   const automaticTask=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
-  let stage=autoRunning?(automaticTask?.stage || current.auto_material?.stage || '正在自动优化材质'):job.stage || statusNames[job.status];if(job.kind==='analyze')stage='模型分析 · '+stage;else if(job.origin==='initial_preview')stage='白底主图 · '+stage;
+  let stage=autoRunning?(automaticTask?.stage || current.auto_material?.stage || '正在自动优化材质'):job.stage || statusNames[job.status];if(job.kind==='analyze')stage='模型分析 · '+stage;else if(job.origin==='initial_preview')stage='白底主图 · '+stage;else if(job.origin==='auto_polish')stage=running?'后台生成高清图':job.status==='failed'?'高清图未生成':stage;
   $('jobPanel').className='job-panel'+(job.status==='failed'?' failed':'')+(done?' is-complete':'');
   const summary=hero?job.optimization_summary || (done && job.optimization_decision==='kept_original'?'试渲染未达到采用条件，已保留原图。':done && job.optimization_decision==='adopted'?'已采用优化后的高清主图。':''):'';
   const candidates=hero && Array.isArray(job.hero_candidates || job.candidates)?(job.hero_candidates || job.candidates).slice(0,12):[];
   const candidatesHTML=candidates.length?`<details class="hero-optimization-candidates"><summary>查看试渲染记录</summary><div class="review-attempts">${candidates.map((candidate,index)=>{const url=typeof candidate.png_url==='string' && candidate.png_url.startsWith('/files/'+current.id+'/') && /\.(png|jpg)$/i.test(candidate.png_url)?candidate.png_url:'';return `<div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}" loading="lazy"></a>`:''}<span>${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}</span>${candidate.reason?`<small>${esc(candidate.reason)}</small>`:''}</div>`;}).join('')}</div></details>`:'';
-  const progressText=hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
+  const progressText=job.origin==='auto_polish'?(running?`可继续操作，新的要求会立即接管${typeof sample==='number'?' · 采样 '+sample+'%':''}`:'当前预览保留'):hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
   $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="已完成镜头进度" aria-valuenow="${Number(job.progress)||0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,Number(job.progress)||0))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
   if (logWasOpen) $('jobPanel').querySelector('.job-log').open = true;
   if(candidatesWereOpen && $('jobPanel').querySelector('.hero-optimization-candidates'))$('jobPanel').querySelector('.hero-optimization-candidates').open=true;
+}
+// What the first image assumed about placeholder materials, with the evidence for each.
+function lookdevSummaryHTML() {
+  const record=current?.plan?.lookdev;if(!record?.summary)return '';
+  const rows=(Array.isArray(record.decisions)?record.decisions:[]).slice(0,60).map(item=>`<li><b>${esc(item.object || item.material || '')}</b> → ${esc(item.label || '')}<small>${esc(item.reason || '')}</small></li>`).join('');
+  return `<dt>质感推断</dt><dd>${esc(record.summary)}${rows?`<details class="lookdev-record"><summary>查看依据</summary><ul>${rows}</ul><p>模型只带纯色占位材质时，按材质与部件名称补全质感，颜色保持不变。可在「材质」中逐项修改，或直接输入要求。</p></details>`:''}</dd>`;
 }
 function renderInspection() {
   const openSections = [...$('inspectionContent').querySelectorAll('details')].map(d => d.open);
@@ -1466,7 +1496,7 @@ function renderInspection() {
   if (!a) {$('inspectionContent').innerHTML='<p>模型检查尚未完成，请查看任务状态。</p>';return;}
   const f=a.features || {};const dim=current.plan.dimensions_mm?current.plan.dimensions_mm.join(' × ')+' mm（用户指定）':a.dimensions?.unit==='m'?a.dimensions.value.map(n=>(n*1000).toFixed(1)).join(' × ')+' mm（模型声明，需确认）':'未知；使用归一化工作尺度';
   const features=[f.elongated?'细长物体':null,f.flat?'扁平物体':null,f.multipart?'多部件':'单网格',f.has_animation?'已有动画':null,f.has_armature?'已有绑定':null].filter(Boolean);
-  $('inspectionContent').innerHTML=`<dl><dt>模型特征</dt><dd>${esc(features.join(' / '))}</dd><dt>真实尺寸</dt><dd>${esc(dim)}</dd><dt>方案来源</dt><dd>${esc(describeSource(current.plan.source))}</dd>${current.plan.auto_framing?.reason?`<dt>智能取景</dt><dd>${esc(current.plan.auto_framing.reason)}</dd>`:''}<dt>材质说明</dt><dd>${esc(current.metadata?.material_note || '未补充')}</dd></dl>${warnings.map(w=>`<p class="warning">• ${esc(w)}</p>`).join('')}<h3>部件层级</h3><table><thead><tr><th>部件</th><th>父部件</th><th>UV / 面数</th></tr></thead><tbody>${(a.objects || []).map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.parent || '根节点')}</td><td>${esc(Array.isArray(o.uv_layers)?o.uv_layers.join(', ') || '无 UV':o.uv_layers || '—')} / ${esc(o.faces ?? o.polygons ?? '—')}</td></tr>`).join('')}</tbody></table>${currentOutput?`<details><summary>当前图片的检查结果</summary><pre>${esc(JSON.stringify({checks:currentOutput.checks,image_metrics:currentOutput.metrics},null,2))}</pre></details>`:''}<h3>操作记录</h3>${current.history?.length?current.history.slice().reverse().slice(0,8).map(h=>`<p>v${h.version} · ${esc(h.reason)} · ${new Date(h.at*1000).toLocaleString('zh-CN')}</p>`).join(''):'<p>初始方案；尚未修改参数。</p>'}<details><summary>查看可复现拍摄方案 JSON</summary><pre>${esc(JSON.stringify(current.plan,null,2))}</pre></details>`;
+  $('inspectionContent').innerHTML=`<dl><dt>模型特征</dt><dd>${esc(features.join(' / '))}</dd><dt>真实尺寸</dt><dd>${esc(dim)}</dd><dt>方案来源</dt><dd>${esc(describeSource(current.plan.source))}</dd>${current.plan.auto_framing?.reason?`<dt>智能取景</dt><dd>${esc(current.plan.auto_framing.reason)}</dd>`:''}${lookdevSummaryHTML()}<dt>材质说明</dt><dd>${esc(current.metadata?.material_note || '未补充')}</dd></dl>${warnings.map(w=>`<p class="warning">• ${esc(w)}</p>`).join('')}<h3>部件层级</h3><table><thead><tr><th>部件</th><th>父部件</th><th>UV / 面数</th></tr></thead><tbody>${(a.objects || []).map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.parent || '根节点')}</td><td>${esc(Array.isArray(o.uv_layers)?o.uv_layers.join(', ') || '无 UV':o.uv_layers || '—')} / ${esc(o.faces ?? o.polygons ?? '—')}</td></tr>`).join('')}</tbody></table>${currentOutput?`<details><summary>当前图片的检查结果</summary><pre>${esc(JSON.stringify({checks:currentOutput.checks,image_metrics:currentOutput.metrics},null,2))}</pre></details>`:''}<h3>操作记录</h3>${current.history?.length?current.history.slice().reverse().slice(0,8).map(h=>`<p>v${h.version} · ${esc(h.reason)} · ${new Date(h.at*1000).toLocaleString('zh-CN')}</p>`).join(''):'<p>初始方案；尚未修改参数。</p>'}<details><summary>查看可复现拍摄方案 JSON</summary><pre>${esc(JSON.stringify(current.plan,null,2))}</pre></details>`;
   $('inspectionContent').querySelectorAll('details').forEach((d,i) => d.open = !!openSections[i]);
 }
 function renderProject() {
@@ -1731,7 +1761,7 @@ async function applyInstructionAndPreview(event) {
     const stale=error.payload?.error_code==='instruction_proposal_stale';
     const responseFeedback=responseInvalid?instructionResponseFeedback(error.payload):null;
     if(responseInvalid)instructionGuidance.set(projectId,{kind:'response_error',text,baseVersion:attempt.body.expected_version,shotId:attempt.shotId,source:clone(attempt.body.source || null),...responseFeedback});
-    else if(unresolved)instructionGuidance.set(projectId,{kind:'clarification',text,pending:clone(error.payload.pending),details:error.message});
+    else if(unresolved)instructionGuidance.set(projectId,{kind:'clarification',text,pending:clone(error.payload.pending),details:[error.message,agentTraceLabel(error.payload.agent_trace)].filter(Boolean).join(' ')});
     if(stale && instructionGuidance.has(projectId))instructionGuidance.get(projectId).invalid=true;
     if(current?.id===projectId){$('instructionError').textContent=responseInvalid?responseFeedback.message:unresolved?'':stale?'方案已更新，请重新分析要求。':prefix+error.message;$('instructionError').hidden=!!unresolved;}
     else toast(responseInvalid?responseFeedback.message:prefix+error.message,true);

@@ -21,10 +21,15 @@ MAX_COMPONENTS = 4096
 
 
 class SemanticEvidenceError(ValueError):
-    """A structural target/evidence failure in the LLM-owned intent path."""
-    def __init__(self, code, message):
+    """A structural target/evidence failure in the LLM-owned intent path.
+
+    ``details`` carries measured facts only (counts and service-issued target
+    IDs), so a correction round can act on them. It never holds model text.
+    """
+    def __init__(self, code, message, **details):
         super().__init__(message)
         self.code = code
+        self.details = details
 
 
 def _pairs(analysis):
@@ -50,7 +55,7 @@ def _snapshot(value):
     return (isinstance(value, dict) and set(value) == set(SOURCE_KEYS)
             and all(isinstance(value.get(key), str) and 0 < len(value[key]) <= 128
                     for key in ('output_id', 'shot_id'))
-            and value.get('quality') in ('preview', 'standard', 'fine', 'hero')
+            and value.get('quality') in ('preview', 'showcase', 'standard', 'fine', 'hero')
             and type(value.get('version')) is int and value['version'] >= 1)
 
 
@@ -200,6 +205,16 @@ def spatial_instance_count(rows):
     Bounding boxes are conservative: overlapping unrelated surfaces cannot be
     claimed as separate physical instances merely by renaming their meshes.
     """
+    return len(spatial_instance_groups(rows))
+
+
+def spatial_instance_groups(rows):
+    """The separated groups themselves: sorted target IDs per group.
+
+    Same measurement as spatial_instance_count. A target whose components lie
+    apart appears in each group it reaches.
+    """
+    owners = [row.get('id') for row in rows for _ in row.get('components', [])]
     boxes = [component['bounds'] for row in rows for component in row.get('components', [])]
     if not boxes or len(boxes) > 8192:
         raise InstructionOutcome('needs_clarification', '部件的空间结构尚不能完整核验，当前方案未修改。')
@@ -221,7 +236,11 @@ def spatial_instance_count(rows):
                         boxes[right]['min'][i] - boxes[left]['max'][i]) for i in range(3)]
             if sum(gap * gap for gap in gaps) <= tolerance * tolerance:
                 parents[root(right)] = root(left)
-    return len({root(index) for index in range(len(boxes))})
+    groups = {}
+    for index in range(len(boxes)):
+        groups.setdefault(root(index), set()).add(owners[index])
+    return sorted((sorted(ident for ident in group if isinstance(ident, str)) for group in groups.values()),
+                  key=lambda group: (len(group), group))
 
 
 def bound_instance_count(bindings, phrase, entries=None):
@@ -270,6 +289,22 @@ def model_evidence(value):
             neighbors.sort()
             row['spatial_neighbors']=[[ident,gap==0,round(gap/diagonal,7),round(distance/diagonal,7)]
                                       for gap,distance,ident in neighbors[:4]]
+    # Repeated parts (four casters, a row of screws) share their size and
+    # tessellation whatever their position. A measured hint, not an identity.
+    signatures = {}
+    for row in targets:
+        box = row['bounds']; size = sorted(box['max'][axis] - box['min'][axis] for axis in range(3))
+        scale = max(size[2], 1e-12)
+        key = (sum(component['triangle_count'] for component in row['components']), len(row['components']),
+               round(size[0] / scale, 2), round(size[1] / scale, 2), round(math.log(scale), 1))
+        signatures.setdefault(key, []).append(row)
+    repeated = [group for group in signatures.values() if len(group) > 1]
+    if repeated:
+        result['similar_parts_note'] = ('similar_group marks targets with the same triangle count and '
+            'bounding-box size: repeated copies of one part. similar_group_size is how many there are.')
+        for index, group in enumerate(repeated[:200]):
+            for row in group:
+                row['similar_group'] = 'g' + str(index + 1); row['similar_group_size'] = len(group)
     for row in result['targets']:
         row.pop('geometry_digest', None)
         components = row.pop('components')
@@ -449,7 +484,8 @@ def resolve_semantic_bindings(bindings, evidence, analysis, version=None):
     result = []; seen = set()
     for binding in bindings:
         if (not isinstance(binding, dict)
-                or set(binding) - {'phrase', 'purpose', 'target_ids', 'expected_instances'}):
+                or set(binding) - {'phrase', 'purpose', 'target_ids', 'expected_instances', 'inferred_instances'}
+                or ('expected_instances' in binding and 'inferred_instances' in binding)):
             raise SemanticEvidenceError('semantic_binding_invalid', '部件定位包含未知字段。')
         phrase = binding.get('phrase'); purpose = binding.get('purpose'); ids = binding.get('target_ids')
         if (not isinstance(phrase, str) or not phrase.strip() or len(phrase) > 160
@@ -461,11 +497,14 @@ def resolve_semantic_bindings(bindings, evidence, analysis, version=None):
         expected = binding.get('expected_instances')
         if 'expected_instances' in binding and (type(expected) is not int or not 1 <= expected <= 10000):
             raise SemanticEvidenceError('semantic_binding_invalid', '部件数量必须是有效的整数。')
+        inferred = binding.get('inferred_instances')
+        if 'inferred_instances' in binding and (type(inferred) is not int or not 1 <= inferred <= 10000):
+            raise SemanticEvidenceError('semantic_binding_invalid', '部件数量必须是有效的整数。')
         rows = [targets[ident] for ident in ids]
-        count = None
+        count = None; groups = None
         if public['method'] == 'scene_part_catalog':
             try:
-                count = spatial_instance_count(rows)
+                groups = spatial_instance_groups(rows); count = len(groups)
             except InstructionOutcome:
                 if expected is not None:
                     raise SemanticEvidenceError('semantic_count_unverified', '现有几何证据不能核验所要求的部件数量。') from None
@@ -475,11 +514,17 @@ def resolve_semantic_bindings(bindings, evidence, analysis, version=None):
             raise SemanticEvidenceError('semantic_count_unverified', '可见表面采样不能证明完整的部件数量。')
         if expected is not None and count != expected:
             raise SemanticEvidenceError('semantic_count_mismatch',
-                                        '要求覆盖 %d 个部件，当前证据对应 %d 组独立几何。' % (expected, count))
+                                        '要求覆盖 %d 个部件，当前证据对应 %d 组独立几何。' % (expected, count),
+                                        expected_instances=expected, measured_instances=count,
+                                        measured_groups=[group[:12] for group in (groups or [])[:40]])
         resolved = {'phrase': phrase, 'purpose': purpose, 'target_ids': list(ids),
                     'targets': [{key: row[key] for key in ('id', 'object_name', 'material_name')} for row in rows]}
         if expected is not None:
             resolved['expected_instances'] = expected
+        if inferred is not None:
+            # The user stated no number: the planner's own estimate is recorded
+            # for the receipt and never decides whether the edit may proceed.
+            resolved['inferred_instances'] = inferred
         if count is not None:
             resolved.update(instance_count=count, instance_basis='scene_geometry_components')
         seen.add((phrase, purpose)); result.append(resolved)

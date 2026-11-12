@@ -15,6 +15,7 @@ from pathlib import Path
 import ai_client
 import ai_config
 import engine
+import instruction_agents
 import planner
 import target_evidence
 import scene_parts
@@ -230,7 +231,7 @@ def _parse(body, request_key):
             raise InstructionError('预览来源必须是明确的任务、镜头、画质与版本。')
         if (not isinstance(source['output_id'],str) or not source['output_id'] or len(source['output_id'])>128
                 or not isinstance(source['shot_id'],str) or not source['shot_id'] or len(source['shot_id'])>32
-                or source['quality'] not in ('preview','standard','fine','hero')
+                or source['quality'] not in ('preview','showcase','standard','fine','hero')
                 or type(source['version']) is not int or source['version']<1):
             raise InstructionError('预览来源格式无效。')
         if not shot_id or source['shot_id']!=shot_id:
@@ -551,7 +552,7 @@ def _verify_bound_targets(project, output, evidence, bindings, text, protocol=No
         if protocol=='semantic_v2':
             # The model already interpreted language. This recheck validates
             # only the exact evidence IDs, material slots and stated counts.
-            raw=[{key:copy.deepcopy(row[key]) for key in ('phrase','purpose','target_ids','expected_instances')
+            raw=[{key:copy.deepcopy(row[key]) for key in ('phrase','purpose','target_ids','expected_instances','inferred_instances')
                   if key in row and (key!='expected_instances' or row[key]!=0)} for row in bindings]
             resolved=target_evidence.resolve_semantic_bindings(raw,evidence,project.get('analysis'),project['version'])
             if resolved!=bindings:
@@ -959,6 +960,8 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
         context=_context(project,shot_id,output if image_path else None,notes)
         if semantic_mode:
             context['protections']=_remaining_protections(project,text,shot_id)
+            # Specialists take over requirements the planner leaves pending.
+            context['agent_team']=instruction_agents.settings()
         context['instruction_protocol']=protocol
         lighting_inspection=None
         # Read actual saved lights before asking the model to choose direction.
@@ -1107,7 +1110,7 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
             if evidence.get(key): receipt[key]=_text(evidence[key],200)
         semantic_source=proposal or last
         if decision.get('protocol')=='semantic_v2':receipt['protocol']='semantic_v2'
-        for key in ('semantic_intents','semantic_constraints','source_spans'):
+        for key in ('semantic_intents','semantic_constraints','source_spans','agent_trace'):
             value=semantic_source.get(key,getattr(outcome,key,None))
             if isinstance(value,list) and value:receipt[key]=copy.deepcopy(value)
         if bindings:

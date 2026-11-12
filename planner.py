@@ -67,6 +67,16 @@ def validate(plan):
     p = copy.deepcopy(plan)
     for k, options in [('style',['white','soft','dark']),('aspect',['1:1','4:3','3:4'])]:
         if p.get(k) not in options: raise ValueError(k+' 不支持该选项')
+    if p.get('look','classic') not in ('classic','showcase'): raise ValueError('look 不支持该选项')
+    if 'auto_polish' in p and not isinstance(p['auto_polish'],bool): raise ValueError('auto_polish 必须为布尔值')
+    if 'lookdev' in p:
+        record=p['lookdev']
+        if (not isinstance(record,dict) or set(record)-{'version','source','summary','decisions'}
+                or not isinstance(record.get('summary',''),str) or len(record.get('summary',''))>400
+                or not isinstance(record.get('decisions',[]),list) or len(record['decisions'])>200
+                or any(not isinstance(item,dict) or any(not isinstance(value,(str,int,float)) or (isinstance(value,str) and len(value)>300) for value in item.values())
+                       for item in record.get('decisions',[]))):
+            raise ValueError('lookdev 记录无效')
     for k,lo,hi in [('margin',.03,.4),('exposure',-4,4),('light_softness',.25,4),('texture_scale',.01,1000),('texture_rotation',-360,360),('time_budget',10,14400),('max_corrections',0,2)]:
         number(p.get(k),lo,hi,k)
     if int(p['max_corrections']) != p['max_corrections']: raise ValueError('修正次数须为整数')
@@ -100,7 +110,7 @@ def validate(plan):
         validate_texture_override(m)
         if m.get('preset') not in PRESETS: raise ValueError('未知材质预设')
         if not isinstance(m.get('name'),str): raise ValueError('材质名缺失')
-        for k in ['roughness','metallic','transmission']:
+        for k in ['roughness','metallic','transmission','coat']:
             if k in m: number(m[k],0,1,k)
         if 'color' in m:
             color=m['color']
@@ -114,14 +124,14 @@ def validate(plan):
     if not isinstance(local_materials,list) or len(local_materials)>1000: raise ValueError('局部材质参数无效')
     seen=set()
     for m in local_materials:
-        if not isinstance(m,dict) or set(m)-{'object_name','material_name','preset','color','roughness','metallic','transmission','source','preserve_original','textures','license','resource','texture_scale','texture_rotation'}: raise ValueError('局部材质字段无效')
+        if not isinstance(m,dict) or set(m)-{'object_name','material_name','preset','color','roughness','metallic','transmission','coat','source','preserve_original','textures','license','resource','texture_scale','texture_rotation','lookdev_finish','lookdev_reason'}: raise ValueError('局部材质字段无效')
         validate_texture_override(m)
         if not all(isinstance(m.get(k),str) and m[k] for k in ['object_name','material_name']): raise ValueError('局部材质必须指定部件和材质名称')
         pair=(m['object_name'],m['material_name'])
         if pair in seen: raise ValueError('局部材质重复')
         seen.add(pair)
         if 'preset' in m and m['preset'] not in PRESETS: raise ValueError('未知局部材质预设')
-        for k in ['roughness','metallic','transmission']:
+        for k in ['roughness','metallic','transmission','coat']:
             if k in m: number(m[k],0,1,k)
         if 'preserve_original' in m and type(m['preserve_original']) is not bool: raise ValueError('局部材质保留标记无效')
         if 'color' in m:
@@ -314,6 +324,8 @@ def instruct(plan,text,analysis=None,image_path=None,selections=None,context=Non
                                'selections':copy.deepcopy(selections or [])}
         if explanation.get('target_bindings'):
             p['last_instruction']['target_bindings']=copy.deepcopy(explanation['target_bindings'])
+        if explanation.get('agent_trace'):
+            p['last_instruction']['agent_trace']=copy.deepcopy(explanation['agent_trace'])
         record(config,True,'AI 已返回通过校验的摄影参数。')
         return p
     if reference_path:

@@ -47,6 +47,24 @@ def local_guard():
     origin=request.headers.get('Origin')
     if request.method not in ['GET','HEAD','OPTIONS'] and origin and origin not in ['http://'+request.host,'https://'+request.host]: abort(403)
 
+YIELDING_ENDPOINTS={'plan','undo','instruction','instruction_confirm','feedback_apply','review_propose','review_apply','hero_optimize',
+                    'material_import','selected_material_apply','material_agent_create','ecommerce_adapt'}
+
+@app.before_request
+def yield_background_polish():
+    """A request that changes or renders the project takes the renderer from background polish."""
+    deleting=request.method=='DELETE' and request.endpoint=='project_delete'
+    if not deleting and (request.method!='POST' or request.endpoint not in YIELDING_ENDPOINTS): return
+    ident=(request.view_args or {}).get('ident')
+    if isinstance(ident,str):
+        try: stopped=engine.yield_to_user(ident)
+        except KeyError: return
+        if stopped and deleting:
+            # Deletion needs the renderer to have let go of the project's files.
+            deadline=time.time()+5
+            while time.time()<deadline and any(job.get('project_id')==ident and job['id'] in engine.RUNNING_JOBS for job in all_records('job')):
+                time.sleep(.1)
+
 @app.before_request
 def reserve_project_operation():
     """A file/AI request can outlive its first DB read; deletion must wait for it."""
@@ -210,6 +228,9 @@ def create_project(base,name='',metadata=None,platform=None):
     ident=base.parent.name;name=name.strip() or models[0].stem
     slug=re.sub(r'[^\w\-]+','_',name)[:60] or 'product'
     plan=default_plan()
+    # New projects get the showcase look: look-developed finishes, a photographic
+    # light set, and a background high-quality pass of each previewed image.
+    plan.update(look='showcase',auto_polish=True)
     metadata=metadata or {}
     if metadata.get('dimensions'):
         value=metadata['dimensions']
@@ -266,6 +287,12 @@ def plan(ident):
         if expected is not None and p['version']!=expected:
             abort(409,description='方案已被自动优化或其他页面更新。当前调整未保存；请先查看最新方案，再重新应用本次修改。')
         old=p['plan'];new={**old,**patch,'source':'user'};new=validate_project_plan(ident,new)
+        if (new.get('look')=='showcase' and old.get('look')!='showcase' and p.get('analysis')
+                and not new.get('material_overrides') and not new.get('object_material_overrides')):
+            # Switching an older project to the showcase look develops its
+            # placeholder materials once, exactly as a new upload would.
+            import lookdev
+            new=validate_project_plan(ident,lookdev.apply(new,p['analysis'],p.get('model_path',''))[0])
         p['history'].append({'version':p['version'],'plan':old,'at':time.time(),'reason':'界面参数修改'})
         p['plan']=new;p['version']+=1;put('project',p)
     return jsonify(engine.project_view(ident))
@@ -421,6 +448,10 @@ def instruction_error_response(exc):
                            for item in pending if isinstance(item,dict)]
         detail['remaining_text']=getattr(exc,'remaining_text','')
         detail.setdefault('error_code','instruction_targets_unresolved')
+    trace=getattr(exc,'agent_trace',None)
+    if isinstance(trace,list) and trace:
+        # Fixed codes and counts only: which agents worked on the request.
+        detail['agent_trace']=[step for step in trace if isinstance(step,dict)][:20]
     return jsonify(detail),getattr(exc,'status_code',400)
 
 

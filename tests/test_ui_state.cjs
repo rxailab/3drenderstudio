@@ -2294,3 +2294,99 @@ test('the upload dialog offers marketplaces and remembers the last choice',async
   assert.equal(h.w.localStorage.getItem('wuying-platform'),'amazon');assert.equal(h.node('uploadPlatform').value,'amazon');
 });
 
+
+function polishJob(overrides={}) {
+  return {id:'polish-a',kind:'render',origin:'auto_polish',status:'running',quality:'showcase',shot_ids:['hero'],current_shot:'白底主图',
+    stage:'Cycles 正在渲染',progress:0,sample_progress:30,completed:[],version:1,created_at:9,...overrides};
+}
+
+test('a background high-quality pass never locks the workspace and says so',async t=>{
+  const a=previewProject();a.plan.look='showcase';a.plan.auto_polish=true;a.jobs=[polishJob()];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  assert.equal(h.run('!!activeJob()'),false,'the pass is not a blocking job');assert.equal(h.run('polishJob().id'),'polish-a');
+  assert.equal(h.node('settingsForm').inert,false);assert.equal(h.node('undoButton').disabled,true,'nothing to undo yet, not locked by the pass');
+  assert.equal(h.node('instructionInput').disabled,false);
+  const panel=h.node('jobPanel');assert.equal(panel.hidden,false);
+  assert.match(panel.textContent,/后台生成高清图/);assert.match(panel.textContent,/可继续操作/);assert.match(panel.textContent,/采样 30%/);
+  assert.ok(panel.querySelector('[data-cancel="polish-a"]'),'the pass can still be cancelled by hand');
+  assert.equal(h.node('autoPolish').checked,true);
+  assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+});
+
+test('a finished or pre-empted pass leaves no stale status and its image is labelled 2K',async t=>{
+  const a=previewProject();a.plan.look='showcase';a.plan.auto_polish=true;
+  a.jobs=[{id:'preview-a',kind:'preview',status:'completed',quality:'preview',shot_ids:['hero'],completed:['hero'],version:1,created_at:3,stage:'已完成',progress:100},
+          polishJob({status:'cancelled',yielded:true,stage:'已取消'})];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  assert.doesNotMatch(h.node('jobPanel').textContent,/高清图/,'a pre-empted pass is not presented as an interrupted task');
+  assert.equal(h.node('jobPanel').querySelector('[data-retry]'),null);
+  const record=h.records.get('a');record.jobs[1]=polishJob({status:'completed',stage:'已完成',progress:100});
+  record.outputs.push({job_id:'polish-a',shot_id:'hero',version:1,quality:'showcase',width:2048,height:2048,created_at:10,png_url:'/qa/synthetic-2k-a.png'});
+  await h.run('poll()');
+  assert.equal(h.run('currentOutput.quality'),'showcase','the newest image of the same plan is shown');
+  assert.match(h.node('renderKind').textContent,/高清 2K/);
+  assert.equal(h.run("sceneQualityLabel('showcase',{width:2048,height:2048})"),'高清 2K');
+});
+
+test('unchecking the background pass is saved with the plan and old plans stay untouched',async t=>{
+  const a=previewProject();a.plan.look='showcase';a.plan.auto_polish=true;
+  const h=await setup(t,{projects:[a,previewProject('b')]});await h.run("openProject('a')");
+  h.node('autoPolish').checked=false;await h.run('gatherPlan()');
+  assert.equal(h.run('draft.auto_polish'),false);
+  await h.run("openProject('b')");
+  assert.equal(h.node('autoPolish').checked,false);await h.run('gatherPlan()');
+  assert.equal(h.run("Object.hasOwn(draft,'auto_polish')"),false,'a plan that never had the setting does not gain it by being opened');
+});
+
+test('the receipt says which agents worked on a request, from fixed codes only',async t=>{
+  const p=project('a');p.instruction_result={id:'receipt-agents',text:'柜体是红色喷漆金属带反光',source:'ai',summary:'柜体改为带清漆层的红色喷漆金属。',notes:[],
+    changes:[{path:'object_material_overrides.Body/BodyMaterial.coat',before:null,after:.75}],used_image:true,used_reference:false,status:'applied',shot_id:'hero',base_version:1,applied_version:1,
+    agent_trace:[{agent:'planner',calls:2,ready:1,pending:1},
+      {agent:'specialists',requirement:'r2',locator:{result:'located',targets:4,groups:1,confidence:.94},result:'resolved'},
+      {agent:'specialists',requirement:'r3',locator:{result:'located',targets:1,groups:1,confidence:.8},finisher:{result:'chosen',fields:['roughness']},result:'rejected',reason:'<img src=x onerror=alert(1)>'},
+      {agent:'specialists',calls:3},{agent:'executor',repairs:['localised_shared_material','<script>alert(2)</script>']}]};
+  const h=await setup(t,{projects:[p]});await h.run("openProject('a')");
+  const details=h.node('instructionReceiptDetails');
+  assert.match(details.textContent,/自动处理：理解要求 2 轮 · 自动定位部件 2 项 · 自动确定质感 1 项 · 补全待定要求 1\/2 项 · 共用材质只改所指部件/);
+  assert.equal(details.querySelector('img,script'),null);assert.doesNotMatch(details.textContent,/alert/);
+  assert.equal(h.run("agentTraceLabel([])"),'');assert.equal(h.run("agentTraceLabel('x')"),'');
+  assert.equal(h.run("agentTraceLabel([{agent:'planner',calls:1,ready:1,pending:0}])"),'自动处理：理解要求 1 轮');
+  assert.equal(h.run("agentTraceLabel([{agent:'planner',calls:1,ready:1,pending:0},{agent:'verifier',checked:1,narrowed:1,removed:6,result:'narrowed'},{agent:'executor',repairs:['dropped_unbound_edit']}])"),
+    '自动处理：理解要求 1 轮 · 核对定位，去掉 6 个不属于所指部位的部件 · 去掉未定位部件的修改');
+  assert.equal(h.run("agentTraceLabel([{agent:'planner',calls:1,ready:2,pending:0},{agent:'verifier',checked:3,narrowed:0,removed:0,result:'confirmed'}])"),'自动处理：理解要求 1 轮 · 核对定位 3 组');
+  assert.equal(h.run("agentTraceLabel([{agent:'planner',calls:1,ready:2,pending:0},{agent:'verifier',result:'unavailable',reason:'transport'}])"),'自动处理：理解要求 1 轮');
+});
+
+test('a requirement the agents could not finish shows their specific reason and what was tried',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");
+  h.intercept=call=>call.url.endsWith('/instruct')?h.response({error:'还有要求暂未形成可执行的修改，原文已保留。',error_code:'instruction_targets_unresolved',remaining_text:call.body.text,
+    pending:[{id:'r1',quote:'把抽屉滑轨换成黑色',label:'抽屉滑轨',status:'needs_clarification',action:'locate_part',reason:'已自动查找，模型的部件中没有找到这项要求所指的部位；可以补充它的位置或换一种说法。'}],
+    agent_trace:[{agent:'planner',calls:1,ready:0,pending:1},{agent:'specialists',requirement:'r1',locator:{result:'unresolved',reason:'not_in_catalogue'},result:'pending'},{agent:'specialists',calls:1}]},400):undefined;
+  h.node('instructionInput').value='把抽屉滑轨换成黑色';await h.run("applyInstructionAndPreview({preventDefault(){}})");await tick();await tick();
+  const details=h.node('instructionProposalDetails').textContent;
+  assert.match(details,/已自动查找，模型的部件中没有找到/);assert.match(details,/自动处理：理解要求 1 轮 · 补全待定要求 0\/1 项/);
+  assert.equal(h.node('instructionInput').value,'把抽屉滑轨换成黑色','the request stays editable');
+});
+
+test('look-dev decisions are listed with their evidence in the inspection record',async t=>{
+  const a=previewProject();a.plan.look='showcase';
+  a.plan.lookdev={version:1,source:'names',summary:'亮面金属 ×2、亮面塑料 ×1',decisions:[
+    {scope:'material',material:'亮光金属_6',finish:'bright_metal',label:'亮面金属',reason:'材质名「亮光金属_6」含「亮光金属」',parts:38},
+    {scope:'part',object:'<img src=x onerror=alert(1)>',material:'default',finish:'bright_metal',label:'亮面金属',reason:'部件名含「key」'}]};
+  const h=await setup(t,{projects:[a,previewProject('b')]});await h.run("openProject('a')");
+  const content=h.node('inspectionContent');
+  assert.match(content.textContent,/质感推断/);assert.match(content.textContent,/亮面金属 ×2、亮面塑料 ×1/);
+  const record=content.querySelector('.lookdev-record');assert.ok(record);assert.equal(record.querySelectorAll('li').length,2);
+  assert.match(record.textContent,/材质名「亮光金属_6」含「亮光金属」/);assert.match(record.textContent,/颜色保持不变/);
+  assert.equal(content.querySelector('img'),null,'part names from the model file are never markup');
+  await h.run("openProject('b')");assert.doesNotMatch(h.node('inspectionContent').textContent,/质感推断/);
+});
+
+test('home cards name the background pass and never call a 2K image 4K',async t=>{
+  const working=previewProject('a');working.active_job={id:'polish-a',kind:'render',quality:'showcase',status:'running',progress:0,origin:'auto_polish'};
+  const polished=previewProject('b');polished.outputs.push({job_id:'polish-b',shot_id:'hero',version:1,quality:'showcase',width:2048,height:2048,created_at:9,png_url:'/qa/synthetic-2k-b.png'});
+  const h=await setup(t,{projects:[working,polished]});
+  const cards=[...h.node('homeProjectGrid').querySelectorAll('.project-card')].map(card=>card.textContent);
+  const text=cards.join('\n');
+  assert.match(text,/正在生成高清图 · 后台继续/);assert.match(text,/1 张高清 2K/);assert.doesNotMatch(text,/4K/);
+});
