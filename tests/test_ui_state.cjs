@@ -24,6 +24,29 @@ function project(id='a') {
       {id:'campaign',label:'棚拍宣传',kind:'full',azimuth:-38,elevation:22,focal_length:60},
       {id:'side',label:'侧面结构',kind:'full',azimuth:90,elevation:12,focal_length:70}]}};
 }
+function marketplaces() {
+  const base={aspects:['1:1'],aspect:'1:1',min_px:1000,target_px:2000,max_px:10000,max_bytes:10485760,white:'required',fill_min:.85,fill_target:.88,notes:['主图必须为纯白底。'],sources:['https://example.test/rule']};
+  return {reviewed:'2026-11',default:'general',disclaimer:'以商家后台提示为准。',platforms:[
+    {...base,id:'general',name:'通用白底主图',group:'通用',white:'recommended',fill_min:null,fill_target:.85,min_px:800,sources:[]},
+    {...base,id:'amazon',name:'Amazon 亚马逊',group:'跨境'},
+    {...base,id:'taobao',name:'淘宝 / 天猫',group:'国内',aspects:['1:1','3:4'],white:'optional',fill_min:null,target_px:1440,min_px:800,max_bytes:3145728}]};
+}
+// Mirrors the server's overview shape; statuses follow the size of the newest render.
+function marketplaceView(h,p) {
+  const settings={platform:'general',background:'main_white',shadow:true,transparent:false,...(p.ecommerce || {})};
+  const platform=h.catalog.platforms.find(item=>item.id===settings.platform);
+  const shots=p.plan.shots.map((shot,index)=>{
+    const output=[...p.outputs].filter(item=>item.shot_id===shot.id).sort((a,b)=>b.version-a.version)[0];
+    if(!output)return {shot_id:shot.id,label:shot.label,kind:shot.kind,main:index===0,output:null,status:'missing',items:[{id:'render',status:'action',action:'preview',label:'尚未出图',detail:'这个镜头还没有渲染图片。'}]};
+    const large=Math.max(output.width,output.height)>=platform.min_px;
+    const items=[large?{id:'resolution',status:'pass',label:'分辨率',detail:`将导出 ${platform.target_px} × ${platform.target_px} px。`}:{id:'resolution',status:'action',action:'render',label:'分辨率',detail:'当前只有预览图，渲染 4K 后即可导出。'},
+      {id:'background',status:'auto',label:'纯白背景',detail:'导出时自动处理为纯白 RGB 255。'}];
+    return {shot_id:shot.id,label:shot.label,kind:shot.kind,main:index===0,output:{version:output.version,quality:output.quality,width:output.width,height:output.height},export:{aspect:'1:1',cut:index===0,reframe:true,size:[platform.target_px,platform.target_px]},status:large?'ready':'action',items};
+  });
+  const rendered=shots.filter(shot=>shot.output);
+  return {platform,settings,matte_available:h.matteAvailable!==false,main_shot_id:shots[0].shot_id,shots,step:!rendered.length?'preview':rendered[0].status==='ready'?'export':'render',
+    counts:{shots:shots.length,rendered:rendered.length,exportable:rendered.filter(shot=>shot.status==='ready').length},plan_recommendation:h.planRecommendation || {}};
+}
 function environment(ready=true) {
   return {available:ready,blender_available:true,blender:'/qa/blender',runtime:{available:ready,message:ready?'':'缺少 blender/worker.py，请恢复完整安装包。',missing_components:ready?[]:['blender/worker.py'],capabilities:{render:ready,pick:ready,export_blend:ready,export_c4d:false}},ai_mode:'rules',ai:{enabled:false,key_configured:false,model:'',status:'disabled'},scene_exports:{blender_available:true,export_available:ready,c4d_export_available:false}};
 }
@@ -40,6 +63,7 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
   w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
   w.setInterval=()=>1;w.setTimeout=()=>1;w.clearTimeout=()=>{};
   const h={dom,w,records,calls,instructions:new Map(),afterInstruction:null,system:environment(ready),intercept:null,run:code=>vm.runInContext(code,context),node:id=>w.document.getElementById(id)};
+  h.catalog=marketplaces();h.ecommerceView=p=>marketplaceView(h,p);
   const response=(data,status=200)=>({ok:status>=200&&status<300,status,json:async()=>copy(data)});
   h.response=response;
   w.fetch=async(url,options={})=>{
@@ -48,6 +72,9 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
     if(url==='/api/system')return response(h.system);
     if(url==='/api/projects' && call.method==='GET')return response([...records.values()]);
     if(url==='/api/examples')return response([]);
+    if(url==='/api/ecommerce/platforms')return response(h.catalog);
+    const exportCancel=url.match(/^\/api\/ecommerce\/exports\/([^/]+)\/cancel$/);
+    if(exportCancel){for(const p of records.values()){const task=(p.ecommerce_exports || []).find(item=>item.id===exportCancel[1]);if(task){task.status='cancelled';return response(task);}}return response({error:'记录不存在'},404);}
     if(/\/material-agent\/tasks$/.test(url))return response([]);
     if(url==='/api/ai/settings')return response(h.system.ai);
     const match=url.match(/^\/api\/projects\/([^/]+)(?:\/(.*))?$/);
@@ -56,6 +83,19 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
       if(!p)return response({error:'记录不存在'},404);
       if(!action && call.method==='DELETE'){records.delete(p.id);return response({deleted:true,id:p.id,cleanup_pending:false});}
       if(!action)return response(p);
+      if(action==='ecommerce'){
+        if(call.method==='PUT')p.ecommerce={...(p.ecommerce || {}),...call.body};
+        return response(h.ecommerceView(p));
+      }
+      if(action==='ecommerce/exports'){
+        const preset=h.catalog.platforms.find(item=>item.id===call.body.platform);if(!preset)return response({error:'未知的销售平台'},400);
+        const task={id:'ecom-'+calls.length,project_id:p.id,platform:preset.id,platform_name:preset.name,options:copy(call.body),status:'queued',stage:'等待导出',progress:0,error:null,warnings:[],files:[],download_url:null,project_version:p.version,created_at:calls.length};
+        p.ecommerce_exports=[task,...(p.ecommerce_exports || [])];return response(task,202);
+      }
+      if(action==='ecommerce/adapt'){
+        if(call.body.expected_version!==p.version)return response({error:'方案已在后台更新'},409);
+        p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'按平台调整画幅与留白'});p.plan.margin=.06;p.version++;p.ecommerce={platform:call.body.platform};return response(p);
+      }
       if(action==='plan'){
         if(Number(call.headers['X-Plan-Version'])!==p.version)return response({error:'方案版本已更新'},409);
         p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'手动修改'});p.plan=copy(call.body);p.version++;return response(p);
@@ -2131,3 +2171,125 @@ test('home upload buttons open the native pickers and chosen files continue in t
   await h.run("continueUpload([new File(['glb'],'bottle.glb')])");
   assert.equal(h.node('uploadDialog').open,true);assert.match(h.node('chosenFiles').textContent,/bottle\.glb/);assert.equal(h.node('uploadSubmit').disabled,false);
 });
+
+function rendered(id='a',size=4096) {
+  const p=project(id),quality=size>512?'standard':'preview';
+  p.outputs.push({job_id:'r1',shot_id:'hero',shot_label:'白底主图',quality,version:1,created_at:5,width:size,height:size,png_url:`/files/${id}/hero.png`,jpg_url:`/files/${id}/hero.jpg`,blend_url:`/files/${id}/hero.blend`});
+  return p;
+}
+const ecommerceCalls=h=>h.calls.filter(call=>/ecommerce/.test(call.url));
+
+test('电商出图 is the fourth inspector tab and asks the server only once it is opened',async t=>{
+  const h=await setup(t,{projects:[rendered('a',512)]});await h.run("openProject('a')");
+  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','ecommerce']);
+  assert.deepEqual(ecommerceCalls(h),[],'opening a project does not load marketplace data');
+  h.node('inspectorEcommerceTab').click();await tick();await tick();
+  assert.equal(h.node('inspectorEcommerce').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
+  assert.deepEqual(ecommerceCalls(h).map(call=>call.method+' '+call.url),['GET /api/ecommerce/platforms','GET /api/projects/a/ecommerce']);
+  assert.equal(h.node('ecommercePlatform').value,'general');
+  assert.deepEqual([...h.node('ecommercePlatform').querySelectorAll('optgroup')].map(group=>group.label),['通用','跨境','国内']);
+  assert.match(h.node('ecommercePlatformSummary').textContent,/导出 2000 px · 建议纯白底/);
+  assert.match(h.node('ecommerceCheckShot').textContent,/白底主图 · 主图/);
+  const checks=[...h.node('ecommerceChecks').children];
+  assert.deepEqual(checks.map(item=>item.dataset.status),['action','auto']);
+  assert.match(checks[0].textContent,/需要处理/);assert.match(checks[1].textContent,/导出时自动处理/);
+  assert.equal(h.node('ecommerceExport').disabled,false,'a preview can still be exported');
+  assert.equal(h.node('ecommerceExportHint').dataset.tone,'warn');assert.match(h.node('ecommerceExportHint').textContent,/建议先渲染 4K/);
+  await h.run('poll()');assert.equal(ecommerceCalls(h).length,2,'an unchanged project is not measured again');
+});
+
+test('the last inspector tab is reachable from the keyboard',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const first=h.node('inspectorReviewTab');first.focus();
+  first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'End',bubbles:true}));await tick();
+  assert.equal(h.node('inspectorEcommerceTab').getAttribute('aria-selected'),'true');assert.equal(h.w.document.activeElement,h.node('inspectorEcommerceTab'));
+  h.node('inspectorEcommerceTab').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  assert.equal(h.node('inspectorReviewTab').getAttribute('aria-selected'),'true');
+  h.node('inspectorReviewTab').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+  assert.equal(h.node('inspectorEcommerceTab').getAttribute('aria-selected'),'true');
+  await tick();await tick();await tick();
+});
+
+test('marketplace and export options are saved with the project and drive the checks',async t=>{
+  const h=await setup(t,{projects:[rendered('a')]});await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
+  assert.equal(h.node('ecommerceExportHint').dataset.tone,'');assert.match(h.node('ecommerceExportHint').textContent,/将导出 1 个镜头/);
+  h.node('ecommercePlatform').value='amazon';h.node('ecommercePlatform').dispatchEvent(new h.w.Event('change'));await tick();
+  const saved=h.calls.at(-1);assert.equal(saved.method+' '+saved.url,'PUT /api/projects/a/ecommerce');
+  assert.deepEqual(saved.body,{platform:'amazon',background:'main_white',shadow:true,transparent:false});
+  assert.match(h.node('ecommercePlatformSummary').textContent,/主图须纯白底 · 产品占比 ≥ 85% · ≤ 10 MB/);
+  assert.equal(h.node('ecommercePlatformNotes').querySelector('a').getAttribute('rel'),'noopener noreferrer');
+  h.node('ecommerceTransparent').checked=true;h.node('ecommerceTransparent').dispatchEvent(new h.w.Event('change'));await tick();
+  assert.equal(h.calls.at(-1).body.transparent,true);assert.equal(h.node('ecommerceTransparent').checked,true);
+  h.w.document.querySelector('[name=ecommerceBackground][value=all_white]').checked=true;
+  h.w.document.querySelector('[name=ecommerceBackground][value=all_white]').dispatchEvent(new h.w.Event('change'));await tick();
+  assert.equal(h.calls.at(-1).body.background,'all_white');assert.equal(h.records.get('a').ecommerce.background,'all_white');
+});
+
+test('without the matte runtime only the keep-as-rendered export is offered',async t=>{
+  const h=await setup(t,{projects:[rendered('a')]});h.matteAvailable=false;await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
+  const radios=[...h.w.document.querySelectorAll('[name=ecommerceBackground]')];
+  assert.deepEqual(radios.map(input=>input.disabled),[true,true,false]);assert.equal(radios[2].checked,true);
+  assert.equal(h.node('ecommerceTransparent').disabled,true);assert.equal(h.node('ecommerceShadow').disabled,true);
+});
+
+test('export submits the chosen settings once and then shows the verified files',async t=>{
+  const h=await setup(t,{projects:[rendered('a')]});await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
+  h.node('ecommerceExport').click();h.node('ecommerceExport').click();await tick();
+  const posts=h.calls.filter(call=>call.method==='POST' && call.url==='/api/projects/a/ecommerce/exports');
+  assert.equal(posts.length,1);assert.deepEqual(posts[0].body,{platform:'general',background:'main_white',shadow:true,transparent:false});
+  assert.equal(h.node('ecommerceResult').hidden,false);assert.equal(h.node('ecommerceExport').disabled,true);assert.equal(h.node('ecommerceExport').textContent,'正在导出…');
+  assert.ok(h.node('ecommerceResult').querySelector('[data-cancel-ecommerce]'));
+  const task=h.records.get('a').ecommerce_exports[0];
+  Object.assign(task,{status:'completed',stage:'已导出 2 个文件，其中 1 个需要留意',progress:100,download_url:'/files/a/ecommerce/exports/x/pack.zip',files:[
+    {name:'01_hero_main_2000x2000.jpg',label:'白底主图',role:'main',width:2000,height:2000,bytes:412000,background:'white',pure_white:true,fill:.88,issues:[],url:'/files/a/ecommerce/exports/x/package/01_hero_main_2000x2000.jpg'},
+    {name:'x.png',label:'<img src=x onerror=alert(1)>',role:'transparent',width:4096,height:4096,bytes:5242880,background:'transparent',issues:['图片来自旧方案 v1'],url:'/files/other/ecommerce/x.png'}]});
+  await h.run('poll()');
+  const result=h.node('ecommerceResult');
+  assert.equal(result.querySelector('a.button').getAttribute('href'),'/files/a/ecommerce/exports/x/pack.zip?download=1');
+  const tiles=[...result.querySelectorAll('.ecommerce-files li')];assert.equal(tiles.length,2);
+  assert.match(tiles[0].textContent,/2000 × 2000 · 402 KB/);assert.equal(tiles[0].querySelector('a').getAttribute('href'),'/files/a/ecommerce/exports/x/package/01_hero_main_2000x2000.jpg');
+  assert.equal(tiles[1].querySelector('a').getAttribute('href'),'#','a file outside this project is never linked');
+  assert.equal(result.querySelectorAll('img[onerror]').length,0);assert.equal(tiles[1].dataset.issue,'true');
+  assert.match(result.querySelector('.ecommerce-issues').textContent,/图片来自旧方案 v1/);
+  assert.equal(h.node('ecommerceExport').disabled,false);assert.equal(h.node('ecommerceExport').textContent,'导出平台套图');
+  assert.match(h.node('toast').textContent,/平台套图已导出/);
+});
+
+test('a running export can be cancelled and a running render blocks a new export',async t=>{
+  const h=await setup(t,{projects:[rendered('a')]});await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
+  h.node('ecommerceExport').click();await tick();
+  h.node('ecommerceResult').querySelector('[data-cancel-ecommerce]').click();await tick();
+  assert.match(h.calls.at(-1).url,/^\/api\/ecommerce\/exports\/ecom-\d+\/cancel$/);assert.equal(h.node('ecommerceResult').hidden,true);
+  assert.equal(h.node('ecommerceExport').disabled,false);
+  h.records.get('a').jobs.unshift({id:'j1',status:'running',kind:'render',shot_ids:['hero'],quality:'standard',version:1,created_at:9,stage:'渲染中'});
+  await h.run('poll()');
+  assert.equal(h.node('ecommerceExport').disabled,true);assert.match(h.node('ecommerceExportHint').textContent,/渲染完成后可导出/);
+});
+
+test('re-framing for a marketplace is one undoable plan change followed by one preview',async t=>{
+  const h=await setup(t,{projects:[rendered('a',512)]});h.planRecommendation={margin:.06};
+  await h.run("openProject('a')");h.node('inspectorEcommerceTab').click();await tick();await tick();
+  assert.equal(h.node('ecommerceAdapt').hidden,false);assert.match(h.node('ecommerceAdapt').textContent,/留白改为 6%/);
+  h.planRecommendation={};
+  await h.run('adaptEcommercePlan()');
+  const adapt=h.calls.find(call=>call.url==='/api/projects/a/ecommerce/adapt');
+  assert.equal(adapt.body.expected_version,1);assert.equal(adapt.body.platform,'general');
+  const preview=h.calls.find(call=>call.url==='/api/projects/a/jobs');
+  assert.deepEqual([preview.body.kind,preview.body.shot_ids,preview.body.expected_version],['preview',['hero'],2]);
+  assert.equal(h.records.get('a').plan.margin,.06);assert.equal(h.node('margin').value,'6');
+  await tick();assert.equal(h.node('ecommerceAdapt').hidden,true);
+});
+
+test('the upload dialog offers marketplaces and remembers the last choice',async t=>{
+  const h=await setup(t);await h.run("continueUpload([new File(['glb'],'bottle.glb')])");await tick();
+  const select=h.node('uploadPlatform');
+  assert.equal(select.name,'platform');assert.equal(select.value,'');
+  assert.deepEqual([...select.options].map(option=>option.value),['','general','amazon','taobao']);
+  select.value='amazon';
+  h.intercept=async call=>call.method==='POST' && call.url==='/api/projects'?h.response({...project('n'),status:'analyzing',analysis:null},201):undefined;
+  h.records.set('n',{...project('n'),status:'analyzing',analysis:null});
+  h.node('uploadForm').dispatchEvent(new h.w.Event('submit',{cancelable:true}));await tick();await tick();await tick();
+  const upload=h.calls.find(call=>call.method==='POST' && call.url==='/api/projects');
+  assert.equal(upload.body.get('platform'),'amazon');
+  assert.equal(h.w.localStorage.getItem('wuying-platform'),'amazon');assert.equal(h.node('uploadPlatform').value,'amazon');
+});
+

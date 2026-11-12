@@ -69,6 +69,7 @@ def _ensure_idle(project_id):
     import instruction_service
     import material_agent
     import scene_exports
+    import ecommerce
 
     if OPERATIONS.get(project_id) or project_id in instruction_service._INFLIGHT:
         raise ProjectBusyError('项目还有正在处理的操作，请等待处理完成后再删除。')
@@ -79,6 +80,8 @@ def _ensure_idle(project_id):
          '项目正在导出工程，请先取消导出或等待完成后再删除。'),
         ('material_task', material_agent.ACTIVE, material_agent.RUNNING_TASKS, {},
          '项目正在调整材质，请先取消任务或等待完成后再删除。'),
+        (ecommerce.KIND, {'queued', 'running'}, ecommerce.RUNNING, ecommerce.PROCESSES,
+         '项目正在导出电商套图，请先取消导出或等待完成后再删除。'),
     ]
     for kind, active, running, processes, message in checks:
         for record in store.all_records(kind):
@@ -173,7 +176,7 @@ def delete_project(project_id):
                 folder.rename(staged)
             records = connection.execute('SELECT kind,id,payload FROM records').fetchall()
             related = [(kind, ident) for kind, ident, payload in records
-                       if kind in {'job', 'export', 'material_task'}
+                       if kind in {'job', 'export', 'material_task', 'ecommerce_export'}
                        and json.loads(payload).get('project_id') == project_id]
             connection.executemany('DELETE FROM records WHERE kind=? AND id=?', related)
             connection.execute('DELETE FROM records WHERE kind=? AND id=?', ('project', project_id))

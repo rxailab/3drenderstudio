@@ -619,23 +619,43 @@ def render(req,objects,meshes):
     # Re-check the actual evaluated scene after rendering. Corrections are bounded;
     # the analytic fit normally requires zero retries and never reports invented work.
     attempts=[]
-    for attempt in range(int(plan.get('max_corrections',2))+1):
-        if shot.get('kind')=='detail': test_points=[Vector(p) for p in checks['projection_test_points']]
-        else: _,_,test_points=bounds(meshes)
-        coords=[world_to_camera_view(scene,scene.camera,p) for p in test_points]
-        rect=[min(p.x for p in coords),min(p.y for p in coords),max(p.x for p in coords),max(p.y for p in coords)]
-        clipped=any(p.z<=0 or p.x<0 or p.x>1 or p.y<0 or p.y>1 for p in coords)
-        safe=all(p.z>0 and plan.get('margin',.12)-.005<=p.x<=1-plan.get('margin',.12)+.005 and plan.get('margin',.12)-.005<=p.y<=1-plan.get('margin',.12)+.005 for p in coords)
+    # The camera adapter re-applies its own verified view before every render, so
+    # moving this camera back cannot change the picture: measure the real product
+    # vertices in that view once and never repeat an identical render.
+    adapter=bool(req.get('camera_projection_contract'))
+    limit=0 if adapter else int(plan.get('max_corrections',2))
+    margin=plan.get('margin',.12);manual_view=False
+    for attempt in range(limit+1):
+        if adapter:
+            from blender.camera_projection import frame_bounds,world_points
+            framed=[ob for ob in meshes if shot.get('kind')=='detail' and ob.name==shot.get('target_object')] or meshes
+            rect,behind=frame_bounds(scene,world_points(framed))
+            clipped=behind or rect[0]<0 or rect[1]<0 or rect[2]>1 or rect[3]>1
+            safe=not behind and margin-.005<=rect[0] and rect[2]<=1-margin+.005 and margin-.005<=rect[1] and rect[3]<=1-margin+.005
+            manual_view=any(key in shot for key in ('ortho_scale','camera_distance','target_offset'))
+            checks.update(method='projected product vertices in the rendered camera',
+                          occupancy=max(rect[2]-rect[0],rect[3]-rect[1]))
+        else:
+            if shot.get('kind')=='detail': test_points=[Vector(p) for p in checks['projection_test_points']]
+            else: _,_,test_points=bounds(meshes)
+            coords=[world_to_camera_view(scene,scene.camera,p) for p in test_points]
+            rect=[min(p.x for p in coords),min(p.y for p in coords),max(p.x for p in coords),max(p.y for p in coords)]
+            clipped=any(p.z<=0 or p.x<0 or p.x>1 or p.y<0 or p.y>1 for p in coords)
+            safe=all(p.z>0 and margin-.005<=p.x<=1-margin+.005 and margin-.005<=p.y<=1-margin+.005 for p in coords)
         attempts.append(dict(attempt=attempt,clipped=clipped,projected_bounds=rect,safe_margin=safe))
         checks.update(clipped=clipped,projected_bounds=rect,corrections=attempt)
-        if safe or attempt>=int(plan.get('max_corrections',2)): break
+        if safe or attempt>=limit: break
         target=Vector(cam['target']);scene.camera.location=target+(scene.camera.location-target)*1.18
         bpy.context.view_layer.update();cam['position']=list(scene.camera.location)
         event('取景检查未通过，自动增加拍摄距离',correction=attempt+1)
         bpy.ops.render.render(write_still=True)
     checks['attempts']=attempts
     checks['automatic_check_status']='passed' if safe else 'manual_review'
-    if not safe: checks['manual_review'].append('已达到自动取景修正上限，请人工调整相机与留白')
+    if not safe:
+        checks['manual_review'].append(
+            '当前镜头使用手动缩放或平移，产品超出留白范围；复位视角可恢复自动取景' if adapter and manual_view
+            else '自动取景后产品仍超出留白范围，请调整留白或镜头角度' if adapter
+            else '已达到自动取景修正上限，请人工调整相机与留白')
     if checks['corrections']:
         scene['studio_camera_correction']=json.dumps(attempts)
         bpy.ops.wm.save_as_mainfile(filepath=str(blend))

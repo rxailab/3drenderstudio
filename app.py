@@ -25,6 +25,8 @@ import scene_exports
 import ai_config
 import project_lifecycle
 import viewport_service
+import ecommerce
+import ecommerce_platforms
 from planner import default_plan,validate,instruct,PRESETS
 app=Flask(__name__,static_folder='static')
 app.config['MAX_CONTENT_LENGTH']=512*1024*1024
@@ -58,6 +60,7 @@ def reserve_project_operation():
         if rule.startswith('/api/projects/<ident>'): project_id=ident
         elif rule.startswith('/api/jobs/<ident>'): project_id=get('job',ident).get('project_id')
         elif rule.startswith('/api/exports/<ident>'): project_id=get('export',ident).get('project_id')
+        elif rule.startswith('/api/ecommerce/exports/<ident>'): project_id=get(ecommerce.KIND,ident).get('project_id')
         if project_id:
             project_lifecycle.begin_operation(project_id)
             g.project_operation=project_id
@@ -198,7 +201,7 @@ def check_resources(base):
                     resolved=(f.parent/uri).resolve()
                     if ':' in uri or uri.startswith(('/', '\\')) or base.resolve() not in resolved.parents: raise ValueError('GLB 外部资源引用不安全')
 
-def create_project(base,name='',metadata=None):
+def create_project(base,name='',metadata=None,platform=None):
     models=list(base.rglob('*.glb'))+list(base.rglob('*.obj'))
     # Case-insensitive extension handling on Windows and Linux.
     models=list(dict.fromkeys(models+[p for p in base.rglob('*') if p.suffix.lower() in ['.glb','.obj']]))
@@ -216,6 +219,11 @@ def create_project(base,name='',metadata=None):
         if not isinstance(value,list) or len(value)!=3 or any(not isinstance(x,(int,float)) or x<=0 or x>100000 for x in value): raise ValueError('真实尺寸应为三个正数（毫米）')
         plan['dimensions_mm']=value
     p=dict(id=ident,name=name[:100],slug=slug,model_path=str(models[0]),status='analyzing',analysis=None,plan=plan,version=1,history=[],outputs=[],metadata=metadata,initial_preview={'status':'pending'},created_at=time.time())
+    if platform:
+        # The first preview is already framed for the marketplace the seller named.
+        preset=ecommerce_platforms.platform(platform)
+        plan.update(ecommerce_platforms.plan_recommendation(preset,plan,new_project=True));validate(plan)
+        p['ecommerce']={'platform':preset['id']}
     with LOCK:
         put('project',p);engine.submit(ident,'analyze');return engine.project_view(ident)
 
@@ -224,6 +232,8 @@ def upload():
     files=request.files.getlist('files')
     if not files: raise ValueError('请选择模型文件')
     engine.require_runtime('render')
+    platform=request.form.get('platform','').strip() or None
+    if platform: ecommerce_platforms.platform(platform)
     ident=uuid.uuid4().hex;base=DATA/ident/'originals';base.mkdir(parents=True)
     paths=json.loads(request.form.get('paths','[]'))
     for i,f in enumerate(files):
@@ -236,7 +246,7 @@ def upload():
         refdir=base.parent/'references';refdir.mkdir()
         path=safe_path(refdir,Path(reference.filename).name);reference.save(path);metadata['reference']=str(path)
         metadata['reference_status']='已保存；明确要求对照参考图时，智能调整会读取这张图片'
-    return jsonify(create_project(base,request.form.get('name',''),metadata)),201
+    return jsonify(create_project(base,request.form.get('name',''),metadata,platform)),201
 
 @app.post('/api/projects/<ident>/plan')
 def plan(ident):
@@ -637,6 +647,47 @@ def bundle(ident):
     buf.seek(0)
     return send_file(buf,mimetype='application/zip',as_attachment=True,download_name=p['slug']+'_images.zip')
 
+@app.get('/api/ecommerce/platforms')
+def ecommerce_platform_list():
+    return jsonify(ecommerce_platforms.catalog())
+
+@app.route('/api/projects/<ident>/ecommerce',methods=['GET','PUT'])
+def ecommerce_overview(ident):
+    """Marketplace readiness of the real renders; PUT also remembers the choices."""
+    if request.method=='PUT': ecommerce.save_settings(ident,request.get_json(force=True))
+    response=jsonify(ecommerce.overview(get('project',ident),request.args.get('platform') if request.method=='GET' else None))
+    response.headers['Cache-Control']='no-store'
+    return response
+
+@app.post('/api/projects/<ident>/ecommerce/adapt')
+def ecommerce_adapt(ident):
+    """Apply the marketplace's ratio and framing to the plan as one undoable step."""
+    body=request.get_json(force=True)
+    if not isinstance(body,dict): raise ValueError('平台适配请求必须是参数对象')
+    with LOCK:
+        p=get('project',ident)
+        chosen,preset=ecommerce.resolve_options(body,p)
+        if 'expected_version' in body and body['expected_version']!=p['version']:
+            abort(409,description='方案已在后台更新。本次没有调整画幅与留白，请查看最新方案后重试。')
+        if any(j['project_id']==ident and j['status'] in ('queued','running') for j in all_records('job')):
+            abort(409,description='请等待当前任务完成，或先取消任务，再调整画幅与留白。')
+        patch=ecommerce_platforms.plan_recommendation(preset,p['plan'])
+        if patch:
+            new=validate_project_plan(ident,{**p['plan'],**patch,'source':'user'})
+            p['history'].append({'version':p['version'],'plan':p['plan'],'at':time.time(),'reason':'按「%s」调整画幅与留白'%preset['name']})
+            p['plan']=new;p['version']+=1
+        p['ecommerce']=chosen;put('project',p)
+    return jsonify(engine.project_view(ident))
+
+@app.post('/api/projects/<ident>/ecommerce/exports')
+def ecommerce_export_create(ident):return jsonify(ecommerce.submit(ident,request.get_json(force=True))),202
+
+@app.get('/api/ecommerce/exports/<ident>')
+def ecommerce_export_read(ident):return jsonify(ecommerce.public(get(ecommerce.KIND,ident)))
+
+@app.post('/api/ecommerce/exports/<ident>/cancel')
+def ecommerce_export_cancel(ident):return jsonify(ecommerce.cancel(ident))
+
 @app.get('/api/examples')
 def examples():
     path=ROOT/'samples'/'index.json'
@@ -674,6 +725,7 @@ if __name__=='__main__':
     project_lifecycle.cleanup_deleted_projects()
     engine.start()
     scene_exports.start()
+    ecommerce.start()
     import material_agent
     material_agent.recover_interrupted()
     port=int(os.getenv('STUDIO_PORT','8765'))
