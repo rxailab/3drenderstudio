@@ -233,6 +233,25 @@ class SemanticPipelineTests(unittest.TestCase):
         self.assertEqual(len(saved['instruction_receipts']), 1)
         self.assertEqual(engine.effective_plan(saved['plan'], 'hero')['lighting']['key_power'], 2.0)
 
+    def test_inline_locks_survive_only_the_exact_partial_retry(self):
+        ready='让正脸亮一点但保持颜色'
+        pending='侧面也亮一些'
+        initial=wire(row('r1', ready, kind='visual_goal', protections=['preserve_color'],
+                         patch_value={'lighting': {'key_power': 2.0}}),
+                     row('r2', pending, kind='visual_goal', status='needs_clarification'))
+        with reject_legacy_language_calls():
+            result=self.apply(ready+'；'+pending, initial)
+            saved=store.get('project','fixture')
+            self.assertEqual(result['instruction_result']['remaining_text'],pending)
+            self.assertEqual(service._remaining_protections(saved,pending,'hero'),['preserve_color'])
+            self.assertEqual(service._remaining_protections(saved,pending+'改一下','hero'),[])
+            self.assertEqual(service._remaining_protections(saved,pending,'campaign'),[])
+            later=copy.deepcopy(saved);later['version']+=1
+            self.assertEqual(service._remaining_protections(later,pending,'hero'),[])
+            retry=wire(row('r1',pending,kind='visual_goal',patch_value={'lighting': {'fill_power': 1.7}}))
+            self.apply(pending,retry,key='semantic-retry',expected_version=4,source=None)
+        self.assertEqual(self.facts(1)['hard_protections'],['preserve_color'])
+
     def test_negation_cannot_disappear_from_exact_source_coverage(self):
         text = '别动那层红漆；让正脸透亮些。'
         # Dropping one character reverses the preservation requirement. Exact

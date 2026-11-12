@@ -407,7 +407,9 @@ class InstructionIntelligenceTests(unittest.TestCase):
         self.assertEqual(next(s for s in actual['shots'] if s['id']=='campaign')['elevation'],80)
         props = send.call_args.args[1]['tools'][0]['input_schema']['properties']['requirement_results']['items']['properties']['patch']['properties']
         self.assertEqual(set(props), {'shots'})
-        self.assertEqual(set(props['shots']['items']['properties']), {'id', 'azimuth', 'elevation', 'focal_length', 'target_object'})
+        self.assertEqual(set(props['shots']['items']['properties']),
+                         {'id', 'azimuth', 'elevation', 'focal_length', 'target_object',
+                          'projection', 'ortho_scale', 'camera_distance', 'target_offset'})
         with patch('ai_client._post', return_value=decision({'exposure': .2})), self.assertRaises(InstructionOutcome) as raised:
             ai_client.request_plan(self.plan, '只让当前镜头俯拍，其他不变', ANALYSIS, CONFIG, context=CONTEXT)
         self.assertEqual(raised.exception.status,'needs_clarification')

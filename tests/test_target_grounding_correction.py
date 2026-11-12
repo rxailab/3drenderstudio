@@ -278,6 +278,20 @@ class TargetCorrectionTests(EvidenceFixture):
         self.assertEqual(len(target['component_bounds']),4)
         self.assertNotIn('_target_image_paths',facts['request_context'])
 
+    def test_catalog_exposes_bounded_geometric_neighbors_without_claiming_contact(self):
+        import copy
+        import target_evidence
+        evidence=self.catalog_context([[0],[.8],[3],[6],[9],[12]])['target_evidence']
+        before=copy.deepcopy(evidence)
+        result=target_evidence.model_evidence(evidence)
+        first=result['targets'][0]['spatial_neighbors']
+        self.assertEqual(first[0][0],'t2')
+        self.assertIs(first[0][1],True)
+        self.assertEqual(first[0][2],0)
+        self.assertEqual(len(first),4)
+        self.assertIn('not proof of contact',result['spatial_neighbors_note'])
+        self.assertEqual(evidence,before)
+
     def test_catalog_split_tires_count_four_groups_across_six_meshes(self):
         context=self.catalog_context([[0],[0],[3],[3],[6],[9]])
         value=wheel_patch(6);ids=['t'+str(index) for index in range(1,7)]

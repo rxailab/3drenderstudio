@@ -48,6 +48,24 @@ class SemanticPlannerTests(EvidenceFixture):
                 reference_path=reference_path)
         return result,send
 
+    def test_inline_conservative_protections_are_enforced_without_rejecting_valid_edit(self):
+        text='让金属部分更有光泽'
+        reply=wire(row(text,{'object_material_overrides':[local(1,roughness=.2)]},
+                       domains=['material'],bindings=[binding()],
+                       protections=['preserve_background','preserve_camera','preserve_geometry']))
+        result,send=self.request_semantic(text,reply)
+        self.assertEqual(send.call_count,1)
+        self.assertEqual(result['object_material_overrides'][0]['roughness'],.2)
+        self.assertEqual(set(result['last_instruction']['protections']),
+                         {'preserve_background','preserve_camera','preserve_geometry'})
+
+    def test_inline_protections_still_block_conflicting_patch(self):
+        text='让产品更明亮'
+        reply=wire(row(text,{'exposure':.4},protections=['preserve_exposure']))
+        with self.assertRaises(InstructionOutcome) as caught:
+            self.request_semantic(text,reply)
+        self.assertEqual(caught.exception.status,'needs_clarification')
+
     def test_unfamiliar_multilingual_goal_reaches_model_whole_without_language_helpers(self):
         text='正面像被闷住了，给它透口气；make the front welcoming, sans changer la teinte'
         reply=wire(row(text,{'lighting':{'key_power':1.9,'fill_power':1.5,'key_azimuth':-35,'key_elevation':48}}))
@@ -308,6 +326,11 @@ class SemanticPlannerTests(EvidenceFixture):
         with self.assertRaises(InstructionOutcome) as caught:self.request_semantic(text,unchanged,context=context)
         self.assertEqual(caught.exception.status,'needs_clarification')
         self.assertFalse(hasattr(caught.exception,'proposal'))
+        self.assertIn('参数相同',caught.exception.pending[0]['reason'])
+        self.assertIn('不代表视觉效果已达到要求',caught.exception.pending[0]['reason'])
+        self.assertEqual(caught.exception.pending[0]['diagnostic_effect'],'known_unchanged')
+        self.assertIs(caught.exception.pending[0]['diagnostic_plan_changed'],True)
+        self.assertEqual(caught.exception.pending[0]['diagnostic_target_ids'],['t1'])
         changed=wire(row(text,{'object_material_overrides':[local(1,roughness=.14)]},
                          domains=['material'],bindings=[binding()]))
         result,send=self.request_semantic(text,[unchanged,changed],context=context)
@@ -315,6 +338,18 @@ class SemanticPlannerTests(EvidenceFixture):
         self.assertEqual(result['object_material_overrides'][0]['roughness'],.14)
         feedback=json.loads(send.call_args_list[1].args[1]['messages'][0]['content'][-1]['text'])
         self.assertEqual(feedback['execution_correction']['issues'][0]['effect'],'known_unchanged')
+        self.assertIn('subjective visual goal',feedback['instruction'])
+
+    def test_repeated_failed_target_check_exposes_safe_reason_and_code(self):
+        text='把部件变成反光金属'
+        reply=wire(row(text,{'object_material_overrides':[local(2,roughness=.2)]},
+                       domains=['material'],bindings=[binding(['t1'])]))
+        with self.assertRaises(InstructionOutcome) as caught:
+            self.request_semantic(text,reply)
+        pending=caught.exception.pending[0]
+        self.assertEqual(pending['diagnostic_code'],'semantic_binding_coverage')
+        self.assertIn('修改范围与已定位的部件不一致',pending['reason'])
+        self.assertEqual(pending['action'],'locate_part')
 
     def test_actual_matching_material_can_be_satisfied_without_adding_override(self):
         text='柜门粗糙度设为0.22'

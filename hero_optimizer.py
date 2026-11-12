@@ -317,6 +317,12 @@ def _synced_plan(plan,shot_id,catalog):
         value=camera.get(key)
         if type(value) not in (int,float) or not math.isfinite(value):raise RuntimeError('原生场景没有返回可回放的实际镜头参数。')
         shot[key]=value
+    if camera.get('type') not in ('PERSP','ORTHO'):raise RuntimeError('原生场景没有返回有效的实际投影。')
+    shot['projection']='orthographic' if camera['type']=='ORTHO' else 'perspective'
+    for field in ('ortho_scale','camera_distance','target_offset'):shot.pop(field,None)
+    if camera['type']=='ORTHO':shot['ortho_scale']=camera['ortho_scale']
+    else:shot['camera_distance']=camera['distance']
+    shot['target_offset']=copy.deepcopy(camera.get('target_offset',[0,0,0]))
     adjustment=result.setdefault('shot_adjustments',{}).setdefault(shot_id,{})
     lighting=adjustment.setdefault('lighting',{})
     for key in planner.LIGHT_DIRECTION_LIMITS:lighting.pop(key,None)
@@ -622,6 +628,8 @@ def run_job(job):
         raise RuntimeError('场景检查没有返回明确的产品对象，原方案保留。')
     cancelled(job);_check_guard(job)
     objects=catalog['product_object_names']
+    from camera_controls import projection
+    catalog['preferred_projection']=projection(shot)
     catalog['product_context']={'name':str(project.get('name',''))[:100],
         'material_note':str((project.get('metadata') or {}).get('material_note',''))[:2000],
         'source':'user_description_not_measured_properties'}

@@ -15,6 +15,8 @@ const confirmedRenders = new Set();
 const instructionDrafts = new Map(), instructionAttempts = new Map(), instructionReceipts = new Map(), instructionGuidance = new Map();
 let instructionTargetSelection = null;
 const instructionJournalKey='wuying-instruction-attempts-v1', instructionJournalLimit=50;
+const instructionPreflightDraftKey='wuying-instruction-preflight-drafts-v1', instructionPreflightDrafts=new Map();
+let instructionPreflightPending=null;
 const unfinishedInstructionPhases=new Set(['requesting','unknown','saved','preview_submitted']);
 let instructionSubmitting = false, instructionProjectId = '', pendingInstructionPreview = null, reviewErrorKey = '', reviewRevision = 0;
 const heroOptimizationAttempts=new Map(),heroOptimizationErrors=new Map();
@@ -80,6 +82,22 @@ function persistInstructionJournal() {
     sessionStorage.setItem(instructionJournalKey,JSON.stringify({schema:1,attempts:attempts.map(item=>({projectId:item.projectId,text:item.text,shotId:item.shotId,shotIds:item.shotIds,body:item.body,instructionKey:item.instructionKey,previewKey:item.previewKey,phase:item.phase,confirmed:item.confirmed,version:item.version,submitted:item.submitted,...(item.kind==='confirm'?{kind:'confirm'}:{}),...(typeof item.remainingText==='string'?{remainingText:item.remainingText}:{})}))}));
   }catch(_){}
 }
+function persistInstructionPreflightDrafts() {
+  try {
+    if(!instructionPreflightDrafts.size)sessionStorage.removeItem(instructionPreflightDraftKey);
+    else sessionStorage.setItem(instructionPreflightDraftKey,JSON.stringify([...instructionPreflightDrafts]));
+  } catch (_) {}
+}
+function restoreInstructionPreflightDrafts() {
+  try {
+    const raw=sessionStorage.getItem(instructionPreflightDraftKey);if(!raw || raw.length>120000)return;
+    const records=JSON.parse(raw);if(!Array.isArray(records) || records.length>instructionJournalLimit)return;
+    for(const record of records){
+      if(!Array.isArray(record) || record.length!==2 || typeof record[0]!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(record[0]) || typeof record[1]!=='string' || !record[1].trim() || record[1].length>2000)continue;
+      instructionPreflightDrafts.set(record[0],record[1]);instructionDrafts.set(record[0],record[1]);
+    }
+  } catch (_) {}
+}
 function validInstructionTargetPoints(points) {
   return Array.isArray(points) && points.length>=1 && points.length<=12 && points.every(point=>point && typeof point==='object' && !Array.isArray(point) && Object.keys(point).sort().join(',')==='id,x,y' && typeof point.id==='string' && /^[A-Za-z0-9_-]{1,64}$/.test(point.id) && ['x','y'].every(key=>typeof point[key]==='number' && Number.isFinite(point[key]) && point[key]>=0 && point[key]<=1)) && new Set(points.map(point=>point.id)).size===points.length;
 }
@@ -105,6 +123,7 @@ function restoreInstructionJournal() {
 function instructionAttemptText(attempt) { return typeof attempt?.remainingText==='string'?attempt.remainingText:attempt?.text; }
 function clearAppliedInstruction(attempt,clearError=true) {
   if(!attempt)return;
+  if(instructionPreflightDrafts.get(attempt.projectId)===attempt.text){instructionPreflightDrafts.delete(attempt.projectId);persistInstructionPreflightDrafts();}
   const matches=value=>[attempt.text,instructionAttemptText(attempt)].includes((value || '').trim()),remaining=attempt.remainingText || '';
   if(matches(instructionDrafts.get(attempt.projectId))){if(remaining)instructionDrafts.set(attempt.projectId,remaining);else instructionDrafts.delete(attempt.projectId);}
   if(current?.id===attempt.projectId && matches($('instructionInput').value)){
@@ -128,7 +147,9 @@ function currentInstructionAttempt() {
   pendingInstructionPreview=attempt;return attempt;
 }
 const instructionFieldLabels={exposure:'曝光',light_softness:'反光柔和度',margin:'画面留白',style:'棚拍风格',aspect:'画幅比例',azimuth:'水平角',elevation:'俯仰角',focal_length:'焦距',target_object:'构图目标',rotation:'旋转角度',translation:'位移',texture_scale:'纹理尺度',texture_rotation:'纹理方向',color:'颜色',roughness:'粗糙度',metallic:'金属度',transmission:'透射',preset:'材质预设',key_power:'主光强度',fill_power:'补光强度',rim_power:'轮廓光强度',environment:'环境光强度',key_azimuth:'主光方位角',key_elevation:'主光俯仰角',fill_azimuth:'补光方位角',fill_elevation:'补光俯仰角',rim_azimuth:'轮廓光方位角',rim_elevation:'轮廓光俯仰角',exposure_delta:'曝光修正',softness_multiplier:'柔和度倍率',time_budget:'采样预算',visual_review:'自动检查',max_corrections:'自动修正次数',frame:'动画帧'};
+Object.assign(instructionFieldLabels,{projection:'投影方式',ortho_scale:'取景宽度',camera_distance:'镜头距离',target_offset:'画面平移'});
 function instructionValue(value,key='') {
+  if(key==='projection')return value==='perspective'?'透视':value==='orthographic'?'正交':value==null?'正交（默认）':String(value);
   if(value===undefined || value===null)return /^(key|fill|rim)_(azimuth|elevation)$/.test(key)?'沿用原始布光':'未设置';
   if(typeof value==='boolean')return value?'开启':'关闭';
   if(typeof value==='number')return String(Number(value.toPrecision(6)))+(['exposure','exposure_delta'].includes(key)?' EV':['azimuth','elevation','texture_rotation'].includes(key) || /^(key|fill|rim)_(azimuth|elevation)$/.test(key)?'°':key==='focal_length'?' mm':'');
@@ -150,7 +171,7 @@ function instructionDiffRows(receipt) {
     if(path==='shots' && Array.isArray(change.before) && Array.isArray(change.after)){
       for(const shot of change.after){
         const prior=change.before.find(item=>item.id===shot.id) || {};
-        for(const key of ['azimuth','elevation','focal_length','target_object','style'])if(JSON.stringify(prior[key])!==JSON.stringify(shot[key]))add('shots.'+shot.id+'.'+key,prior[key],shot[key],'镜头：'+sceneShotLabel(shot.id));
+        for(const key of ['azimuth','elevation','focal_length','projection','ortho_scale','camera_distance','target_offset','target_object','style'])if(JSON.stringify(prior[key])!==JSON.stringify(shot[key]))add('shots.'+shot.id+'.'+key,prior[key],shot[key],'镜头：'+sceneShotLabel(shot.id));
       }
     }else if(['material_overrides','object_material_overrides'].includes(path) && Array.isArray(change.after)){
       const items=change.after,previous=Array.isArray(change.before)?change.before:[],effectivePrevious=Array.isArray(change.effective_before)?change.effective_before:[];
@@ -189,6 +210,7 @@ function currentInstructionGuidance() {
 const instructionResponseReasons={generic:'修改结果未通过校验',conflict:'返回的修改项互相冲突',scope:'要求与修改范围未能对应',coverage:'返回结果遗漏了部分要求',material:'材质参数与要求不一致',parameters:'修改参数格式不正确',unsupported_parameter:'返回了当前不支持的修改参数',range:'返回的参数超出可用范围',target:'返回的部件、材质或镜头无效',constraints:'修改违反了需要保留的设置',interpretation:'要求尚未转成可执行的修改',verification:'返回结果未验证要求的画面效果'};
 const instructionResponseErrorMessage='本次未应用：'+instructionResponseReasons.generic+'。原要求已保留。';
 const instructionResponseFields=new Set(['roughness','metallic','transmission','color','preset','exposure','light_softness','margin','aspect','key_power','fill_power','rim_power','environment','key_azimuth','key_elevation','fill_azimuth','fill_elevation','rim_azimuth','rim_elevation','azimuth','elevation','focal_length']);
+for(const field of ['projection','ortho_scale','camera_distance','target_offset'])instructionResponseFields.add(field);
 function instructionResponseFeedback(payload) {
   // Only app-owned enum values may become visible copy; upstream error text
   // and arbitrary schema paths never enter this recovery state.
@@ -297,7 +319,7 @@ function locatePendingInstruction() {
   // to apply the previous partial proposal or to edit only the clicked mesh.
   if(guidance.kind==='proposal')instructionGuidance.set(current.id,{kind:'clarification',text:guidance.text,pending:clone(guidance.pending)});
   instructionTargetSelection={projectId:current.id,text:$('instructionInput').value.trim(),version:current.version,shotId:activeShot,source:clone(feedbackSnapshot(currentOutput))};
-  feedbackMode=true;setInspectorTab('material');renderFeedback();renderInstruction();
+  feedbackMode=true;realtime.mode='image';setInspectorTab('material');renderViewer();renderInstruction();
   $('feedbackAnnouncement').textContent='请在预览中点选待确认部位，帮助识别同类部件。';
   $('inspectorMaterialTab').focus({preventScroll:true});
 }
@@ -345,9 +367,11 @@ function renderInstruction() {
   else if(instructionSubmitting)context='';
   else if(attempt && !attempt.confirmed)context=dirty?'上次请求尚未确认。先保存或放弃新参数，再核对同一请求。':'上次请求的结果尚未确认；重试会核对同一请求，不会重复应用。';
   else if(attempt)context=attempt.submitted?'参数已保存，预览任务已提交。正在等待更新。':`调整已保存；重试只生成「${attempt.shotIds.map(sceneShotLabel).join('、')}」的预览。`;
+  else if(instructionPreflightDrafts.has(current.id) && !instructionPreflightPending)context='预览阶段的要求已保留；当前预览完成后可重新应用。';
   else if(instructionTargetSelection)context=targetPoints?`将用 ${targetPoints.length} 个选点辅助识别，继续处理原来的要求。`:'先在预览中点选一个需要修改的部位。';
   else if(proposal)context='尚未修改，确认后应用可完成项并生成预览。';
-  else if(currentOutput && currentOutput.version!==current.version)context='当前图片尚未更新；新的调整会应用到最新方案。';
+  else if(currentOutput && currentOutput.version!==current.version)context=`当前显示的是旧版图片 v${currentOutput.version}；应用调整时会先生成当前方案的预览。`;
+  else if(realtimeActive() && currentOutput)context=`AI 参考已渲染图片 v${currentOutput.version}；当前视角用于新预览。`;
   $('instructionContext').textContent=context;$('instructionContext').hidden=!context;
   if(!current)$('reviewRefreshButton').hidden=true;
   renderInstructionErrorDetails(guidance,attempt);renderInstructionGuidance(guidance);renderInstructionReceipt(guidance,attempt);
@@ -455,10 +479,11 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderRealtimeControls();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
+let realtime={key:'',context:'',mode:'live',status:'idle',epoch:0,instance:null,changed:false,record:null,error:'',timer:null,abort:null,preservedView:null};
 let inspectorTab='review', materialAgentSubmitting=false, materialAgentProjectId='', materialAgentRenderedKey='';
 const inspectorScrollPositions={review:0,material:0,plan:0};
 const materialAgentRecords=new Map(), materialAgentDisclosures=new Map();
@@ -543,7 +568,7 @@ function renderRenderActivity() {
   panel.hidden=!activity;
   const active=!!activity && activity.motion==='active';
   viewer.classList.toggle('is-rendering',active && activity.scope==='current');
-  viewer.classList.toggle('is-rendering-empty',!!activity && !activity.outputVisible);
+  viewer.classList.toggle('is-rendering-empty',!!activity && !activity.outputVisible && !realtimeActive());
   viewer.setAttribute('aria-busy',String(active && activity.scope==='current'));
   const track=$('renderActivityProgress'),bar=$('renderActivityBar');
   panel.dataset.state=activity?.state || 'idle';panel.dataset.motion=activity?.motion || 'still';panel.dataset.scope=activity?.scope || 'current';
@@ -653,12 +678,17 @@ function stashLightDirections() {
 function syncCamera() {
   const s = shots().find(s => s.id === cameraShot); if (!s) return;
   setValue('azimuth',s.azimuth);setValue('elevation',s.elevation);setValue('focalLength',s.focal_length);setValue('detailTarget',s.target_object || '');
+  setValue('cameraProjection',s.projection==='perspective'?'perspective':'orthographic');syncProjectionField();
   $('detailTarget').disabled = s.kind !== 'detail';
   syncLightDirections();
 }
-function stashCamera() { const s = shots().find(s => s.id === cameraShot); if (!s) return; Object.assign(s,{azimuth:readNumber('azimuth'),elevation:readNumber('elevation'),focal_length:readNumber('focalLength')});if ($('detailTarget').value) s.target_object = $('detailTarget').value;else delete s.target_object;stashLightDirections(); }
+function syncProjectionField() { const perspective=$('cameraProjection').value==='perspective';$('focalLengthField').hidden=!perspective;$('focalLength').disabled=!perspective; }
+function stashCamera() { const s = shots().find(s => s.id === cameraShot); if (!s) return; Object.assign(s,{azimuth:readNumber('azimuth'),elevation:readNumber('elevation'),focal_length:readNumber('focalLength'),projection:$('cameraProjection').value==='perspective'?'perspective':'orthographic'});if ($('detailTarget').value) s.target_object = $('detailTarget').value;else delete s.target_object;stashLightDirections(); }
 function syncSettings() {
   if (!current) return;
+  // Discard/save reinitializes the draft. A camera accepted only into that
+  // draft must not remain as an apparently saved view after discarding it.
+  if(dirty && realtime.context===current.id+':'+activeShot)disposeRealtime(false);
   draft = clone(current.plan);draftBaseVersion=current.version;dirty = false;editedMaterialColors.clear();
   document.querySelectorAll('[name=style]').forEach(el => el.checked = el.value === draft.style);document.querySelectorAll('[name=aspect]').forEach(el => el.checked = el.value === draft.aspect);
   setValue('margin',draft.margin*100);setValue('softness',draft.light_softness);setValue('exposure',draft.exposure);setValue('textureScale',draft.texture_scale);setValue('textureRotation',draft.texture_rotation);
@@ -707,6 +737,122 @@ function renderLibrary() {
   stableHTML($('projectList'),allProjects.length ? allProjects.map(p => {const out=p.outputs?.at(-1),status=['queued','running'].includes(p.initial_preview?.status)?'白底主图生成中':p.initial_preview?.status==='failed'?'白底主图需处理':statusNames[p.status] || p.status;return `<div class="project-row ${p.id===current?.id?'active':''}"><button type="button" class="project-item" data-project="${esc(p.id)}" ${p.id===current?.id?'aria-current="true"':''}><span class="project-thumb">${out ? `<img src="${esc(out.jpg_url || out.png_url)}" alt="" loading="lazy">` : '◇'}</span><span class="project-copy"><strong>${esc(p.name)}</strong><small>${esc(status)}${p.outputs?.length ? ' · '+p.outputs.length+' 张' : ''}</small></span></button><button type="button" class="icon-button project-delete" data-delete-project="${esc(p.id)}" aria-label="删除项目「${esc(p.name)}」" title="删除项目" ${navigationBlocked()?'disabled':''}>${deleteProjectIcon}</button></div>`;}).join('') : '<p class="muted">还没有摄影项目。<br>上传一个模型开始吧。</p>');
 }
 const deleteProjectIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
+function realtimeAvailable() { return !!window.WuyingViewport && !!current?.analysis && activeShot==='hero' && system?.viewport?.available!==false && system?.runtime?.capabilities?.viewport!==false; }
+function realtimeActive() { return realtimeAvailable() && realtime.mode==='live' && !comparePrevious && !feedbackMode && !instructionTargetSelection; }
+function disposeRealtime(clearContext=true) {
+  realtime.epoch++;realtime.abort?.abort();clearTimeout(realtime.timer);realtime.instance?.dispose();
+  realtime.instance=null;realtime.abort=null;realtime.timer=null;realtime.key='';realtime.record=null;realtime.changed=false;realtime.status='idle';realtime.error='';realtime.preservedView=null;
+  if(clearContext){realtime.context='';realtime.mode='live';}
+}
+function realtimeIdentity() { const output=latestOutput(activeShot);return JSON.stringify([current?.id,current?.version,activeShot,output?sceneOutputKey(output):'']); }
+function realtimeStillCurrent(epoch,key) { return epoch===realtime.epoch && key===realtime.key && !!current && key===realtimeIdentity(); }
+function viewportFileURL(value,projectId) {
+  if(typeof value!=='string')throw new Error('实时预览缺少模型文件。');
+  const url=new URL(value,window.location.href);
+  if(url.origin!==window.location.origin || !url.pathname.startsWith('/files/'+encodeURIComponent(projectId)+'/viewport/') || url.username || url.password)throw new Error('实时预览文件地址无效。');
+  return url.pathname+url.search;
+}
+async function refreshRealtimeAsset(epoch=realtime.epoch,key=realtime.key,first=false) {
+  if(!realtimeStillCurrent(epoch,key))return;
+  const projectId=current.id,version=current.version,shotId=activeShot;
+  try{
+    const record=await api(`/api/projects/${projectId}/viewport${first?'':'/'+encodeURIComponent(realtime.record.id)}`,first?{method:'POST',body:{shot_id:shotId,expected_version:version},signal:realtime.abort.signal}:{signal:realtime.abort.signal});
+    if(!realtimeStillCurrent(epoch,key))return;
+    if(record.project_id!==projectId || record.version!==version || record.shot_id!==shotId)throw new Error('实时预览来源已变化，请重新载入。');
+    realtime.record=record;
+    if(['queued','running'].includes(record.status)){
+      realtime.status='preparing';renderRealtimeStage();realtime.timer=setTimeout(()=>refreshRealtimeAsset(epoch,key),1500);return;
+    }
+    if(record.status!=='ready' || !record.asset)throw new Error(record.error || (record.status==='stale'?'方案已更新，请重新载入实时预览。':'实时模型未能生成，请重试。'));
+    realtime.status='loading';renderRealtimeStage();
+    const metadata=await api(viewportFileURL(record.asset.metadata_url,projectId),{signal:realtime.abort.signal});
+    if(!realtimeStillCurrent(epoch,key))return;
+    const asset={...record.asset,url:viewportFileURL(record.asset.url,projectId)};
+    const instance=window.WuyingViewport.create($('realtimeViewport'),{
+      onChange:changed=>{if(realtimeStillCurrent(epoch,key)){realtime.changed=changed;renderRealtimeControls();}},
+      onError:error=>{if(realtimeStillCurrent(epoch,key)){realtime.error=error.message;realtime.status='failed';renderRealtimeStage();}}
+    });
+    realtime.instance=instance;
+    await instance.load(asset,metadata,clone(shots().find(shot=>shot.id===shotId)),clone(current.plan),projectId);
+    if(!realtimeStillCurrent(epoch,key)){instance.dispose();return;}
+    const preservedView=realtime.preservedView;realtime.preservedView=null;
+    if(preservedView)instance.restoreUnappliedView(preservedView);
+    else if(dirty){
+      const savedShot=current.plan.shots.find(shot=>shot.id===shotId),draftShot=shots().find(shot=>shot.id===shotId),view=instance.snapshot();
+      const changes={};for(const field of ['projection','azimuth','elevation','focal_length','ortho_scale','camera_distance','target_offset'])if(JSON.stringify(draftShot?.[field])!==JSON.stringify(savedShot?.[field]))changes[field]=draftShot[field];
+      const framing=draft.aspect!==current.plan.aspect || draft.margin!==current.plan.margin;
+      if(framing || Object.keys(changes).length){
+        if(draftShot.ortho_scale===undefined && (framing || 'azimuth' in changes || 'elevation' in changes))delete view.ortho_scale;
+        instance.setShot({...view,...changes},draft,{autoFit:true});
+      }
+    }
+    realtime.status='ready';realtime.changed=!!preservedView;renderRealtimeStage();renderRenderActivity();
+  }catch(error){
+    if(!realtimeStillCurrent(epoch,key) || error.name==='AbortError')return;
+    realtime.instance?.dispose();realtime.instance=null;realtime.status='failed';realtime.error=error.message || '实时模型载入失败，请重试。';renderRealtimeStage();renderRenderActivity();
+  }
+}
+function ensureRealtime() {
+  if(!realtimeAvailable()){if(realtime.context)disposeRealtime();return;}
+  const context=current.id+':'+activeShot,key=realtimeIdentity();
+  if(realtime.context!==context){disposeRealtime();realtime.context=context;}
+  if(key===realtime.key)return;
+  let preservedView=null;
+  const previousIdentity=realtime.key?JSON.parse(realtime.key):[],identity=JSON.parse(key);
+  // A newly completed image can replace geometry/materials without changing
+  // the plan version. Keep an orbit made while that render ran, but never
+  // carry it into another project, shot, or plan version.
+  if(realtime.changed && realtime.instance && identity.slice(0,3).every((value,i)=>value===previousIdentity[i])){try{preservedView=realtime.instance.snapshot();}catch(_){}}
+  disposeRealtime(false);realtime.key=key;realtime.preservedView=preservedView;realtime.status='preparing';realtime.abort=new AbortController();
+  refreshRealtimeAsset(realtime.epoch,key,true);
+}
+function renderRealtimeControls() {
+  if(!$('viewModeSwitch'))return;
+  const available=realtimeAvailable(),active=realtimeActive(),ready=active && realtime.status==='ready';
+  $('viewModeSwitch').hidden=!available;$('liveViewButton').setAttribute('aria-pressed',String(active));$('savedViewButton').setAttribute('aria-pressed',String(!active));
+  $('savedViewButton').disabled=!currentOutput;
+  $('resetViewport').hidden=!ready;$('applyViewportView').hidden=!ready || !realtime.changed;
+  $('applyViewportView').disabled=projectWritePending() || projectLoading || !!activeJob() || automaticMaterialBusy();
+  if(ready)$('viewportHint').textContent=realtime.changed?'视角已调整 · 点击预览将使用当前视角':'拖动旋转 · 滚轮缩放 · 右键平移';
+  $('zoomImage').title=active?'全屏查看 3D':'查看原图';$('zoomImage').setAttribute('aria-label',active?'全屏查看 3D':'查看原图');
+}
+function renderRealtimeStage() {
+  const active=realtimeActive(),ready=active && realtime.status==='ready';
+  $('viewer').classList.toggle('is-realtime',active);
+  $('realtimeViewport').hidden=!ready;realtime.instance?.setVisible(ready);
+  $('viewportStatus').hidden=!active || ready;$('viewportHint').hidden=!ready;
+  const failed=realtime.status==='failed';$('viewportStatus').dataset.state=failed?'failed':'loading';$('retryViewport').hidden=!failed;
+  setText('viewportStatusTitle',failed?'实时预览未能载入':realtime.status==='loading'?'正在载入 3D 画面':'正在准备实时模型');
+  setText('viewportStatusMessage',failed?realtime.error:'首次载入需要转换模型，完成后即可拖动查看。');
+  if(active){
+    $('renderImage').hidden=true;$('renderEmpty').hidden=true;$('feedbackMarkers').hidden=true;$('imageDownloads').hidden=true;
+    const projection=realtime.instance?.camera?.isPerspectiveCamera?'透视':'正交';
+    setText('renderKind',ready?'实时预览 · '+projection:'实时预览');$('renderKind').title='支持拖动查看真实模型。实时材质与光影为交互预览，最终效果以渲染图片为准。';
+    setText('imageMeta','');setText('previewNotice',dirty?'有未保存的摄影参数；预览时将一并保存。':'');$('previewNotice').hidden=!dirty;
+  }else {$('renderKind').removeAttribute('title');$('feedbackMarkers').hidden=false;}
+  renderRealtimeControls();
+}
+function setViewerMode(mode) {
+  realtime.mode=mode==='image'?'image':'live';
+  if(mode==='live'){comparePrevious=false;feedbackMode=false;instructionTargetSelection=null;}
+  renderViewer();renderActionState();
+}
+function applyRealtimeView(announce=true) {
+  if(!realtimeActive() || realtime.status!=='ready' || !realtime.instance || !realtime.changed)return false;
+  const shot=shots().find(item=>item.id===activeShot);if(!shot)return false;
+  const parameters=realtime.instance.snapshot();
+  stashCamera();Object.assign(shot,parameters);cameraShot=activeShot;$('cameraShot').value=cameraShot;syncCamera();
+  realtime.instance.acceptView();realtime.changed=false;markDirty();renderRealtimeControls();
+  if(announce)toast('当前视角已用于此镜头，点击预览即可出图。');return true;
+}
+function updateRealtimeFraming() {
+  if(!realtimeActive() || realtime.status!=='ready' || !realtime.instance)return;
+  try{
+    const shot=shots().find(item=>item.id===activeShot),view=realtime.instance.snapshot();
+    if(shot.ortho_scale===undefined && !realtime.changed)delete view.ortho_scale;
+    realtime.instance.setShot({...shot,...view},draft,{autoFit:true});realtime.changed=true;renderRealtimeStage();
+  }catch(error){toast(error.message,true);}
+}
 function renderViewer() {
   const shot = shots().find(s => s.id === activeShot) || shots()[0];if (!shot) return;activeShot = shot.id;
   const latest=latestOutput(activeShot),latestKey=latest?current.id+':'+sceneOutputKey(latest):current.id+':'+activeShot;
@@ -730,7 +876,7 @@ function renderViewer() {
     const initial=current.initial_preview,running=activeJob(),buildingHero=activeShot==='hero' && running?.origin==='initial_preview';
     $('renderEmpty').querySelector('h2').textContent=!current.analysis && !['failed','cancelled','interrupted'].includes(current.status)?initial?.status==='pending'?'正在分析模型，完成后自动生成白底主图':'正在分析模型':buildingHero?running.status==='queued'?'白底主图已排队':'正在生成白底主图':current.analysis && activeShot==='hero' && initial?.status==='pending'?'正在准备白底主图':'当前镜头还没有预览';
   }
-  renderFeedback();renderReview();renderRenderActivity();renderLatestSceneDownloads();
+  renderFeedback();ensureRealtime();renderRealtimeStage();renderReview();renderRenderActivity();renderLatestSceneDownloads();
 }
 function sceneOutputKey(output) {
   return JSON.stringify([output.job_id || '',output.shot_id,output.version,output.quality,output.created_at || '',output.blend_url || '']);
@@ -1182,6 +1328,7 @@ async function submitPartMaterial(reset=false) {
 async function requestRealismReview(event) {
   event?.preventDefault();
   if(realismBusy || materialAgentSubmitting || busy || planSavePromise || projectLoading || !currentOutput || activeJob() || automaticMaterialBusy() || serviceDisconnected)return;
+  if(realtimeActive()){realtime.mode='image';renderViewer();}
   const projectId=current.id,source=feedbackSnapshot(),key=sceneOutputKey(currentOutput);
   realismBusy=true;reviewRevision++;reviewErrorKey=key;$('reviewError').textContent='';$('reviewError').hidden=true;renderProject();
   try{
@@ -1214,7 +1361,9 @@ function renderReview() {
   $('reviewRefreshButton').hidden=!currentOutput;
   $('reviewRefreshButton').disabled=realismBusy || materialAgentSubmitting || busy || !!planSavePromise || projectLoading || !!activeJob() || automaticMaterialBusy() || !currentOutput || serviceDisconnected;
   $('reviewRefreshButton').textContent=realismBusy?'正在检查…':'重新检查';
-  $('reviewRefreshButton').title='只检查当前显示的图片，不修改方案或启动渲染';
+  $('reviewRefreshButton').title='检查此镜头的已渲染图片';
+  $('reviewImageSource').hidden=!realtimeActive() || !currentOutput;
+  $('reviewImageSource').textContent=currentOutput?'依据：已渲染图片 v'+currentOutput.version+' · 查看图片':'';
   const review=currentOutput?.review,corrections=currentOutput?.corrections;
   $('reviewPanel').hidden=!review && !corrections?.length;
   $('reviewEmptyState').hidden=!!review || !!corrections?.length;
@@ -1274,6 +1423,7 @@ function renderInspection() {
 }
 function renderProject() {
   if(!current){
+    disposeRealtime();renderRealtimeStage();
     $('welcomePanel').hidden=false;$('projectPanel').hidden=true;$('emptySettings').hidden=false;$('settingsForm').hidden=true;
     $('projectTitle').textContent='新建项目';$('undoButton').disabled=true;
     $('bundleButton').classList.add('disabled');$('bundleButton').setAttribute('aria-disabled','true');$('bundleButton').href='#';$('bundleButton').tabIndex=-1;
@@ -1372,6 +1522,26 @@ async function poll() {
     if(serviceDisconnected || !current || system?.available===false){system=await api('/api/system');serviceDisconnected=false;updateSystemStatus();renderActionState();}
   }catch(error){if(pollingEpoch===projectRequest && pollingProject===current?.id){serviceDisconnected=true;updateSystemStatus();renderActionState();}}
   finally{polling=false;}
+  await resumeInstructionPreflight();
+}
+async function resumeInstructionPreflight() {
+  const pending=instructionPreflightPending;if(!pending || busy || projectLoading || planSavePromise)return;
+  // Never resume against another project, shot, edited text or plan version.
+  if(current?.id!==pending.projectId || activeShot!==pending.shotId || current.version!==pending.version || $('instructionInput').value.trim()!==pending.text || dirty || (realtimeActive() && realtime.changed)){
+    instructionPreflightPending=null;
+    if(current?.id===pending.projectId){$('instructionError').textContent='项目、视角或要求已变化，未自动应用；原要求仍可编辑。';$('instructionError').hidden=false;}
+    return;
+  }
+  const job=(current.jobs || []).find(item=>item.id===pending.jobId);
+  if(!job || ['failed','cancelled','interrupted'].includes(job.status)){
+    instructionPreflightPending=null;$('instructionError').textContent='当前方案预览未完成，调整要求已保留。请检查任务后重新应用。';$('instructionError').hidden=false;return;
+  }
+  if(job.status!=='completed' || activeJob() || automaticMaterialBusy())return;
+  if(!currentOutput || currentOutput.job_id!==pending.jobId || currentOutput.version!==pending.version || currentOutput.shot_id!==pending.shotId){
+    instructionPreflightPending=null;$('instructionError').textContent='预览结果与当前镜头不一致，调整要求已保留。请检查图片后重新应用。';$('instructionError').hidden=false;return;
+  }
+  instructionPreflightPending=null;
+  await applyInstructionAndPreview({preventDefault(){}});
 }
 function updateSystemStatus() {
   $('systemLabel').textContent=serviceDisconnected?'本机服务连接中断':system?.available?'本机渲染已就绪':system?.runtime?.missing_components?.length?'渲染组件缺失':!system?'正在检查运行环境':'未找到 Blender';
@@ -1398,6 +1568,9 @@ async function run(kind) {
   const projectId=current.id,ids=kind==='preview'?[activeShot]:[...selectedShots];
   if(!ids.length || !ids[0])return toast('请先勾选至少一个 4K 输出镜头。',true);
   if(ids.some(id=>!renderReadyForShot(id)))return toast(runtimeReason(),true);
+  // A user-initiated render captures the visible camera once; dragging never
+  // writes a plan, creates a version, or starts an offline render by itself.
+  if(ids.includes(activeShot) && realtimeActive() && realtime.changed){try{applyRealtimeView(false);}catch(error){return toast(error.message,true);}}
   if(kind!=='preview' && !(await confirmFinalRender(ids)))return;
   if(current?.id!==projectId || busy || activeJob())return;
   const quality=kind==='preview'?'preview':$('quality').value;
@@ -1431,6 +1604,7 @@ async function applyInstructionAndPreview(event) {
   const targetPoints=instructionTargetPoints();
   if(!attempt && instructionTargetSelection && !targetPoints)return;
   const projectId=current.id,capturedShot=activeShot,capturedSource=currentOutput?clone(feedbackSnapshot(currentOutput)):null,guidance=currentInstructionGuidance(),confirm=instructionProposalIsCurrent(guidance);
+  if(!attempt && !confirm && realtimeActive() && realtime.changed){try{applyRealtimeView(false);}catch(error){return toast(error.message,true);}}
   if(guidance?.kind==='response_error')instructionGuidance.delete(projectId);
   instructionDrafts.set(projectId,$('instructionInput').value);
   busy=true;instructionSubmitting=true;$('instructionError').textContent='';$('instructionError').hidden=true;renderProject();
@@ -1439,6 +1613,19 @@ async function applyInstructionAndPreview(event) {
       if([...instructionAttempts.values()].filter(item=>unfinishedInstructionPhases.has(item.phase)).length>=instructionJournalLimit)throw new Error('待核对的调整已达到上限，请先核对已有请求，再提交新调整。');
       if(!confirm){await savePlan(true);if(current?.id!==projectId)return;}
       if(!current.plan.shots.some(shot=>shot.id===capturedShot))throw new Error('当前镜头已改变，请重新选择后提交。');
+      if(!confirm && capturedSource && capturedSource.version!==current.version){
+        // A previous image cannot supply trustworthy part IDs for the new
+        // scene. Generate a fresh view instead of sending an evidence-free
+        // material request; keep the user's text until they can retry.
+        instructionPreflightDrafts.set(projectId,text);persistInstructionPreflightDrafts();
+        const preview=await api(`/api/projects/${projectId}/jobs`,{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:{kind:'preview',quality:'preview',shot_ids:[capturedShot],expected_version:current.version}});
+        if(current?.id===projectId && preview?.id)current.jobs=[preview,...(current.jobs || []).filter(item=>item.id!==preview.id)];
+        if(!preview?.id)throw new Error('预览任务状态未确认，调整要求已保留。');
+        instructionPreflightPending={projectId,shotId:capturedShot,version:current.version,text,jobId:preview.id};
+        $('instructionError').textContent='当前图片属于旧方案，正在生成当前方案的预览，完成后自动继续调整。刷新页面后可重新应用已保留的要求。';
+        $('instructionError').hidden=false;
+        return;
+      }
       const body=confirm?{proposal_id:guidance.proposalId,expected_version:guidance.baseVersion}:{text,expected_version:current.version,shot_id:capturedShot,source:capturedSource,...(targetPoints?{target_points:clone(targetPoints)}:{})};
       attempt={projectId,text,shotId:capturedShot,shotIds:[capturedShot],body,instructionKey:crypto.randomUUID(),previewKey:crypto.randomUUID(),phase:'requesting',confirmed:false,version:null,submitted:false,...(confirm?{kind:'confirm'}:{})};
       instructionAttempts.set(attempt.instructionKey,attempt);pendingInstructionPreview=attempt;persistInstructionJournal();
@@ -1620,7 +1807,7 @@ function installEvents() {
   // Validate after revealing the affected advanced panel, including folded inputs.
   $('settingsForm').noValidate=true;
   document.querySelectorAll('[data-inspector]').forEach(button=>{button.onclick=()=>setInspectorTab(button.dataset.inspector);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),index=tabs.indexOf(inspectorTab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs[2]:tabs[(index+(event.key==='ArrowRight'?1:2))%3];setInspectorTab(next);document.querySelector('[data-inspector="'+next+'"]').focus();};});
-  $('comparePreview').onclick=()=>{comparePrevious=!comparePrevious;feedbackMode=false;renderViewer();renderInspection();renderInstruction();};
+  $('comparePreview').onclick=()=>{realtime.mode='image';comparePrevious=!comparePrevious;feedbackMode=false;renderViewer();renderInspection();renderInstruction();};
   $('materialAgentForm').onsubmit=submitMaterialAgent;
   $('materialAgentTasks').addEventListener('toggle',event=>{const target=event.target;if(target.tagName==='DETAILS' && target.dataset.materialDetail)materialAgentDisclosures.set(target.dataset.materialProject+':'+target.dataset.materialDetail,target.open);},true);
   $('materialAgentTasks').onclick=async event=>{const button=event.target.closest('[data-cancel-material]');if(!button || !current)return;button.disabled=true;try{const projectId=current.id,task=await api(`/api/projects/${projectId}/material-agent/tasks/${button.dataset.cancelMaterial}/cancel`,{method:'POST'});storeMaterialTask(projectId,task);if(current?.id===projectId)renderMaterialAgent();}catch(error){$('materialAgentError').textContent=error.message;button.disabled=false;}};
@@ -1637,7 +1824,7 @@ function installEvents() {
     $(prefix+'ApiKey').oninput=()=>{if($(prefix+'ApiKey').value)$(prefix+'ClearKey').checked=false;$('aiSettingsError').textContent='';renderAiConnection(aiSettings);};
   }
   $('aiSettingsDialog').addEventListener('close',()=>{$('aiApiKey').value='';$('aiClearKey').checked=false;$('visionApiKey').value='';$('visionClearKey').checked=false;});
-  $('feedbackToggle').onclick=()=>{feedbackMode=!feedbackMode;if(!feedbackMode)clearFeedback(true);else{setInspectorTab('material');renderFeedback();}renderInstruction();};
+  $('feedbackToggle').onclick=()=>{realtime.mode='image';feedbackMode=!feedbackMode;if(!feedbackMode)clearFeedback(true);else setInspectorTab('material');renderViewer();renderInstruction();};
   $('feedbackClear').onclick=()=>{clearFeedback(false);renderInstruction();};
   $('instructionTargetContinue').onclick=continueInstructionTargets;
   $('instructionTargetCancel').onclick=()=>{clearFeedback(true);setInspectorTab('review');renderInstruction();$('instructionInput').focus({preventScroll:true});};
@@ -1653,7 +1840,7 @@ function installEvents() {
   $('partMaterialForm').onsubmit=event=>{event.preventDefault();submitPartMaterial(false);};$('partMaterialReset').onclick=()=>submitPartMaterial(true);
   $('reviewRefreshButton').onclick=requestRealismReview;
   $('feedbackAddPoint').onclick=()=>addFeedbackPoint({x:readNumber('feedbackX')/100,y:readNumber('feedbackY')/100});
-  $('renderImage').onclick=e=>{if(comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
+  $('renderImage').onclick=e=>{if(realtimeActive() || comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
   $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);
   const removePoint=e=>{const button=e.target.closest('[data-remove-point]');if(button && !busy){feedbackPoints=feedbackPoints.filter(point=>point.id!==button.dataset.removePoint);renderFeedback();renderInstruction();}};
   $('feedbackSelection').onclick=removePoint;$('feedbackMarkers').onclick=removePoint;
@@ -1693,8 +1880,9 @@ function installEvents() {
   $('optimizeHeroButton').onclick=optimizeHero;
   $('previewButton').onclick=()=>run('preview');$('renderButton').onclick=()=>run('render');
   $('settingsForm').onsubmit=async e=>{e.preventDefault();try{await savePlan();}catch(error){toast(error.message,true);}};
-  $('settingsForm').addEventListener('input',e=>{if(['materialSlot','cameraShot','quality','materialOrigin','materialLicense','externalColor','externalRoughness','externalNormal'].includes(e.target.id))return;if(e.target.id==='materialColor' && selectedMaterial)editedMaterialColors.add(selectedMaterial);markDirty();updateRangeLabels();});
-  $('settingsForm').addEventListener('change',e=>{if(e.target.matches('[name=aspect]'))updateRangeLabels();if(e.target.matches('[name=style]')){focusStyleShot(e.target.value,draft.style);draft.style=e.target.value;renderProject();}});
+  $('settingsForm').addEventListener('input',e=>{if(['materialSlot','cameraShot','quality','materialOrigin','materialLicense','externalColor','externalRoughness','externalNormal'].includes(e.target.id))return;if(e.target.id==='materialColor' && selectedMaterial)editedMaterialColors.add(selectedMaterial);markDirty();updateRangeLabels();if(e.target.id==='margin' && draft){draft.margin=readNumber('margin')/100;updateRealtimeFraming();}});
+  $('settingsForm').addEventListener('change',e=>{if(e.target.matches('[name=aspect]')){updateRangeLabels();if(draft){draft.aspect=e.target.value;updateRealtimeFraming();}}if(e.target.matches('[name=style]')){focusStyleShot(e.target.value,draft.style);draft.style=e.target.value;renderProject();}});
+  for(const id of ['azimuth','elevation','focalLength','cameraProjection'])$(id).addEventListener('change',()=>{syncProjectionField();stashCamera();if(realtime.instance && realtime.status==='ready' && cameraShot===activeShot){realtime.instance.setShot(clone(shots().find(s=>s.id===activeShot)),draft);realtime.changed=false;renderRealtimeStage();}});
   $('materialSlot').onchange=()=>{stashMaterial();selectedMaterial=$('materialSlot').value;syncMaterial();};
   $('materialPreset').onchange=()=>{const p=$('materialPreset').value;const defaults={matte_plastic:[.5,0,0],glossy_plastic:[.17,0,0],painted_metal:[.28,.7,0],brushed_metal:[.3,1,0],polished_metal:[.09,1,0],glass:[.04,0,1],rubber:[.8,0,0],fabric:[.85,0,0],leather:[.5,0,0],wood:[.45,0,0],ceramic:[.2,0,0]};if(defaults[p])['roughness','metallic','transmission'].forEach((id,i)=>setValue(id,defaults[p][i]));if(!p){editedMaterialColors.delete(selectedMaterial);stashMaterial();syncMaterial();}$('materialEditing').hidden=!p;markDirty();updateRangeLabels();};
   $('cameraShot').onchange=()=>{stashCamera();cameraShot=$('cameraShot').value;activeShot=cameraShot;comparePrevious=false;styleFocusNotice='';remember('wuying-shot-'+current.id,activeShot);syncCamera();renderViewer();renderShots();renderInspection();renderActionState();};
@@ -1715,9 +1903,14 @@ function installEvents() {
   };
   $('instructionForm').onsubmit=applyInstructionAndPreview;
   $('instructionLocate').onclick=locatePendingInstruction;
-  $('instructionInput').addEventListener('input',()=>{if(current)instructionDrafts.set(current.id,$('instructionInput').value);currentInstructionAttempt();$('instructionError').textContent='';$('instructionError').hidden=true;renderInstruction();});
+  $('instructionInput').addEventListener('input',()=>{if(current){const value=$('instructionInput').value;instructionDrafts.set(current.id,value);if(instructionPreflightDrafts.has(current.id)){if(value.trim())instructionPreflightDrafts.set(current.id,value);else instructionPreflightDrafts.delete(current.id);persistInstructionPreflightDrafts();}}currentInstructionAttempt();$('instructionError').textContent='';$('instructionError').hidden=true;renderInstruction();});
   $('toggleGrid').onclick=()=>{$('compositionGrid').hidden=!$('compositionGrid').hidden;$('toggleGrid').setAttribute('aria-pressed',!$('compositionGrid').hidden);};
-  $('zoomImage').onclick=()=>{if(currentOutput){$('fullImage').src=currentOutput.png_url;$('imageDialog').showModal();}else toast('生成预览后即可查看原图。');};
+  $('liveViewButton').onclick=()=>setViewerMode('live');$('savedViewButton').onclick=()=>setViewerMode('image');$('reviewImageSource').onclick=()=>setViewerMode('image');
+  $('applyViewportView').onclick=()=>{if($('applyViewportView').disabled)return;try{applyRealtimeView();}catch(error){toast(error.message,true);}};
+  $('resetViewport').onclick=()=>{realtime.instance?.reset();realtime.changed=false;renderRealtimeControls();};
+  $('retryViewport').onclick=()=>{disposeRealtime(false);ensureRealtime();renderRealtimeStage();};
+  window.addEventListener('wuying-viewport-ready',()=>{if(current)renderViewer();});
+  $('zoomImage').onclick=async()=>{if(realtimeActive()){try{if(document.fullscreenElement)await document.exitFullscreen();else if($('viewer').requestFullscreen)await $('viewer').requestFullscreen();else toast('当前浏览器不支持全屏，请放大浏览器窗口查看。');}catch(_){toast('无法进入全屏，请放大浏览器窗口查看。',true);}}else if(currentOutput){$('fullImage').src=currentOutput.png_url;$('imageDialog').showModal();}else toast('生成预览后即可查看原图。');};
   $('systemInfo').onclick=async()=>{
     try{system=await api('/api/system');serviceDisconnected=false;}catch(error){serviceDisconnected=true;}
     updateSystemStatus();renderActionState();
@@ -1740,7 +1933,7 @@ function installEvents() {
   window.addEventListener('beforeunload',e=>{if(dirty || uploadSubmitting || planSavePromise){e.preventDefault();e.returnValue='';}});
 }
 async function start() {
-  restoreInstructionJournal();
+  restoreInstructionPreflightDrafts();restoreInstructionJournal();
   restoreHeroOptimizationJournal();
   const presetOptions=Object.entries(presets).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
   $('materialPreset').insertAdjacentHTML('beforeend',presetOptions);$('partPreset').insertAdjacentHTML('beforeend',presetOptions);installEvents();setInspectorTab('review');renderActionState();

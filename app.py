@@ -24,6 +24,7 @@ import engine
 import scene_exports
 import ai_config
 import project_lifecycle
+import viewport_service
 from planner import default_plan,validate,instruct,PRESETS
 app=Flask(__name__,static_folder='static')
 app.config['MAX_CONTENT_LENGTH']=512*1024*1024
@@ -74,7 +75,7 @@ def system():
     exe=engine.blender_path()
     runtime=engine.runtime_status()
     ai=ai_config.public_config()
-    return jsonify(blender=exe,available=runtime['available'],blender_available=runtime['blender_available'],runtime=runtime,ai_mode='ai' if ai.get('request_allowed',False) else 'rules',ai=ai,device=engine.DEVICE,presets=PRESETS,scene_exports=scene_exports.capabilities())
+    return jsonify(blender=exe,available=runtime['available'],blender_available=runtime['blender_available'],runtime=runtime,ai_mode='ai' if ai.get('request_allowed',False) else 'rules',ai=ai,device=engine.DEVICE,presets=PRESETS,scene_exports=scene_exports.capabilities(),viewport=viewport_service.capabilities())
 
 @app.route('/api/ai/settings',methods=['GET','PUT'])
 def ai_settings():
@@ -359,6 +360,7 @@ _INSTRUCTION_RESPONSE_FIELDS={
     'roughness','metallic','transmission','color','preset','exposure','light_softness','margin','aspect',
     'key_power','fill_power','rim_power','environment','key_azimuth','key_elevation','fill_azimuth','fill_elevation',
     'rim_azimuth','rim_elevation','azimuth','elevation','focal_length',
+    'projection','ortho_scale','camera_distance','target_offset',
 }
 
 
@@ -520,6 +522,18 @@ def job_create(ident):
         abort(409,description=str(exc))
     return jsonify(result),202
 
+@app.post('/api/projects/<ident>/viewport')
+def viewport_create(ident):
+    try:result=viewport_service.submit(ident,request.get_json(force=True))
+    except viewport_service.ViewportError as exc:return jsonify(error=str(exc)),exc.status_code
+    response=jsonify(result);response.headers['Cache-Control']='no-store'
+    return response,200 if result['status']=='ready' else 202
+
+@app.get('/api/projects/<ident>/viewport/<task_id>')
+def viewport_read(ident,task_id):
+    response=jsonify(viewport_service.read(ident,task_id));response.headers['Cache-Control']='no-store'
+    return response
+
 @app.post('/api/projects/<ident>/hero-optimize')
 def hero_optimize(ident):
     import hero_optimizer
@@ -559,7 +573,15 @@ def job_retry(ident):
 @app.get('/files/<path:filename>')
 def files(filename):
     path=(DATA/filename).resolve()
-    if DATA.resolve() not in path.parents or path.relative_to(DATA.resolve()).parts[0]==project_lifecycle.TRASH_NAME or path.suffix.lower() not in ['.png','.jpg','.blend','.c4d','.zip','.json','.fbx']: abort(404)
+    if DATA.resolve() not in path.parents: abort(404)
+    parts=path.relative_to(DATA.resolve()).parts
+    if parts[0]==project_lifecycle.TRASH_NAME: abort(404)
+    # Expose only the bounded, generated realtime asset, not uploaded models or
+    # arbitrary GLBs elsewhere in the workspace.
+    viewport_glb=(len(parts)==4 and re.fullmatch(r'[a-f0-9]{32}',parts[0]) is not None
+                  and parts[1]=='viewport' and re.fullmatch(r'[a-f0-9]{64}',parts[2]) is not None
+                  and parts[3]=='scene.glb')
+    if path.suffix.lower() not in ['.png','.jpg','.blend','.c4d','.zip','.json','.fbx'] and not viewport_glb: abort(404)
     return send_from_directory(DATA,filename,as_attachment=request.args.get('download')=='1')
 
 @app.post('/api/projects/<ident>/exports')

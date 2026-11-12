@@ -252,6 +252,18 @@ class HeroSceneRuntimeTests(unittest.TestCase):
         result=self.invoke(source=optimized['_out']/'scene.blend',plan=plan,baseline_plan=baseline,shot_id='hero',expect_success=False)
         self.assertFalse((result['_out']/'image.png').exists())
 
+    def test_checkpoint_applies_explicit_local_preset_without_changing_label(self):
+        optimized=self.optimized();baseline=self.base_plan(optimized);plan=copy.deepcopy(baseline)
+        plan['object_material_overrides']=[{'object_name':'Body','material_name':'Paint',
+                                           'preset':'polished_metal','preserve_original':False}]
+        result=self.invoke(source=optimized['_out']/'scene.blend',plan=plan,baseline_plan=baseline,shot_id='hero')
+        surface=next(row for row in result['catalog']['materials'] if row['name']=='Paint')
+        self.assertAlmostEqual(surface['roughness'],.09,places=4)
+        self.assertAlmostEqual(surface['metallic'],1,places=4)
+        self.assertTrue(result['proof']['labels_preserved'])
+        self.assertTrue(result['proof']['geometry_preserved'])
+        self.assertTrue(result['proof']['color_preserved'])
+
     def test_checkpoint_uses_current_shot_overrides_and_hashes_original_plan(self):
         optimized=self.optimized();baseline=self.base_plan(optimized)
         actual=copy.deepcopy(baseline['lighting'])

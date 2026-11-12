@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f2f5fa">
 <title>物影 Studio · 产品摄影工作台</title>
-<link rel="stylesheet" href="/static/styles.css?v=16">
+<link rel="stylesheet" href="/static/styles.css?v=17">
 </head>
 <body>
 <a class="skip-link" href="#mainWorkspace">跳到摄影工作台</a>
@@ -79,6 +79,12 @@
 <span id="renderKind" class="pill">等待预览</span>
 </div>
 <div class="viewer-actions">
+<div id="viewModeSwitch" class="view-mode-switch" role="group" aria-label="画面模式" hidden>
+<button id="liveViewButton" type="button" aria-pressed="true">实时 3D</button>
+<button id="savedViewButton" type="button" aria-pressed="false">渲染图</button>
+</div>
+<button id="applyViewportView" type="button" class="button secondary" hidden>使用当前视角</button>
+<button id="resetViewport" type="button" class="icon-button" title="复位视角" aria-label="复位视角" hidden>↺</button>
 <button id="comparePreview" type="button" class="button secondary compare-preview" aria-pressed="false" hidden>对比上一版</button>
 <button id="feedbackToggle" type="button" class="button secondary feedback-toggle" aria-pressed="false" aria-controls="feedbackPanel" disabled>选择部件 / 材质</button>
 <button id="toggleGrid" class="icon-button" title="切换构图网格" aria-label="切换构图网格">▦</button>
@@ -86,6 +92,14 @@
 </div>
 </div>
 <div id="viewer" class="viewer">
+<div id="realtimeViewport" class="realtime-viewport" hidden></div>
+<div id="viewportStatus" class="viewport-status" role="status" aria-live="polite" hidden>
+<span class="viewport-spinner" aria-hidden="true"></span>
+<strong id="viewportStatusTitle">正在准备实时模型</strong>
+<p id="viewportStatusMessage">首次载入需要转换模型，完成后即可拖动查看。</p>
+<button id="retryViewport" type="button" class="button secondary" hidden>重新载入</button>
+</div>
+<div id="viewportHint" class="viewport-hint" hidden>拖动旋转 · 滚轮缩放 · 右键平移</div>
 <img id="renderImage" alt="当前镜头渲染图" hidden>
 <div id="renderEmpty" class="render-empty">
 <h2>当前镜头还没有预览</h2>
@@ -182,6 +196,7 @@
 <button id="reviewRefreshButton" type="button" class="text-button" disabled>重新检查</button>
 </div>
 <p id="reviewEmptyState" class="inspector-empty">生成预览后显示诊断。</p>
+<button id="reviewImageSource" type="button" class="text-button review-image-source" hidden></button>
 <section id="reviewPanel" class="review-panel" hidden=""><p id="reviewSummary">
 </p>
 <details class="review-evidence">
@@ -441,8 +456,12 @@
 <label>俯仰角 °<input id="elevation" type="number" min="-80" max="90" value="18" step="any">
 </label>
 </div>
+<label class="field-label" for="cameraProjection">投影方式</label>
+<select id="cameraProjection"><option value="orthographic">正交 · 无近大远小</option><option value="perspective">透视</option></select>
+<div id="focalLengthField" hidden>
 <label class="field-label" for="focalLength">焦距 (mm)</label>
 <input id="focalLength" type="number" min="20" max="200" value="70" step="any">
+</div>
 <label class="field-label" for="detailTarget">细节目标部件</label>
 <select id="detailTarget">
 </select>
@@ -734,7 +753,9 @@
 </dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden>
 </div>
-<script src="/static/app.js?v=16" defer>
+<script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
+<script type="module" src="/static/viewport.js?v=17-studio4"></script>
+<script src="/static/app.js?v=17" defer>
 </script>
 </body>
 </html>

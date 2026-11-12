@@ -17,6 +17,7 @@ from studio_store import ROOT,DATA,LOCK,get,put,all_records,atomic_json
 from planner import enrich,apply_material_note
 from quality_gate import EVALUATION_PROTOCOL, compare_candidates, instruction_protected_roots
 from blender.light_direction import CONTRACT_VERSION as LIGHT_DIRECTION_CONTRACT_VERSION, file_digest as light_scene_digest, requested_angles, validate_report as validate_light_direction_report
+from camera_controls import CONTRACT_VERSION as CAMERA_CONTRACT_VERSION,shot_request,validate_report as validate_camera_report,matches_result as camera_matches_result
 
 QUEUE=queue.Queue()
 PROCESSES={}
@@ -38,9 +39,10 @@ def blender_path():
 
 RUNTIME_COMPONENTS={
     'render':('blender/worker.py',),
+    'camera_projection':('blender/worker.py','blender/camera_entry.py','blender/camera_projection.py','camera_controls.py'),
     'light_direction':('blender/worker.py','blender/render_entry.py','blender/light_direction.py'),
     'inspect_lighting':('blender/inspect_lighting.py','blender/light_direction.py'),
-    'hero_optimize':('blender/hero_scene.py','hero_recipe.py','hero_state.py'),
+    'hero_optimize':('blender/hero_scene.py','hero_recipe.py','hero_state.py','blender/camera_projection.py','camera_controls.py'),
     'pick':('blender/pick_surface.py',),
     'inspect_parts':('blender/inspect_parts.py',),
     'export_blend':('blender/export_scene.py',),
@@ -231,21 +233,26 @@ def execute(job,request,out):
     if not exe: raise RuntimeError('未找到 Blender。请在 .env 配置 BLENDER_PATH。')
     out.mkdir(parents=True,exist_ok=True)
     request['output_dir']=str(out)
-    direction_contract=None
+    direction_contract=None;camera_contract=None
     if request.get('action')=='render':
+        require_runtime('camera_projection')
+        project=get('project',job['project_id'])
+        product_names=[item['name'] for item in (project.get('analysis') or {}).get('objects',[])
+                       if isinstance(item,dict) and isinstance(item.get('name'),str) and item.get('type','MESH')=='MESH']
+        camera_contract={'version':CAMERA_CONTRACT_VERSION,'request_id':uuid.uuid4().hex,
+                         'shot':shot_request(request.get('shot',{})),
+                         'margin':request['plan'].get('margin',.12),'aspect':request['plan'].get('aspect','1:1'),
+                         'product_object_names':list(dict.fromkeys(product_names))}
+        request['camera_projection_contract']=camera_contract
         angles=requested_angles(effective_plan(request['plan'],request.get('shot',{}).get('id')).get('lighting',{}))
         if angles:
             require_runtime('light_direction')
-            project=get('project',job['project_id'])
-            product_names=[item['name'] for item in (project.get('analysis') or {}).get('objects',[])
-                           if isinstance(item,dict) and isinstance(item.get('name'),str)
-                           and item.get('type','MESH')=='MESH']
             direction_contract={'version':LIGHT_DIRECTION_CONTRACT_VERSION,'request_id':uuid.uuid4().hex,
                                 'requested':angles,'product_object_names':list(dict.fromkeys(product_names))}
             request['light_direction_contract']=direction_contract
         else:request.pop('light_direction_contract',None)
     atomic_json(out/'request.json',request)
-    entry='render_entry.py' if direction_contract else 'worker.py'
+    entry='camera_entry.py' if camera_contract else 'worker.py'
     command=[exe,'-b','--factory-startup','--disable-autoexec','-t','8','--python-exit-code','1','--python',str(ROOT/'blender'/entry),'--',str(out/'request.json')]
     with (out/'blender.log').open('w',encoding='utf-8') as log:
         proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
@@ -273,6 +280,7 @@ def execute(job,request,out):
     if result.get('error') or result.get('success') is False: raise RuntimeError(str(result.get('error','Blender 执行失败')))
     if code!=0: raise RuntimeError('Blender 异常退出 %s'%code)
     if direction_contract:validate_light_direction_report(result.get('light_direction_verification'),direction_contract,out)
+    if camera_contract:validate_camera_report(result.get('camera_projection_verification'),camera_contract,out)
     if result.get('device'): DEVICE.update(result['device'] if isinstance(result['device'],dict) else {'name':result['device']})
     return result
 
@@ -704,9 +712,12 @@ def output_record(job,shot,out,result):
         metrics={'dark_fraction':round(sum(hist[:6])/16384,4),'bright_fraction':round(sum(hist[250:])/16384,4),'luminance_mean':round(ImageStat.Stat(gray).mean[0],2)}
     if result.get('light_direction_verification',{}).get('saved_scene_verified') is True:
         metrics['studio_light_directions']=copy.deepcopy(result.get('studio',{}).get('light_directions',[]))
+    if result.get('camera_projection_verification',{}).get('saved_scene_verified') is True:
+        metrics['studio_camera']=copy.deepcopy(result.get('studio',{}).get('camera',{}))
     if result.get('proof',{}).get('saved_scene_verified') is True:
         metrics.update(copy.deepcopy(result.get('metrics',{})))
         metrics['studio_light_directions']=copy.deepcopy(result.get('catalog',{}).get('light_directions',[]))
+        metrics['studio_camera']=copy.deepcopy(result.get('catalog',{}).get('camera',{}))
     def url(path): return '/files/'+path.relative_to(DATA).as_posix() if path else None
     return dict(shot_id=shot['id'],shot_label=shot['label'],quality=job['quality'],version=job['version'],job_id=job['id'],png_url=url(png),jpg_url=url(jpg),blend_url=url(blend),blend_sha256=light_scene_digest(blend) if blend else None,width=size[0],height=size[1],checks=result.get('checks',{}),metrics=metrics,device=result.get('device'),created_at=time.time(),result_url=url(out/'result.json'),effective_plan=effective_plan(job['plan'],shot['id']))
 
@@ -766,6 +777,14 @@ def _run_job(ident):
                     except (OSError,ValueError,TypeError,RuntimeError):
                         existing=None
                         update_job(ident,stage='重新核验灯光角度并生成图片')
+                if existing:
+                    try:
+                        result_url=existing.get('result_url','')
+                        result_path=(DATA/result_url[7:]).resolve() if isinstance(result_url,str) and result_url.startswith('/files/') else None
+                        if not result_path or (DATA/p['id']).resolve() not in result_path.parents or not camera_matches_result(json.loads(result_path.read_text(encoding='utf-8')),shot):
+                            existing=None
+                            update_job(ident,stage='按当前镜头投影重新生成图片')
+                    except (OSError,ValueError,TypeError,KeyError):existing=None
                 if existing and j['kind']=='preview':
                     try:
                         result_url=existing.get('result_url','')

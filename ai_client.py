@@ -1,6 +1,7 @@
 """Bounded, data-only photography requests using native provider protocols."""
 import base64
 import copy
+from camera_controls import CAMERA_FIELDS, ORTHO_SCALE_LIMITS, PROJECTIONS
 import io
 import json
 import math
@@ -225,7 +226,7 @@ def patch_schema(plan, analysis):
     def obj(properties, required=()):
         return {'type':'object','properties':properties,'required':list(required),'additionalProperties':False}
     scalar = copy.deepcopy(SCALARS)
-    shot = obj({'id':{'type':'string','enum':[s['id'] for s in plan['shots']]},'azimuth':{'type':'number','minimum':-360,'maximum':360},'elevation':{'type':'number','minimum':-80,'maximum':90},'focal_length':{'type':'number','minimum':20,'maximum':200},'style':scalar['style'], **({'target_object':{'type':'string','enum':objects}} if objects else {})}, ['id'])
+    shot = obj({'id':{'type':'string','enum':[s['id'] for s in plan['shots']]},'azimuth':{'type':'number','minimum':-360,'maximum':360},'elevation':{'type':'number','minimum':-80,'maximum':90},'focal_length':{'type':'number','minimum':20,'maximum':200},'projection':{'type':'string','enum':list(PROJECTIONS)},'ortho_scale':{'type':'number','minimum':ORTHO_SCALE_LIMITS[0],'maximum':ORTHO_SCALE_LIMITS[1]},'camera_distance':{'type':'number','minimum':ORTHO_SCALE_LIMITS[0],'maximum':ORTHO_SCALE_LIMITS[1]},'target_offset':{'type':'array','items':{'type':'number','minimum':-10,'maximum':10},'minItems':3,'maxItems':3},'style':scalar['style'], **({'target_object':{'type':'string','enum':objects}} if objects else {})}, ['id'])
     scalar['shots'] = {'type':'array','items':shot,'maxItems':len(plan['shots'])}
     if materials:
         material_values={'preset':{'type':'string','enum':PRESETS},'color':{'type':'string','pattern':'^#[0-9A-Fa-f]{6}$'},**{k:{'type':'number','minimum':0,'maximum':1} for k in ['roughness','metallic','transmission']}}
@@ -662,7 +663,7 @@ def _photo_controls(patch):
     result={key:patch[key] for key in ('exposure','light_softness') if key in patch}
     result.update({'lighting.'+key:value for key,value in patch.get('lighting',{}).items()})
     for shot in patch.get('shots',[]):
-        for key in ('azimuth','elevation','focal_length','target_object'):
+        for key in CAMERA_FIELDS:
             if key in shot:result['shots.'+shot['id']+'.'+key]=shot[key]
     return result
 
@@ -761,7 +762,7 @@ def _complete_photography_output(output,requirements,plan,active,protections):
             value={key:copy.deepcopy(row['patch'][key]) for key in ('exposure','light_softness','lighting')
                    if key in row['patch'] and 'lighting' in eligible}
             if 'camera' in eligible:
-                shots=[{key:setting for key,setting in shot.items() if key in ('id','azimuth','elevation','focal_length','target_object')}
+                shots=[{key:setting for key,setting in shot.items() if key in ('id',*CAMERA_FIELDS)}
                        for shot in row['patch'].get('shots',[])]
                 if any(len(shot)>1 for shot in shots):value['shots']=[shot for shot in shots if len(shot)>1]
             _merge_requirement_patch(shared,value)
@@ -1229,7 +1230,7 @@ def _patch_domains(patch):
     if any(key in patch for key in ('material_overrides','object_material_overrides','texture_scale','texture_rotation')):result.add('material')
     if any(key in patch for key in ('pose','rotation')):result.add('pose')
     for shot in patch.get('shots',[]):
-        if set(shot)&{'azimuth','elevation','focal_length','target_object'}:result.add('camera')
+        if set(shot)&set(CAMERA_FIELDS):result.add('camera')
         if 'style' in shot:result.add('background')
     return result
 
@@ -1546,7 +1547,7 @@ def _requirement_patch_slice(patch,requirement,bindings,evidence):
     shots=[]
     for shot in patch.get('shots',[]):
         item={'id':shot['id']}
-        for key in ('azimuth','elevation','focal_length','target_object'):
+        for key in CAMERA_FIELDS:
             if 'camera' in domains and key in shot:item[key]=copy.deepcopy(shot[key])
         if 'background' in domains and 'style' in shot:item['style']=shot['style']
         if len(item)>1:shots.append(item)
@@ -1747,6 +1748,7 @@ def request_plan(plan,text,analysis,config,image_path=None,selections=None,conte
               'Images are current Blender previews; no image means no visual evidence. Hero must remain white. '
               'Do not add a color for a roughness-only adjustment. Output only fields permitted by the schema. '
               'Explicit preservation constraints and only-X requests are hard limits, not optional preferences. '
+              'Camera projection defaults to orthographic, without perspective size distortion, unless the user explicitly selects perspective. ortho_scale is horizontal world-space width; camera_distance is the explicit perspective dolly distance. target_offset is a Blender Z-up vector relative to the whole product bbox center, normalized by product bbox diagonal. Explicit scale and pan are preserved; adjust them directly when changing a saved dragged view. '
               'Supported capabilities are the exact schema: three studio backgrounds, framing, lighting multipliers, studio-light azimuth/elevation, camera angles, '
               'known named materials and existing object poses. No geometry creation, beveling, new labels or fonts, scene synthesis, '
               'arbitrary light placement or texture generation. Do not approximate unavailable work with unrelated parameter changes. ')

@@ -243,6 +243,33 @@ def model_evidence(value):
     """Keep full geometry for validation; send a bounded visual index to AI."""
     result = copy.deepcopy(value)
     if result.get('method') != 'scene_part_catalog': return result
+    # Isolated thumbnails show shape but discard the placement that separates
+    # e.g. an inserted key from a second, dangling key. Provide a compact,
+    # scale-independent spatial index; box overlap is only a broad-phase hint,
+    # never evidence that surfaces touch or an object is inside another.
+    targets=result['targets']
+    if targets:
+        low=[min(row['bounds']['min'][axis] for row in targets) for axis in range(3)]
+        high=[max(row['bounds']['max'][axis] for row in targets) for axis in range(3)]
+        diagonal=max(math.dist(low,high),1e-12)
+        result['spatial_neighbors_note']=('Per target, up to four nearest different objects: '
+            '[target_id, bounding_box_overlap, box_gap_fraction, center_distance_fraction]. '
+            'Distances are divided by the whole catalog bounding-box diagonal; '
+            'box overlap is only a geometric hint, not proof of contact or insertion.')
+        for row in targets:
+            box=row['bounds'];center=[(box['min'][axis]+box['max'][axis])/2 for axis in range(3)]
+            neighbors=[]
+            for other in targets:
+                if other['object_name']==row['object_name']:continue
+                bounds=other['bounds']
+                gaps=[max(0,box['min'][axis]-bounds['max'][axis],bounds['min'][axis]-box['max'][axis]) for axis in range(3)]
+                gap=math.sqrt(sum(x*x for x in gaps))
+                other_center=[(bounds['min'][axis]+bounds['max'][axis])/2 for axis in range(3)]
+                distance=math.dist(center,other_center)
+                neighbors.append((gap,distance,other['id']))
+            neighbors.sort()
+            row['spatial_neighbors']=[[ident,gap==0,round(gap/diagonal,7),round(distance/diagonal,7)]
+                                      for gap,distance,ident in neighbors[:4]]
     for row in result['targets']:
         row.pop('geometry_digest', None)
         components = row.pop('components')

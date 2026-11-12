@@ -36,7 +36,8 @@ class HeroWorkflowTests(unittest.TestCase):
                       'outputs':[self.output],'history':[],'status':'ready','model_path':str(self.root/'fixture/originals/model.obj')}
         store.put('project',self.project)
         self.body={'expected_version':1,'shot_id':'hero','source':{'output_id':'original','shot_id':'hero','quality':'preview','version':1},'final_resolution':2000}
-        self.catalog={'product_object_names':['Product'],'camera':{'azimuth':28.0,'elevation':14.0,'focal_length':72.0},
+        self.catalog={'product_object_names':['Product'],'camera':{'azimuth':28.0,'elevation':14.0,'focal_length':72.0,
+                      'type':'PERSP','sensor_fit':'HORIZONTAL','sensor_width':36.0,'distance':6.0,'ortho_scale':2.5,'target_offset':[0,0,0]},
                       'exposure':.15,'light_directions':[{'role':'key','object_name':'Key','camera':'Camera',
                         'azimuth':-35.0,'elevation':42.0,'position':[1,2,3],'target':[0,0,0]}]}
         self.catalog.update({key:hashlib.sha256(key.encode()).hexdigest() for key in PRODUCT_FIELDS})
@@ -161,7 +162,7 @@ class HeroWorkflowTests(unittest.TestCase):
         self.assertEqual(project['plan']['shot_adjustments']['hero']['lighting']['key_azimuth'],-35)
         self.assertNotIn('never-persist',json.dumps(job))
         self.assertEqual(self.native_requests[-1]['resolution'],2000)
-        self.assertTrue(self.native_requests[-1]['source_blend'].endswith('/candidate/scene.blend'))
+        self.assertEqual(Path(self.native_requests[-1]['source_blend']).parts[-2:],('candidate','scene.blend'))
         self.assertEqual(self.native_requests[-1]['recipe'],{})
         self.assertNotIn('scene_checkpoints',project['history'][0]['plan'])
 
@@ -271,8 +272,8 @@ class HeroWorkflowTests(unittest.TestCase):
              patch('hero_ai.plan_hero',side_effect=plan),patch('hero_ai.compare_hero',return_value=self.compared), \
              patch('ai_config.get_vision_config',return_value={}):
             hero.run_job(job)
-        render.assert_called_once();self.assertTrue(seen[0].endswith('/current_plan/fresh.png'))
-        self.assertTrue(self.native_requests[0]['source_blend'].endswith('/current_plan/fresh.blend'))
+        render.assert_called_once();self.assertEqual(Path(seen[0]).parts[-2:],('current_plan','fresh.png'))
+        self.assertEqual(Path(self.native_requests[0]['source_blend']).parts[-2:],('current_plan','fresh.blend'))
         changed=store.get('project','fixture');self.assertEqual(changed['version'],3)
         self.assertTrue(changed['history'][-1]['hero_restore_output']['png_url'].endswith('/current_plan/fresh.png'))
 

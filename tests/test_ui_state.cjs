@@ -100,6 +100,157 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
 }
 function input(h,id,value){h.node(id).value=value;h.node(id).dispatchEvent(new h.w.Event('input',{bubbles:true}));}
 async function tick(){await new Promise(resolve=>setImmediate(resolve));}
+function installRealtime(h,options={}) {
+  const prior=h.intercept,instances=[],assetCalls=[];
+  const defaultView={projection:'orthographic',azimuth:35,elevation:18,ortho_scale:4,target_offset:[0,0,0]};
+  const metadata={schema:'wuying-viewport-v1',coordinate_system:'gltf-y-up',bounds:{min:[-1,0,-1],max:[1,2,1],center:[0,1,0],diagonal:Math.sqrt(12)},camera:defaultView,render:{aspect:1}};
+  h.intercept=async call=>{
+    if(options.intercept){const result=await options.intercept(call);if(result!==undefined)return result;}
+    if(/\/viewport(?:\/[^/]+)?$/.test(call.url)){
+      assetCalls.push(call);const id=call.url.split('/')[3],p=h.records.get(id);
+      return h.response({id:'asset-'+id,status:'ready',project_id:id,version:p.version,shot_id:'hero',source_version:p.version,asset:{url:`/files/${id}/viewport/asset/scene.glb`,metadata_url:`/files/${id}/viewport/asset/scene.json`},warnings:[]});
+    }
+    if(call.url.includes('/viewport/') && call.url.endsWith('.json'))return h.response(metadata);
+    if(prior)return prior(call);
+  };
+  h.w.WuyingViewport={create:(host,callbacks)=>{
+    if(options.createError)throw new Error(options.createError);
+    const instance={camera:{isOrthographicCamera:true,isPerspectiveCamera:false},view:copy(defaultView),visible:false,disposed:false,loads:0,resets:0,
+      load:async()=>{instance.loads++;if(options.load)await options.load(instance);},
+      setVisible:value=>{instance.visible=value;},dispose:()=>{instance.disposed=true;},snapshot:()=>copy(instance.view),
+      acceptView:()=>callbacks.onChange(false),setShot:(shot,plan)=>{instance.view=copy(shot);instance.lastPlan=copy(plan);instance.camera.isPerspectiveCamera=shot.projection==='perspective';},
+      restoreUnappliedView:view=>{instance.view=copy(view);callbacks.onChange(true);},
+      reset:()=>{instance.resets++;instance.view=copy(defaultView);callbacks.onChange(false);},
+      orbit:view=>{Object.assign(instance.view,view);callbacks.onChange(true);}};
+    instances.push(instance);return instance;
+  }};
+  h.w.dispatchEvent(new h.w.Event('wuying-viewport-ready'));
+  return {instances,assetCalls,metadata};
+}
+async function settleRealtime(h) {for(let i=0;i<10 && !['ready','failed'].includes(h.run('realtime.status'));i++)await tick();}
+
+test('realtime hero defaults to an actual async model stage and leaves photo-only shots unchanged',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  assert.equal(h.node('realtimeViewport').hidden,false);assert.equal(h.node('renderImage').hidden,true);assert.equal(h.node('viewportStatus').hidden,true);
+  assert.equal(h.node('viewModeSwitch').hidden,false);assert.equal(h.node('savedViewButton').disabled,true);
+  assert.equal(h.node('cameraProjection').value,'orthographic');assert.equal(h.node('focalLength').disabled,true);
+  assert.deepEqual(rt.assetCalls[0].body,{shot_id:'hero',expected_version:1});
+  h.node('shotList').querySelector('[data-shot="side"]').click();
+  assert.equal(rt.instances[0].disposed,true);assert.equal(h.node('viewModeSwitch').hidden,true);assert.equal(h.node('renderEmpty').hidden,false);
+});
+test('dragging and periodic project refreshes neither save nor recreate the camera, including offline rendering',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:111,ortho_scale:2.5});
+  for(let i=0;i<5;i++)h.run('renderProject()');
+  assert.equal(rt.instances.length,1);assert.equal(rt.assetCalls.length,1);assert.equal(h.run('dirty'),false);
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/plan')).length,0);assert.equal(h.node('applyViewportView').hidden,false);
+  h.records.get('a').jobs=[{id:'offline',status:'running',kind:'render',shot_ids:['hero'],quality:'fine',version:1,stage:'采样中'}];
+  await h.run('poll()');assert.equal(rt.instances[0].visible,true);assert.equal(h.node('applyViewportView').disabled,true);
+  assert.equal(h.node('viewer').classList.contains('is-realtime'),true);assert.equal(h.node('viewer').classList.contains('is-rendering-empty'),false);
+  rt.instances[0].orbit({azimuth:-66});assert.equal(rt.instances[0].view.azimuth,-66);
+});
+test('preview captures the visible orbit, pan and zoom once into the versioned shot before rendering',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:-110,elevation:22,ortho_scale:3.125,target_offset:[.1,-.2,.05]});
+  await h.run("run('preview')");
+  const saved=h.calls.find(call=>call.url.endsWith('/plan')),job=h.calls.find(call=>call.url.endsWith('/jobs'));
+  const hero=saved.body.shots.find(shot=>shot.id==='hero');
+  assert.equal(hero.projection,'orthographic');assert.equal(hero.azimuth,-110);assert.equal(hero.ortho_scale,3.125);assert.deepEqual(hero.target_offset,[.1,-.2,.05]);
+  assert.equal(saved.headers['X-Plan-Version'],'1');assert.equal(job.body.expected_version,2);assert.deepEqual(job.body.shot_ids,['hero']);
+  assert.ok(h.calls.indexOf(saved)<h.calls.indexOf(job));assert.equal(h.calls.filter(call=>call.url.endsWith('/plan')).length,1);
+});
+test('live image switching preserves photo provenance and part picking always returns to the saved image',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  assert.equal(h.node('imageDownloads').hidden,true);assert.equal(h.node('reviewImageSource').hidden,false);
+  const source=h.run('currentOutput.png_url');h.node('feedbackToggle').click();
+  assert.equal(h.node('renderImage').hidden,false);assert.equal(h.node('renderImage').getAttribute('src'),source);assert.equal(rt.instances[0].visible,false);
+  assert.equal(h.node('feedbackMarkers').hidden,false);assert.equal(h.node('savedViewButton').getAttribute('aria-pressed'),'true');
+  h.node('liveViewButton').click();assert.equal(h.node('renderImage').hidden,true);
+  await h.run('requestRealismReview()');
+  assert.equal(h.node('renderImage').hidden,false);assert.equal(rt.instances[0].visible,false);
+  const review=h.calls.find(call=>call.url.endsWith('/review'));assert.ok(review.body.output_id);assert.equal(review.body.diagnostic_only,true);
+});
+test('late viewport responses cannot cross projects or override a chosen image mode',async t=>{
+  const h=await setup(t,{projects:[previewProject(),project('b')]});await h.run("openProject('a')");const gate=deferred();
+  const rt=installRealtime(h,{intercept:call=>call.url==='/api/projects/a/viewport'?gate.promise:undefined});
+  await h.run("openProject('b')");await settleRealtime(h);
+  gate.resolve(h.response({id:'late-a',project_id:'a',version:1,shot_id:'hero',status:'ready',asset:{url:'/files/a/viewport/asset/scene.glb',metadata_url:'/files/a/viewport/asset/scene.json'}}));await tick();
+  assert.equal(h.run('current.id'),'b');assert.equal(h.run('realtime.record.project_id'),'b');assert.equal(rt.instances.length,1);
+  await h.run("openProject('a')");h.node('savedViewButton').click();await settleRealtime(h);
+  assert.equal(h.node('renderImage').hidden,false);assert.equal(h.node('realtimeViewport').hidden,true);assert.equal(h.run('realtime.mode'),'image');
+});
+test('WebGL initialization errors keep the saved image accessible and show an explicit retry',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");installRealtime(h,{createError:'浏览器未能开启 3D 加速'});await settleRealtime(h);
+  assert.equal(h.run('realtime.status'),'failed');assert.equal(h.node('retryViewport').hidden,false);assert.match(h.node('viewportStatusMessage').textContent,/3D 加速/);
+  h.node('savedViewButton').click();assert.equal(h.node('renderImage').hidden,false);assert.equal(h.node('viewportStatus').hidden,true);
+});
+test('unsafe asset URLs are rejected before fetching and retry can recover without changing a plan',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");let invalid=true;
+  const rt=installRealtime(h,{intercept:call=>invalid && call.url==='/api/projects/a/viewport'?h.response({id:'bad',status:'ready',project_id:'a',version:1,shot_id:'hero',asset:{url:'https://elsewhere.invalid/model.glb',metadata_url:'https://elsewhere.invalid/scene.json'}}):undefined});
+  await settleRealtime(h);assert.equal(h.run('realtime.status'),'failed');assert.equal(rt.instances.length,0);assert.ok(!h.calls.some(call=>call.url.includes('elsewhere.invalid')));
+  invalid=false;h.node('retryViewport').click();await settleRealtime(h);assert.equal(h.run('realtime.status'),'ready');assert.equal(rt.instances.length,1);assert.equal(h.run('current.version'),1);
+});
+test('late GLB loads are disposed after project exit',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const gate=deferred(),rt=installRealtime(h,{load:()=>gate.promise});
+  for(let i=0;i<5 && !rt.instances.length;i++)await tick();assert.equal(rt.instances.length,1);
+  h.run('leaveProjectView()');gate.resolve();await tick();assert.equal(rt.instances[0].disposed,true);assert.equal(h.run('realtime.instance'),null);
+  assert.equal(h.node('realtimeViewport').hidden,true);
+});
+test('AI apply first previews the saved live camera when the photo becomes stale',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:150,ortho_scale:2.4,target_offset:[.08,0,.01]});input(h,'instructionInput','灯光再亮一些');
+  assert.match(h.node('instructionContext').textContent,/AI 参考已渲染图片/);
+  await h.run('applyInstructionAndPreview({preventDefault(){}})');
+  const saved=h.calls.find(call=>call.url.endsWith('/plan')),instruction=h.calls.find(call=>call.url.endsWith('/instruct')),job=h.calls.find(call=>call.url.endsWith('/jobs'));
+  assert.equal(saved.body.shots[0].azimuth,150);assert.equal(saved.body.shots[0].ortho_scale,2.4);
+  assert.equal(instruction,undefined);assert.equal(job.body.expected_version,2);
+  assert.equal(h.node('instructionInput').value,'灯光再亮一些');assert.match(h.node('instructionError').textContent,/当前方案的预览/);
+});
+test('asset-only completion preserves an unsubmitted orbit but a new plan version starts from its own camera',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:123,ortho_scale:1.75,target_offset:[.1,0,0]});
+  const p=h.records.get('a'),fresh={...p.outputs[0],job_id:'completed-new-image',created_at:999,png_url:'/files/a/new.png'};p.outputs.push(fresh);
+  await h.run('poll()');await settleRealtime(h);
+  assert.equal(rt.instances.length,2);assert.equal(rt.instances[0].disposed,true);assert.equal(rt.instances[1].view.azimuth,123);assert.equal(h.run('realtime.changed'),true);assert.equal(h.run('dirty'),false);
+  p.version++;p.plan.shots[0].azimuth=40;await h.run('poll()');await settleRealtime(h);
+  assert.equal(rt.instances.length,3);assert.equal(h.run('realtime.changed'),false);assert.notEqual(rt.instances[2].view.azimuth,123);
+});
+test('unavailable backend viewport capability keeps the actual saved picture and starts no conversion',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");h.run('system.viewport={available:false}');const rt=installRealtime(h);await tick();
+  assert.equal(rt.assetCalls.length,0);assert.equal(h.node('viewModeSwitch').hidden,true);assert.equal(h.node('renderImage').hidden,false);
+});
+test('aspect and margin edits update live framing, while perspective distance and pan survive saving',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  const aspect=h.w.document.querySelector('[name="aspect"][value="4:5"]') || [...h.w.document.querySelectorAll('[name="aspect"]')].find(node=>node.value!=='1:1');
+  aspect.checked=true;aspect.dispatchEvent(new h.w.Event('input',{bubbles:true}));aspect.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+  assert.equal(rt.instances[0].lastPlan.aspect,aspect.value);input(h,'margin','18');assert.equal(rt.instances[0].lastPlan.margin,.18);
+  rt.instances[0].orbit({projection:'perspective',azimuth:42,elevation:17,camera_distance:8,focal_length:85,target_offset:[0,.1,.02]});h.node('applyViewportView').click();
+  assert.equal(h.node('cameraProjection').value,'perspective');assert.equal(h.node('focalLength').disabled,false);await h.run('savePlan(true)');
+  const shot=h.records.get('a').plan.shots[0];assert.equal(shot.camera_distance,8);assert.equal(shot.focal_length,85);assert.deepEqual(shot.target_offset,[0,.1,.02]);
+  await settleRealtime(h);
+});
+test('camera change receipts and safe response fields use understandable projection labels',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");
+  const rows=h.run("instructionDiffRows({changes:[{path:'shots',before:[{id:'hero',projection:'perspective'}],after:[{id:'hero',projection:'orthographic',ortho_scale:2,target_offset:[.1,0,0]}]}]})");
+  assert.ok(rows.some(row=>row.label==='投影方式' && row.before==='透视' && row.after==='正交'));
+  assert.ok(rows.some(row=>row.label==='取景宽度'));assert.ok(rows.some(row=>row.label==='画面平移'));
+  assert.equal(h.run("instructionResponseFeedback({response_issue:{kind:'range',field:'ortho_scale'}}).field"),'ortho_scale');
+});
+test('discarding an accepted live camera draft restores the saved scene instead of leaving a stale view',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:160,ortho_scale:1.5});h.node('applyViewportView').click();
+  assert.equal(h.run('draft.shots[0].azimuth'),160);assert.equal(h.run('dirty'),true);
+  h.node('discardPlan').click();await settleRealtime(h);
+  assert.equal(h.run('dirty'),false);assert.equal(h.run('draft.shots[0].azimuth'),35);assert.equal(rt.instances[0].disposed,true);assert.equal(rt.instances.at(-1).view.azimuth,35);
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/plan')).length,0);
+});
+test('camera edits made during first asset loading take effect when the model arrives',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const gate=deferred(),rt=installRealtime(h,{load:()=>gate.promise});
+  for(let i=0;i<5 && !rt.instances.length;i++)await tick();
+  input(h,'azimuth','110');h.node('azimuth').dispatchEvent(new h.w.Event('change',{bubbles:true}));
+  gate.resolve();await settleRealtime(h);
+  assert.equal(rt.instances[0].view.azimuth,110);assert.equal(h.run('dirty'),true);assert.equal(h.calls.filter(call=>call.url.endsWith('/plan')).length,0);
+});
 
 function aiConfiguration(overrides={}) {
   const main={provider:'anthropic',base_url:'https://api.anthropic.com',model:'custom-vision-model',enabled:true,key_configured:true,status:'verified',message:'连接已验证',request_allowed:true,blocked_reason:'',...overrides};
@@ -498,7 +649,7 @@ test('confirmed modifications always retry preview only even when a preview fail
 
 test('a rejection of remaining requirements never restores an already-applied relative instruction',async t=>{
   const h=await setup(t,{projects:[previewProject()]});installPartialFlow(h);await h.run("openProject('a')");await proposePartial(h);await h.run('applyInstructionAndPreview({preventDefault(){}})');
-  h.records.get('a').jobs=[];await h.run('poll()');assert.equal(h.node('instructionInput').value,remainingInstructionText);
+  h.records.get('a').jobs=[];h.records.get('a').outputs=[{...h.records.get('a').outputs[0],version:2,job_id:'fresh-after-partial'}];await h.run('poll()');assert.equal(h.node('instructionInput').value,remainingInstructionText);
   h.intercept=call=>call.url.endsWith('/instruct')?responseContractFailure(h):undefined;await h.run('applyInstructionAndPreview({preventDefault(){}})');
   assert.equal(h.node('instructionInput').value,remainingInstructionText);assert.equal(h.node('instructionSubmit').textContent,'重试调整');assert.equal(h.node('instructionProposal').hidden,true);
   await h.run('applyInstructionAndPreview({preventDefault(){}})');const calls=h.calls.filter(call=>call.url.endsWith('/instruct'));
@@ -774,11 +925,53 @@ test('instruction captures the viewed shot and source while later viewing change
   assert.deepEqual(job.body.shot_ids,['hero']);assert.equal(job.body.expected_version,2);assert.equal(h.run('activeShot'),'side');assert.equal(h.node('shotTitle').textContent,'侧面结构');
 });
 
-test('saving a local draft updates the instruction version without relabeling the captured older image',async t=>{
+test('saving a local draft generates a fresh preview before applying the instruction',async t=>{
   const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");input(h,'margin','24');input(h,'instructionInput','亮一点');
   await h.run('applyInstructionAndPreview({preventDefault(){}})');const instruction=h.calls.find(call=>call.url.endsWith('/instruct'));
-  assert.equal(instruction.body.expected_version,2);assert.equal(instruction.body.source.version,1);assert.equal(h.records.get('a').plan.margin,.24);
-  assert.equal(h.calls.find(call=>call.url.endsWith('/jobs')).body.expected_version,3);
+  assert.equal(instruction,undefined);assert.equal(h.records.get('a').plan.margin,.24);
+  assert.equal(h.calls.find(call=>call.url.endsWith('/jobs')).body.expected_version,2);
+  assert.equal(h.node('instructionInput').value,'亮一点');assert.match(h.node('instructionError').textContent,/重新应用/);
+});
+
+test('stale preview completes before the original adjustment resumes exactly once',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");input(h,'margin','24');input(h,'instructionInput','轮子的刹车改成反光金属');
+  await h.run('applyInstructionAndPreview({preventDefault(){}})');
+  const p=h.records.get('a'),job=p.jobs[0];assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,0);
+  job.status='completed';p.outputs.push({...p.outputs[0],job_id:job.id,version:2,created_at:999,png_url:'/qa/new.png'});
+  await h.run('poll()');
+  const calls=h.calls.filter(call=>call.url.endsWith('/instruct'));assert.equal(calls.length,1);assert.equal(calls[0].body.source.output_id,job.id);assert.equal(calls[0].body.expected_version,2);
+  await h.run('poll()');assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,1);
+});
+
+test('failed preflight retains the instruction and does not apply it',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");input(h,'margin','24');input(h,'instructionInput','轮子的刹车改成反光金属');
+  await h.run('applyInstructionAndPreview({preventDefault(){}})');h.records.get('a').jobs[0].status='failed';await h.run('poll()');
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,0);assert.equal(h.node('instructionInput').value,'轮子的刹车改成反光金属');assert.match(h.node('instructionError').textContent,/预览未完成/);
+});
+test('preflight never resumes across changed project, shot, text, version or output',async t=>{
+  for(const change of ['project','shot','text','version','output','cancelled']){
+    const h=await setup(t,{projects:[previewProject(),project('b')]});await h.run("openProject('a')");input(h,'margin','24');input(h,'instructionInput','轮子的刹车改成反光金属');
+    await h.run('applyInstructionAndPreview({preventDefault(){}})');const p=h.records.get('a'),job=p.jobs[0];job.status=change==='cancelled'?'cancelled':'completed';
+    p.outputs.push({...p.outputs[0],job_id:change==='output'?'another-job':job.id,version:2,created_at:999,png_url:'/qa/new.png'});
+    if(change==='project')await h.run("openProject('b')");
+    if(change==='shot')h.run("activeShot='campaign';renderProject()");
+    if(change==='text')input(h,'instructionInput','新的要求');
+    if(change==='version')p.version=3;
+    await h.run('poll()');assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,0,change);
+  }
+});
+test('preflight draft survives reload without automatically replaying a request',async t=>{
+  const first=await setup(t,{projects:[previewProject()]});await first.run("openProject('a')");input(first,'margin','24');input(first,'instructionInput','轮子的刹车改成反光金属');await first.run('applyInstructionAndPreview({preventDefault(){}})');
+  const saved=first.w.sessionStorage.getItem('wuying-instruction-preflight-drafts-v1');assert.ok(saved);
+  const restored=await setup(t,{projects:[copy(first.records.get('a'))]});restored.w.sessionStorage.setItem('wuying-instruction-preflight-drafts-v1',saved);restored.run('restoreInstructionPreflightDrafts()');await restored.run("openProject('a')");
+  assert.equal(restored.node('instructionInput').value,'轮子的刹车改成反光金属');await restored.run('poll()');assert.equal(restored.calls.filter(call=>call.method==='POST').length,0);
+});
+test('a changed live camera prevents preflight from applying to a different view',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  input(h,'margin','24');input(h,'instructionInput','轮子的刹车改成反光金属');await h.run('applyInstructionAndPreview({preventDefault(){}})');
+  await settleRealtime(h);
+  const p=h.records.get('a'),job=p.jobs[0];job.status='completed';p.outputs.push({...p.outputs[0],job_id:job.id,version:2,created_at:999,png_url:'/qa/new.png'});
+  rt.instances.at(-1).orbit({azimuth:90});await h.run('poll()');assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,0);await settleRealtime(h);
 });
 
 test('a lost instruction response reuses its key and exact body after polling the committed version',async t=>{
@@ -1170,7 +1363,7 @@ test('automatic partial work already satisfied keeps only pending requirements a
 
 test('retrying remaining automatic work excludes completed lighting and hides stale success on protocol failure',async t=>{
   const h=await setup(t,{projects:[previewProject()]});const flow=installAutomaticPartialFlow(h);await h.run("openProject('a')");await proposePartial(h);
-  h.records.get('a').jobs=[];await h.run('poll()');
+  h.records.get('a').jobs=[];h.records.get('a').outputs=[{...h.records.get('a').outputs[0],version:2,job_id:'fresh-after-partial'}];await h.run('poll()');
   flow.remainingReply=call=>{
     assert.equal(call.body.text,remainingInstructionText);assert.equal(call.body.expected_version,2);
     return h.response({error:'这次返回的修改结果未通过校验，当前方案未修改。可以直接重试，无需改写要求。',error_code:'instruction_response_invalid',retryable:true,applied:false},422);
@@ -1298,7 +1491,8 @@ test('a proposal cannot be confirmed after the plan or displayed source has chan
     if(change==='shot')h.run("activeShot='campaign';renderProject()");
     assert.equal(h.node('instructionSubmit').textContent,'重新分析要求',change);assert.equal(h.node('instructionReady').hidden,true,change);
     await h.run('applyInstructionAndPreview({preventDefault(){}})');
-    assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct/confirm')).length,0,change);assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,2,change);
+    assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct/confirm')).length,0,change);assert.equal(h.calls.filter(call=>call.url.endsWith('/instruct')).length,change==='plan'?1:2,change);
+    if(change==='plan')assert.equal(h.calls.filter(call=>call.url.endsWith('/jobs')).length,1);
     assert.equal(h.records.get('a').plan.exposure,0,change);
   }
 });

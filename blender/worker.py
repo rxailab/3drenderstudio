@@ -1,5 +1,5 @@
 """Headless Blender executor. Invoked only with validated data, never AI code."""
-import sys, os, json, math, traceback, time
+import sys, os, json, math, traceback, time, re
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from asset_provenance import fallback_material_names
@@ -369,12 +369,27 @@ def prepare(objects,meshes,plan):
         if ob.name not in copied_objects:
             ob.data=ob.data.copy();copied_objects.add(ob.name)
         applied=[];resources=[]
-        for slot in ob.material_slots:
+        requested=override['material_name']
+        slots=[slot for slot in ob.material_slots if slot.material]
+        exact=[slot for slot in slots if slot.material.get('_studio_source_material',slot.material.name)==requested]
+        if exact:
+            selected=exact
+        else:
+            # A rendered checkpoint can expose a Blender-generated duplicate
+            # name (e.g. Paint.008), while a different shot starts from the
+            # uploaded asset. Resolve it only after this object has already
+            # established the original slot and only when no other slot has
+            # a matching base name. Never widen to a shared material user.
+            base=lambda value:re.sub(r'(?:\.\d{3})+$','',value)
+            compatible=[slot for slot in slots if base(slot.material.get('_studio_source_material',slot.material.name))==base(requested)]
+            selected=(compatible if len(compatible)==1 and
+                      compatible[0].material.get('_studio_source_material') is not None and
+                      base(requested)!=requested else [])
+        for slot in selected:
             original=slot.material
-            if original and original.get('_studio_source_material',original.name)==override['material_name']:
-                mat=original.copy();mat['_studio_source_material']=override['material_name']
-                slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
-                if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+            mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
+            slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
+            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
         if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
         operation=dict(operation='object_material_override',object=ob.name,parameters=override,applied_to=applied)
         if resources: operation['resources']=resources

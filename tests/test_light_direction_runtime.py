@@ -103,7 +103,8 @@ class LightDirectionBlenderTests(unittest.TestCase):
         cls.temp=tempfile.TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup)
         cls.root=Path(cls.temp.name);cls.runtime=cls.root/'app';(cls.runtime/'blender').mkdir(parents=True)
         source=Path(__file__).resolve().parents[1]/'blender'
-        for name in ('light_direction.py','render_entry.py','inspect_lighting.py'):shutil.copy2(source/name,cls.runtime/'blender'/name)
+        for name in ('light_direction.py','render_entry.py','inspect_lighting.py','camera_entry.py','camera_projection.py'):shutil.copy2(source/name,cls.runtime/'blender'/name)
+        shutil.copy2(source.parent/'camera_controls.py',cls.runtime/'camera_controls.py')
         (cls.runtime/'blender/worker.py').write_text(WORKER,encoding='utf-8')
 
     def setUp(self):
@@ -114,6 +115,7 @@ class LightDirectionBlenderTests(unittest.TestCase):
         with store.connection() as connection:
             connection.execute('CREATE TABLE records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.plan=planner.default_plan()
+        self.plan['shots'][0].update(azimuth=0,elevation=math.degrees(math.atan2(2,6)))
         store.put('project',{'id':'p','version':1,'name':'Fixture','model_path':'synthetic fixture','plan':self.plan,'outputs':[],
                              'analysis':{'objects':[{'name':'Body','type':'MESH'}]}})
         self.job={'id':'job','project_id':'p','status':'running','kind':'preview','quality':'preview','version':1,'plan':self.plan}
@@ -121,6 +123,7 @@ class LightDirectionBlenderTests(unittest.TestCase):
 
     def execute(self,angles=None,options=None,name='render'):
         plan=copy.deepcopy(self.plan);plan['lighting'].update(angles or {})
+        if (options or {}).get('rotated_camera'):plan['shots'][0]['azimuth']=90
         request={'action':'render','model_path':'synthetic fixture, not a user model','plan':plan,
                  'shot':plan['shots'][0],'quality':'preview','_fixture':options or {}}
         result=engine.execute(self.job,request,self.data/'p'/name)
@@ -130,7 +133,7 @@ class LightDirectionBlenderTests(unittest.TestCase):
         _,_,original=self.execute(name='original')
         result,request,out=self.execute({'key_azimuth':40,'key_elevation':25,'fill_azimuth':-20})
         proof=result['light_direction_verification'];self.assertTrue(proof['saved_scene_verified'])
-        self.assertEqual(proof['target']['source'],'analysis.product_objects')
+        self.assertEqual(proof['target']['source'],'scene.wuying_product_target')
         self.assertEqual(proof['target']['point'],[0,0,1])
         by_role={row['role']:row for row in proof['lights']}
         self.assertAlmostEqual(by_role['key']['after']['azimuth'],40,places=3)
@@ -157,10 +160,11 @@ class LightDirectionBlenderTests(unittest.TestCase):
         self.assertGreater(b[0],0);self.assertAlmostEqual(b[1],0,places=4)
         self.assertAlmostEqual(a[2],b[2],places=4)
 
-    def test_no_angle_request_uses_unchanged_original_worker(self):
+    def test_no_light_angle_request_keeps_lamps_and_verifies_default_camera(self):
         result,request,_=self.execute()
         self.assertNotIn('light_direction_contract',request)
         self.assertNotIn('light_direction_verification',result)
+        self.assertEqual(result['camera_projection_verification']['actual']['type'],'ORTHO')
         self.assertEqual(result['fixture_lights']['key']['position'],[-3,-4,5])
 
     def test_unknown_or_duplicate_role_cannot_be_reported_as_applied(self):
@@ -176,7 +180,8 @@ class LightDirectionBlenderTests(unittest.TestCase):
     def test_explicit_camera_target_works_without_guessing_a_scene_bbox(self):
         project=store.get('project','p');project['analysis']['objects']=[];store.put('project',project)
         result,_,_=self.execute({'key_azimuth':-45},{'focus_target':True})
-        self.assertEqual(result['light_direction_verification']['target']['source'],'camera.focus_object')
+        self.assertEqual(result['light_direction_verification']['target']['source'],'scene.wuying_product_target')
+        self.assertEqual(result['light_direction_verification']['target']['point'],[0,0,1])
 
     def test_missing_product_target_refuses_to_include_the_floor(self):
         project=store.get('project','p');project['analysis']['objects']=[];store.put('project',project)

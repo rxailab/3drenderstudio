@@ -1,5 +1,39 @@
 # 本地接口与可复现性
 
+## v17 实时模型与相机回放
+
+`GET /api/system` 增加 `viewport:{available,format,projection,interactive}`。实时模型准备独立于 Cycles 出图任务，依赖本机 Blender 与 `blender/export_viewport.py`，不调用 LLM。
+
+```http
+POST /api/projects/{id}/viewport
+Content-Type: application/json
+```
+
+```json
+{"shot_id":"hero","expected_version":4}
+```
+
+返回项目绑定的任务记录：`id,status,project_id,version,shot_id,source_kind,source_version,asset,error,warnings`。排队／运行返回 HTTP 202，已就绪缓存返回 HTTP 200。仅接受正文中的镜头与版本，不接受客户端指定的源文件路径、Blender 脚本或资源地址。
+
+`GET /api/projects/{id}/viewport/{task_id}` 返回该任务状态，并使用 `Cache-Control:no-store`。状态为 `queued/running/ready/failed/stale`；当前方案版本改变后，旧任务返回 `stale` 且不提供资产地址。任务 ID 不能跨项目读取。准备期间持有项目操作预约，避免与删除冲突。
+
+`ready` 的 `asset` 包含 `url`（独立 GLB）与 `metadata_url`。元数据协议为 `wuying-viewport-v1`，坐标系为 glTF Y-up，包含产品边界、实测相机、灯光与环境信息、材质近似说明、来源与资产摘要。GLB 只包含独立产品几何与可转换材质，贴图嵌入文件；缓存身份覆盖项目、版本、计划、分析、场景源、资源与导出器版本。原始模型与已保存工程不会在导出时被覆盖。
+
+镜头字段通过原有 `/plan` 版本化接口保存：
+
+| 字段 | 含义 |
+| --- | --- |
+| `projection` | `orthographic` 或 `perspective`；缺省按正交执行新视图和新渲染。 |
+| `ortho_scale` | 正交画面横向宽度，使用当前 Blender 场景世界单位；显式值不被自动取景覆盖。 |
+| `target_offset` | 三元数组，Blender Z-up 坐标；相对产品包围盒中心、按包围盒对角线归一化的平移。 |
+| `azimuth/elevation` | 沿用已有方位角与俯仰角，单位度。 |
+| `camera_distance` | 显式透视镜头距离，使用场景世界单位。 |
+| `focal_length` | 显式透视时的焦距；正交缩放由 `ortho_scale` 控制。 |
+
+新应用的相机使用 `sensor_fit=HORIZONTAL`；相机参数在渲染和保存后的工程中核验。预览、4K、原生场景回放以及自动主图优化遵守镜头投影选择。历史图片与工程按原文件保留，不能把历史透视图标成新的正交出图证明。
+
+浏览器拖动只改变当前视图；使用当前视角或提交出图时，把一份视角快照并入草稿，再沿用版本校验和渲染队列。实时画布不是原有图片选点或 AI 诊断的图像来源。
+
 ## v10 默认自动部分执行
 
 `POST /api/projects/{id}/instruct` 可选 `partial_mode` 为 `"apply_ready"` 或 `"review"`，缺省等同 `"apply_ready"`。此字段属于客户端请求并进入请求摘要；模型不能改变它。新版界面普通提交使用缺省模式。

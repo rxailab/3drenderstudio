@@ -139,7 +139,8 @@ def _target(scene,camera,request,graph):
 
 def _frame(camera,target):
     from mathutils import Vector
-    up=Vector((0,0,1));front=camera.matrix_world.translation-target;front.z=0
+    # Light direction follows optical orientation, independently of view pan.
+    up=Vector((0,0,1));front=camera.matrix_world.to_quaternion() @ Vector((0,0,1));front.z=0
     if front.length<1e-6:
         right=camera.matrix_world.to_quaternion() @ Vector((1,0,0));right.z=0
         if right.length<1e-6:raise RuntimeError('相机方向无法建立稳定的水平灯光坐标。')

@@ -5,6 +5,7 @@ contain Python, file paths, new product geometry, color edits or generated logos
 """
 import copy
 import math
+from camera_controls import PROJECTIONS
 
 RECIPE_VERSION = 1
 CAMERA_LIMITS = {'occupancy':(.72,.92),'azimuth_delta':(-10,10),
@@ -54,7 +55,15 @@ def normalize_recipe(raw,catalog,protections=()):
     locks=set(protections or ())
     clean={'version':RECIPE_VERSION,'camera':{},'lighting':{},'background':{},'surfaces':[]}
     skipped=[]
-    camera=_numbers(raw.get('camera',{}),CAMERA_LIMITS,'相机')
+    raw_camera=_object(raw.get('camera',{}),{'projection',*CAMERA_LIMITS},'相机')
+    camera=_numbers({key:value for key,value in raw_camera.items() if key!='projection'},CAMERA_LIMITS,'相机')
+    preferred=catalog.get('preferred_projection')
+    if preferred is not None and preferred not in PROJECTIONS:raise ValueError('当前镜头投影无效')
+    if 'projection' in raw_camera:
+        if raw_camera['projection'] not in PROJECTIONS:raise ValueError('主图投影无效')
+        if preferred is not None and raw_camera['projection']!=preferred:raise ValueError('自动优化不能更改已选镜头投影')
+        camera['projection']=raw_camera['projection']
+    elif camera or preferred is not None:camera['projection']=preferred or 'orthographic'
     if locks & {'preserve_camera','only_lighting','only_exposure','only_margin','shots','camera'}:
         if camera:skipped.append('按当前保护条件保留相机与构图。')
     else:
@@ -130,7 +139,8 @@ def default_recipe(catalog,protections=()):
     elevation=camera.get('elevation',18)
     lower=-3 if type(elevation) in (int,float) and elevation>12 else 0
     raw={'version':RECIPE_VERSION,
-         'camera':{'occupancy':.84,'azimuth_delta':0,'elevation_delta':lower,'focal_length':min(105,max(65,lens*1.15))},
+         'camera':{'projection':catalog.get('preferred_projection','orthographic'),
+                   'occupancy':.84,'azimuth_delta':0,'elevation_delta':lower,'focal_length':min(105,max(65,lens*1.15))},
          'lighting':{
              'key':{'azimuth':-45,'elevation':40,'power':1.35,'width':1.7,'height':2},
              'fill':{'azimuth':25,'elevation':30,'power':.75,'width':1.5,'height':1.5},
@@ -150,7 +160,8 @@ def recipe_schema(catalog):
     target={'type':'string','maxLength':80}
     if targets:target['enum']=targets
     surface=obj({'id':target,'reason':{'type':'string','minLength':1,'maxLength':600},**numbers(SURFACE_LIMITS)},('id','reason'))
-    return obj({'version':{'type':'integer','enum':[RECIPE_VERSION]},'camera':obj(numbers(CAMERA_LIMITS)),
+    return obj({'version':{'type':'integer','enum':[RECIPE_VERSION]},
+                'camera':obj({**numbers(CAMERA_LIMITS),'projection':{'type':'string','enum':[catalog.get('preferred_projection','orthographic')]}}),
                 'lighting':obj({**{role:obj(numbers(LIGHT_LIMITS)) for role in ('key','fill','rim')},
                                 'reflection':obj({'enabled':{'type':'boolean'},**numbers(REFLECTION_LIMITS)}),
                                 'environment':{'type':'number','minimum':0,'maximum':1}}),

@@ -2,6 +2,7 @@
 import copy
 import math
 import re
+from camera_controls import validate_shot
 from lighting_controls import LIGHTING_DEFAULTS, LIGHT_DIRECTION_LIMITS, LIGHTING_LIMITS
 from intelligence_rules import (
     InstructionOutcome, extract_protections, check_unsupported_requests,
@@ -17,12 +18,12 @@ def default_plan():
         light_softness=1,lighting=copy.deepcopy(LIGHTING_DEFAULTS),texture_scale=1,texture_rotation=0,material_overrides=[],object_material_overrides=[],
         repair={'normals':False,'smooth':False},pose={},time_budget=1200,max_corrections=2,
         source='rules',visual_review=True,pending=['实际摆放方向与主展示面请在预览中确认'],shots=[
-        dict(id='hero',label='白底主图',kind='full',azimuth=35,elevation=18,focal_length=70,style='white'),
-        dict(id='campaign',label='棚拍宣传',kind='full',azimuth=-38,elevation=22,focal_length=60),
-        dict(id='side',label='侧面结构',kind='full',azimuth=90,elevation=12,focal_length=70),
-        dict(id='back',label='背面展示',kind='full',azimuth=155,elevation=22,focal_length=70),
-        dict(id='detail1',label='材质细节',kind='detail',azimuth=30,elevation=25,focal_length=85),
-        dict(id='detail2',label='结构细节',kind='detail',azimuth=-60,elevation=35,focal_length=85)])
+        dict(id='hero',label='白底主图',kind='full',projection='orthographic',azimuth=35,elevation=18,focal_length=70,style='white'),
+        dict(id='campaign',label='棚拍宣传',kind='full',projection='orthographic',azimuth=-38,elevation=22,focal_length=60),
+        dict(id='side',label='侧面结构',kind='full',projection='orthographic',azimuth=90,elevation=12,focal_length=70),
+        dict(id='back',label='背面展示',kind='full',projection='orthographic',azimuth=155,elevation=22,focal_length=70),
+        dict(id='detail1',label='材质细节',kind='detail',projection='orthographic',azimuth=30,elevation=25,focal_length=85),
+        dict(id='detail2',label='结构细节',kind='detail',projection='orthographic',azimuth=-60,elevation=35,focal_length=85)])
 
 def number(v, lo, hi, key):
     if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or not lo <= v <= hi:
@@ -79,6 +80,7 @@ def validate(plan):
     shots = p.get('shots',[])
     if not 1 <= len(shots) <= 12 or len({s['id'] for s in shots}) != len(shots): raise ValueError('镜头数量或标识无效')
     for s in shots:
+        validate_shot(s)
         if not str(s['id']).replace('_','').isalnum() or len(s['id'])>32: raise ValueError('镜头标识无效')
         if s['kind'] not in ['full','detail']: raise ValueError('镜头类型无效')
         for k,lo,hi in [('azimuth',-360,360),('elevation',-80,90),('focal_length',20,200)]: number(s.get(k),lo,hi,k)

@@ -20,7 +20,7 @@ def _text(value,limit,label):
 def _catalog(catalog):
     """Keep actual scene measurements, omit any executable paths or opaque state."""
     keys=('product_object_names','bounds','camera','lights','lighting','light_directions','world','ground','materials','exposure',
-          'geometry_sha256','transforms_sha256','color_sha256','labels_sha256','resources_sha256','warnings','product_context')
+          'geometry_sha256','transforms_sha256','color_sha256','labels_sha256','resources_sha256','warnings','product_context','preferred_projection')
     return {key:copy.deepcopy(catalog[key]) for key in keys if key in catalog}
 
 
@@ -46,6 +46,7 @@ def plan_hero(catalog,image_path,goal,config,protections=()):
         'Do not make the user identify every wheel, key or light. Use exact measured material IDs; omit unsupported/uncertain edits while completing independent feasible work. '
         'Product topology, positions, UVs, colors, text, logos, packed images and real structural proportions are immutable. Never remove keys, add bevel geometry or regenerate text. '
         'Preserve the current three-quarter viewing direction with only a small camera change. Target about 0.84 of the square frame when appropriate, with complete top and feet. '
+        'Use the supplied preferred_projection. The application defaults to orthographic, so near and far parts have equal scale; perspective is allowed only when the current shot explicitly selects it. '
         'occupancy is the longest projected product dimension, not a guarantee of platform acceptance. Camera azimuth/elevation values in the recipe are DELTAS; lens is absolute millimetres. '
         'Lighting is a managed softbox rig scaled to the real product bounds. Angles are camera-relative: 0 is camera front, negative left, positive right, 180 behind. '
         'key/fill/rim power are ratios to the corresponding measured baseline lamps; width/height and contact_distance are ratios to product maximum dimension. '

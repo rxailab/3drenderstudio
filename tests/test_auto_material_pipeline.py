@@ -13,6 +13,7 @@ import engine
 import material_agent as agent
 import studio_store as store
 from planner import default_plan
+from camera_controls import shot_request
 
 
 class AutomaticMaterialTests(unittest.TestCase):
@@ -141,7 +142,13 @@ class AutomaticMaterialTests(unittest.TestCase):
             out.mkdir(parents=True,exist_ok=True)
             Image.new('RGB',(8,8),'white').save(out/'result.png');Image.new('RGB',(8,8),'white').save(out/'result.jpg')
             (out/'result.blend').write_bytes(b'actual fixture artifact')
-            result={'success':True,'render_pipeline_version':2,'product_samples':[],'visible_materials':[]}
+            result={'success':True,'render_pipeline_version':2,'product_samples':[],'visible_materials':[],
+                # This mock represents a newly rendered v17 result. The legacy
+                # input intentionally lacks proof; the refreshed output must
+                # carry its measured projection before it can be reused.
+                'camera_projection_verification':{'saved_scene_verified':True,'render_completed':True,
+                    'contract':{'shot':shot_request(request['shot'])},
+                    'actual':{'type':'ORTHO','sensor_fit':'HORIZONTAL'}}}
             (out/'result.json').write_text(json.dumps(result));return result
         with patch.object(engine,'DATA',self.root),patch.object(engine,'execute',side_effect=execute) as render,patch('ai_config.get_config',return_value={'enabled':False}),patch('ai_config.get_vision_config',return_value={'enabled':False}):
             engine.run_job(job['id'])

@@ -82,9 +82,9 @@ def _diagnostic_shape(value):
 def _diagnostic_record(value):
     if (not isinstance(value,dict) or value.get('schema')!=1
             or not isinstance(value.get('id'),str) or not re.fullmatch(r'[0-9a-f]{32}',value['id'])
-            or value.get('error_code')!='instruction_response_invalid' or value.get('applied') is not False
+            or value.get('error_code') not in ('instruction_response_invalid','instruction_requirement_unresolved') or value.get('applied') is not False
             or type(value.get('plan_version')) is not int or value['plan_version']<1):return None
-    clean={'schema':1,'id':value['id'],'error_code':'instruction_response_invalid','applied':False,
+    clean={'schema':1,'id':value['id'],'error_code':value['error_code'],'applied':False,
            'plan_version':value['plan_version'],'text':_text(value.get('text'),2000)}
     if type(value.get('created_at')) in (int,float) and math.isfinite(value['created_at']):clean['created_at']=value['created_at']
     source=value.get('source_snapshot')
@@ -94,6 +94,22 @@ def _diagnostic_record(value):
                                                    for key in ('code','path') if _diagnostic_word(feedback.get(key),500 if key=='path' else 80)}
     shapes=value.get('response_shapes')
     if isinstance(shapes,list):clean['response_shapes']=[_diagnostic_shape(shape) for shape in shapes[:2]]
+    if value['error_code']=='instruction_requirement_unresolved':
+        rows=value.get('failure_details',[])
+        clean['failure_details']=[]
+        if isinstance(rows,list):
+            for row in rows[:20]:
+                if not isinstance(row,dict) or row.get('code')!='semantic_status_effect':continue
+                entry={'code':'semantic_status_effect'}
+                if row.get('effect') in ('known_unchanged','known_change','unverified'):entry['effect']=row['effect']
+                if type(row.get('plan_changed')) is bool:entry['plan_changed']=row['plan_changed']
+                ids=row.get('target_ids')
+                if isinstance(ids,list):
+                    entry['target_ids']=list(dict.fromkeys(ident for ident in ids[:160]
+                        if isinstance(ident,str) and re.fullmatch(r't[1-9][0-9]{0,3}',ident)))
+                clean['failure_details'].append(entry)
+        digest=value.get('evidence_digest')
+        if isinstance(digest,str) and re.fullmatch(r'[0-9a-f]{64}',digest):clean['evidence_digest']=digest
     if value.get('structure_truncated') is True:clean['structure_truncated']=True
     # Account for the actual indented UTF-8 file size, including long unknown
     # response keys. Retain the user's original text while trimming structure.
@@ -113,15 +129,27 @@ def _error_folder(project_id):
     return folder
 
 
-def _record_response_error(project,text,source,error):
+def _record_response_error(project,text,source,error,evidence=None):
     """Best-effort local evidence for a definitely uncommitted protocol error."""
-    if (getattr(error,'error_code',None)!='instruction_response_invalid'
+    pending=getattr(error,'pending',None)
+    public=target_evidence.public_evidence(evidence,project.get('analysis'),project['version']) if evidence else {}
+    allowed_ids={target['id'] for target in public.get('targets',[])}
+    failures=[{'code':row.get('diagnostic_code'),'effect':row.get('diagnostic_effect'),
+               'plan_changed':row.get('diagnostic_plan_changed'),
+               'target_ids':[ident for ident in row.get('diagnostic_target_ids',[])[:160]
+                             if isinstance(ident,str) and ident in allowed_ids] if isinstance(row.get('diagnostic_target_ids'),list) else []}
+              for row in pending if isinstance(row,dict) and row.get('diagnostic_code')=='semantic_status_effect'] if isinstance(pending,list) else []
+    code='instruction_requirement_unresolved' if failures else getattr(error,'error_code',None)
+    if code!='instruction_requirement_unresolved' and (code!='instruction_response_invalid'
             or getattr(error,'applied',None) is not False):return
     ident=uuid.uuid4().hex
-    record=_diagnostic_record({'schema':1,'id':ident,'error_code':error.error_code,'applied':False,
+    try:evidence_digest=_digest(public) if public else None
+    except (TypeError,ValueError):evidence_digest=None
+    record=_diagnostic_record({'schema':1,'id':ident,'error_code':code,'applied':False,
                               'plan_version':project['version'],'text':text,'source_snapshot':source,
                               'created_at':time.time(),'feedback':getattr(error,'feedback',{}),
-                              'response_shapes':getattr(error,'response_shapes',[])})
+                              'response_shapes':getattr(error,'response_shapes',[]),
+                              'failure_details':failures,'evidence_digest':evidence_digest})
     if record is None:return
     try:
         folder=_error_folder(project['id']);folder.mkdir(parents=True,exist_ok=True)
@@ -748,6 +776,22 @@ def _context(project, shot_id, output, notes):
     return context
 
 
+def _remaining_protections(project, text, shot_id):
+    """Carry server-recorded locks only into the exact outstanding retry."""
+    receipt=project.get('instruction_result') or {}
+    if (receipt.get('protocol')!='semantic_v2' or receipt.get('partial') is not True
+            or receipt.get('status') not in ('partially_applied','applied','no_change')
+            or receipt.get('applied_version')!=project.get('version')
+            or receipt.get('shot_id')!=shot_id
+            or not isinstance(receipt.get('remaining_text'),str)
+            or receipt['remaining_text'].strip()!=text.strip()):
+        return []
+    locks=receipt.get('protections')
+    if not isinstance(locks,list) or any(lock not in PROTECTION_LABELS for lock in locks):
+        return []
+    return list(dict.fromkeys(locks))
+
+
 def _scoped_plan(base, effective, candidate, shot_id):
     """Map effective shot lighting back without changing unrelated shots."""
     if not shot_id: return candidate
@@ -913,6 +957,8 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
         elif needs_inspection:
             notes.append('完整部件检查尚未就绪，本次只能使用当前预览的可见采样；请确认已更新部件检查组件。')
         context=_context(project,shot_id,output if image_path else None,notes)
+        if semantic_mode:
+            context['protections']=_remaining_protections(project,text,shot_id)
         context['instruction_protocol']=protocol
         lighting_inspection=None
         # Read actual saved lights before asking the model to choose direction.
@@ -990,7 +1036,7 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
             elif getattr(exc,'status',None)=='no_change':
                 outcome=exc;candidate=copy.deepcopy(effective)
             else:
-                _record_response_error(project,text,source,exc)
+                _record_response_error(project,text,source,exc,target_samples)
                 if getattr(exc,'pending',None) and notes:
                     exc.notes=list(dict.fromkeys(list(getattr(exc,'notes',[]))+notes))
                     # The visible recovery card receives the actual inspection

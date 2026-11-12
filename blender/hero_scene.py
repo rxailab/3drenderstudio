@@ -14,6 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from hero_state import SCENE_STATE_VERSION,compare_scene_states,difference_summary,state_digest
+from camera_controls import CAMERA_FIELDS,projection as shot_projection
+from blender.camera_projection import apply_camera
 
 SCHEMA_VERSION=1
 SURFACE_INPUTS={
@@ -219,8 +221,11 @@ def _role(obj):
 
 def _frame(camera,center):
     from mathutils import Vector
-    target=Vector(center);up=Vector((0,0,1));front=camera.matrix_world.translation-target;front.z=0
-    if front.length<1e-7:raise ValueError('当前相机无法建立稳定的摄影水平坐标')
+    up=Vector((0,0,1));front=camera.matrix_world.to_quaternion() @ Vector((0,0,1));front.z=0
+    if front.length<1e-7:
+        right=camera.matrix_world.to_quaternion() @ Vector((1,0,0));right.z=0
+        if right.length<1e-7:raise ValueError('当前相机无法建立稳定的摄影水平坐标')
+        front=right.normalized().cross(up)
     front.normalize();right=up.cross(front).normalized()
     return front,right,up
 
@@ -313,6 +318,16 @@ def catalog(scene,products,points=None):
     bpy.context.view_layer.update()
     points=_world_vertices(products) if points is None else points
     bounds=_bounds(points);offset=scene.camera.matrix_world.translation-Vector(bounds['center'])
+    direction=scene.camera.matrix_world.to_quaternion() @ Vector((0,0,1))
+    diagonal=max(Vector(bounds['dimensions']).length,1e-6)
+    stored_offset=scene.camera.get('wuying_target_offset')
+    if stored_offset is not None and len(stored_offset)==3:
+        target_offset=[float(value) for value in stored_offset]
+    else:
+        # Recover the target in the plane through the product center. This
+        # preserves a panned camera even when the imported file has no metadata.
+        target_offset=vector((offset-direction*offset.dot(direction))/diagonal)
+    target=Vector(bounds['center'])+Vector(target_offset)*diagonal
     framing=_projection(scene,points);materials=[]
     for ident,material,bindings in _material_groups(products):
         node=_principled(material);protected,reason=_protected(material,bindings)
@@ -334,9 +349,13 @@ def catalog(scene,products,points=None):
     lighting['environment']=float(environment.inputs['Strength'].default_value) if environment and not environment.inputs['Strength'].is_linked else None
     _,ground=_ground(scene,products)
     camera={'name':scene.camera.name,'type':scene.camera.data.type,
-            'azimuth':math.degrees(math.atan2(offset.x,-offset.y)),
-            'elevation':math.degrees(math.atan2(offset.z,math.hypot(offset.x,offset.y))),
-            'focal_length':float(scene.camera.data.lens),'distance':float(offset.length),
+            'projection':'orthographic' if scene.camera.data.type=='ORTHO' else 'perspective',
+            'sensor_fit':scene.camera.data.sensor_fit,
+            'sensor_width':float(scene.camera.data.sensor_width),'sensor_height':float(scene.camera.data.sensor_height),
+            'azimuth':math.degrees(math.atan2(direction.x,-direction.y)),
+            'elevation':math.degrees(math.atan2(direction.z,math.hypot(direction.x,direction.y))),
+            'focal_length':float(scene.camera.data.lens),'distance':float((scene.camera.matrix_world.translation-target).length),
+            'target_offset':target_offset,
             'shift_x':float(scene.camera.data.shift_x),'shift_y':float(scene.camera.data.shift_y),
             'ortho_scale':float(scene.camera.data.ortho_scale),'occupancy':framing.get('occupancy'),'bbox':framing.get('bbox'),
             'matrix_world':matrix(scene.camera.matrix_world),'constraints':bool(scene.camera.constraints)}
@@ -410,9 +429,10 @@ def _camera_recipe(scene,bounds,points,recipe,operations):
     az=current['azimuth']+recipe.get('azimuth_delta',0)
     el=max(-75,min(85,current['elevation']+recipe.get('elevation_delta',0)))
     lens=recipe.get('focal_length',current['focal_length'])
-    if any(key in recipe for key in ('azimuth_delta','elevation_delta','focal_length')):
-        _set_camera(scene,bounds,az,el,lens,current['distance'])
-    if 'occupancy' in recipe:_fit_camera(scene,bounds,points,recipe['occupancy'])
+    desired={'azimuth':az,'elevation':el,'focal_length':lens,
+             'projection':recipe.get('projection','orthographic')}
+    occupancy=recipe.get('occupancy',current.get('occupancy') or .76)
+    apply_camera(scene,desired,_products(scene,[]),(1-occupancy)/2,points)
     operations.append({'kind':'camera','parameters':recipe})
 
 def _copy_surface(material,bindings,scene,products):
@@ -598,7 +618,15 @@ def _changed_materials(scene,products,plan,baseline,operations,authorized):
                 changes.pop('preserve_original',None)
                 changes.pop('preset',None)
             if not changes:continue
-            if set(changes)-{'roughness','metallic','transmission','color'}:
+            # Explicit local built-in replacement is safe only when a unique
+            # material slot is resolved below. Keep restorations and external
+            # textures unsupported: a checkpoint cannot reconstruct those.
+            replace_preset=(local and row.get('preserve_original') is False
+                            and isinstance(row.get('preset'),str)
+                            and 'preset' in changes)
+            allowed={'roughness','metallic','transmission','color'}
+            if replace_preset:allowed.update(('preset','preserve_original'))
+            if set(changes)-allowed:
                 raise ValueError('当前摄影快照不支持更换材质预设、纹理或恢复原材质；可直接调整颜色、粗糙度、金属度与透射')
             requested_name=row['material_name'] if local else row['name']
             candidates=[]
@@ -618,7 +646,30 @@ def _changed_materials(scene,products,plan,baseline,operations,authorized):
             for name,slot,material in candidates:groups.setdefault(material,[]).append((name,slot))
             for material,bindings in groups.items():
                 if _protected(material,bindings)[0]:raise ValueError('保留品牌、贴图或复杂材质，不能覆盖该表面')
-                material=_copy_surface(material,bindings,scene,products);node=_principled(material)
+                material=_copy_surface(material,bindings,scene,products)
+                if replace_preset:
+                    from blender.worker import PRESETS
+                    scalar_presets={'matte_plastic','glossy_plastic','painted_metal','polished_metal','rubber','ceramic'}
+                    if row['preset'] not in scalar_presets:raise ValueError('当前摄影快照暂不支持此材质预设，请先生成基础场景。')
+                    before_color=vector(_principled(material).inputs['Base Color'].default_value)
+                    node=_principled(material)
+                    defaults=PRESETS[row['preset']]
+                    for key,socket,default in (('roughness','Roughness',defaults[0]),('metallic','Metallic',defaults[1]),('transmission','Transmission Weight',defaults[2])):
+                        channel=node.inputs.get(socket)
+                        if channel is None or channel.is_linked:raise ValueError('材质通道已连接节点，不能直接覆盖：'+key)
+                        channel.default_value=number(row.get(key,default),0,1,key)
+                    if 'color' in row:
+                        channel=node.inputs['Base Color']
+                        if channel.is_linked:raise ValueError('材质颜色已连接节点，不能直接覆盖')
+                        channel.default_value=[*_unlinked_color(row['color']),before_color[3]]
+                        material.diffuse_color=channel.default_value
+                        authorized.append({'path':field+'['+str(index)+'].color','requested_color':copy.deepcopy(row['color']),
+                            'bindings':[{'object_name':name,'slot_index':slot} for name,slot in bindings],
+                            'before':before_color,'after':vector(_principled(material).inputs['Base Color'].default_value)})
+                    operations.append({'kind':'existing_surface_preset','bindings':[{'object_name':name,'slot_index':slot} for name,slot in bindings],
+                                       'parameters':{key:row[key] for key in ('preset','roughness','metallic','transmission') if key in row}})
+                    continue
+                node=_principled(material)
                 for key,value in changes.items():
                     socket=node.inputs.get('Base Color' if key=='color' else SURFACE_INPUTS[key])
                     if socket is None or socket.is_linked:raise ValueError('材质通道已连接节点，不能直接覆盖：'+key)
@@ -666,19 +717,23 @@ def _checkpoint(scene,products,points,plan,baseline,shot_id,operations,authorize
     if any(old_shot.get(key)!=new_shot.get(key) for key in ('kind','target_object','style')):
         raise ValueError('摄影快照不能替换镜头目标或切换细节镜头类型')
     measured=catalog(scene,products,points);bounds=measured['bounds'];camera=measured['camera']
-    camera_changed=any(old_shot.get(key)!=new_shot.get(key) for key in ('azimuth','elevation','focal_length'))
-    if camera_changed:
-        _set_camera(scene,bounds,
-            number(new_shot.get('azimuth'),-360,360,'相机方位角'),number(new_shot.get('elevation'),-75,85,'相机俯仰角'),
-            number(new_shot.get('focal_length'),20,200,'焦距'),camera['distance'])
-        operations.append({'kind':'checkpoint_camera','parameters':{key:new_shot[key] for key in ('azimuth','elevation','focal_length')}})
+    desired_type='ORTHO' if shot_projection(new_shot)=='orthographic' else 'PERSP'
+    camera_changed=any(old_shot.get(key)!=new_shot.get(key) for key in CAMERA_FIELDS)
+    projection_changed=(camera['type']!=desired_type or (desired_type=='ORTHO' and camera['sensor_fit']!='HORIZONTAL'))
+    framing_changed=plan.get('margin')!=baseline.get('margin') or plan.get('aspect')!=baseline.get('aspect')
     if plan.get('aspect')!=baseline.get('aspect'):
         if plan.get('aspect') not in ('1:1','4:3','3:4'):raise ValueError('画幅不受支持')
         x,y=map(int,plan['aspect'].split(':'));long=max(scene.render.resolution_x,scene.render.resolution_y)
         scene.render.resolution_x=round(long*x/max(x,y));scene.render.resolution_y=round(long*y/max(x,y))
-    if plan.get('margin')!=baseline.get('margin') or plan.get('aspect')!=baseline.get('aspect'):
-        margin=number(plan.get('margin'),.03,.4,'留白');_fit_camera(scene,bounds,points,1-2*margin)
-        operations.append({'kind':'checkpoint_framing','margin':margin,'aspect':plan.get('aspect')})
+    if camera_changed or projection_changed or framing_changed:
+        requested=copy.deepcopy(new_shot)
+        for key in ('azimuth','elevation','focal_length'):
+            if new_shot.get(key)==old_shot.get(key):requested[key]=camera[key]
+        margin=number(plan.get('margin',.12),.03,.4,'留白')
+        actual=apply_camera(scene,requested,products,margin,points)
+        operations.append({'kind':'checkpoint_camera','parameters':{key:requested[key] for key in CAMERA_FIELDS if key in requested},
+                           'projection':shot_projection(requested),'actual':actual})
+        if framing_changed:operations.append({'kind':'checkpoint_framing','margin':margin,'aspect':plan.get('aspect')})
     if plan.get('exposure',0)!=baseline.get('exposure',0):
         scene.view_settings.exposure=number(plan.get('exposure',0),-4,4,'曝光')
         operations.append({'kind':'checkpoint_exposure','value':scene.view_settings.exposure})

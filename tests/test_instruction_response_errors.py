@@ -98,6 +98,26 @@ class InstructionResponseErrorTests(unittest.TestCase):
         for key in ('request-1', 'request-1', 'request-2'):
             self.assert_response_error(self.request(key)); self.assert_unchanged()
         self.assertEqual(self.model.call_count, 3)
+
+    def test_pending_no_effect_records_only_safe_effect_and_evidence_digest(self):
+        outcome=InstructionOutcome('needs_clarification','没有应用')
+        outcome.pending=[{'diagnostic_code':'semantic_status_effect','diagnostic_effect':'known_unchanged',
+                          'diagnostic_plan_changed':False,'diagnostic_target_ids':['t1','t9','private-model-response'],
+                          'raw_response':'private-model-response'}]
+        project=copy.deepcopy(self.project)
+        project['analysis']={'objects':[{'name':'Mesh','type':'MESH','materials':['Shared']} ]}
+        evidence={'method':'camera_ray_samples','source_snapshot':self.source,'targets':[
+            {'id':'t1','object_name':'Mesh','material_name':'Shared','samples':[{'x':.5,'y':.5}],
+             'private':'private-evidence'}]}
+        public=service.target_evidence.public_evidence(evidence,project['analysis'],3)
+        service._record_response_error(project,TEXT,self.source,outcome,evidence)
+        record=json.loads((self.root/'fixture/instruction-errors'/f'{outcome.diagnostic_id}.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['failure_details'],[{'code':'semantic_status_effect','effect':'known_unchanged','plan_changed':False,'target_ids':['t1']}])
+        self.assertEqual(record['evidence_digest'],service._digest(public))
+        self.assertNotIn('private-model-response',json.dumps(record))
+        self.assertNotIn('private-evidence',json.dumps(record))
+        self.assertEqual(service.error_diagnostics('fixture')[0][1],record)
+        self.assert_unchanged()
         self.assertTrue(all(call.args[1] == TEXT for call in self.model.call_args_list))
         saved = store.get('project', 'fixture')
         self.assertNotIn('instruction_receipts', saved)

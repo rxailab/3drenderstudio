@@ -4,6 +4,7 @@ This module does not read configuration, files, or credentials.  A recognised
 fragment never authorises executing only part of an otherwise unknown request.
 """
 import copy
+from camera_controls import CAMERA_FIELDS
 import re
 from lighting_controls import LIGHTING_DEFAULTS, LIGHT_DIRECTION_LIMITS
 
@@ -58,7 +59,7 @@ _NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 _PLAN_ROOTS = {'style', 'aspect', 'margin', 'exposure', 'light_softness', 'lighting',
                'texture_scale', 'texture_rotation', 'rotation', 'shots', 'pose',
                'material_overrides', 'object_material_overrides', 'repair'}
-_CAMERA_FIELDS = {'id', 'azimuth', 'elevation', 'focal_length', 'target_object'}
+_CAMERA_FIELDS = {'id', *CAMERA_FIELDS}
 
 
 def clauses(text):
@@ -342,7 +343,7 @@ def restrict_patch_schema(schema, protections, active_shot_id=None):
             shot['id']['enum'] = [active_shot_id]
             properties['shots']['maxItems'] = 1
         if 'preserve_camera' in locks:
-            for key in ('azimuth', 'elevation', 'focal_length', 'target_object'):
+            for key in CAMERA_FIELDS:
                 shot.pop(key, None)
         if 'preserve_background' in locks:
             shot.pop('style', None)
@@ -388,7 +389,7 @@ def enforce_protections(patch, protections, active_shot_id=None):
             raise InstructionOutcome('needs_clarification', '此次只允许调整当前镜头，未修改其他镜头。请明确选择需要调整的画面。', protections=protections)
         if 'only_camera' in locks and set(shot) - _CAMERA_FIELDS:
             violations.append('only_camera')
-        if 'preserve_camera' in locks and set(shot) & {'azimuth', 'elevation', 'focal_length', 'target_object'}:
+        if 'preserve_camera' in locks and set(shot) & set(CAMERA_FIELDS):
             violations.append('preserve_camera')
         if 'preserve_background' in locks and 'style' in shot:
             violations.append('preserve_background')

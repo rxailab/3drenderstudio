@@ -667,3 +667,39 @@ body:not(.has-project) .workspace-heading, body:not(.has-project) .workspace-not
 .instruction-diff-list li > p { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin: 3px 0; font-variant-numeric: tabular-nums; }
 .instruction-diff-list li > p > span:last-child { color: var(--blue); font-weight: 600; }
 .review-decision { line-height: 1.55; overflow-wrap: anywhere; }
+.view-mode-switch { display:flex; align-items:center; padding:3px; gap:2px; border:1px solid var(--line); border-radius:9px; background:#f4f6fa; }
+.view-mode-switch button { border:0; border-radius:6px; padding:6px 10px; color:#52637c; background:transparent; font:inherit; font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.view-mode-switch button[aria-pressed="true"] { color:#2455c6; background:#fff; box-shadow:0 1px 4px #12346718; }
+.view-mode-switch button:disabled { opacity:.45; cursor:default; }
+.viewer-toolbar:has(.view-mode-switch:not([hidden])) { flex-wrap:wrap; }
+.viewer-toolbar:has(.view-mode-switch:not([hidden])) .viewer-title { margin-right:auto; }
+.viewer-toolbar:has(.view-mode-switch:not([hidden])) .viewer-actions { flex-wrap:wrap; max-width:100%; }
+.viewer.is-realtime { background:#f4f6fa; }
+.realtime-viewport { position:absolute; inset:0; display:flex; justify-content:center; align-items:center; }
+.realtime-canvas-frame { position:relative; max-width:100%; max-height:100%; background:#fff; }
+.realtime-canvas-frame canvas { width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+.realtime-canvas-frame canvas:active { cursor:grabbing; }
+.realtime-canvas-frame canvas:focus-visible { outline:3px solid #6489eb; outline-offset:-3px; }
+.viewport-status { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:30px; text-align:center; background:linear-gradient(135deg,#fff,#f1f5fc); }
+.viewport-status strong { font-size:16px; color:#263e65; }
+.viewport-status p { margin:0; max-width:360px; font-size:13px; color:#697a91; line-height:1.7; overflow-wrap:anywhere; }
+.viewport-spinner { width:38px; height:38px; border:3px solid #dfe8fa; border-top-color:#3566d2; border-radius:50%; animation:render-orbit 1.2s linear infinite; }
+.viewport-status[data-state="failed"] .viewport-spinner { display:none; }
+.viewport-hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); max-width:calc(100% - 24px); padding:5px 11px; border:1px solid #e5eaf2; border-radius:20px; color:#60718a; background:#ffffffed; font-size:11px; line-height:1.5; white-space:nowrap; pointer-events:none; }
+.viewer.is-realtime .render-activity { inset:12px 12px auto auto; width:min(310px,calc(100% - 24px)); padding:0; align-items:flex-start; pointer-events:none; }
+.viewer.is-realtime .render-activity-card { grid-template-columns:24px minmax(0,1fr); gap:6px 10px; padding:10px 12px; width:100%; border-radius:10px; box-shadow:0 4px 16px #12346714; background:#f8faffee; }
+.viewer.is-realtime .render-activity-symbol { width:24px; height:24px; }
+.viewer.is-realtime .render-activity-symbol svg { width:16px; height:16px; }
+.viewer.is-realtime .render-activity-copy strong { font-size:12px; }
+.viewer.is-realtime .render-activity-copy p { font-size:11px; margin-top:2px; }
+.viewer.is-realtime .render-activity-note { display:none; }
+.viewer.is-realtime .render-activity-progress-row { gap:4px; }
+.viewer.is-realtime .render-activity-progress { height:4px; }
+.viewer:fullscreen { width:100vw; height:100vh; max-height:none; border:0; }
+.review-image-source { margin:0 0 10px; font-size:12px; }
+@media(max-width:640px) {
+  .view-mode-switch button { min-height:38px; padding:5px 10px; }
+  .viewport-hint { white-space:normal; text-align:center; width:max-content; font-size:10px; }
+  .viewer.is-realtime .render-activity { width:min(260px,calc(100% - 20px)); top:10px; right:10px; }
+}
+@media(prefers-reduced-motion:reduce) { .viewport-spinner { animation:none; border-style:dotted; } }
