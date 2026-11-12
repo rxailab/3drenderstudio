@@ -2093,3 +2093,41 @@ test('native checkpoints enable only their own follow-up preview and render with
   const request=h.calls.find(call=>call.url.endsWith('/jobs'));assert.ok(request);assert.deepEqual(request.body.shot_ids,['hero']);assert.equal(request.body.kind,'preview');
   assert.equal(h.calls.filter(call=>call.url.endsWith('/hero-optimize')).length,0);
 });
+
+test('home cards follow the v18 design: latest hero image, finished, active and interrupted states',async t=>{
+  const done=project('a');done.name='MORA 按压瓶';
+  done.outputs=[{job_id:'j1',shot_id:'side',quality:'preview',version:1,jpg_url:'/files/a/side.jpg',png_url:'/files/a/side.png'},
+    {job_id:'j2',shot_id:'hero',quality:'standard',version:1,jpg_url:'/files/a/hero.jpg',png_url:'/files/a/hero.png'},
+    {job_id:'j3',shot_id:'campaign',quality:'preview',version:1,jpg_url:'/files/a/campaign.jpg',png_url:'/files/a/campaign.png'}];
+  const rendering=project('b');rendering.active_job={id:'r',kind:'render',quality:'standard',status:'running',progress:40,origin:null};
+  const stopped=project('c');stopped.status='interrupted';stopped.analysis=null;
+  const fresh=project('d');fresh.name='<b>坐垫</b>';
+  const h=await setup(t,{projects:[done,rendering,stopped,fresh]});
+  const grid=h.node('homeProjectGrid'),card=id=>grid.querySelector(`[data-open-project="${id}"]`).closest('.project-card');
+  assert.equal(h.node('homeProjectCount').textContent,'4');assert.equal(grid.querySelectorAll('.project-card').length,4);
+  assert.equal(card('a').querySelector('img').getAttribute('src'),'/files/a/hero.jpg','the latest hero image represents the project');
+  assert.match(card('a').querySelector('.project-card-status').textContent,/1 张 4K 成品 · 3 个镜头/);
+  assert.equal(card('a').querySelector('.project-card-status').dataset.tone,'done');assert.ok(card('a').querySelector('.card-dot'));
+  assert.match(card('b').textContent,/正在渲染 4K · 后台继续/);assert.equal(card('b').querySelector('.project-card-progress > span').style.width,'40%');
+  assert.match(card('c').textContent,/分析已中断 · 可继续/);assert.ok(card('c').querySelector('svg.card-warning[aria-label="需要处理"]'));
+  assert.equal(card('d').querySelector('img'),null);assert.equal(card('d').querySelector('b'),null,'project names are escaped');assert.match(card('d').textContent,/可开始拍摄/);
+});
+
+test('home cards open projects and delete through the shared confirmation',async t=>{
+  const h=await setup(t);
+  const removing=h.run("deleteProject('b')");await tick();
+  assert.ok(h.node('homeProjectGrid').querySelector('[data-delete-project="b"]').getAttribute('aria-label').includes('删除项目'));
+  h.node('deleteProjectDialog').querySelector('[data-choice="delete"]').click();assert.equal(await removing,true);
+  assert.equal(h.node('homeProjectGrid').querySelector('[data-open-project="b"]'),null);assert.equal(h.node('homeProjectCount').textContent,'1');
+  h.node('homeProjectGrid').querySelector('[data-open-project="a"]').click();await tick();await tick();
+  assert.equal(h.run('current?.id'),'a');assert.equal(h.w.document.body.classList.contains('has-project'),true);assert.equal(h.node('welcomePanel').hidden,true);
+});
+
+test('home upload buttons open the native pickers and chosen files continue in the upload dialog',async t=>{
+  const h=await setup(t);let picked='';
+  h.node('modelFiles').click=()=>{picked='files';};h.node('modelFolder').click=()=>{picked='folder';};
+  h.node('uploadMain').click();assert.equal(picked,'files');assert.equal(h.node('uploadDialog').open,false,'the picker opens before the dialog');
+  h.node('homeBrowseFolder').click();assert.equal(picked,'folder');
+  await h.run("continueUpload([new File(['glb'],'bottle.glb')])");
+  assert.equal(h.node('uploadDialog').open,true);assert.match(h.node('chosenFiles').textContent,/bottle\.glb/);assert.equal(h.node('uploadSubmit').disabled,false);
+});

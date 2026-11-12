@@ -127,7 +127,14 @@ def ai_vision_test():
 @app.get('/api/projects')
 def projects():
     from instruction_service import public_project
-    return jsonify([public_project(item) for item in all_records('project')])
+    # Home cards show background work without loading every project's job list.
+    active={}
+    for job in all_records('job'):
+        if job.get('status') not in ('queued','running'): continue
+        known=active.get(job.get('project_id'))
+        if known is None or (known['status']=='queued' and job['status']=='running'):
+            active[job.get('project_id')]={key:job.get(key) for key in ('id','kind','quality','status','progress','origin')}
+    return jsonify([{**public_project(item),'active_job':active.get(item.get('id'))} for item in all_records('project')])
 
 @app.get('/api/projects/<ident>')
 def project(ident): return jsonify(engine.project_view(ident))

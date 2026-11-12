@@ -80,6 +80,16 @@ class ProjectLifecycleTests(unittest.TestCase):
     def delete(self, ident='alpha'):
         return self.client.delete('/api/projects/' + ident)
 
+    def test_project_list_summarizes_only_active_jobs_for_home_cards(self):
+        self.record('job', 'done', 'alpha', 'completed')
+        self.record('job', 'waiting', 'alpha', 'queued')
+        store.put('job', {'id': 'rendering', 'project_id': 'alpha', 'status': 'running', 'kind': 'render',
+                          'quality': 'standard', 'progress': 40, 'log_tail': ['private log'], 'plan': {'private': True}})
+        listing = {item['id']: item for item in self.client.get('/api/projects').get_json()}
+        self.assertEqual(listing['alpha']['active_job'], {'id': 'rendering', 'kind': 'render', 'quality': 'standard',
+                                                          'status': 'running', 'progress': 40, 'origin': None})
+        self.assertIsNone(listing['beta']['active_job'])
+
     def test_delete_removes_only_exact_project_records_and_files(self):
         for kind in ('job', 'export', 'material_task'):
             self.record(kind, kind + '-alpha')
