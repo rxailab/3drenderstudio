@@ -46,6 +46,7 @@ MAX_ITEMS = 40
 MAX_HINT = 400
 MARGIN = .05
 DARK, LIGHT = '#141414', '#ffffff'
+TOUCH = .005             # a headline block with more than this share of it on the product counts as touching it
 BASIS_KEYS = ('azimuth', 'elevation', 'focal_length', 'projection', 'ortho_scale', 'camera_distance', 'target_offset')
 
 
@@ -215,16 +216,25 @@ CUES = (
     (('瓶身', '机身', '壳体', '外壳', 'body', 'shell', 'housing'), '', '', 'check'),
     (('柜体', '箱体', '框架', 'frame', 'cabinet'), '', '', 'box'),
 )
+# What each icon stands for, so a model picks by meaning and not by the look of a name.
+ICON_MEANINGS = {
+    'check': 'a general point', 'star': 'a highlight', 'shield': 'protection, cover', 'lock': 'lock, key', 'drawer': 'drawer, storage', 'wheel': 'wheel, caster',
+    'layers': 'surface, material, worktop, layers', 'ruler': 'size, dimensions', 'drop': 'liquid, pump', 'leaf': 'natural, plant', 'bolt': 'electric power',
+    'sparkle': 'finish, shine', 'heart': 'care', 'handle': 'handle, grip', 'door': 'door', 'box': 'body, case, packaging', 'truck': 'delivery, transport',
+    'clock': 'time', 'weight': 'weight, load', 'tool': 'tools, repair', 'sun': 'light, outdoor', 'wave': 'water', 'flame': 'heat', 'bulb': 'lamp',
+    'screen': 'display', 'power': 'switch, button', 'bag': 'bag, carrying', 'eye': 'window, visibility', 'award': 'award', 'tag': 'label, brand',
+    'info': 'information', 'size': 'space, expansion', 'gear': 'mechanism, adjustment', 'dot': 'a small part', 'arrow': 'direction, movement', 'plus': 'an extra',
+    'home': 'home use', 'cup': 'drink, kitchen'}
 MATERIAL_WORDS = ((('不锈钢', 'stainless'), '不锈钢'), (('玻璃', 'glass'), '玻璃'), (('实木', '木', 'wood', 'oak'), '木质'),
                   (('真皮', '皮革', 'leather'), '皮革'), (('铝', 'alumin'), '铝制'), (('帆布', 'canvas'), '帆布'))
 COPY_PROMPT = '''You write the short key points that are placed on a product photo for an online shop. You are shown the photo and facts about the product.
 Return data only:
-- kicker: a tag of 2 to 6 Chinese characters (at most 14 Latin) naming the category or where the product is used, shown in a small pill above the headline; or an empty string.
+- kicker: a tag of 2 to 6 Chinese characters (at most 14 Latin) naming the category or where the product is used, shown in a small pill above the headline; it must add something and not repeat the headline's own words; or an empty string.
 - headline: the product in a few words, in the user's language (at most 12 characters for Chinese, 26 for Latin text). It is set large: keep it short and concrete.
 - emphasis: the one word or phrase inside headline to draw in the accent colour, copied exactly from headline; or an empty string.
 - subline: one short supporting line, or an empty string.
-- points: 3 to 5 key points a shopper should notice. title is at most 7 Chinese characters (14 Latin), detail at most 12 Chinese characters (26 Latin) or empty. icon is the closest of the available icons. parts lists the visible_parts names that this point is about, copied exactly, so a line can point at them; leave it empty when the point is about the whole product.
-Say only what the photo shows or the facts state: what a part is and what it is for. Do not praise it. Never give a number, size, weight, capacity, grade, certification or warranty unless it appears in the facts; never claim durability, strength, safety, quietness, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 高品质 and the like) unless the facts state it; never compare with other products. Prefer points about parts that are clearly visible in this photo, and spread them over different parts of the product. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures for it.'''
+- points: 3 to 5 key points a shopper should notice. title is at most 7 Chinese characters (14 Latin), detail at most 12 Chinese characters (26 Latin) or empty. icon is the name from available_icons whose meaning fits the point best. parts lists the visible_parts names that this point is about, copied exactly, so a line can point at them; leave it empty when the point is about the whole product.
+Say only what the photo shows or the facts state: what a part is and what it is for. Do not praise it. Never give a number, size, weight, capacity, grade, certification or warranty unless it appears in the facts; never claim durability, strength, safety, quietness, smoothness, ease, roominess, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 顺滑, 顺畅, 轻松, 宽敞, 高品质 and the like) unless the facts state it; never compare with other products. Prefer points about parts that are clearly visible in this photo, and spread them over different parts of the product. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures for it.'''
 
 
 def copy_schema():
@@ -337,7 +347,7 @@ def copy_for(project, hint='', image_path=None, visible=None):
     shown = list(visible if visible is not None else _names(project))[:80]
     facts = {'product_name': str(project.get('name', ''))[:200], 'product_category': str(metadata.get('product_category', ''))[:200],
              'material_note': str(metadata.get('material_note', ''))[:500], 'real_dimensions_mm': project['plan'].get('dimensions_mm'),
-             'visible_parts': shown, 'available_icons': list(ICONS),
+             'visible_parts': shown, 'available_icons': dict(ICON_MEANINGS),
              'surface_finishes': [{'part': str(row.get('object') or row.get('material', ''))[:80], 'finish': str(row.get('label', ''))[:40]}
                                   for row in lookdev[:30] if isinstance(row, dict)]}
     if hint:
@@ -603,11 +613,13 @@ def arrange(copy_data, picture, aspect='1:1', look=None):
     product = picture.rect or (.3, .3, .7, .7)
 
     # --- tag, headline and subline: one block, set large, in the freest corner or band
-    best = None
     kicker = copy_data.get('kicker') or ''; headline = copy_data.get('headline') or ''; subline = copy_data.get('subline') or ''
-    if headline:
-        places = (('left', 'top', 0), ('right', 'top', .03), ('center', 'top', .05), ('left', 'bottom', .09), ('right', 'bottom', .11),
-                  ('center', 'bottom', .13))
+    places = (('left', 'top', 0), ('right', 'top', .03), ('center', 'top', .05), ('left', 'bottom', .09), ('right', 'bottom', .11),
+              ('center', 'bottom', .13))
+
+    def block(subline):
+        """The best place and size for the block with this subline: (score, share on the product, ...measures)."""
+        found = None
         for step, size in enumerate((.1, .086, .074, .062, .052)):
             for limit in (.6, .46, .36):
                 lines = wrap(headline, size, limit / sx)
@@ -629,12 +641,21 @@ def arrange(copy_data, picture, aspect='1:1', look=None):
                     rect = (x0, y0, x0 + block_w, y0 + block_h)
                     on_product, on_scenery = picture.cover(rect)
                     # Large type is wanted, but not across the product: a headline that touches it at all pays for that first.
-                    score = (-(7 * on_product + 2.5 * on_scenery) - (.3 if on_product > .02 else 0) - picture.tone(rect)[1] * .8 - bias - step * .055
+                    score = (-(7 * on_product + 2.5 * on_scenery) - (.3 if on_product > TOUCH else 0) - picture.tone(rect)[1] * .8 - bias - step * .055
                              - (len(lines) - 1) * .02)
-                    if best is None or score > best[0]:
-                        best = (score, rect, align, size, sub_size, kick_size, lines, sub_lines, kick_h + kick_gap, head_h, gap)
+                    if found is None or score > found[0]:
+                        found = (score, on_product, rect, align, size, sub_size, kick_size, lines, sub_lines, kick_h + kick_gap, head_h, gap)
+        return found
+
+    best = block(subline) if headline else None
+    unplaced = []
+    if best and subline and best[1] > TOUCH:
+        # The supporting line is the first thing to go when the block would otherwise lie on the product.
+        shorter = block('')
+        if shorter and shorter[1] <= TOUCH:
+            best = shorter; unplaced.append(subline)
     if best:
-        _, rect, align, size, sub_size, kick_size, lines, sub_lines, head_y, head_h, gap = best
+        _, _, rect, align, size, sub_size, kick_size, lines, sub_lines, head_y, head_h, gap = best
         color, backing = _tone(picture, rect)
         plate = ({'color': '#ffffff', 'opacity': .92} if color == DARK else {'color': '#111111', 'opacity': .6}) if backing and picture.cover(rect)[0] > .25 else None
         common = {'type': 'text', 'x': rect[0], 'w': rect[2] - rect[0], 'align': align, 'color': color}
@@ -763,7 +784,7 @@ def arrange(copy_data, picture, aspect='1:1', look=None):
         items.append({'id': label['id'], 'type': 'callout', 'x': rect[0], 'y': rect[1], 'w': rect[2] - rect[0], 'title': point['title'],
                       'detail': point.get('detail') or '', 'icon': point.get('icon'), 'anchor': label['anchor'] if label['id'] in pointing else None,
                       'size': label['size'], 'color': color, 'plate': plate})
-    dropped = [label['point']['title'] for label in labels if label['id'] not in {item['id'] for item in items}]
+    dropped = unplaced + [label['point']['title'] for label in labels if label['id'] not in {item['id'] for item in items}]
     crowded = any(picture.cover(rect)[0] > .12 for rect in taken) or any(picture.cover(rect)[0] > .12 for _, rect in placed)
     return items, dropped, crowded, look
 
