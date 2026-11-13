@@ -138,6 +138,9 @@ def validate(plan):
             color=m['color']
             if not isinstance(color,str) or len(color)!=7 or color[0]!='#': raise ValueError('局部颜色应为 #RRGGBB')
             int(color[1:],16)
+    if 'scene_set' in p:
+        import scene_set
+        scene_set.validate(p['scene_set'],p)
     pose = p.get('pose',{})
     if not isinstance(pose,dict): raise ValueError('pose 无效')
     if 'frame' in pose: number(pose['frame'],0,100000,'frame')

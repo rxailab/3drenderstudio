@@ -70,6 +70,7 @@ def _ensure_idle(project_id):
     import material_agent
     import scene_exports
     import ecommerce
+    import scene_stylist
 
     if OPERATIONS.get(project_id) or project_id in instruction_service._INFLIGHT:
         raise ProjectBusyError('项目还有正在处理的操作，请等待处理完成后再删除。')
@@ -82,6 +83,8 @@ def _ensure_idle(project_id):
          '项目正在调整材质，请先取消任务或等待完成后再删除。'),
         (ecommerce.KIND, {'queued', 'running'}, ecommerce.RUNNING, ecommerce.PROCESSES,
          '项目正在导出电商套图，请先取消导出或等待完成后再删除。'),
+        (scene_stylist.KIND, scene_stylist.ACTIVE, scene_stylist.RUNNING_TASKS, {},
+         '项目正在生成使用场景，请先取消或等待完成后再删除。'),
     ]
     for kind, active, running, processes, message in checks:
         for record in store.all_records(kind):

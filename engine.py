@@ -49,6 +49,7 @@ RUNTIME_COMPONENTS={
     'export_blend':('blender/export_scene.py',),
     'export_c4d':('blender/export_scene.py','c4d/convert_scene.py'),
     'matte':('blender/render_matte.py',),
+    'scene_set':('blender/worker.py','blender/scene_dress.py','blender/scene_layout.py','scene_set.py','scene_props.py'),
 }
 
 def runtime_status():
@@ -80,6 +81,8 @@ def require_render_runtime(plan,shot_ids=None):
     checkpoints=plan.get('scene_checkpoints',{})
     if any(shot_id in checkpoints for shot_id in ids):require_runtime('hero_optimize')
     if not ids or any(shot_id not in checkpoints for shot_id in ids):require_runtime('render')
+    scene=plan.get('scene_set')
+    if isinstance(scene,dict) and scene.get('shot_id') in ids:require_runtime('scene_set')
 
 def project_view(ident):
     p=get('project',ident)
@@ -91,6 +94,8 @@ def project_view(ident):
     import ecommerce
     p['ecommerce']=ecommerce.settings(p)
     p['ecommerce_exports']=ecommerce.project_exports(ident)
+    import scene_stylist
+    p['scene_task']=scene_stylist.latest(ident)
     return p
 
 class JobConflictError(ValueError):

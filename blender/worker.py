@@ -543,7 +543,7 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
     return lights
 
 
-def studio(plan,shot,meshes):
+def studio(plan,shot,meshes,set_meshes=()):
     scene=bpy.context.scene;style=shot.get('style',plan.get('style','soft'))
     dark=style=='dark';white=style=='white';soft=plan.get('light_softness',1)
     scene.world=bpy.data.worlds.new('Studio environment');scene.world.use_nodes=True
@@ -566,7 +566,7 @@ def studio(plan,shot,meshes):
         links.new(mix.outputs[0],nodes['World Output'].inputs['Surface'])
     showcase=plan.get('look')=='showcase'
     if showcase:
-        lights=showcase_rig(scene,shot,soft,white,dark,meshes)
+        lights=showcase_rig(scene,shot,soft,white,dark,list(meshes)+list(set_meshes))
         # A dim neutral surround: enough for open shadows, never a flat wash.
         scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.9,.93,1,1) if not dark else (.3,.36,.48,1)
         scene.world.node_tree.nodes['Background'].inputs[1].default_value=.08 if not dark else .04
@@ -709,8 +709,23 @@ def render(req,objects,meshes):
     scene.render.resolution_x=round(long*a/max(a,b));scene.render.resolution_y=round(long*b/max(a,b));scene.render.resolution_percentage=100
     operations,warnings=prepare(objects,meshes,plan)
     if plan.get('look')=='showcase': operations.append(soften_edges(meshes))
+    # A usage scene: props and an opened compartment, rebuilt from the stored layout.
+    # Props are added after the product registration above, so they never count as product.
+    scene_set=plan.get('scene_set') if isinstance(plan.get('scene_set'),dict) and plan['scene_set'].get('shot_id')==shot.get('id') else None
+    set_meshes=[]
+    if scene_set:
+        from blender import scene_dress
+        from scene_set import basis as scene_basis
+        if scene_set.get('basis')!=scene_basis(plan):
+            warnings.append('模型朝向或姿态在布置场景后发生了变化，本次未放置道具；请重新生成使用场景。');scene_set=None
+        else:
+            event('正在布置场景道具')
+            set_meshes=scene_dress.apply(scene_set,meshes)
+            operations.append(dict(operation='scene_set',props=[prop['asset_id'] for prop in scene_set.get('props',[])],
+                                   opened=len((scene_set.get('open') or {}).get('objects',[]))))
     cam,checks=camera(plan,shot,meshes)
-    settings=studio(plan,shot,meshes)
+    settings=studio(plan,shot,meshes,set_meshes)
+    if scene_set: settings['scene_set']=scene_dress.surface(scene_set,shot,meshes)
     dev=device(req.get('force_cpu',False))
     scene.cycles.samples={'thumbnail':8,'preview':24,'showcase':160,'standard':128,'fine':1024}[quality]
     scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'showcase':.015,'standard':.015,'fine':.005}[quality]

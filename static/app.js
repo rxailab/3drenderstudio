@@ -429,6 +429,65 @@ function currentHeroOptimizationAttempt() {
   }
   return attempt;
 }
+// Usage scene: the product where it is used, with ready-made CC0 props placed around it.
+let sceneSubmitting=false,sceneSeenTask=null;
+const sceneErrors=new Map();
+const sceneZoneLabels={on_top:'台面',inside:'抽屉内',beside:'旁边',behind:'后方'};
+const sceneSkipLabels={not_in_catalogue:'模型库中没有合适的',no_room:'没有合适的位置',no_flat_top:'没有平整台面',no_open_compartment:'没有可打开的抽屉',download_failed:'下载失败',duplicate:'与其他道具重复',import_failed:'模型无法导入'};
+function sceneTaskActive() { return ['queued','running'].includes(current?.scene_task?.status); }
+function sceneAvailable() { return system?.runtime?.capabilities?.scene_set!==false; }
+function renderSceneSet() {
+  const button=$('sceneButton'),status=$('sceneStatus'),details=$('sceneDetails');
+  const section=button.closest('.scene-set');section.hidden=!current;if(!current)return;
+  const task=current.scene_task,set=current.plan?.scene_set,active=sceneTaskActive(),job=activeJob();
+  const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || !!job || automaticMaterialBusy() || sceneSubmitting;
+  let message='';
+  if(serviceDisconnected)message='连接恢复后可生成场景。';
+  else if(!sceneAvailable())message='场景组件未就绪，请查看运行环境。';
+  else if(!current.analysis)message='模型分析完成后即可生成场景。';
+  else if(active)message=task.stage || '正在生成场景';
+  else if(sceneErrors.get(current.id))message=sceneErrors.get(current.id);
+  else if(task?.status==='failed' && task.base_version===current.version)message=task.error || '场景未生成，可重试。';
+  else if(set)message=set.summary || '';
+  button.disabled=locked || active || !sceneAvailable() || !current.analysis || serviceDisconnected;$('sceneHint').disabled=button.disabled;
+  button.textContent=sceneSubmitting?'正在提交…':active?'正在生成使用场景…':set?(dirty?'保存并换一组场景道具':'换一组场景道具'):(dirty?'保存并生成使用场景图':'生成使用场景图');
+  if(active || sceneSubmitting)button.setAttribute('aria-busy','true');else button.removeAttribute('aria-busy');
+  button.title='识别产品，从 Poly Haven（CC0）搜集合适的现成模型，按真实尺寸布置并预览';
+  status.textContent=message;status.hidden=!message;status.classList.toggle('is-summary',!!set && message===(set.summary || '') && !active);
+  details.hidden=!set;
+  if(set){
+    const props=Array.isArray(set.props)?set.props:[],skipped=Array.isArray(set.skipped)?set.skipped:[];
+    stableHTML($('sceneProps'),props.map(prop=>{const url=typeof prop.source_url==='string' && /^https:\/\/polyhaven\.com\/a\/[A-Za-z0-9_]+$/.test(prop.source_url)?prop.source_url:'';return `<li><span>${esc(prop.name || prop.asset_id)}</span><small>${esc(sceneZoneLabels[prop.zone] || '')}${url?` · <a href="${esc(url)}" target="_blank" rel="noopener">${esc(prop.provider || 'Poly Haven')}</a>`:''} · ${esc(prop.license || 'CC0')}</small></li>`;}).join(''));
+    const size=set.product?.max_dimension_mm,basis={user:'你填写的尺寸',ai:'模型估计',model_units:'按模型单位推断',category:'按品类常见尺寸'}[set.product?.size_basis] || '';
+    $('sceneNote').textContent=`${set.source==='ai'?'由 AI 选择场景与道具':'按内置品类规则选择'}${size?`；产品最长边按 ${Math.round(size)} mm 计（${basis}）`:''}${set.open?'；已拉开抽屉':''}${skipped.length?`；未放入 ${skipped.length} 项（${[...new Set(skipped.map(row=>sceneSkipLabels[row.reason] || '未放入'))].join('、')}）`:''}。道具只出现在这个镜头里，产品本身与其他镜头不变。`;
+    $('sceneRemove').disabled=locked || active;
+  }
+  // A scene that just finished is shown: its shot becomes the active one.
+  if(task?.status==='completed' && task.id!==sceneSeenTask && task.applied_version===current.version && shots().some(shot=>shot.id==='scene')){
+    sceneSeenTask=task.id;
+    if(activeShot!=='scene' && !dirty){activeShot='scene';cameraShot='scene';queueMicrotask(()=>{if(current)renderProject();});}
+  }
+}
+async function generateScene() {
+  if(!current || sceneSubmitting || sceneTaskActive() || activeJob() || !sceneAvailable() || serviceDisconnected || !current.analysis)return;
+  const id=current.id;sceneErrors.delete(id);sceneSubmitting=true;renderSceneSet();
+  try{
+    if(dirty)await savePlan(true);
+    if(current?.id!==id)return;
+    const task=await api(`/api/projects/${encodeURIComponent(id)}/scene`,{method:'POST',body:{expected_version:current.version,hint:$('sceneHint').value.trim().slice(0,300)}});
+    if(current?.id===id){current.scene_task=task;sceneSeenTask=null;}
+  }catch(error){sceneErrors.set(id,error.message || '场景未能开始，请重试。');}
+  finally{sceneSubmitting=false;if(current)renderProject();}
+}
+async function removeScene() {
+  if(!current || sceneSubmitting || sceneTaskActive() || activeJob() || dirty)return;
+  const id=current.id;sceneSubmitting=true;renderSceneSet();
+  try{
+    const project=await api(`/api/projects/${encodeURIComponent(id)}/scene/remove`,{method:'POST',body:{expected_version:current.version}});
+    if(current?.id===id){current=project;if(activeShot==='scene'){activeShot='hero';cameraShot='hero';}syncSettings();toast('已移除使用场景；可用撤销恢复。');}
+  }catch(error){sceneErrors.set(id,error.message || '未能移除场景。');}
+  finally{sceneSubmitting=false;if(current)renderProject();}
+}
 function renderHeroOptimization() {
   const button=$('optimizeHeroButton'),reason=$('optimizeHeroReason'),shot=current && heroOptimizationShot();
   button.hidden=!shot;reason.hidden=true;reason.textContent='';
@@ -495,7 +554,7 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderRealtimeControls();renderEcommerce();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderSceneSet();renderRealtimeControls();renderEcommerce();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
@@ -2128,6 +2187,7 @@ function installEvents() {
   $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};
   $('exampleList').onclick=async e=>{const b=e.target.closest('[data-example]');if(!b || !workerRenderReady() || navigationBlocked())return;if(!(await resolveUnsavedChanges()))return;b.disabled=true;try{const p=await api('/api/examples/'+b.dataset.example+'/import',{method:'POST'});await refreshList();await openProject(p.id);toast('验收模型已导入，正在进行真实分析。');}catch(error){toast(error.message,true);}finally{b.disabled=false;}};
   $('optimizeHeroButton').onclick=optimizeHero;
+  $('sceneButton').onclick=generateScene;$('sceneRemove').onclick=removeScene;
   $('previewButton').onclick=()=>run('preview');$('renderButton').onclick=()=>run('render');
   $('settingsForm').onsubmit=async e=>{e.preventDefault();try{await savePlan();}catch(error){toast(error.message,true);}};
   $('settingsForm').addEventListener('input',e=>{if(['materialSlot','cameraShot','quality','materialOrigin','materialLicense','externalColor','externalRoughness','externalNormal'].includes(e.target.id))return;if(e.target.id==='materialColor' && selectedMaterial)editedMaterialColors.add(selectedMaterial);markDirty();updateRangeLabels();if(e.target.id==='margin' && draft){draft.margin=readNumber('margin')/100;updateRealtimeFraming();}});
