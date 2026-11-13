@@ -254,12 +254,35 @@
 <p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
 </section>
 <section class="panel-section scene-set" aria-label="使用场景">
+<div id="sceneAudience" class="scene-audience" hidden>
+<div class="scene-audience-row">
+<label class="field-label" for="sceneAudienceSelect">目标人群</label>
+<select id="sceneAudienceSelect" aria-describedby="sceneProposal"><option value="auto">自动推荐</option></select>
+</div>
+<div class="scene-audience-row" id="sceneReferenceRow" hidden>
+<label class="field-label" for="sceneReferenceSelect">参考画面</label>
+<select id="sceneReferenceSelect"><option value="">由 AI 在该人群中选择</option></select>
+</div>
+<div class="scene-audience-row">
+<label class="field-label" for="sceneMethodSelect">生成方式</label>
+<select id="sceneMethodSelect" aria-describedby="sceneMethodHelp">
+<option value="auto">自动：有人物或真实环境时用图像模型</option>
+<option value="render">3D 道具场景（Blender 渲染）</option>
+<option value="generate">AI 图像生成（人物 / 真实环境）</option>
+</select>
+</div>
+<p id="sceneMethodHelp" class="field-help" hidden></p>
+<button id="sceneRecommend" class="button subtle full-width" type="button" aria-describedby="sceneProposal">推荐人群与场景</button>
+<div id="sceneProposal" class="scene-proposal" role="status" hidden></div>
+</div>
 <input id="sceneHint" type="text" maxlength="300" placeholder="可选：产品是什么、想要的场景，如“车间里的工具柜”" aria-label="使用场景说明">
 <button id="sceneButton" class="button secondary full-width" type="button" aria-describedby="sceneStatus">生成使用场景图</button>
 <p id="sceneStatus" class="render-reason" role="status" hidden></p>
 <details id="sceneDetails" class="scene-details" hidden>
-<summary>场景道具与来源</summary>
+<summary id="sceneDetailsTitle">场景道具与来源</summary>
+<div id="sceneBrief" class="scene-brief" hidden></div>
 <ul id="sceneProps"></ul>
+<div id="sceneGenerated" class="scene-generated" hidden></div>
 <p id="sceneNote" class="field-help"></p>
 <button id="sceneRemove" class="button subtle" type="button">移除使用场景</button>
 </details>

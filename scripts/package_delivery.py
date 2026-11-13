@@ -112,7 +112,7 @@ source_files=[f for f in sorted(ROOT.glob('*.py')) if f.name not in EXCLUDED_ROO
 # Markdown docs, and the verification records the update notes refer to.
 source_files += sorted(ROOT.glob('*.md'))+sorted(ROOT.glob('*_VERIFICATION*.json'))
 source_files += [ROOT/name for name in ['requirements.txt','.env.example','start.ps1','启动应用.cmd','acceptance_results.json']]
-for folder in ['blender','c4d','static','tests','samples']:source_files += tree(folder)
+for folder in ['blender','c4d','static','tests','samples','references']:source_files += tree(folder)
 source_files += sorted((ROOT/'scripts').glob('*.py'))
 
 # Validation evidence stays an explicit selection.

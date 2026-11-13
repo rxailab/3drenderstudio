@@ -55,6 +55,63 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 **绘制与导出在浏览器中完成**（`static/layer.js`）：同一个函数既画屏幕上的图层，也生成导出的 SVG；PNG / JPG 由浏览器把渲染图与该 SVG 合成。服务端不栅格化文字。详见 [TEXT_LAYER_UPDATE.md](TEXT_LAYER_UPDATE.md)。
 
+## v25 按人群策划的使用场景图
+
+**参考库。** `GET /api/scene/audiences` 返回 `{pack, segments, image}`。`pack` 为 `{id,title,accessed,count,index_url}`；`segments` 是八类人群，每项 `{id,number,label,question,priority,focus,scene,references}`，`references` 每条 `{id,title,url,locator,attribution,note,in_use}`，`id` 形如 `"05-02"`（人群序号-条目序号），`url` 一律是 `https://` 链接。`image` 是图像模型的状态 `{available,status,message,model,base_url,quality,enabled,key_configured}`，`status` 为 `configured`、`missing_key`、`not_configured`、`disabled`、`error`；不含 Key。`GET /references/eu-tool-ecommerce/index.html` 与 `README.md` 提供参考库自己的索引和使用说明，其他文件不提供。
+
+**推荐。** `POST /api/projects/{id}/scene/recommend`，请求体 `{"hint"?, "audience"?: "auto" 或人群 id, "reference"?: 该人群内的参考 id, "method"?: "auto" | "render" | "generate"}`，同步返回一份方案并保存在项目的 `scene_proposal` 中：
+
+```json
+{"id":"…","version":1,"hint":"","audience":"auto","reference":null,"at":1794598953.9,
+ "segment_id":"site_team","reference_id":"05-02","source":"ai","reason":"…","product":"rolling tool cabinet",
+ "max_dimension_mm":740,"summary":"…","people":true,"complex":false,"scene":"A bright workshop…",
+ "setting":"workshop","azimuth":35.0,"elevation":18.0,
+ "method":"generate","method_note":null,"image_available":true}
+```
+
+`source` 为 `ai` 或 `rules`；`segment_id` 为 `null` 表示参考库里没有适合这件产品的人群。`people` 或 `complex` 为真且图像模型可用时 `method` 为 `generate`，否则为 `render`；图像模型不可用而画面需要它时，`method` 为 `render` 且 `method_note` 说明原因。请求中指定 `method:"generate"` 而图像模型不可用、`audience` 不在参考库中、`reference` 不属于所选人群时返回 `400`。推荐只调用文字 / 视觉模型，不调用图像模型。
+
+**生成。** `POST /api/projects/{id}/scene` 的请求体新增 `audience`、`reference`、`method`，含义同上，省略时为自动。任务开始时，如果项目里保存的 `scene_proposal` 对应同一方案版本、同一 `hint` 和同样的选择，就直接采用；否则先重新策划（阶段“推荐目标人群与场景”）。之后按 `method` 分两路：
+
+- `render`：与 v22 相同，`result` 增加 `method:"render"`、`audience` 和 `method_note`。
+- `generate`：渲染产品参考图（阶段“渲染产品参考角度 n / 3”）→ 图像模型生成 → 核对；不提交预览任务，`job_id` 为 `null`，完成时阶段为“场景图已生成”。`result` 为：
+
+```json
+{"summary":"…","source":"ai","method":"generate","model":"gpt-image-2","attempts":1,
+ "check":{"status":"passed","flags":{"product_present":true,"shape_consistent":true,"parts_consistent":true,
+          "colours_consistent":true,"no_added_text":true},"issues":[],"note":"…"},
+ "size_basis":"ai","max_dimension_mm":740.0,"width":2048,"height":2048,
+ "audience":{"segment_id":"site_team","label":"小型施工与安装团队","reference_id":"05-02","source":"ai","reason":"…"},
+ "method_note":null}
+```
+
+`check.status` 为 `passed`、`failed`（`issues` 列出差异，最多 5 条）或 `unchecked`（没有可用的视觉模型，或核对调用失败）。图像服务的错误（额度、权限、内容审核、超时）使任务以 `failed` 结束，方案不变；错误信息不包含上游返回的文字。
+
+**方案与输出。** 两种方式都在 `plan.scene_brief` 中记录：
+
+```json
+{"version":1,"shot_id":"scene","segment_id":"site_team","reference_id":"05-02","source":"ai","method":"generate",
+ "reason":"…","summary":"…","people":true,"complex":false}
+```
+
+`source` 为 `ai`、`rules` 或 `user`（人群由用户指定）；`method` 为 `render` 或 `generate`。通过 `POST /plan` 提交时按同一约定校验。`method` 为 `generate` 时，`shot_id` 指向的镜头不经 Blender 渲染：`POST /jobs` 中的该镜头被忽略，只请求它时返回 `400`；后台缩略图也不包含它。它的图片是 `outputs` 中的一条记录：
+
+```json
+{"shot_id":"scene","shot_label":"使用场景","quality":"generated","version":2,"job_id":"<场景任务 id>",
+ "png_url":"/files/<项目>/scene_ai/<任务>/scene/scene.png","jpg_url":"…/scene.jpg","blend_url":null,
+ "width":2048,"height":2048,
+ "generated":{"model":"gpt-image-2","quality":"medium","size":[2048,2048],"attempts":1,"check":{…},
+              "prompt":"发给图像模型的完整文字","usage":{"input_tokens":3378,"output_tokens":3878,"total_tokens":7256},"seconds":213.6,
+              "references":[{"url":"/files/<项目>/scene_ai/references/<键>/<键>.png","azimuth":35.0,"elevation":18.0}],
+              "discarded":[{"url":"…/attempt1.png","issues":["…"]}]}}
+```
+
+画幅按方案的 `aspect`：`1:1` 为 2048 × 2048，`4:3` 为 2048 × 1536，`3:4` 为 1536 × 2048。`GET /api/projects/{id}/scene` 的返回增加 `scene_brief` 与 `proposal`；`POST …/scene/remove` 同时移除 `scene_brief`，已生成的图片文件保留在项目目录中。
+
+**图像模型配置。** `GET /api/ai/settings` 的返回增加 `image_config`（与上面的 `image` 相同）。配置项为 `.env` 中的 `AI_IMAGE_BASE_URL`、`AI_IMAGE_MODEL`、`AI_IMAGE_API_KEY`、`AI_IMAGE_QUALITY`、`AI_IMAGE_ENABLED`；使用 HAI 接口时全部可省略。请求发往 `<基础地址>/images/edits`（`multipart/form-data`：`model`、`prompt`、`size`、`quality`、`stream=true`、`partial_images=2` 和若干 `image[]`），以 Server-Sent Events 接收，也接受普通 JSON 响应。Key 只会发往与文字模型相同的地址，或同为 HAI 官方网关的地址。
+
+**运行能力。** `GET /api/system` 的 `runtime.capabilities.scene_image` 表示 AI 生成所需的本地组件（`blender/worker.py`、`scene_imagegen.py`、`scene_audience.py`、`references/eu-tool-ecommerce/references.csv`）是否齐全。详见 [SCENE_AUDIENCE_UPDATE.md](SCENE_AUDIENCE_UPDATE.md)。
+
 ## v22 使用场景图
 
 **生成。** `POST /api/projects/{id}/scene`，请求体 `{"hint"?: 不超过 300 字的说明, "expected_version"?: 当前方案版本, "seed"?: 1–999999999 的整数}`，返回 `202` 与任务 `{id,project_id,status,stage,error,base_version,created_at}`。任务在后台线程中执行：识别产品与环境 → 检索并下载道具 → 准备地面与背景 → 启动一次无界面的 Blender 计算布置。成功后一次性保存为一个新的方案版本（历史记录的原因是“生成使用场景”），并自动提交镜头 `scene` 的预览任务。`status` 为 `queued`、`running`、`completed`、`failed`、`cancelled`；完成后带 `applied_version`、`job_id`（预览任务）和 `result`：
