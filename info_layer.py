@@ -16,6 +16,7 @@ writing a headline never makes a render stale.
 The browser draws and exports the layer (static/layer.js); this module never
 rasterises text.
 """
+import colorsys
 import copy
 import hashlib
 import json
@@ -39,6 +40,8 @@ ICONS = ('check', 'star', 'shield', 'lock', 'drawer', 'wheel', 'layers', 'ruler'
          'handle', 'door', 'box', 'truck', 'clock', 'weight', 'tool', 'sun', 'wave', 'flame', 'bulb', 'screen', 'power', 'bag',
          'eye', 'award', 'tag', 'info', 'size', 'gear', 'dot', 'arrow', 'plus', 'home', 'cup')
 TYPES = ('text', 'icon', 'callout')
+THEMES = ('clean', 'bold', 'card', 'dark', 'tag')          # how a layer is dressed; none means the plain drawing
+ROLES = ('headline', 'subline', 'kicker', 'body')
 MAX_ITEMS = 40
 MAX_HINT = 400
 MARGIN = .05
@@ -106,6 +109,12 @@ def validate(value):
             if item.get('weight', 400) not in (400, 600, 700) or item.get('align', 'left') not in ('left', 'center', 'right'):
                 raise ValueError('图文图层的文字样式无效')
             row['weight'] = item.get('weight', 400); row['align'] = item.get('align', 'left')
+            if item.get('role', 'body') not in ROLES:
+                raise ValueError('图文图层的文字角色无效')
+            if item.get('role', 'body') != 'body':
+                row['role'] = item['role']
+            if item.get('mark'):
+                row['mark'] = _text(item['mark'], 60, '强调词')
         if kind == 'callout':
             row['title'] = _text(item.get('title'), 80, '标注标题')
             row['detail'] = _text(item.get('detail', ''), 160, '标注说明', empty=True)
@@ -120,6 +129,12 @@ def validate(value):
             row['anchor'] = anchor
         clean.append(row)
     layer = {'version': 1, 'items': clean}
+    if value.get('theme') is not None:
+        if value['theme'] not in THEMES:
+            raise ValueError('图文图层的风格无效')
+        layer['theme'] = value['theme']
+    if value.get('accent') is not None:
+        layer['accent'] = _color(value['accent'], '主色')
     basis = value.get('basis')
     if basis is not None:
         if not isinstance(basis, dict) or set(basis) - set(BASIS_KEYS) - {'aspect'} or len(json.dumps(basis)) > 2000:
@@ -181,7 +196,7 @@ class LayerConflict(ValueError):
 # what is there; it never claims a number, a grade or a performance.
 CUES = (
     (('抽屉', 'drawer'), '抽屉收纳', '物品分层放置', 'drawer'),
-    (('脚轮', '万向轮', '轮子', 'caster', 'wheel'), '带轮移动', '可推到手边使用', 'wheel'),
+    (('脚轮', '万向轮', '滚轮', '轮子', 'caster', 'wheel'), '带轮移动', '可推到手边使用', 'wheel'),
     (('锁芯', '钥匙', '锁', 'lock', 'key'), '带锁', '可上锁存放', 'lock'),
     (('台面', '桌面', 'worktop', 'countertop', 'tabletop'), ('{material}台面', '工作台面'), '可放置常用物品', 'layers'),
     (('拉手', '把手', '提手', '手柄', 'handle'), ('{material}拉手', '拉手'), '便于开合与提拿', 'handle'),
@@ -204,10 +219,12 @@ MATERIAL_WORDS = ((('不锈钢', 'stainless'), '不锈钢'), (('玻璃', 'glass'
                   (('真皮', '皮革', 'leather'), '皮革'), (('铝', 'alumin'), '铝制'), (('帆布', 'canvas'), '帆布'))
 COPY_PROMPT = '''You write the short key points that are placed on a product photo for an online shop. You are shown the photo and facts about the product.
 Return data only:
-- headline: the product in a few words, in the user's language (at most 14 characters for Chinese, 28 for Latin text).
+- kicker: a tag of 2 to 6 Chinese characters (at most 14 Latin) naming the category or where the product is used, shown in a small pill above the headline; or an empty string.
+- headline: the product in a few words, in the user's language (at most 12 characters for Chinese, 26 for Latin text). It is set large: keep it short and concrete.
+- emphasis: the one word or phrase inside headline to draw in the accent colour, copied exactly from headline; or an empty string.
 - subline: one short supporting line, or an empty string.
-- points: 2 to 5 key points a shopper should notice. title is at most 8 Chinese characters (16 Latin), detail at most 14 Chinese characters (30 Latin) or empty. icon is the closest of the available icons. parts lists the visible_parts names that this point is about, copied exactly, so a line can point at them; leave it empty when the point is about the whole product.
-Say only what the photo shows or the facts state. Never give a number, size, weight, capacity, grade, certification, warranty or performance claim unless it appears in the facts, and never compare with other products. Prefer points about parts that are clearly visible in this photo. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures for it.'''
+- points: 3 to 5 key points a shopper should notice. title is at most 7 Chinese characters (14 Latin), detail at most 12 Chinese characters (26 Latin) or empty. icon is the closest of the available icons. parts lists the visible_parts names that this point is about, copied exactly, so a line can point at them; leave it empty when the point is about the whole product.
+Say only what the photo shows or the facts state: what a part is and what it is for. Do not praise it. Never give a number, size, weight, capacity, grade, certification or warranty unless it appears in the facts; never claim durability, strength, safety, quietness, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 高品质 and the like) unless the facts state it; never compare with other products. Prefer points about parts that are clearly visible in this photo, and spread them over different parts of the product. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures for it.'''
 
 
 def copy_schema():
@@ -215,8 +232,8 @@ def copy_schema():
         return {'type': 'object', 'additionalProperties': False, 'properties': properties, 'required': list(properties)}
     point = obj({'title': {'type': 'string', 'maxLength': 40}, 'detail': {'type': 'string', 'maxLength': 80},
                  'icon': {'type': 'string', 'enum': list(ICONS)}, 'parts': {'type': 'array', 'maxItems': 40, 'items': {'type': 'string', 'maxLength': 300}}})
-    return obj({'headline': {'type': 'string', 'maxLength': 60}, 'subline': {'type': 'string', 'maxLength': 80},
-                'points': {'type': 'array', 'minItems': 1, 'maxItems': 6, 'items': point}})
+    return obj({'kicker': {'type': 'string', 'maxLength': 30}, 'headline': {'type': 'string', 'maxLength': 60}, 'emphasis': {'type': 'string', 'maxLength': 60},
+                'subline': {'type': 'string', 'maxLength': 80}, 'points': {'type': 'array', 'minItems': 1, 'maxItems': 6, 'items': point}})
 
 
 def _clip(text, limit):
@@ -274,11 +291,25 @@ def copy_rules(project, hint='', visible=None):
             points.append({'title': '产品尺寸', 'detail': ' × '.join('%g' % round(value, 1) for value in dimensions) + ' mm',
                            'icon': 'ruler', 'parts': []})
     headline = _clip(re.sub(r'\.(obj|glb|gltf|fbx|stl|zip)$', '', str(project.get('name', '')).strip(), flags=re.I) or '产品', 28)
-    subline = _clip(metadata.get('product_category') or '', 40)
-    if not subline and len(points) >= 2 and not typed:
-        subline = ' · '.join(point['title'] for point in points[:3])
+    subline = _clip(metadata.get('product_category') or metadata.get('material_note') or '', 40)       # the callouts carry the points; no line repeats them
     notes = [] if points else ['没有从名称中识别出可介绍的部位；可在上方逐行写下要点，或手动添加文字。']
-    return {'headline': headline, 'subline': subline, 'points': points}, notes
+    kicker, emphasis = _category(project, headline)
+    return {'kicker': kicker, 'headline': headline, 'emphasis': emphasis, 'subline': subline, 'points': points}, notes
+
+
+# A category tag per kind of product, and the word of the headline that names the product.
+KICKERS = {'tool_storage': '车间收纳', 'personal_care': '日常洗护', 'tableware': '餐厨用品', 'bag': '日常出行', 'garden': '园艺户外',
+           'electronics': '数码办公', 'furniture': '家居收纳'}
+
+
+def _category(project, headline):
+    try:
+        import scene_stylist
+        recipe = scene_stylist.recipe_for(project)
+    except Exception:
+        return '', ''
+    words = sorted((word for word in recipe.get('words', ()) if len(word) >= 2 and word in headline and word != headline), key=len, reverse=True)
+    return KICKERS.get(recipe.get('id'), ''), (words[0] if words else '')
 
 
 def _config(image):
@@ -313,14 +344,17 @@ def copy_for(project, hint='', image_path=None, visible=None):
         facts['hint'] = hint
     try:
         answer = _ask(config, COPY_PROMPT, facts, copy_schema(), image_path)
-    except Exception:           # no answer is not a reason to have no layout
-        return rules, 'rules', notes + ['AI 未返回可用结果，已改用名称规则。']
+    except Exception as exc:    # no answer is not a reason to have no layout; say why, in the service's own safe words
+        reason = str(exc)[:120] if isinstance(exc, ValueError) and str(exc) else ''
+        return rules, 'rules', notes + ['AI 未返回可用结果%s，已改用名称规则。' % ('（%s）' % reason.rstrip('。') if reason else '')]
     allowed = set(shown)
     points = [{'title': _clip(point['title'], 16), 'detail': _clip(point['detail'], 30), 'icon': point['icon'],
                'parts': [name for name in point['parts'] if name in allowed]} for point in answer['points'] if point['title'].strip()]
     if not points:
         return rules, 'rules', notes
-    return {'headline': _clip(answer['headline'], 28) or rules['headline'], 'subline': _clip(answer['subline'], 40), 'points': points[:5]}, 'ai', []
+    headline = _clip(answer['headline'], 28) or rules['headline']; emphasis = answer['emphasis'].strip()
+    return {'kicker': _clip(answer['kicker'], 14), 'headline': headline, 'emphasis': emphasis if emphasis and emphasis in headline and emphasis != headline else '',
+            'subline': _clip(answer['subline'], 40), 'points': points[:5]}, 'ai', []
 
 
 # ------------------------------------------------------------------ what the picture shows
@@ -405,10 +439,12 @@ class Picture:
     def __init__(self, probe_result, image_path=None):
         self.nx = probe_result['nx']; self.ny = probe_result['ny']; self.cells = probe_result['cells']
         self.objects = probe_result['objects']; self.estimated = bool(probe_result.get('estimated'))
-        luminance = [.5] * (self.nx * self.ny)
+        luminance = [.5] * (self.nx * self.ny); self.colors = None
         if image_path:
             with Image.open(image_path) as image:
-                luminance = [value / 255 for value in image.convert('L').resize((self.nx, self.ny), Image.Resampling.BOX).getdata()]
+                small = image.convert('RGB').resize((self.nx, self.ny), Image.Resampling.BOX)
+            self.colors = list(small.getdata())
+            luminance = [value / 255 for value in small.convert('L').getdata()]
         self.luminance = luminance
         self._product = self._table([1 if cell >= 0 else 0 for cell in self.cells])
         self._scenery = self._table([1 if cell == -2 else 0 for cell in self.cells])
@@ -444,6 +480,34 @@ class Picture:
         span = self._span(rect); area = (span[2] - span[0]) * (span[3] - span[1])
         mean = self._sum(self._light, span) / area
         return mean, math.sqrt(max(0.0, self._sum(self._light2, span) / area - mean * mean))
+
+    def backdrop(self):
+        """(mean brightness, unevenness) of everything that is neither product nor scenery."""
+        values = [light for light, cell in zip(self.luminance, self.cells) if cell == -1] or self.luminance
+        mean = sum(values) / len(values)
+        return mean, math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
+
+    def accent(self):
+        """The product's own colour, made vivid, as '#rrggbb'; None when the product has no colour to speak of."""
+        if not self.colors:
+            return None
+        bins = [[0.0, 0.0, 0.0, 0.0] for _ in range(24)]; product = 0
+        for (r, g, b), cell in zip(self.colors, self.cells):
+            if cell < 0:
+                continue
+            product += 1
+            h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            if s < .4 or v < .3:
+                continue
+            row = bins[int(h * 24) % 24]; weight = s * v
+            row[0] += weight; row[1] += math.cos(h * math.tau) * weight; row[2] += math.sin(h * math.tau) * weight; row[3] += 1
+        best = max(range(24), key=lambda index: bins[index][0] + .5 * (bins[index - 1][0] + bins[(index + 1) % 24][0]))
+        near = [bins[best - 1], bins[best], bins[(best + 1) % 24]]
+        if not product or sum(row[3] for row in near) < product * .12:
+            return None                              # steel, glass, white: no hue covers enough of it
+        hue = math.atan2(sum(row[2] for row in near), sum(row[1] for row in near)) / math.tau % 1
+        r, g, b = colorsys.hsv_to_rgb(hue, .82, .9)
+        return '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
 
     def on_product(self, x, y):
         ix = max(0, min(self.nx - 1, math.floor(x * self.nx))); iy = max(0, min(self.ny - 1, math.floor(y * self.ny)))
@@ -508,62 +572,80 @@ def wrap(text, size, limit):
 LINE = 1.28          # line height as a multiple of the type size
 
 
-def _tone_style(picture, rect, force_plate=False):
-    mean, uneven = picture.tone(rect); product, scenery = picture.cover(rect)
-    color = DARK if mean >= .56 else LIGHT
-    plate = None
-    if force_plate or uneven > .13 or product > .3 or .42 < mean < .62:
-        plate = {'color': '#ffffff', 'opacity': .9} if color == DARK else {'color': '#111111', 'opacity': .62}
-    return color, plate
+def _tone(picture, rect):
+    """(colour for type set straight on the picture here, whether it needs a backing to be read)."""
+    mean, uneven = picture.tone(rect); product, _ = picture.cover(rect)
+    return (DARK if mean >= .56 else LIGHT), (uneven > .16 or product > .25 or .44 < mean < .6)
 
 
 def _overlap(a, b, gap=0.0):
     return a[0] < b[2] + gap and b[0] < a[2] + gap and a[1] < b[3] + gap and b[1] < a[3] + gap
 
 
-def arrange(copy_data, picture, aspect='1:1'):
-    """Items for a headline, a subline and the points, placed on this picture.
+def look_for(picture):
+    """How to dress a layer on this picture: bare type on a calm light backdrop, cards on anything else; the product's own colour as the accent."""
+    mean, uneven = picture.backdrop()
+    light = mean >= .75 and uneven < .2         # a white sweep with the product's soft shadow on it still counts as calm
+    return {'theme': 'bold' if light else 'card', 'accent': picture.accent() or ('#e8452c' if mean >= .5 else '#ffc53d')}
 
-    Returns (items, titles that found no room, whether text had to sit on the product).
+
+def arrange(copy_data, picture, aspect='1:1', look=None):
+    """Items for a tag, a headline, a subline and the points, placed on this picture.
+
+    Returns (items, titles that found no room, whether text had to sit on the product, the look).
+    The measures here mirror static/layer.js, which draws the items.
     """
     width, height = [float(part) for part in aspect.split(':')]
     unit = min(width, height); sx = unit / width; sy = unit / height        # a length in units, as a share of each side
+    look = look or look_for(picture)
+    cards = look['theme'] in ('card', 'dark', 'tag')
     items = []; taken = []
     product = picture.rect or (.3, .3, .7, .7)
 
-    # --- headline and subline: one block, in the freest corner or band
+    # --- tag, headline and subline: one block, set large, in the freest corner or band
     best = None
-    headline = copy_data.get('headline') or ''; subline = copy_data.get('subline') or ''
+    kicker = copy_data.get('kicker') or ''; headline = copy_data.get('headline') or ''; subline = copy_data.get('subline') or ''
     if headline:
-        places = (('left', 'top', 0), ('center', 'top', .03), ('right', 'top', .05), ('left', 'bottom', .09), ('center', 'bottom', .11),
-                  ('right', 'bottom', .13))
-        for step, size in enumerate((.066, .056, .047, .04)):
-            for limit in (.62, .46, .36):
+        places = (('left', 'top', 0), ('right', 'top', .03), ('center', 'top', .05), ('left', 'bottom', .09), ('right', 'bottom', .11),
+                  ('center', 'bottom', .13))
+        for step, size in enumerate((.1, .086, .074, .062, .052)):
+            for limit in (.6, .46, .36):
                 lines = wrap(headline, size, limit / sx)
                 if len(lines) > 3:
                     continue
-                sub_size = size * .46
+                sub_size = max(.021, size * .4); kick_size = max(.02, size * .3)
                 sub_lines = wrap(subline, sub_size, limit / sx) if subline else []
-                block_w = max([text_width(line, size) for line in lines] + [text_width(line, sub_size) for line in sub_lines]) * sx
-                block_w = min(limit + .04, block_w * 1.08 + .01)          # slack for the browser's real glyph widths
-                head_h = len(lines) * size * LINE * sy; gap = size * .3 * sy if sub_lines else 0
-                block_h = head_h + gap + len(sub_lines) * sub_size * LINE * sy
+                kick_w = text_width(kicker, kick_size) * 1.12 + kick_size * 1.5 if kicker else 0
+                # Slack for the browser's real glyph widths: the heavy face and tracked lines run wider than the estimate.
+                block_w = max([text_width(line, size) * 1.06 for line in lines] + [text_width(line, sub_size) * 1.12 for line in sub_lines] + [kick_w]) * sx + .01
+                block_w = min(limit + .05, block_w)
+                kick_h = kick_size * (LINE + .72) * sy if kicker else 0; kick_gap = size * .28 * sy if kicker else 0
+                head_h = len(lines) * size * LINE * sy; gap = size * .2 * sy if sub_lines else 0
+                block_h = kick_h + kick_gap + head_h + gap + len(sub_lines) * sub_size * LINE * sy
                 for align, edge, bias in places:
-                    x0 = MARGIN if align == 'left' else 1 - MARGIN - block_w if align == 'right' else (1 - block_w) / 2
+                    inset = size * .42 * sx if look['theme'] != 'clean' and align != 'center' else 0        # room for the accent bar beside the headline
+                    x0 = MARGIN + inset if align == 'left' else 1 - MARGIN - inset - block_w if align == 'right' else (1 - block_w) / 2
                     y0 = MARGIN if edge == 'top' else 1 - MARGIN - block_h
                     rect = (x0, y0, x0 + block_w, y0 + block_h)
                     on_product, on_scenery = picture.cover(rect)
-                    score = -(9 * on_product + 2.5 * on_scenery) - picture.tone(rect)[1] * .8 - bias - step * .035 - (len(lines) - 1) * .02
+                    # Large type is wanted, but not across the product: a headline that touches it at all pays for that first.
+                    score = (-(7 * on_product + 2.5 * on_scenery) - (.3 if on_product > .02 else 0) - picture.tone(rect)[1] * .8 - bias - step * .055
+                             - (len(lines) - 1) * .02)
                     if best is None or score > best[0]:
-                        best = (score, rect, align, size, sub_size, lines, sub_lines, head_h, gap)
+                        best = (score, rect, align, size, sub_size, kick_size, lines, sub_lines, kick_h + kick_gap, head_h, gap)
     if best:
-        _, rect, align, size, sub_size, lines, sub_lines, head_h, gap = best
-        color, plate = _tone_style(picture, rect)
-        items.append({'id': 'headline', 'type': 'text', 'x': rect[0], 'y': rect[1], 'w': rect[2] - rect[0], 'text': '\n'.join(lines),
-                      'size': size, 'weight': 700, 'align': align, 'color': color, 'plate': plate})
+        _, rect, align, size, sub_size, kick_size, lines, sub_lines, head_y, head_h, gap = best
+        color, backing = _tone(picture, rect)
+        plate = ({'color': '#ffffff', 'opacity': .92} if color == DARK else {'color': '#111111', 'opacity': .6}) if backing and picture.cover(rect)[0] > .25 else None
+        common = {'type': 'text', 'x': rect[0], 'w': rect[2] - rect[0], 'align': align, 'color': color}
+        if kicker:
+            items.append({**common, 'id': 'kicker', 'role': 'kicker', 'y': rect[1], 'text': kicker, 'size': kick_size, 'weight': 700, 'plate': None})
+        mark = copy_data.get('emphasis') or ''
+        items.append({**common, 'id': 'headline', 'role': 'headline', 'y': rect[1] + head_y, 'text': '\n'.join(lines), 'size': size, 'weight': 700,
+                      'plate': plate, **({'mark': mark} if mark and mark in headline else {})})
         if sub_lines:
-            items.append({'id': 'subline', 'type': 'text', 'x': rect[0], 'y': rect[1] + head_h + gap, 'w': rect[2] - rect[0],
-                          'text': '\n'.join(sub_lines), 'size': sub_size, 'weight': 400, 'align': align, 'color': color, 'plate': plate})
+            items.append({**common, 'id': 'subline', 'role': 'subline', 'y': rect[1] + head_y + head_h + gap, 'text': '\n'.join(sub_lines),
+                          'size': sub_size, 'weight': 400, 'plate': plate})
         taken.append(rect)
 
     # --- points: a label each; those that are about a visible part get a line to it
@@ -572,17 +654,16 @@ def arrange(copy_data, picture, aspect='1:1'):
     centre_x = (product[0] + product[2]) / 2
 
     def build(scale):
-        title_size = .03 * scale; detail_size = title_size * .7; icon_size = title_size * 1.45; pad = title_size * .35
+        title_size = .032 * scale; detail_size = title_size * .68; icon_size = title_size * 1.9; pad = title_size * .5; pad_y = title_size * .42
         rows = []
         for index, point in enumerate(points):
             limit = .25 / sx
             title_lines = wrap(point['title'], title_size, limit); detail_lines = wrap(point['detail'], detail_size, limit) if point.get('detail') else []
-            # The browser measures real glyphs: a little slack keeps a line that fits here from breaking there.
             text_w = max([text_width(line, title_size) for line in title_lines] + [text_width(line, detail_size) for line in detail_lines]) * 1.1 + .006
-            icon_w = icon_size + title_size * .4 if point.get('icon') else 0
+            icon_w = icon_size + title_size * .55 if point.get('icon') else 0
             text_h = len(title_lines) * title_size * LINE + len(detail_lines) * detail_size * LINE
             rows.append({'id': 'point%d' % (index + 1), 'point': point, 'anchor': anchors[index], 'size': title_size,
-                         'w': (icon_w + text_w + pad * 2) * sx, 'h': (max(icon_size if point.get('icon') else 0, text_h) + pad * 2) * sy})
+                         'w': (icon_w + text_w + pad * 2) * sx, 'h': (max(icon_size if point.get('icon') else 0, text_h) + pad_y * 2) * sy})
         return rows
 
     def stack(side_labels, x0, inner_right, blocked):
@@ -597,14 +678,14 @@ def arrange(copy_data, picture, aspect='1:1'):
                 rect = (x0, y0, x0 + label['w'], y0 + label['h'])
                 if any(_overlap(rect, other, .012) for other in blocked):
                     continue
-                if any(point and rect[0] - .015 < point[0] < rect[2] + .015 and rect[1] - .015 < point[1] < rect[3] + .015 for point in anchors):
+                if any(point and rect[0] - .02 < point[0] < rect[2] + .02 and rect[1] - .02 < point[1] < rect[3] + .02 for point in anchors):
                     continue                                  # a label never sits on a spot that a line points at
                 edge = rect[2] if inner_right else rect[0]; middle = (rect[1] + rect[3]) / 2
                 length = math.hypot((ax - edge) / sx, (ay - middle) / sy)
                 # A line that runs a long way across the product to reach its part reads badly: count that stretch twice.
                 crossing = sum(picture.on_product(edge + (ax - edge) * t / 10, middle + (ay - middle) * t / 10) for t in range(1, 9)) / 8
                 on_product, on_scenery = picture.cover(rect)
-                price = length * (1 + crossing * 2.5) + on_product * 2.2 + on_scenery * 1.4
+                price = length * (1 + crossing * 2.5) + on_product * (3.0 if cards else 2.2) + on_scenery * 2.2
                 if chosen is None or price < chosen[0]:
                     chosen = (price, rect)
             if chosen is None:
@@ -613,7 +694,7 @@ def arrange(copy_data, picture, aspect='1:1'):
         return cost, rects
 
     chosen = None; labels = build(1)
-    for scale in (1, .86, .74):
+    for scale in (1, .88, .76):
         rows = build(scale); anchored = [label for label in rows if label['anchor']]
         if not anchored:
             break
@@ -650,7 +731,7 @@ def arrange(copy_data, picture, aspect='1:1'):
         head = taken[0] if items else None
         starts = []
         if head:
-            starts.append((head[0] if head[0] < .5 else head[2] - column_w, head[3] + .03))
+            starts.append((head[0] if head[0] < .5 else head[2] - column_w, head[3] + .035))
         starts += [(MARGIN, 1 - MARGIN - column_h), (1 - MARGIN - column_w, 1 - MARGIN - column_h), (MARGIN, MARGIN), (1 - MARGIN - column_w, MARGIN)]
         for position, (x0, y0) in enumerate(starts):
             if y0 < MARGIN or y0 + column_h > 1 - MARGIN + 1e-6:
@@ -676,13 +757,15 @@ def arrange(copy_data, picture, aspect='1:1'):
             placed += min(options, key=lambda option: option[0])[1]
 
     for label, rect in placed:
-        point = label['point']; color, plate = _tone_style(picture, rect)
+        point = label['point']; color, backing = _tone(picture, rect)
+        # In the card styles every label has its card; in the others one is added only where the type could not be read without it.
+        plate = ({'color': '#ffffff', 'opacity': .95} if color == DARK else {'color': '#111111', 'opacity': .7}) if backing and not cards else None
         items.append({'id': label['id'], 'type': 'callout', 'x': rect[0], 'y': rect[1], 'w': rect[2] - rect[0], 'title': point['title'],
                       'detail': point.get('detail') or '', 'icon': point.get('icon'), 'anchor': label['anchor'] if label['id'] in pointing else None,
                       'size': label['size'], 'color': color, 'plate': plate})
     dropped = [label['point']['title'] for label in labels if label['id'] not in {item['id'] for item in items}]
     crowded = any(picture.cover(rect)[0] > .12 for rect in taken) or any(picture.cover(rect)[0] > .12 for _, rect in placed)
-    return items, dropped, crowded
+    return items, dropped, crowded, look
 
 
 # ------------------------------------------------------------------ the proposal
@@ -715,12 +798,12 @@ def suggest(project_id, shot_id, body):
     picture = Picture(scene, image)
     visible = None if picture.estimated else list(picture.objects)
     content, source, copy_notes = copy_for(project, hint.strip(), image, visible)
-    items, dropped, crowded = arrange(content, picture, '%d:%d' % (output.get('width') or 1, output.get('height') or 1))
+    items, dropped, crowded, look = arrange(content, picture, '%d:%d' % (output.get('width') or 1, output.get('height') or 1))
     if dropped:
         notes.append('画面放不下：' + '、'.join(dropped[:4]) + '。')
     if crowded:
         notes.append('画面较满，部分文字压在了产品上；需要更多版面时可在「调整」里输入“增加留白”后重新预览。')
-    layer = validate({'version': 1, 'items': items, 'basis': basis(project['plan'], shot), 'source': source})
+    layer = validate({'version': 1, 'items': items, 'theme': look['theme'], 'accent': look['accent'], 'basis': basis(project['plan'], shot), 'source': source})
     return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': copy_notes + notes,
                                        'anchored': sum(1 for item in items if item.get('anchor')),
                                        'output': {key: output.get(key) for key in ('job_id', 'version', 'quality')}}}

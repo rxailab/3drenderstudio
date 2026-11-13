@@ -1,5 +1,29 @@
 # 本地接口与可复现性
 
+## v24 图文图层的风格、主色与文字角色
+
+`layers[shot_id]` 新增两个可选字段，`PUT /api/projects/{id}/layers/{shot_id}` 与 `/suggest` 的返回都带它们：
+
+- `theme`：`clean`（简洁）、`bold`（醒目）、`card`（卡片）、`dark`（深色）、`tag`（色块）。缺省表示没有风格，按 v23 的朴素画法绘制，因此旧图层不变。
+- `accent`：主色，`#RRGGBB`。徽章、品类标签、强调词、标题竖线和指向点使用它。
+
+`type:"text"` 的元素新增可选的 `role`：`headline`、`subline`、`kicker`（品类标签，绘制为主色胶囊）、`body`（缺省，不写入）；以及 `mark`：标题中用主色显示的词（不超过 60 字，按原样匹配）。有风格时，`headline` 固定用内置的 900 字重，`weight` 只对正文与副标题起作用。`callout` 的字段不变；卡片是否绘制由 `theme` 决定（`card`、`dark`、`tag` 总是绘制），其余风格下 `plate` 非空才绘制。
+
+```json
+{"version":1,"theme":"card","accent":"#e63929","source":"rules","items":[
+  {"id":"kicker","type":"text","role":"kicker","x":0.092,"y":0.05,"w":0.41,"text":"车间收纳","size":0.022,"weight":700,"align":"left","color":"#ffffff","plate":null},
+  {"id":"headline","type":"text","role":"headline","mark":"工具柜","x":0.092,"y":0.106,"w":0.41,"text":"红色工具柜","size":0.074,"weight":700,"align":"left","color":"#ffffff","plate":null},
+  {"id":"point1","type":"callout","x":0.05,"y":0.36,"w":0.26,"title":"抽屉收纳","detail":"物品分层放置","icon":"drawer","anchor":[0.45,0.43],"size":0.032,"color":"#ffffff","plate":null}]}
+```
+
+`/suggest` 按画面决定这两个字段：产品与道具之外的区域平均亮度不低于 0.75 且起伏不大时 `theme` 为 `bold`，否则为 `card`；`accent` 取产品上占比足够的鲜艳色相（饱和度与明度调到醒目），产品没有明显色彩时为 `#e8452c`（浅背景）或 `#ffc53d`（深背景）。元素的 `color` 是直接画在照片上的东西（指向线、无卡片的文字）所用的颜色，仍按其下方画面的明暗取深或浅；卡片上的文字颜色由卡片底色决定。
+
+AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`emphasis` 只有确实是 `headline` 的一部分时才会成为 `mark`。规则模式的 `kicker` 来自品类（如 `车间收纳`），`mark` 取标题中表示品类的词。
+
+**错误提示。** AI 服务返回 `402` 时，各 AI 接口的错误信息为“AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402）”；`/suggest` 不报错，改用名称规则，并把这句原因放进 `report.notes`。
+
+标题字体 `static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2`（Noto Sans SC Black，SIL OFL 1.1）由页面加载；导出的 PNG / JPG / SVG 把它内嵌进去。详见 [TEXT_LAYER_STYLE_UPDATE.md](TEXT_LAYER_STYLE_UPDATE.md)。
+
 ## v23 图文图层
 
 每个镜头可以有一层图文，保存在项目记录的 `layers[shot_id]` 中（项目详情直接返回）。它不属于 `plan`：保存图文不产生方案版本，不影响任何渲染输出，也不会让后台任务让路。

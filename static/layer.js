@@ -50,6 +50,16 @@ const LAYER_LINE = 1.28, LAYER_MAX_ITEMS = 40;
 const LAYER_SWATCHES = ['#141414', '#ffffff', '#d92d20', '#f79009', '#1570ef', '#079455'];
 const LAYER_TYPE_LABELS = {text: '文字', icon: '图标', callout: '标注'};
 
+// ------------------------------------------------------------------ looks
+// A look is how a layer is dressed: a style preset and one accent colour. 'plain' is the undecorated v23 drawing and
+// what a layer without a style gets, so layers saved before styles existed look as they did.
+const LAYER_THEMES = {clean: '简洁', bold: '醒目', card: '卡片', dark: '深色', tag: '色块'};
+const LAYER_ACCENTS = ['#e8452c', '#f79009', '#ffc53d', '#12b76a', '#1570ef', '#7a5af8', '#141414'];
+const LAYER_DISPLAY_FONT = "'Noto Sans SC'";        // the bundled 900 weight; headlines and titles
+const LAYER_DISPLAY_URL = '/static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2';
+function layerLookOf(layer) { return {theme: LAYER_THEMES[layer?.theme] ? layer.theme : 'plain', accent: /^#[0-9a-f]{6}$/i.test(layer?.accent || '') ? layer.accent : LAYER_ACCENTS[0]}; }
+const layerStyled = look => look.theme !== 'plain';
+
 // ------------------------------------------------------------------ measuring and geometry
 let layerMeasureCanvas;
 function layerMeasureContext() {
@@ -71,43 +81,67 @@ function layerEstimate(text) {
   }
   return width;
 }
-function layerMeasure(text, size, weight) {
-  const context = layerMeasureContext();
-  if (!context) return layerEstimate(text) * size;
-  context.font = `${weight} ${size}px ${LAYER_FONT}`;
-  return context.measureText(text).width;
+// How a piece of text is set: family, weight and tracking (in em).
+function layerType(weight = 400, display = false, tracking = 0) { return {family: display ? LAYER_DISPLAY_FONT + ',' + LAYER_FONT : LAYER_FONT, weight: display ? 900 : weight, tracking}; }
+function layerMeasure(text, size, type) {
+  const context = layerMeasureContext(), spacing = type.tracking * size * [...text].length;
+  if (!context) return layerEstimate(text) * size + spacing;
+  context.font = `${type.weight} ${size}px ${type.family}`;
+  return context.measureText(text).width + spacing;
 }
-function layerWrap(text, size, weight, limit) {
+function layerWrap(text, size, type, limit) {
   const lines = [];
   for (const paragraph of String(text).split('\n')) {
     let line = '';
     for (const token of paragraph.match(/[A-Za-z0-9_.%+\-/]+|\s+|[\s\S]/gu) || []) {
-      if (!line.trim() || layerMeasure(line + token, size, weight) <= limit) line += token;
+      if (!line.trim() || layerMeasure(line + token, size, type) <= limit) line += token;
       else { lines.push(line.trimEnd()); line = token.trimStart(); }
     }
     lines.push(line.trimEnd());
   }
   return lines.length ? lines : [''];
 }
+function layerTextType(item, look) {
+  if (!layerStyled(look)) return layerType(item.weight || 400);
+  const role = item.role || 'body';
+  return role === 'headline' ? layerType(900, true, -.01) : role === 'kicker' ? layerType(700, false, .08) : role === 'subline' ? layerType(Math.max(500, item.weight || 500), false, .03) : layerType(item.weight || 400);
+}
 // Everything a drawing or a hit test needs to know about one item, in picture pixels.
-function layerBox(item, W, H) {
+function layerBox(item, W, H, look = layerLook()) {
   const unit = Math.min(W, H), size = item.size * unit;
   if (item.type === 'icon') return {x: item.x * W - size / 2, y: item.y * H - size / 2, w: size, h: size, size};
   const width = item.w * W;
   if (item.type === 'text') {
-    const lines = layerWrap(item.text, size, item.weight || 400, width);
-    return {x: item.x * W, y: item.y * H, w: width, h: lines.length * size * LAYER_LINE, size, lines};
+    const type = layerTextType(item, look), kicker = layerStyled(look) && item.role === 'kicker';
+    const padX = kicker ? size * .75 : 0, padY = kicker ? size * .36 : 0;
+    const lines = layerWrap(item.text, size, type, Math.max(size, width - padX * 2));
+    const height = lines.length * size * LAYER_LINE + padY * 2;
+    if (!kicker) return {x: item.x * W, y: item.y * H, w: width, h: height, size, lines, type, padX, padY};
+    // A kicker is a pill that hugs its words; the item's width only says where the words may wrap and how it is aligned.
+    const hug = Math.min(width, Math.max(...lines.map(line => layerMeasure(line, size, type))) + padX * 2);
+    const x = item.align === 'right' ? item.x * W + width - hug : item.align === 'center' ? item.x * W + (width - hug) / 2 : item.x * W;
+    return {x, y: item.y * H, w: hug, h: height, size, lines, type, padX, padY, kicker};
   }
-  const detailSize = size * .7, iconSize = item.icon ? size * 1.45 : 0, gap = item.icon ? size * .4 : 0, pad = size * .35;
+  if (!layerStyled(look)) {
+    const detailSize = size * .7, iconSize = item.icon ? size * 1.45 : 0, gap = item.icon ? size * .4 : 0, pad = size * .35, padY = pad, titleType = layerType(700), detailType = layerType(400);
+    const textWidth = Math.max(size, width - iconSize - gap - pad * 2);
+    const title = layerWrap(item.title, size, titleType, textWidth), detail = item.detail ? layerWrap(item.detail, detailSize, detailType, textWidth) : [];
+    const textHeight = title.length * size * LAYER_LINE + detail.length * detailSize * LAYER_LINE;
+    return {x: item.x * W, y: item.y * H, w: width, h: Math.max(iconSize, textHeight) + pad * 2, size, detailSize, iconSize, gap, pad, padY, title, detail, textHeight, titleType, detailType};
+  }
+  // A styled callout: a round badge with the icon, then the title and its detail. The same measures in every style,
+  // so changing the style never moves anything.
+  const detailSize = size * .68, iconSize = item.icon ? size * 1.9 : 0, gap = item.icon ? size * .55 : 0, pad = size * .5, padY = size * .42;
+  const titleType = layerType(700, look.theme !== 'clean'), detailType = layerType(400);
   const textWidth = Math.max(size, width - iconSize - gap - pad * 2);
-  const title = layerWrap(item.title, size, 700, textWidth), detail = item.detail ? layerWrap(item.detail, detailSize, 400, textWidth) : [];
+  const title = layerWrap(item.title, size, titleType, textWidth), detail = item.detail ? layerWrap(item.detail, detailSize, detailType, textWidth) : [];
   const textHeight = title.length * size * LAYER_LINE + detail.length * detailSize * LAYER_LINE;
-  return {x: item.x * W, y: item.y * H, w: width, h: Math.max(iconSize, textHeight) + pad * 2, size, detailSize, iconSize, gap, pad, title, detail, textHeight};
+  return {x: item.x * W, y: item.y * H, w: width, h: Math.max(iconSize, textHeight) + padY * 2, size, detailSize, iconSize, gap, pad, padY, title, detail, textHeight, titleType, detailType};
 }
-function layerContrast(color) {
-  const value = parseInt(String(color).slice(1), 16), r = value >> 16 & 255, g = value >> 8 & 255, b = value & 255;
-  return (.2126 * r + .7152 * g + .0722 * b) / 255 > .5 ? '#000000' : '#ffffff';
-}
+function layerLuminance(color) { const value = parseInt(String(color).slice(1), 16); return (.2126 * (value >> 16 & 255) + .7152 * (value >> 8 & 255) + .0722 * (value & 255)) / 255; }
+function layerContrast(color) { return layerLuminance(color) > .5 ? '#000000' : '#ffffff'; }
+// Type that reads on a filled shape: white, or near-black on a light fill.
+function layerOn(fill) { return layerLuminance(fill) > .62 ? '#141414' : '#ffffff'; }
 const layerNumber = value => String(Math.round(value * 100) / 100);
 
 // ------------------------------------------------------------------ drawing
@@ -115,12 +149,18 @@ function layerIconMarkup(name, x, y, size, color) {
   const paths = LAYER_ICONS[name]; if (!paths) return '';
   return `<g transform="translate(${layerNumber(x)} ${layerNumber(y)}) scale(${Math.round(size / 24 * 10000) / 10000})" fill="none" stroke="${esc(color)}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths.map(d => `<path d="${d}"/>`).join('')}</g>`;
 }
-function layerTextMarkup(lines, x, y, size, weight, color, anchor = 'start', opacity = 1) {
+// Lines of text as one <text>. ``mark`` is a phrase drawn in ``markColor`` wherever it occurs; ``effect`` names a filter.
+function layerTextMarkup(lines, x, y, size, type, color, {anchor = 'start', opacity = 1, mark = '', markColor = '', effect = ''} = {}) {
   const first = y + (LAYER_LINE - 1) * size / 2 + size * .86;
-  return `<text font-family="${LAYER_FONT}" font-size="${layerNumber(size)}" font-weight="${weight}" fill="${esc(color)}"${opacity < 1 ? ` fill-opacity="${opacity}"` : ''} text-anchor="${anchor}" xml:space="preserve">${lines.map((line, index) => `<tspan x="${layerNumber(x)}" y="${layerNumber(first + index * size * LAYER_LINE)}">${esc(line)}</tspan>`).join('')}</text>`;
+  const spans = lines.map((line, index) => {
+    const start = `<tspan x="${layerNumber(x)}" y="${layerNumber(first + index * size * LAYER_LINE)}">`, at = mark ? line.indexOf(mark) : -1;
+    if (at < 0) return start + esc(line) + '</tspan>';
+    return start + esc(line.slice(0, at)) + '</tspan>' + `<tspan fill="${esc(markColor)}">${esc(mark)}</tspan>` + (line.length > at + mark.length ? `<tspan>${esc(line.slice(at + mark.length))}</tspan>` : '');
+  }).join('');
+  return `<text font-family="${type.family}" font-size="${layerNumber(size)}" font-weight="${type.weight}"${type.tracking ? ` letter-spacing="${layerNumber(type.tracking * size)}"` : ''} fill="${esc(color)}"${opacity < 1 ? ` fill-opacity="${opacity}"` : ''} text-anchor="${anchor}"${effect ? ` filter="url(#${effect})"` : ''} xml:space="preserve">${spans}</text>`;
 }
-function layerPlateMarkup(plate, x, y, w, h, radius) {
-  return plate ? `<rect x="${layerNumber(x)}" y="${layerNumber(y)}" width="${layerNumber(w)}" height="${layerNumber(h)}" rx="${layerNumber(radius)}" fill="${esc(plate.color)}" fill-opacity="${plate.opacity ?? .85}"/>` : '';
+function layerPlateMarkup(plate, x, y, w, h, radius, effect = '') {
+  return plate ? `<rect x="${layerNumber(x)}" y="${layerNumber(y)}" width="${layerNumber(w)}" height="${layerNumber(h)}" rx="${layerNumber(radius)}" fill="${esc(plate.color)}" fill-opacity="${plate.opacity ?? .85}"${effect ? ` filter="url(#${effect})"` : ''}/>` : '';
 }
 // The line from a label to the spot it describes: out of the side that faces the spot, one short level run, then straight to it.
 function layerLeader(box, anchorX, anchorY, unit) {
@@ -135,41 +175,89 @@ function layerLeader(box, anchorX, anchorY, unit) {
   }
   return `M${layerNumber(start[0])} ${layerNumber(start[1])}L${layerNumber(elbow[0])} ${layerNumber(elbow[1])}L${layerNumber(anchorX)} ${layerNumber(anchorY)}`;
 }
-function layerItemMarkup(item, W, H) {
-  const unit = Math.min(W, H), box = layerBox(item, W, H), color = item.color || '#141414';
+// Soft shadows and glows, sized to the picture. Light type gets a dark shadow, dark type a faint light glow: both stay readable on a photo without a box.
+function layerDefs(W, H) {
+  const unit = Math.min(W, H), n = value => layerNumber(unit * value);
+  return `<defs><filter id="layer-shadow" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="${n(.0025)}" stdDeviation="${n(.006)}" flood-color="#000" flood-opacity=".55"/></filter>`
+    + `<filter id="layer-glow" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="${n(.007)}" flood-color="#fff" flood-opacity=".8"/></filter>`
+    + `<filter id="layer-lift" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="${n(.005)}" stdDeviation="${n(.011)}" flood-color="#000" flood-opacity=".28"/></filter></defs>`;
+}
+const layerEffect = color => layerLuminance(color) > .5 ? 'layer-shadow' : 'layer-glow';
+function layerItemMarkup(item, W, H, look = layerLook()) {
+  const unit = Math.min(W, H), box = layerBox(item, W, H, look), color = item.color || '#141414', styled = layerStyled(look);
   let body = '';
   if (item.type === 'icon') body = layerIconMarkup(item.icon, box.x, box.y, box.size, color);
   else if (item.type === 'text') {
-    const pad = box.size * .32, anchor = item.align === 'center' ? 'middle' : item.align === 'right' ? 'end' : 'start';
-    const x = item.align === 'center' ? box.x + box.w / 2 : item.align === 'right' ? box.x + box.w : box.x;
-    body = layerPlateMarkup(item.plate, box.x - pad, box.y - pad * .6, box.w + pad * 2, box.h + pad * 1.2, box.size * .22) + layerTextMarkup(box.lines, x, box.y, box.size, item.weight || 400, color, anchor);
-  } else {
-    if (item.anchor) {
-      const ax = item.anchor[0] * W, ay = item.anchor[1] * H, path = layerLeader(box, ax, ay, unit), halo = layerContrast(color), stroke = Math.max(1, unit * .0028);
-      body += `<path d="${path}" fill="none" stroke="${halo}" stroke-opacity=".35" stroke-width="${layerNumber(stroke * 2.6)}" stroke-linecap="round" stroke-linejoin="round"/>`
-        + `<path d="${path}" fill="none" stroke="${esc(color)}" stroke-width="${layerNumber(stroke)}" stroke-linecap="round" stroke-linejoin="round"/>`
-        + `<circle cx="${layerNumber(ax)}" cy="${layerNumber(ay)}" r="${layerNumber(unit * .0075)}" fill="${esc(color)}" stroke="${halo}" stroke-opacity=".6" stroke-width="${layerNumber(stroke)}"/>`;
+    const role = styled ? item.role || 'body' : 'body', anchor = item.align === 'center' ? 'middle' : item.align === 'right' ? 'end' : 'start';
+    if (box.kicker) {
+      body = `<rect x="${layerNumber(box.x)}" y="${layerNumber(box.y)}" width="${layerNumber(box.w)}" height="${layerNumber(box.h)}" rx="${layerNumber(Math.min(box.h / 2, box.size * 1.1))}" fill="${esc(look.accent)}"/>`
+        + layerTextMarkup(box.lines, box.x + box.w / 2, box.y + box.padY, box.size, box.type, layerOn(look.accent), {anchor: 'middle'});
+    } else {
+      const pad = box.size * .32, x = item.align === 'center' ? box.x + box.w / 2 : item.align === 'right' ? box.x + box.w : box.x;
+      body = layerPlateMarkup(item.plate, box.x - pad, box.y - pad * .6, box.w + pad * 2, box.h + pad * 1.2, box.size * .22, styled ? 'layer-lift' : '');
+      if (role === 'headline' && look.theme !== 'clean' && item.align !== 'center') {
+        // A bar in the accent colour stands beside the headline, on the side the text is set from.
+        const bar = box.size * .11, gap = box.size * .26, barX = item.align === 'right' ? box.x + box.w + gap : box.x - gap - bar;
+        body += `<rect x="${layerNumber(barX)}" y="${layerNumber(box.y + box.size * .16)}" width="${layerNumber(bar)}" height="${layerNumber(box.h - box.size * .26)}" rx="${layerNumber(bar / 2)}" fill="${esc(look.accent)}"/>`;
+      }
+      body += layerTextMarkup(box.lines, x, box.y, box.size, box.type, color, {anchor, mark: styled && item.mark || '', markColor: look.accent, effect: styled && !item.plate ? layerEffect(color) : ''});
     }
-    body += layerPlateMarkup(item.plate, box.x, box.y, box.w, box.h, box.size * .3);
-    if (item.icon) body += layerIconMarkup(item.icon, box.x + box.pad, box.y + (box.h - box.iconSize) / 2, box.iconSize, color);
+  } else {
+    // What lies on the picture itself (line, dot, bare text) uses the item's own colour; what lies on a card uses the card's.
+    const card = !styled ? item.plate : look.theme === 'card' ? {color: '#ffffff', opacity: .97} : look.theme === 'dark' ? {color: '#16171a', opacity: .86} : look.theme === 'tag' ? {color: look.accent, opacity: 1}
+      : item.plate ? (layerLuminance(color) > .5 ? {color: '#16171a', opacity: .82} : {color: '#ffffff', opacity: .95}) : null;
+    const ink = !styled ? color : card ? layerOn(card.color) : color;
+    if (item.anchor) {
+      const ax = item.anchor[0] * W, ay = item.anchor[1] * H, path = layerLeader(box, ax, ay, unit), halo = layerContrast(color), stroke = Math.max(1, unit * (styled ? .0032 : .0028));
+      body += `<path d="${path}" fill="none" stroke="${halo}" stroke-opacity=".35" stroke-width="${layerNumber(stroke * 2.6)}" stroke-linecap="round" stroke-linejoin="round"/>`
+        + `<path d="${path}" fill="none" stroke="${esc(color)}" stroke-width="${layerNumber(stroke)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      body += styled
+        ? `<circle cx="${layerNumber(ax)}" cy="${layerNumber(ay)}" r="${layerNumber(unit * .017)}" fill="${esc(look.accent)}" fill-opacity=".3"/><circle cx="${layerNumber(ax)}" cy="${layerNumber(ay)}" r="${layerNumber(unit * .0085)}" fill="${esc(look.accent)}" stroke="#ffffff" stroke-width="${layerNumber(stroke * 1.1)}"/>`
+        : `<circle cx="${layerNumber(ax)}" cy="${layerNumber(ay)}" r="${layerNumber(unit * .0075)}" fill="${esc(color)}" stroke="${halo}" stroke-opacity=".6" stroke-width="${layerNumber(stroke)}"/>`;
+    }
+    body += layerPlateMarkup(card, box.x, box.y, box.w, box.h, styled ? box.size * .5 : box.size * .3, styled && card ? 'layer-lift' : '');
+    const iconY = box.y + (box.h - box.iconSize) / 2, effect = styled && !card ? layerEffect(ink) : '';
+    if (item.icon && !styled) body += layerIconMarkup(item.icon, box.x + box.pad, iconY, box.iconSize, color);
+    else if (item.icon) {
+      // The badge: a filled disc in the accent colour, a white one on an accent card, a ring in the plain-spoken style.
+      const r = box.iconSize / 2, cx = box.x + box.pad + r, cy = iconY + r, inner = box.iconSize * .56;
+      const fill = look.theme === 'clean' ? '' : look.theme === 'tag' ? '#ffffff' : look.accent, mark = look.theme === 'clean' ? ink : look.theme === 'tag' ? look.accent : layerOn(look.accent);
+      body += fill ? `<circle cx="${layerNumber(cx)}" cy="${layerNumber(cy)}" r="${layerNumber(r)}" fill="${esc(fill)}"/>` : `<circle cx="${layerNumber(cx)}" cy="${layerNumber(cy)}" r="${layerNumber(r - box.size * .05)}" fill="none" stroke="${esc(ink)}" stroke-width="${layerNumber(box.size * .09)}"${effect ? ` filter="url(#${effect})"` : ''}/>`;
+      body += layerIconMarkup(item.icon, cx - inner / 2, cy - inner / 2, inner, mark);
+    }
     const textX = box.x + box.pad + box.iconSize + box.gap, textY = box.y + (box.h - box.textHeight) / 2;
-    body += layerTextMarkup(box.title, textX, textY, box.size, 700, color);
-    if (box.detail.length) body += layerTextMarkup(box.detail, textX, textY + box.title.length * box.size * LAYER_LINE, box.detailSize, 400, color, 'start', .82);
+    body += layerTextMarkup(box.title, textX, textY, box.size, box.titleType, ink, {effect});
+    if (box.detail.length) body += layerTextMarkup(box.detail, textX, textY + box.title.length * box.size * LAYER_LINE, box.detailSize, box.detailType, ink, {opacity: styled ? .78 : .82, effect});
   }
   return `<g data-item="${esc(item.id)}" data-type="${item.type}">${body}</g>`;
 }
-function layerMarkup(items, W, H) { return items.map(item => layerItemMarkup(item, W, H)).join(''); }
-// A complete SVG file. With ``image`` (a URL or data URL) the render lies under the layer.
-function layerSvgDocument(items, W, H, image = '') {
+function layerMarkup(items, W, H, look = layerLook()) { return (layerStyled(look) ? layerDefs(W, H) : '') + items.map(item => layerItemMarkup(item, W, H, look)).join(''); }
+// A complete SVG file. With ``image`` (a URL or data URL) the render lies under the layer; ``fonts`` is CSS that carries the display font with it.
+function layerSvgDocument(items, W, H, image = '', look = layerLook(), fonts = '') {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    + (fonts ? `<style>${fonts}</style>` : '')
     + (image ? `<image id="render" href="${esc(image)}" xlink:href="${esc(image)}" x="0" y="0" width="${W}" height="${H}"/>` : '')
-    + `<g id="layer">${layerMarkup(items, W, H)}</g></svg>\n`;
+    + `<g id="layer">${layerMarkup(items, W, H, look)}</g></svg>\n`;
+}
+// The display font as CSS with the file inside it, so an exported picture or SVG carries its own headline type.
+let layerFontCssPromise = null;
+function layerFontCss() {
+  layerFontCssPromise ||= (async () => {
+    const blob = await (await fetch(LAYER_DISPLAY_URL)).blob();
+    const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('font')); reader.readAsDataURL(blob); });
+    return `@font-face{font-family:'Noto Sans SC';font-weight:900;font-style:normal;src:url(${data}) format('woff2');}`;
+  })().catch(() => { layerFontCssPromise = null; return ''; });
+  return layerFontCssPromise;
 }
 
 // ------------------------------------------------------------------ editor state
-const layerState = {key: '', items: [], basis: null, source: null, revision: 0, selected: null, dirty: false, saving: null, inflight: 0, timer: null,
+const layerState = {key: '', items: [], theme: null, accent: null, basis: null, source: null, revision: 0, selected: null, dirty: false, saving: null, inflight: 0, timer: null,
   undo: [], redo: [], coalesce: '', visible: true, report: null, error: '', busy: false, drag: null, editing: null, guides: [], pressed: null};
 function layerEditing() { return inspectorTab === 'overlay'; }
+function layerLook() { return layerLookOf(layerState); }
+// What undo restores: the items and how they are dressed.
+function layerSnapshot() { return JSON.stringify({items: layerState.items, theme: layerState.theme, accent: layerState.accent}); }
+function layerRestore(snapshot) { const value = JSON.parse(snapshot); Object.assign(layerState, {items: value.items, theme: value.theme || null, accent: value.accent || null}); }
 function layerKey() { return current ? current.id + ':' + activeShot : ''; }
 function layerSelected() { return layerState.items.find(item => item.id === layerState.selected) || null; }
 function layerSize() { const image = $('renderImage'); return currentOutput && !image.hidden && image.naturalWidth ? [image.naturalWidth, image.naturalHeight] : currentOutput ? [currentOutput.width, currentOutput.height] : null; }
@@ -178,11 +266,11 @@ function layerSync() {
   const key = layerKey(), stored = current?.layers?.[activeShot] || null;
   if (key !== layerState.key) {
     if (layerState.dirty) layerFlush();
-    Object.assign(layerState, {key, items: structuredCloneSafe(stored?.items || []), basis: stored?.basis || null, source: stored?.source || null, revision: stored?.revision || 0,
+    Object.assign(layerState, {key, items: structuredCloneSafe(stored?.items || []), theme: stored?.theme || null, accent: stored?.accent || null, basis: stored?.basis || null, source: stored?.source || null, revision: stored?.revision || 0,
       selected: null, dirty: false, undo: [], redo: [], coalesce: '', report: null, error: '', drag: null, editing: null, guides: []});
     if (key && !layerState.inflight) layerRevisions.set(key, layerState.revision);
   } else if (!layerState.dirty && !layerState.inflight && (stored?.revision || 0) > layerState.revision) {
-    Object.assign(layerState, {items: structuredCloneSafe(stored.items || []), basis: stored.basis || null, source: stored.source || null, revision: stored.revision});
+    Object.assign(layerState, {items: structuredCloneSafe(stored.items || []), theme: stored.theme || null, accent: stored.accent || null, basis: stored.basis || null, source: stored.source || null, revision: stored.revision});
     layerRevisions.set(key, stored.revision);
     if (!layerSelected()) layerState.selected = null;
   }
@@ -199,7 +287,7 @@ function layerStale() { return !!layerState.basis && layerState.items.some(item 
 
 // Every change goes through here: one undo step, then draw and save. Changes with the same key (typing, a slider) share a step.
 function layerChange(mutate, coalesce = '') {
-  if (!coalesce || coalesce !== layerState.coalesce) { layerState.undo.push(JSON.stringify(layerState.items)); if (layerState.undo.length > 60) layerState.undo.shift(); }
+  if (!coalesce || coalesce !== layerState.coalesce) { layerState.undo.push(layerSnapshot()); if (layerState.undo.length > 60) layerState.undo.shift(); }
   layerState.redo = []; layerState.coalesce = coalesce;
   mutate();
   layerTouch();
@@ -212,7 +300,7 @@ function layerTouch() {
 function layerUndo(redo = false) {
   const from = redo ? layerState.redo : layerState.undo, to = redo ? layerState.undo : layerState.redo;
   if (!from.length) return;
-  to.push(JSON.stringify(layerState.items)); layerState.items = JSON.parse(from.pop()); layerState.coalesce = '';
+  to.push(layerSnapshot()); layerRestore(from.pop()); layerState.coalesce = '';
   if (!layerSelected()) layerState.selected = null;
   layerTouch();
 }
@@ -223,7 +311,7 @@ function layerFlush() {
   clearTimeout(layerState.timer); layerState.timer = null;
   if (!layerState.dirty || !layerState.key) return layerState.saving || Promise.resolve();
   const key = layerState.key, [projectId, shotId] = key.split(':');
-  const layer = {version: 1, items: structuredCloneSafe(layerState.items), ...(layerState.basis ? {basis: layerState.basis} : {}), source: layerState.source || 'manual'};
+  const layer = {version: 1, items: structuredCloneSafe(layerState.items), ...(layerState.theme ? {theme: layerState.theme} : {}), ...(layerState.accent ? {accent: layerState.accent} : {}), ...(layerState.basis ? {basis: layerState.basis} : {}), source: layerState.source || 'manual'};
   layerState.dirty = false; layerState.inflight++;
   const send = async () => {
     try {
@@ -234,7 +322,7 @@ function layerFlush() {
         layerState.revision = saved.revision;
         // Back on this shot before its save had landed: show what was saved, not the older copy that was loaded meanwhile.
         if (!layerState.dirty && !layerState.drag && !layerState.undo.length && JSON.stringify(layerState.items) !== JSON.stringify(layer.items)) {
-          Object.assign(layerState, {items: structuredCloneSafe(saved.items), basis: saved.basis || null, source: saved.source || null}); renderLayerStage();
+          Object.assign(layerState, {items: structuredCloneSafe(saved.items), theme: saved.theme || null, accent: saved.accent || null, basis: saved.basis || null, source: saved.source || null}); renderLayerStage();
         }
       }
     } catch (error) {
@@ -253,11 +341,12 @@ function layerNewId() { let index = layerState.items.length + 1; while (layerSta
 function layerAdd(kind) {
   if (!layerSize() || layerState.items.length >= LAYER_MAX_ITEMS) return;
   const id = layerNewId(), offset = (layerState.items.length % 5) * .03;
-  const item = kind === 'title' ? {id, type: 'text', x: .06 + offset, y: .06 + offset, w: .5, text: '标题文字', size: .06, weight: 700, align: 'left', color: '#141414', plate: null}
-    : kind === 'text' ? {id, type: 'text', x: .06 + offset, y: .2 + offset, w: .36, text: '在这里写说明文字', size: .028, weight: 400, align: 'left', color: '#141414', plate: null}
-    : kind === 'callout' ? {id, type: 'callout', x: .06 + offset, y: .4 + offset, w: .24, title: '要点', detail: '补充说明', icon: 'check', anchor: [.5, .5], size: .03, color: '#141414', plate: {color: '#ffffff', opacity: .9}}
+  const item = kind === 'title' ? {id, type: 'text', role: 'headline', x: .08 + offset, y: .06 + offset, w: .56, text: '标题文字', size: .08, weight: 700, align: 'left', color: '#141414', plate: null}
+    : kind === 'text' ? {id, type: 'text', role: 'body', x: .08 + offset, y: .2 + offset, w: .36, text: '在这里写说明文字', size: .028, weight: 400, align: 'left', color: '#141414', plate: null}
+    : kind === 'callout' ? {id, type: 'callout', x: .06 + offset, y: .4 + offset, w: .27, title: '要点', detail: '补充说明', icon: 'check', anchor: [.5, .5], size: .03, color: '#141414', plate: {color: '#ffffff', opacity: .9}}
     : {id, type: 'icon', icon: 'star', x: .12 + offset, y: .82 - offset, size: .07, color: '#141414'};
-  layerChange(() => { layerState.items.push(item); layerState.selected = id; });
+  // A layer started by hand is dressed from the first item on; one saved before styles existed stays as it was until a style is chosen.
+  layerChange(() => { if (!layerState.items.length && !layerState.theme) layerState.theme = 'bold'; layerState.items.push(item); layerState.selected = id; });
 }
 function layerRemove(id = layerState.selected) {
   if (!layerState.items.some(item => item.id === id)) return;
@@ -278,6 +367,7 @@ function layerSelect(id) {
   renderLayerStage(); renderLayerPanel();
 }
 function layerClear() { if (layerState.items.length) layerChange(() => { layerState.items = []; layerState.selected = null; layerState.basis = null; }); }
+function layerSetLook(patch, coalesce = '') { layerChange(() => Object.assign(layerState, patch), coalesce ? 'look:' + coalesce : ''); }
 
 async function layerSuggest() {
   if (!current || layerState.busy || !currentOutput) return;
@@ -288,7 +378,7 @@ async function layerSuggest() {
     const result = await api(`/api/projects/${encodeURIComponent(projectId)}/layers/${encodeURIComponent(shotId)}/suggest`, {method: 'POST', body: {hint: $('layerHint').value.trim().slice(0, 400), output}});
     if (layerState.key !== key) return;
     layerState.report = result.report;
-    layerChange(() => { layerState.items = result.layer.items; layerState.basis = result.layer.basis || null; layerState.source = result.layer.source || 'rules'; layerState.selected = null; });
+    layerChange(() => { Object.assign(layerState, {items: result.layer.items, theme: result.layer.theme || null, accent: result.layer.accent || null, basis: result.layer.basis || null, source: result.layer.source || 'rules', selected: null}); });
   } catch (error) { if (layerState.key === key) layerState.error = error.message || '排版未完成，请重试。'; }
   finally { layerState.busy = false; if (current) { renderLayerStage(); renderLayerPanel(); } }
 }
@@ -338,7 +428,7 @@ function layerPointerDown(event) {
   layerSelect(id);
   const item = layerSelected(), size = layerSize(); if (!item || !size) return;
   const box = layerBox(item, size[0], size[1]);
-  layerState.drag = {mode: handle || 'move', id, start: point, before: JSON.stringify(layerState.items), origin: structuredCloneSafe(item), box: {x: box.x / size[0], y: box.y / size[1], w: box.w / size[0], h: box.h / size[1]}, moved: false};
+  layerState.drag = {mode: handle || 'move', id, start: point, before: layerSnapshot(), origin: structuredCloneSafe(item), box: {x: box.x / size[0], y: box.y / size[1], w: box.w / size[0], h: box.h / size[1]}, moved: false};
   try { $('layerStage').setPointerCapture?.(event.pointerId); } catch (_) {}
   event.preventDefault();
 }
@@ -370,7 +460,7 @@ function layerPointerMove(event) {
 function layerPointerUp() {
   const drag = layerState.drag; if (!drag) return;
   layerState.drag = null; layerState.guides = [];
-  if (drag.moved && JSON.stringify(layerState.items) !== drag.before) {
+  if (drag.moved && layerSnapshot() !== drag.before) {
     layerState.undo.push(drag.before); layerState.redo = []; layerState.coalesce = ''; layerTouch();
   } else renderLayerStage();
 }
@@ -386,7 +476,7 @@ function layerPlaceInline() {
   const item = layerState.items.find(entry => entry.id === layerState.editing), size = layerSize(), rect = imageContentRect();
   if (!item || !size || !rect) { layerCloseInline(true); return; }
   const viewer = $('viewer').getBoundingClientRect(), box = layerBox(item, size[0], size[1]), k = rect.width / size[0];
-  const offset = item.type === 'callout' ? box.pad + box.iconSize + box.gap : 0;
+  const offset = item.type === 'callout' ? box.pad + box.iconSize + box.gap : box.padX || 0;
   Object.assign(field.style, {left: rect.left - viewer.left + (box.x + offset) * k - 4 + 'px', top: rect.top - viewer.top + box.y * k - 3 + 'px', width: Math.max(80, (box.w - offset) * k + 8) + 'px',
     height: Math.max(26, box.h * k + 6) + 'px', fontSize: Math.max(11, box.size * k) + 'px', fontWeight: item.type === 'callout' ? 700 : item.weight || 400, textAlign: item.align || 'left'});
 }
@@ -440,10 +530,22 @@ function renderLayerPanel() {
   $('layerSaved').textContent = layerState.error ? '未保存' : layerState.dirty || layerState.inflight ? '保存中…' : layerState.items.length || layerState.revision ? '已保存' : '';
   stableHTML($('layerItems'), layerState.items.map(entry => `<li><button type="button" class="layer-item${entry.id === layerState.selected ? ' selected' : ''}" data-layer-item="${esc(entry.id)}" aria-pressed="${entry.id === layerState.selected}"><span class="layer-kind">${LAYER_TYPE_LABELS[entry.type]}</span><span class="layer-name">${esc(layerItemLabel(entry))}</span></button><button type="button" class="icon-button" data-layer-remove="${esc(entry.id)}" title="删除" aria-label="删除 ${esc(layerItemLabel(entry))}">×</button></li>`).join(''));
   $('layerEmpty').hidden = layerState.items.length > 0 || !ready;
+  const look = layerLook();
+  $('layerLook').hidden = !layerState.items.length;
+  stableHTML($('layerThemes'), Object.entries(LAYER_THEMES).map(([name, label]) => `<button type="button" class="button subtle" data-layer-theme="${name}" aria-pressed="${look.theme === name}">${label}</button>`).join(''));
+  stableHTML($('layerAccents'), LAYER_ACCENTS.map(color => `<button type="button" class="layer-swatch${look.accent === color ? ' selected' : ''}" data-layer-accent="${color}" style="background:${color}" title="${color}" aria-label="主色 ${color}" aria-pressed="${look.accent === color}"></button>`).join(''));
+  if (document.activeElement !== $('layerAccent')) $('layerAccent').value = look.accent;
+  $('layerAccents').closest('.layer-row').hidden = !layerStyled(look);
   const properties = $('layerProperties'); properties.hidden = !item;
   if (item) {
     const text = item.type !== 'icon';
     $('layerTextField').hidden = !text; $('layerDetailField').hidden = item.type !== 'callout'; $('layerStyleRow').hidden = item.type !== 'text';
+    $('layerRoleRow').hidden = item.type !== 'text' || !layerStyled(look);
+    if (item.type === 'text') {
+      $('layerRole').value = item.role || 'body'; $('layerMarkField').hidden = item.role !== 'headline';
+      if (document.activeElement !== $('layerMark')) $('layerMark').value = item.mark || '';
+      $('layerBold').disabled = layerStyled(look) && ['headline', 'kicker'].includes(item.role);
+    }
     $('layerIconField').hidden = item.type === 'text'; $('layerPlateField').hidden = !text; $('layerPointerField').hidden = item.type !== 'callout';
     const value = item.type === 'text' ? item.text : item.type === 'callout' ? item.title : '';
     if ($('layerText').value !== value && document.activeElement !== $('layerText')) $('layerText').value = value;
@@ -487,6 +589,13 @@ function bindLayerControls() {
   $('layerPlate').onchange = () => { const item = layerSelected(); if (item) layerSet({plate: $('layerPlate').checked ? (layerContrast(item.color) === '#ffffff' ? {color: '#ffffff', opacity: .9} : {color: '#111111', opacity: .62}) : null}); };
   $('layerPointer').onchange = () => { const item = layerSelected(); if (item) layerSet({anchor: $('layerPointer').checked ? [layerClamp(item.x + item.w + .12, .02, .98), layerClamp(item.y + .04, .02, .98)] : null}); };
   $('layerDuplicate').onclick = layerDuplicate; $('layerDelete').onclick = () => layerRemove();
+  $('layerThemes').onclick = event => { const button = event.target.closest('[data-layer-theme]'); if (button) layerSetLook({theme: button.dataset.layerTheme}); };
+  $('layerAccents').onclick = event => { const button = event.target.closest('[data-layer-accent]'); if (button) layerSetLook({accent: button.dataset.layerAccent}); };
+  $('layerAccent').oninput = () => layerSetLook({accent: $('layerAccent').value.toLowerCase()}, 'accent');
+  $('layerRole').onchange = () => layerSet({role: $('layerRole').value});
+  $('layerMark').oninput = () => layerSet({mark: $('layerMark').value.slice(0, 60)}, 'mark');
+  // The headline face arrives after the first paint: measure and draw again once it is there.
+  try { document.fonts?.load(`900 16px ${LAYER_DISPLAY_FONT}`, '标题A').then(() => { if (current) renderLayerStage(); }).catch(() => {}); } catch (_) {}
   $('layerVisible').onchange = () => { layerState.visible = $('layerVisible').checked; renderLayerStage(); };
   $('layerClear').onclick = layerClear;
   $('layerExportPng').onclick = () => layerExport('png'); $('layerExportJpg').onclick = () => layerExport('jpg');
@@ -502,25 +611,25 @@ function layerDownload(blob, extension) {
 }
 function layerLoadImage(url) { return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('图片未能载入，请重试。')); image.src = url; }); }
 // The render with the layer drawn on it, at the render's own size. The same SVG that is on screen is painted, by the browser's own text engine.
-async function layerRaster(output, items, type, quality) {
-  const base = await layerLoadImage(output.png_url), W = base.naturalWidth, H = base.naturalHeight;
+async function layerRaster(output, items, look, type, quality) {
+  const base = await layerLoadImage(output.png_url), W = base.naturalWidth, H = base.naturalHeight, fonts = layerStyled(look) ? await layerFontCss() : '';
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
   const context = canvas.getContext('2d'); context.drawImage(base, 0, 0, W, H);
-  const url = URL.createObjectURL(new Blob([layerSvgDocument(items, W, H)], {type: 'image/svg+xml'}));
+  const url = URL.createObjectURL(new Blob([layerSvgDocument(items, W, H, '', look, fonts)], {type: 'image/svg+xml'}));
   try { context.drawImage(await layerLoadImage(url), 0, 0, W, H); } finally { URL.revokeObjectURL(url); }
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片未能生成，请重试。')), type, quality));
 }
 async function layerExport(kind) {
   if (!current || !currentOutput || !layerState.items.length) return;
-  const output = currentOutput, items = structuredCloneSafe(layerState.items);
+  const output = currentOutput, items = structuredCloneSafe(layerState.items), look = layerLook();
   try {
-    if (kind === 'png') return layerDownload(await layerRaster(output, items, 'image/png'), 'png');
-    if (kind === 'jpg') return layerDownload(await layerRaster(output, items, 'image/jpeg', .93), 'jpg');
+    if (kind === 'png') return layerDownload(await layerRaster(output, items, look, 'image/png'), 'png');
+    if (kind === 'jpg') return layerDownload(await layerRaster(output, items, look, 'image/jpeg', .93), 'jpg');
     let image = '';
     if (kind === 'svg') {
       const blob = await (await fetch(output.png_url)).blob();
       image = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('图片未能读取，请重试。')); reader.readAsDataURL(blob); });
     }
-    layerDownload(new Blob([layerSvgDocument(items, output.width, output.height, image)], {type: 'image/svg+xml'}), 'svg');
+    layerDownload(new Blob([layerSvgDocument(items, output.width, output.height, image, look, layerStyled(look) ? await layerFontCss() : '')], {type: 'image/svg+xml'}), 'svg');
   } catch (error) { toast(error.message || '导出未完成，请重试。', true); }
 }
