@@ -39,6 +39,7 @@ def blender_path():
 
 RUNTIME_COMPONENTS={
     'render':('blender/worker.py',),
+    'thumbnails':('blender/worker.py',),
     'camera_projection':('blender/worker.py','blender/camera_entry.py','blender/camera_projection.py','camera_controls.py'),
     'light_direction':('blender/worker.py','blender/render_entry.py','blender/light_direction.py'),
     'inspect_lighting':('blender/inspect_lighting.py','blender/light_direction.py'),
@@ -98,7 +99,9 @@ class JobConflictError(ValueError):
 
 def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None,retry_of=None,force_review=False,review_question=None,review_source=None,expected_version=None):
     if kind not in ['analyze','preview','render']: raise ValueError('任务类型无效')
-    if quality not in ['preview','showcase','standard','fine']: raise ValueError('画质无效')
+    if quality not in ['thumbnail','preview','showcase','standard','fine']: raise ValueError('画质无效')
+    if quality=='thumbnail' and (kind!='preview' or not (request_key or '').startswith(THUMBNAIL_KEY)):
+        raise ValueError('缩略图只能通过后台缩略图任务生成')
     if kind=='render' and quality=='preview': quality='standard'
     if kind!='render' and quality=='showcase': raise ValueError('画质无效')
     if shot_ids is not None and (not isinstance(shot_ids,list) or not shot_ids or any(not isinstance(shot,str) for shot in shot_ids)):
@@ -108,10 +111,10 @@ def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None
     with LOCK:
         p=get('project',ident)
         # Background polish is a courtesy: any real request takes the renderer from it.
-        if not (request_key or '').startswith(POLISH_KEY): yield_to_user(ident)
+        if not (request_key or '').startswith((POLISH_KEY,THUMBNAIL_KEY)): yield_to_user(ident)
         project_jobs=[j for j in all_records('job') if j['project_id']==ident]
         ids=list(dict.fromkeys([s['id'] for s in p['plan']['shots']] if shot_ids is None else shot_ids))
-        desired_quality='preview' if kind=='preview' else quality
+        desired_quality=quality if kind=='preview' and quality=='thumbnail' else 'preview' if kind=='preview' else quality
         for j in project_jobs:
             if request_key and j.get('request_key')==request_key:
                 if expected_version is not None and (j.get('version')!=expected_version or j.get('kind')!=kind or j.get('quality')!=desired_quality or j.get('shot_ids')!=ids):
@@ -129,7 +132,7 @@ def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None
         if not isinstance(ids,list) or not ids or any(not isinstance(shot,str) for shot in ids): raise ValueError('请至少选择一个有效镜头')
         ids=list(dict.fromkeys(ids))
         if not set(ids).issubset({s['id'] for s in p['plan']['shots']}): raise ValueError('包含未知镜头')
-        job=dict(id=uuid.uuid4().hex,project_id=ident,kind=kind,quality='preview' if kind=='preview' else quality,
+        job=dict(id=uuid.uuid4().hex,project_id=ident,kind=kind,quality=desired_quality,
             shot_ids=ids,status='queued',stage='等待执行',progress=0,current_shot=None,error=None,log_tail=[],
             plan=copy.deepcopy(p['plan']),version=p['version'],created_at=time.time(),request_key=request_key,retry_of=retry_of,completed=[])
         if force_review: job['force_review']=True
@@ -232,6 +235,46 @@ def schedule_initial_preview(project_id, analysis_job_id=None):
 
 POLISH_ORIGIN='auto_polish'
 POLISH_KEY='auto-polish:'
+THUMBNAIL_ORIGIN='auto_thumbnails'
+THUMBNAIL_KEY='auto-thumbnails:'
+
+def _thumbnail_source_exists(project_id,output):
+    url=output.get('png_url')
+    if not isinstance(url,str) or not url.startswith('/files/'):return False
+    try:
+        path=(DATA/url[7:]).resolve()
+        if (DATA/project_id).resolve() not in path.parents:return False
+        verify_image(path,'PNG')
+        return True
+    except (OSError,ValueError,RuntimeError):return False
+
+def schedule_thumbnails(project_id,expected_version,polish_after_job_id=None):
+    """Schedule missing shot thumbnails once per version, without AI or polish."""
+    with LOCK:
+        project=get('project',project_id)
+        if type(expected_version) is not int or project['version']!=expected_version:
+            raise JobConflictError('方案已更新，请重新载入后生成缩略图。')
+        if not project.get('analysis') or project.get('status')!='ready':return None
+        outputs=project.get('outputs',[])
+        if not any(o.get('shot_id')=='hero' and _thumbnail_source_exists(project_id,o) for o in outputs):return None
+        jobs=[j for j in all_records('job') if j.get('project_id')==project_id]
+        active=next((j for j in jobs if j.get('status') in ('queued','running')),None)
+        if active:return active if active.get('origin')==THUMBNAIL_ORIGIN else None
+        if any(task.get('project_id')==project_id and task.get('status') in ('queued','running','rendering') for task in all_records('material_task')):return None
+        missing=[s['id'] for s in project['plan']['shots'] if s['id']!='hero' and not any(
+            o.get('shot_id')==s['id'] and o.get('version')==expected_version and _thumbnail_source_exists(project_id,o) for o in outputs)]
+        if not missing:return None
+        base=THUMBNAIL_KEY+project_id+':v'+str(expected_version)+':'
+        prior=[j for j in jobs if (j.get('request_key') or '').startswith(base)]
+        if len(prior)>=3 or any(not j.get('yielded') for j in prior):return None
+        if not polish_after_job_id:
+            polish_after_job_id=next((j.get('polish_after_job_id') for j in reversed(prior) if j.get('polish_after_job_id')),None)
+        require_render_runtime(project['plan'],missing)
+        job=submit(project_id,'preview','thumbnail',missing,request_key=base+str(len(prior)),expected_version=expected_version)
+        job.update(origin=THUMBNAIL_ORIGIN,stage='等待生成镜头缩略图');put('job',job)
+        if polish_after_job_id:
+            job['polish_after_job_id']=polish_after_job_id;put('job',job)
+        return job
 
 
 def _record_polish_state(job):
@@ -253,7 +296,7 @@ def yield_to_user(project_id):
     with LOCK:
         stopped=False
         for job in all_records('job'):
-            if job.get('project_id')==project_id and job.get('origin')==POLISH_ORIGIN and job.get('status') in ('queued','running'):
+            if job.get('project_id')==project_id and job.get('origin') in (POLISH_ORIGIN,THUMBNAIL_ORIGIN) and job.get('status') in ('queued','running'):
                 job['yielded']=True;put('job',job);cancel(job['id']);stopped=True
         return stopped
 
@@ -441,6 +484,7 @@ def pick_output(project_id,body):
     matches=[o for o in p.get('outputs',[]) if o.get('job_id')==body.get('output_id') and all(o.get(k)==body.get(k) for k in ['shot_id','quality','version'])]
     if len(matches)!=1: raise ValueError('请选择一个已生成的明确镜头版本')
     selected=matches[0]
+    if selected.get('quality')=='thumbnail':raise ValueError('镜头缩略图不能用于部件点选，请先生成该镜头预览。')
     points=body.get('points')
     if not isinstance(points,list) or not 1<=len(points)<=20: raise ValueError('请选择 1–20 个产品表面位置')
     if len({str(point.get('id')) for point in points if isinstance(point,dict)})!=len(points): raise ValueError('点选标识不能重复')
@@ -614,6 +658,7 @@ def review_output(project_id,body):
         return record.get('job_id')==body.get('output_id') and all(record.get(k)==body.get(k) for k in ['shot_id','quality','version'])
     outputs=[record for record in project.get('outputs',[]) if same(record)]
     if len(outputs)!=1: raise ValueError('请选择一个已经生成的明确镜头版本')
+    if outputs[0].get('quality')=='thumbnail': raise ValueError('镜头缩略图不能用于画面诊断，请先生成该镜头预览。')
     record=copy.deepcopy(outputs[0]);project_root=(DATA/project_id).resolve()
     def stored_file(url,suffix):
         if not isinstance(url,str) or not url.startswith('/files/'): raise ValueError('渲染文件记录不完整')
@@ -784,6 +829,8 @@ def output_record(job,shot,out,result):
             raise RuntimeError('高清主图未按指定正方形尺寸输出')
     elif job['quality']=='showcase':
         if max(size)!=2048: raise RuntimeError('高清图长边不是 2048 像素')
+    elif job['quality']=='thumbnail':
+        if max(size)!=256:raise RuntimeError('镜头缩略图长边不是 256 像素')
     elif job['quality']!='preview' and max(size)!=4096: raise RuntimeError('成品长边不是原生 4096 像素')
     with Image.open(png) as im:
         gray=im.convert('L').resize((128,128));hist=gray.histogram()
@@ -905,7 +952,7 @@ def _run_job(ident):
                 with LOCK:
                     p=get('project',p['id']);p['outputs'].append(record);put('project',p)
                 best=record
-                if j['kind']=='preview' and j['plan'].get('visual_review',True):
+                if j['kind']=='preview' and j['quality']!='thumbnail' and j['plan'].get('visual_review',True):
                     best,best_plan,best_round=review_and_correct(j,p,shot,out,record,r)
                     if best_round:
                         adjustments[shot['id']]=best_plan['shot_adjustments'][shot['id']]
@@ -923,7 +970,7 @@ def _run_job(ident):
             completed=update_job(ident,status='completed',stage='已完成',progress=100,finished_at=time.time())
             if j['kind']=='analyze' and completed['status']=='completed':
                 schedule_initial_preview(j['project_id'],ident)
-        if j['kind']=='preview' and get('job',ident)['status']=='completed':
+        if j['kind']=='preview' and j['quality']!='thumbnail' and get('job',ident)['status']=='completed':
             # Material agents run only after the original group has finished;
             # their own previews remain in the same bounded automatic chain.
             try:
@@ -931,9 +978,19 @@ def _run_job(ident):
                 material_agent.schedule_after_preview(j['project_id'],ident)
             except Exception as exc:
                 update_job(ident,material_notice='自动材质检查未完成，原渲染结果已保留：'+str(exc)[:300])
-            try: schedule_polish(j['project_id'],ident)
-            except Exception as exc:
-                update_job(ident,polish_notice='高清图未自动开始：'+str(exc)[:200])
+            try: thumbnail=schedule_thumbnails(j['project_id'],get('project',j['project_id'])['version'],ident)
+            except (KeyError,ValueError,OSError): thumbnail=None
+            if not thumbnail:
+                try: schedule_polish(j['project_id'],ident)
+                except Exception as exc:
+                    update_job(ident,polish_notice='高清图未自动开始：'+str(exc)[:200])
+        elif j.get('origin')==THUMBNAIL_ORIGIN and get('job',ident)['status']=='completed':
+            if j.get('polish_after_job_id'):
+                try: schedule_polish(j['project_id'],j['polish_after_job_id'])
+                except (KeyError,ValueError,OSError): pass
+        elif j.get('origin')==POLISH_ORIGIN and get('job',ident)['status']=='completed':
+            try: schedule_thumbnails(j['project_id'],get('project',j['project_id'])['version'])
+            except (KeyError,ValueError,OSError): pass
     except InterruptedError: pass
     except Exception as exc:
         update_job(ident,status='failed',stage='执行失败',error=str(exc),finished_at=time.time())
@@ -941,12 +998,18 @@ def _run_job(ident):
             with LOCK:
                 p=get('project',p['id']);p['status']='failed';put('project',p)
     finally:
-        if j['kind']=='preview':
+        if j['kind']=='preview' and j['quality']!='thumbnail':
             try:
                 import material_agent
                 material_agent.finish_failed_preview(j['project_id'],ident)
             except Exception as exc:
                 update_job(ident,material_notice='自动材质任务收尾失败：'+str(exc)[:300])
+        elif j.get('origin')==THUMBNAIL_ORIGIN and j.get('polish_after_job_id'):
+            try:
+                current=get('job',ident)
+                if current.get('status') in ('failed','cancelled') and not current.get('yielded'):
+                    schedule_polish(j['project_id'],j['polish_after_job_id'])
+            except (KeyError,ValueError,OSError): pass
 
 def worker():
     while True:
@@ -956,7 +1019,7 @@ def worker():
 
 def start():
     for j in all_records('job'):
-        if j['status'] in ['running','queued'] and j.get('origin')==POLISH_ORIGIN:
+        if j['status'] in ['running','queued'] and j.get('origin') in (POLISH_ORIGIN,THUMBNAIL_ORIGIN):
             j.update(status='cancelled',stage='已取消',yielded=True);put('job',j);_record_polish_state(j)
         elif j['status'] in ['running','queued']:
             j.update(status='interrupted',stage='应用重启，等待继续',error='上次执行被中断，已完成图片保留。请继续未完成镜头。');put('job',j)

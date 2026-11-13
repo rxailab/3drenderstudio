@@ -557,6 +557,38 @@ test('runtime recovery restores upload and preview without reloading the page',a
 function previewProject(id='a') {
   const p=project(id);p.outputs=[{job_id:'render-'+id,shot_id:'hero',version:1,quality:'preview',width:512,height:512,png_url:'/qa/synthetic-preview-'+id+'.png'}];return p;
 }
+test('thumbnail shows current shot without becoming a full image, diagnostic source or export',async t=>{
+  const p=previewProject();p.version=2;
+  p.outputs.push({job_id:'full-old',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/old-full.png'},
+    {job_id:'small',shot_id:'campaign',version:2,quality:'thumbnail',width:256,height:256,png_url:'/qa/small.png'});
+  const h=await setup(t,{projects:[p]});await h.run("openProject('a')");
+  assert.equal(h.run("latestOutput('campaign').job_id"),'full-old');
+  assert.equal(h.run("displayedShotOutput('campaign').job_id"),'small');
+  h.node('shotList').querySelector('[data-shot="campaign"]').click();
+  assert.equal(h.node('renderImage').getAttribute('src'),'/qa/small.png');
+  assert.equal(h.run('currentOutput'),null);assert.equal(h.node('feedbackToggle').disabled,true);
+  assert.equal(h.node('imageDownloads').hidden,true);assert.match(h.node('renderKind').textContent,/缩略图/);
+  h.run("current.outputs.push({job_id:'full-new',shot_id:'campaign',version:2,quality:'preview',width:512,height:512,png_url:'/qa/full-new.png',created_at:0});renderProject()");
+  assert.equal(h.node('renderImage').getAttribute('src'),'/qa/full-new.png','normal preview wins at the same version');
+});
+test('thumbnail scheduling resumes only preempted work and never blocks normal tasks',async t=>{
+  const p=previewProject(),h=await setup(t,{projects:[p]});h.run('system.runtime.capabilities.thumbnails=true');
+  let count=0;h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return h.response({job:{id:'thumb-'+count}},202);}};
+  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  let jobs=h.records.get('a').jobs;jobs.unshift({id:'thumb-1',origin:'auto_thumbnails',kind:'preview',quality:'thumbnail',status:'running',version:1,shot_ids:['campaign','side'],completed:[],created_at:1});
+  await h.run('poll()');assert.equal(h.run('activeJob()'),undefined);assert.match(h.node('shotList').textContent,/缩略图生成中/);
+  jobs[0].status='cancelled';jobs[0].yielded=true;h.run("thumbnailAttempts.get('a:1').lastAt=0");
+  await h.run('poll()');await tick();assert.equal(count,2);
+  await h.run('poll()');await tick();assert.equal(count,2,'same yielded task must not be submitted twice');
+  jobs.unshift({id:'thumb-2',origin:'auto_thumbnails',status:'cancelled',version:1,created_at:2});
+  h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,2,'manual cancellation must not restart automatically');
+});
+test('thumbnail scheduling retries a temporary submission error without an unbounded loop',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});h.run('system.runtime.capabilities.thumbnails=true');let count=0;
+  h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return count===1?h.response({error:'暂不可用'},503):h.response({job:null});}};
+  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,2);
+});
 function failFirstPreview(h) {
   let failed=false;
   h.intercept=call=>{if(call.url.endsWith('/jobs')&&!failed){failed=true;return h.response({error:'测试预览启动失败'},503);}};

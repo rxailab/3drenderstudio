@@ -294,6 +294,62 @@ def configure_material(mat, override, plan):
     return dict(material=mat.name,maps=resource_maps,warnings=resource_warnings)
 
 
+def apply_material_overrides(meshes,plan):
+    """Apply the same isolated material edits to any freshly imported model."""
+    operations=[];warnings=[]
+    for ob in meshes:
+        if not ob.data.materials or any(mat is None for mat in ob.data.materials):
+            mat=bpy.data.materials.get('Default material') or bpy.data.materials.new('Default material')
+            configure_material(mat,{'preset':'matte_plastic'},plan)
+            if not ob.data.materials: ob.data.materials.append(mat)
+            else:
+                for index in range(len(ob.data.materials)):
+                    if ob.data.materials[index] is None: ob.data.materials[index]=mat
+    for override in plan.get('material_overrides',[]):
+        name=override.get('name','*')
+        mats={m.name:m for ob in meshes for m in ob.data.materials if m and (name in ('*','all') or m.name==name)}
+        resources=[]
+        for mat in mats.values():
+            configured=configure_material(mat,override,plan)
+            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+        operation=dict(operation='material_override',parameters=override,applied_to=list(mats))
+        if resources: operation['resources']=resources
+        operations.append(operation)
+    copied_objects=set()
+    for override in plan.get('object_material_overrides',[]):
+        ob=next((o for o in meshes if o.name==override['object_name']),None)
+        if ob is None: raise ValueError('局部材质的部件不存在：'+override['object_name'])
+        if ob.name not in copied_objects:
+            ob.data=ob.data.copy();copied_objects.add(ob.name)
+        applied=[];resources=[]
+        requested=override['material_name']
+        slots=[slot for slot in ob.material_slots if slot.material]
+        exact=[slot for slot in slots if slot.material.get('_studio_source_material',slot.material.name)==requested]
+        if exact:
+            selected=exact
+        else:
+            # A rendered checkpoint can expose a Blender-generated duplicate
+            # name (e.g. Paint.008), while a different shot starts from the
+            # uploaded asset. Resolve it only after this object has already
+            # established the original slot and only when no other slot has
+            # a matching base name. Never widen to a shared material user.
+            base=lambda value:re.sub(r'(?:\.\d{3})+$','',value)
+            compatible=[slot for slot in slots if base(slot.material.get('_studio_source_material',slot.material.name))==base(requested)]
+            selected=(compatible if len(compatible)==1 and
+                      compatible[0].material.get('_studio_source_material') is not None and
+                      base(requested)!=requested else [])
+        for slot in selected:
+            original=slot.material
+            mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
+            slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
+            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+        if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
+        operation=dict(operation='object_material_override',object=ob.name,parameters=override,applied_to=applied)
+        if resources: operation['resources']=resources
+        operations.append(operation)
+    return operations,warnings
+
+
 def prepare(objects,meshes,plan):
     scene=bpy.context.scene
     operations=[];warnings=[]
@@ -352,55 +408,8 @@ def prepare(objects,meshes,plan):
         if plan.get('repair',{}).get('smooth'):
             for poly in ob.data.polygons: poly.use_smooth=True
             operations.append(dict(operation='smooth_shading',object=ob.name))
-        if not ob.data.materials or any(mat is None for mat in ob.data.materials):
-            mat=bpy.data.materials.get('Default material') or bpy.data.materials.new('Default material')
-            configure_material(mat,{'preset':'matte_plastic'},plan)
-            if not ob.data.materials: ob.data.materials.append(mat)
-            else:
-                for index in range(len(ob.data.materials)):
-                    if ob.data.materials[index] is None: ob.data.materials[index]=mat
-    for override in plan.get('material_overrides',[]):
-        name=override.get('name','*')
-        mats={m.name:m for ob in meshes for m in ob.data.materials if m and (name in ('*','all') or m.name==name)}
-        resources=[]
-        for mat in mats.values():
-            configured=configure_material(mat,override,plan)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
-        operation=dict(operation='material_override',parameters=override,applied_to=list(mats))
-        if resources: operation['resources']=resources
-        operations.append(operation)
-    copied_objects=set()
-    for override in plan.get('object_material_overrides',[]):
-        ob=next((o for o in meshes if o.name==override['object_name']),None)
-        if ob is None: raise ValueError('局部材质的部件不存在：'+override['object_name'])
-        if ob.name not in copied_objects:
-            ob.data=ob.data.copy();copied_objects.add(ob.name)
-        applied=[];resources=[]
-        requested=override['material_name']
-        slots=[slot for slot in ob.material_slots if slot.material]
-        exact=[slot for slot in slots if slot.material.get('_studio_source_material',slot.material.name)==requested]
-        if exact:
-            selected=exact
-        else:
-            # A rendered checkpoint can expose a Blender-generated duplicate
-            # name (e.g. Paint.008), while a different shot starts from the
-            # uploaded asset. Resolve it only after this object has already
-            # established the original slot and only when no other slot has
-            # a matching base name. Never widen to a shared material user.
-            base=lambda value:re.sub(r'(?:\.\d{3})+$','',value)
-            compatible=[slot for slot in slots if base(slot.material.get('_studio_source_material',slot.material.name))==base(requested)]
-            selected=(compatible if len(compatible)==1 and
-                      compatible[0].material.get('_studio_source_material') is not None and
-                      base(requested)!=requested else [])
-        for slot in selected:
-            original=slot.material
-            mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
-            slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
-        if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
-        operation=dict(operation='object_material_override',object=ob.name,parameters=override,applied_to=applied)
-        if resources: operation['resources']=resources
-        operations.append(operation)
+    material_operations,material_warnings=apply_material_overrides(meshes,plan)
+    operations.extend(material_operations);warnings.extend(material_warnings)
     return operations,warnings
 
 
@@ -695,7 +704,7 @@ def render(req,objects,meshes):
     scene['studio_source_plan']=json.dumps(plan,ensure_ascii=False)
     plan=effective_render_plan(plan,shot['id'])
     scene['studio_product_objects']=json.dumps([ob.name for ob in objects])
-    quality=req.get('quality','preview');long={'preview':512,'showcase':2048}.get(quality,4096)
+    quality=req.get('quality','preview');long={'thumbnail':256,'preview':512,'showcase':2048}.get(quality,4096)
     aspect=plan.get('aspect','1:1');a,b=[int(x) for x in aspect.split(':')]
     scene.render.resolution_x=round(long*a/max(a,b));scene.render.resolution_y=round(long*b/max(a,b));scene.render.resolution_percentage=100
     operations,warnings=prepare(objects,meshes,plan)
@@ -703,8 +712,8 @@ def render(req,objects,meshes):
     cam,checks=camera(plan,shot,meshes)
     settings=studio(plan,shot,meshes)
     dev=device(req.get('force_cpu',False))
-    scene.cycles.samples={'preview':24,'showcase':160,'standard':128,'fine':1024}[quality]
-    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'preview':.07,'showcase':.015,'standard':.015,'fine':.005}[quality]
+    scene.cycles.samples={'thumbnail':8,'preview':24,'showcase':160,'standard':128,'fine':1024}[quality]
+    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'showcase':.015,'standard':.015,'fine':.005}[quality]
     scene.cycles.use_denoising=True;scene.cycles.max_bounces=12;scene.cycles.transmission_bounces=12
     scene.cycles.time_limit=0 if quality!='fine' else float(plan.get('time_budget',1200))
     scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGB';scene.render.image_settings.color_depth='8'

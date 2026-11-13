@@ -231,6 +231,7 @@ def _snapshot(project, body):
     if not project.get('analysis'): raise ValueError('请先完成模型分析')
     matches = [o for o in project.get('outputs',[]) if o.get('job_id') == body.get('output_id') and all(o.get(k)==body.get(k) for k in ('shot_id','quality','version'))]
     if len(matches) != 1: raise ValueError('请选择一个已生成的明确镜头版本')
+    if matches[0].get('quality')=='thumbnail': raise ValueError('镜头缩略图不能作为材质分析来源，请先生成预览')
     ensure_idle(project['id'])
 
 

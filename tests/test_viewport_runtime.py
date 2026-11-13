@@ -140,5 +140,44 @@ class ViewportRuntimeTests(unittest.TestCase):
         self.assertEqual(report['manifest']['geometry']['objects'],2)
         self.assertTrue(any(row['kind']=='preview_studio' for row in report['manifest']['applied_operations']))
 
+    def test_uploaded_glb_applies_global_and_local_pbr_overrides_before_export(self):
+        original,_=self.invoke();source=self.root/'uploaded-materials.glb';shutil.copy2(original/'scene.glb',source)
+        source_sha=sha(source);plan=copy.deepcopy(self.baseline)
+        # Blender's GLB importer may name an object after its mesh, so resolve
+        # the actual imported object exactly as the model analysis does.
+        probe,_=self.invoke(source=source,baseline=False);loaded=content(probe/'scene.glb')
+        trim_index=next(i for i,row in enumerate(loaded['materials']) if row['name'].startswith('Trim'))
+        body=next(row['name'] for row in loaded['nodes'] if 'mesh' in row and
+                  any(primitive.get('material')==trim_index for primitive in loaded['meshes'][row['mesh']]['primitives']))
+        body=body.removesuffix(' · viewport')
+        from PIL import Image
+        texture=self.root/'roughness.png';Image.new('RGB',(2,2),(80,80,80)).save(texture)
+        plan['material_overrides']=[{'name':'Paint','preset':'brushed_metal','roughness':.22,
+                                     'textures':{'roughness':str(texture)}}]
+        plan['object_material_overrides']=[{'object_name':body,'material_name':'Trim',
+                                           'preset':'polished_metal','preserve_original':False,'roughness':.09}]
+        output,report=self.invoke(source=source,plan=plan,baseline=False)
+        materials=content(output/'scene.glb')['materials']
+        paint=next(row for row in materials if row['name'].startswith('Paint'))['pbrMetallicRoughness']
+        trim=next(row for row in materials if row['name'].startswith('Trim'))['pbrMetallicRoughness']
+        self.assertIn('metallicRoughnessTexture',paint)
+        self.assertAlmostEqual(paint.get('metallicFactor',1),1,places=4)
+        self.assertAlmostEqual(trim['roughnessFactor'],.09,places=4)
+        self.assertTrue(any(row['name'].startswith('Logo') for row in materials))
+        self.assertTrue(content(output/'scene.glb').get('images'))
+        self.assertEqual(sha(source),source_sha)
+        self.assertTrue(any(row['operation']=='object_material_override' for row in report['manifest']['applied_operations'] if 'operation' in row))
+        self.assertTrue(any(row['path']=='roughness.png' for row in report['manifest']['resources']))
+
+    def test_uploaded_glb_rejects_texture_outside_project(self):
+        original,_=self.invoke();source=self.root/'uploaded-untrusted.glb';shutil.copy2(original/'scene.glb',source)
+        with tempfile.TemporaryDirectory() as directory:
+            from PIL import Image
+            texture=Path(directory)/'outside.png';Image.new('RGB',(2,2)).save(texture)
+            plan=copy.deepcopy(self.baseline)
+            plan['material_overrides']=[{'name':'Paint','preset':'matte_plastic','textures':{'roughness':str(texture)}}]
+            _,report=self.invoke(source=source,plan=plan,baseline=False,success=False)
+            self.assertIn('不在当前项目',report['error'])
+
 
 if __name__=='__main__':unittest.main()

@@ -89,6 +89,14 @@ class ViewportServiceTests(unittest.TestCase):
         second=self.submit()
         self.assertNotEqual(first['id'],second['id']);self.assertEqual(second['status'],'queued')
 
+    def test_material_worker_change_invalidates_existing_cache(self):
+        first=self.submit();self.cache(first)
+        actual_sha=viewport._sha;worker=viewport.ROOT/'blender/worker.py'
+        with patch('viewport_service._sha',side_effect=lambda path: 'f'*64 if path==worker else actual_sha(path)):
+            second=self.submit()
+        self.assertNotEqual(first['id'],second['id'])
+        self.assertEqual(second['status'],'queued')
+
     def test_plan_or_version_change_never_returns_previous_ready_asset(self):
         first=self.submit();self.cache(first)
         project=store.get('project','fixture');project['plan']['shots'][0]['azimuth']=70

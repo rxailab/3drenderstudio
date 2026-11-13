@@ -570,6 +570,15 @@ def job_create(ident):
         abort(409,description=str(exc))
     return jsonify(result),202
 
+@app.post('/api/projects/<ident>/thumbnails')
+def project_thumbnails(ident):
+    try:
+        body=request.get_json(force=True)
+        if not isinstance(body,dict) or set(body)!={'expected_version'}:raise ValueError('缩略图请求格式无效。')
+        job=engine.schedule_thumbnails(ident,body['expected_version'])
+        return jsonify(job=job),202 if job else 200
+    except (ValueError,OSError) as exc:return jsonify(error=str(exc)),409 if isinstance(exc,engine.JobConflictError) else 400
+
 @app.post('/api/projects/<ident>/viewport')
 def viewport_create(ident):
     try:result=viewport_service.submit(ident,request.get_json(force=True))

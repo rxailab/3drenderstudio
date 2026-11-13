@@ -97,7 +97,7 @@ def open_source(request,root):
     return source,scene,products,resources
 
 
-def original_plan(scene,products,points,plan,shot_id,operations,authorized):
+def original_plan(scene,products,points,plan,shot_id,operations,authorized,*,fresh_upload=False,root=None,warnings=None):
     """Support the normal first-open path without waiting for an offline image."""
     import bpy
     effective=hero_scene._effective_plan(plan,shot_id)
@@ -115,7 +115,21 @@ def original_plan(scene,products,points,plan,shot_id,operations,authorized):
     shot=next(row for row in effective['shots'] if row['id']==shot_id)
     apply_camera(scene,shot,products,effective.get('margin',.12),points)
     operations.append({'kind':'original_camera','projection':shot.get('projection','orthographic')})
-    hero_scene._changed_materials(scene,products,effective,{'material_overrides':[],'object_material_overrides':[]},operations,authorized)
+    if fresh_upload:
+        # Fresh OBJ/GLB assets have no photographic checkpoint. Apply the
+        # same full material configuration as the render worker; checkpoint
+        # delta restrictions do not apply to an imported working copy.
+        # Validate all source images before the worker can load textures.
+        material_resources(products,root,warnings if warnings is not None else [])
+        for override in effective.get('material_overrides',[])+effective.get('object_material_overrides',[]):
+            for path in override.get('textures',{}).values():
+                confined(path,root)
+        from blender.worker import apply_material_overrides
+        applied,notes=apply_material_overrides([obj for obj in products if obj.type=='MESH'],effective)
+        operations.extend(applied)
+        if warnings is not None:warnings.extend(notes)
+    else:
+        hero_scene._changed_materials(scene,products,effective,{'material_overrides':[],'object_material_overrides':[]},operations,authorized)
     scene.view_settings.exposure=effective.get('exposure',0)
     # Plain GLB/OBJ uploads have no studio. Create a documented preview rig,
     # separate from any subsequently saved production render.
@@ -300,7 +314,8 @@ def run(path):
     if request.get('baseline_plan') is not None:
         hero_scene._checkpoint(scene,products,points,request['plan'],request['baseline_plan'],request['shot_id'],operations,authorized)
     else:
-        original_plan(scene,products,points,request['plan'],request['shot_id'],operations,authorized)
+        original_plan(scene,products,points,request['plan'],request['shot_id'],operations,authorized,
+                      fresh_upload=source.suffix.lower() in ('.obj','.glb'),root=root,warnings=warnings)
         warnings.append('当前实时画面从上传的模型准备，可在正式出图前旋转查看。')
     resources+=material_resources(products,root,warnings)
     manifest=metadata(scene,products,points,warnings,operations)

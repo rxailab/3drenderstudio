@@ -62,7 +62,7 @@ def _source(project,source,shot_id):
              and all(item.get(key)==source.get(key) for key in ('shot_id','quality','version'))]
     if len(matches)!=1:raise ValueError('所选场景已变化，请刷新后重试。')
     output=copy.deepcopy(matches[0])
-    outputs=sorted([item for item in project.get('outputs',[]) if item.get('shot_id')==shot_id],
+    outputs=sorted([item for item in project.get('outputs',[]) if item.get('shot_id')==shot_id and item.get('quality')!='thumbnail'],
                    key=lambda item:(item.get('version',0),item.get('created_at',0)),reverse=True)
     if not outputs or any(output.get(key)!=outputs[0].get(key) for key in ('job_id','shot_id','quality','version','png_url','blend_url')):
         raise ValueError('请使用当前镜头最新一次出图进行主图优化。')
@@ -386,9 +386,9 @@ def render_checkpoint(job,request,out):
     token=plan.get('scene_checkpoints',{}).get(shot_id)
     scene,metadata=_checkpoint(job['project_id'],token)
     if metadata.get('shot_id')!=shot_id:raise ValueError('主图快照与所选镜头不一致。')
-    quality=request.get('quality','preview');resolution=768 if quality=='preview' else 4096
+    quality=request.get('quality','preview');resolution=256 if quality=='thumbnail' else 768 if quality=='preview' else 4096
     native_request=_request(scene,metadata['blend_sha256'],metadata['product_object_names'],'render',
-        recipe={},resolution=resolution,samples=32 if quality=='preview' else 128,shot_id=shot_id,
+        recipe={},resolution=resolution,samples=8 if quality=='thumbnail' else 32 if quality=='preview' else 128,shot_id=shot_id,
         plan=copy.deepcopy(plan),baseline_plan=metadata['baseline_plan'],force_cpu=bool(request.get('force_cpu')))
     result=_native(job,native_request,out);_validate_render(result,native_request,out,allow_authorized_color=True,allow_plan_aspect=True)
     result['checks']=copy.deepcopy(result.get('metrics',{}).get('framing',{}))

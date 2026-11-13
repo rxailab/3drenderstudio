@@ -275,6 +275,8 @@ AI 的 `target_bindings` 需要把本次原文部位对应到这张表中的编�
 
 新建项目包含 `initial_preview:{"status":"pending"}`。后台模型分析成功并提交分析结果后，自动创建只含 `hero` 的 `preview` 任务，镜头保持白底；首次任务使用分析后的当前方案和版本。任务带 `origin:"initial_preview"`。不需要客户端再提交一次 `/jobs`，也不自动发起正式 4K。
 
+主图可用后，后台可为当前版本尚无图片的其他镜头安排真实渲染缩略图。客户端打开项目时也可调用 `POST /api/projects/{id}/thumbnails`，请求体为 `{"expected_version":版本号}`；已安排任务时返回 202 和 `job`，不需要排队时返回 200 和空 `job`，版本冲突返回 409。缩略图为长边 256 像素的 `thumbnail` 画质，不作为正式预览、诊断或成品导出来源。
+
 `initial_preview` 随任务保存 `status,job_id,analysis_job_id,version,shot_id,quality,error`。分析失败、取消或中断不会创建主图；保留 pending 意图，分析显式重试成功后继续。首图本身失败、取消或中断后，不自动重排，沿用已有任务重试入口。排队失败的原因写入 `initial_preview.error` 和分析任务的 `initial_preview_notice`。固定请求键与持久任务记录避免重复回调产生多个首图；启动时只补偿分析成功但首次任务尚未入队的窗口。没有 `initial_preview` 标记的旧项目不参加该自动流程。
 
 删除接口按精确项目 ID 清理项目记录、对应 `job/export/material_task` 及该项目的资源目录；诊断方案、历史、图片记录与智能回执随项目记录一并删除。不存在的项目返回 404；活动分析、渲染、导出、材质任务、尚未退出的工作线程或同步项目操作存在时返回 409，不删除项目。客户端应在一次明确确认后调用，成功后再清除该项目的本地选择与恢复记录。

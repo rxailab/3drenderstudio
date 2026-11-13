@@ -293,6 +293,11 @@ class OverviewTests(StoreCase):
         items, _ = self.items(ecommerce.overview(project, 'general'))
         self.assertEqual(items['version']['status'], 'warn')
 
+    def test_thumbnail_never_replaces_real_render_for_export(self):
+        self.add_output(size=(4096,4096),quality='standard',version=2)
+        self.add_output(size=(256,256),quality='thumbnail',version=3)
+        self.assertEqual(ecommerce.best_output(store.get('project','p'),'hero')['quality'],'standard')
+
     def test_keeping_the_render_as_is_is_flagged_where_white_is_mandatory(self):
         self.add_output(size=(4096, 4096), quality='standard')
         project = store.get('project', 'p')

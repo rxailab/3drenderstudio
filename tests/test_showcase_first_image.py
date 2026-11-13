@@ -179,7 +179,7 @@ class PassFixture(unittest.TestCase):
     def render(self, job, request, out):
         if request['action'] == 'analyze':
             return copy.deepcopy(self.analysis)
-        long = {'preview': 512, 'showcase': 2048}.get(request['quality'], 4096)
+        long = {'thumbnail': 256, 'preview': 512, 'showcase': 2048}.get(request['quality'], 4096)
         out.mkdir(parents=True, exist_ok=True)
         Image.new('RGB', (long, long), 'white').save(out / (out.name + '.png'))
         (out / 'result.json').write_text('{}', encoding='utf-8')
@@ -208,9 +208,19 @@ class PassFixture(unittest.TestCase):
     def start(self):
         engine.submit('fixture', 'analyze')
         self.run_one(); self.run_one()            # analysis, then the first draft
+        self.run_one()                            # other shots before 2K polish
 
 
 class BackgroundPassTests(PassFixture):
+    def test_failed_thumbnail_does_not_prevent_hero_polish(self):
+        engine.submit('fixture','analyze');self.run_one();self.run_one()
+        thumb=self.jobs(engine.THUMBNAIL_ORIGIN)[0]
+        self.rendered=[]
+        with patch.object(engine,'execute',side_effect=RuntimeError('thumbnail failed')):
+            engine.run_job(thumb['id'])
+        self.assertEqual(store.get('job',thumb['id'])['status'],'failed')
+        self.assertEqual(self.jobs(engine.POLISH_ORIGIN)[0]['status'],'queued')
+
     def test_analysis_develops_the_look_before_the_first_image(self):
         engine.submit('fixture', 'analyze'); self.run_one()
         project = store.get('project', 'fixture')
@@ -225,7 +235,10 @@ class BackgroundPassTests(PassFixture):
         self.assertEqual(store.get('project', 'fixture')['polish']['status'], 'queued')
         self.drain()
         project = store.get('project', 'fixture')
-        self.assertEqual(self.rendered, [('preview', 'hero'), ('showcase', 'hero')])
+        self.assertEqual(self.rendered[0],('preview','hero'))
+        self.assertEqual(self.rendered[-1],('showcase','hero'))
+        self.assertEqual({shot for quality,shot in self.rendered if quality=='thumbnail'},
+                         {shot['id'] for shot in project['plan']['shots'] if shot['id']!='hero'})
         final = project['outputs'][-1]
         self.assertEqual((final['quality'], final['width'], final['height']), ('showcase', 2048, 2048))
         self.assertEqual(project['polish']['status'], 'completed')

@@ -47,6 +47,7 @@ def submit(project_id,body):
         matches=[o for o in p.get('outputs',[]) if o.get('job_id')==body.get('output_id') and o.get('shot_id')==body.get('shot_id') and o.get('quality')==body.get('quality') and o.get('version')==body.get('version')]
         if len(matches)!=1:raise ValueError('请选择一个确实已生成的镜头版本')
         o=matches[0]
+        if o.get('quality')=='thumbnail':raise ValueError('镜头缩略图不能作为工程导出来源，请先生成该镜头预览。')
         source_urls={'source_png_url':o.get('png_url'),'source_blend_url':o.get('blend_url')}
         if any(key in body and body[key]!=value for key,value in source_urls.items()):
             raise ValueError('所选镜头来源已变化，请刷新后重新生成场景文件')

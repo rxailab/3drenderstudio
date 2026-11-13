@@ -73,7 +73,8 @@ def file_url(path):
 def best_output(project, shot_id):
     """Newest plan version first; within it, the render with the most pixels."""
     usable = [output for output in project.get('outputs', [])
-              if output.get('shot_id') == shot_id and _project_file(project['id'], output.get('png_url'), ('.png',))]
+              if output.get('shot_id') == shot_id and output.get('quality')!='thumbnail'
+              and _project_file(project['id'], output.get('png_url'), ('.png',))]
     if not usable:
         return None
     return max(usable, key=lambda output: (output.get('version', 0), output.get('width', 0) * output.get('height', 0),

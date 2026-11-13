@@ -81,7 +81,7 @@ def _resource_state(project):
 
 
 def _source(project,shot_id):
-    outputs=[row for row in project.get('outputs',[]) if row.get('shot_id')==shot_id and row.get('blend_url')]
+    outputs=[row for row in project.get('outputs',[]) if row.get('shot_id')==shot_id and row.get('quality')!='thumbnail' and row.get('blend_url')]
     outputs.sort(key=lambda row:(row.get('version',0),row.get('created_at',0)),reverse=True)
     for output in outputs:
         if output.get('version')!=project['version']:continue
@@ -115,7 +115,7 @@ def _signature(project,shot_id):
     source=_source(project,shot_id)
     script=ROOT/'blender/export_viewport.py'
     if not script.is_file():raise ViewportError('实时预览组件尚未就绪，请完整安装本次升级。',503)
-    revision_paths=[script,ROOT/'blender/hero_scene.py',ROOT/'blender/camera_projection.py',
+    revision_paths=[script,ROOT/'blender/worker.py',ROOT/'blender/hero_scene.py',ROOT/'blender/camera_projection.py',
                     ROOT/'blender/light_direction.py',ROOT/'camera_controls.py',ROOT/'hero_state.py']
     revision=_digest({str(path.relative_to(ROOT)):_sha(path) for path in revision_paths if path.is_file()})
     guard={'project_id':project['id'],'version':project['version'],'shot_id':shot_id,
