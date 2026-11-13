@@ -506,6 +506,22 @@ def scene_remove(ident):
     scene_stylist.remove(ident,body.get('expected_version'))
     return jsonify(engine.project_view(ident))
 
+@app.route('/api/projects/<ident>/layers/<shot_id>',methods=['GET','PUT','DELETE'])
+def layer_edit(ident,shot_id):
+    """The editable text and icon layer of one shot. It is not part of the plan: saving it never makes a render stale."""
+    import info_layer
+    if request.method=='PUT':
+        try: return jsonify(info_layer.save(ident,shot_id,request.get_json(force=True)))
+        except info_layer.LayerConflict as exc: abort(409,description=str(exc))
+    if request.method=='DELETE': return jsonify(info_layer.remove(ident,shot_id))
+    project=get('project',ident);info_layer._shot(project,shot_id)
+    return jsonify(layer=info_layer.layers(project).get(shot_id),icons=list(info_layer.ICONS))
+
+@app.post('/api/projects/<ident>/layers/<shot_id>/suggest')
+def layer_suggest(ident,shot_id):
+    import info_layer
+    return jsonify(info_layer.suggest(ident,shot_id,request.get_json(force=True)))
+
 @app.get('/api/projects/<ident>/material-agent/tasks')
 def material_agent_list(ident):
     import material_agent

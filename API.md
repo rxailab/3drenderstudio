@@ -1,5 +1,36 @@
 # 本地接口与可复现性
 
+## v23 图文图层
+
+每个镜头可以有一层图文，保存在项目记录的 `layers[shot_id]` 中（项目详情直接返回）。它不属于 `plan`：保存图文不产生方案版本，不影响任何渲染输出，也不会让后台任务让路。
+
+**读写。** `GET /api/projects/{id}/layers/{shot_id}` 返回 `{layer, icons}`，`layer` 为空表示还没有图文，`icons` 是可用的图标名。`PUT` 同一地址，请求体 `{"layer": {...}, "expected_revision"?: 整数}`，返回保存后的图层（带递增的 `revision` 与 `updated_at`）；`expected_revision` 与服务端不一致时返回 `409`，数据不合约定返回 `400`，镜头不存在返回 `404`。`DELETE` 删除该镜头的图层。
+
+```json
+{"version":1,"source":"rules","revision":3,
+ "basis":{"azimuth":35,"elevation":18,"focal_length":70,"projection":"orthographic","aspect":"1:1"},
+ "items":[
+  {"id":"headline","type":"text","x":0.60,"y":0.05,"w":0.35,"text":"红色工具柜","size":0.056,"weight":700,"align":"right","color":"#141414","plate":null},
+  {"id":"point1","type":"callout","x":0.05,"y":0.32,"w":0.165,"title":"抽屉收纳","detail":"物品分层放置","icon":"drawer",
+   "anchor":[0.422,0.349],"size":0.0222,"color":"#ffffff","plate":{"color":"#111111","opacity":0.62}},
+  {"id":"e3","type":"icon","icon":"shield","x":0.5,"y":0.9,"size":0.06,"color":"#d92d20"}]}
+```
+
+坐标与尺寸都与分辨率无关：`x`、`y`、`w` 以及 `anchor` 是画面宽、高的比例（0–1），`size` 是画面短边的比例（文字为字号，图标为边长）。`text` 与 `callout` 的 `x`、`y` 是文字框左上角，`icon` 的是中心。`type` 为 `text`（`text`、`weight` 400/600/700、`align` left/center/right）、`icon`（`icon`）或 `callout`（`title`、`detail`、可选的 `icon`、可选的 `anchor`：引线所指的画面位置）。`color` 为 `#RRGGBB`；`plate` 为空或 `{color, opacity}`。一层最多 40 个元素；未知字段会被丢弃，未知类型、图标或带控制字符的文字会被拒绝。`basis` 记录排版时该镜头的相机参数与画幅，客户端据此提示“镜头在排版后变过”。
+
+**智能排版。** `POST /api/projects/{id}/layers/{shot_id}/suggest`，请求体 `{"hint"?: 不超过 400 字, "output"?: {job_id, version, quality}}`（缺省取该镜头最新的非缩略图输出）。返回 `{layer, report}`，**不保存**：由客户端放进编辑器，再经 `PUT` 保存。
+
+```json
+{"layer": {"version":1,"items":[…],"basis":{…},"source":"rules"},
+ "report": {"source":"rules","probe":"scene","anchored":4,"notes":[],"output":{"job_id":"…","version":1,"quality":"preview"}}}
+```
+
+`source` 为 `ai`（已配置视觉模型且调用成功）或 `rules`；`probe` 为 `scene`（读取了该图保存的 Blender 场景）或 `image`（场景不可用，按画面颜色估计，此时标注没有指向线）；`anchored` 是带指向线的标注数；`notes` 是给用户看的说明（放不下的要点、画面较满、AI 未返回等）。`hint` 在规则模式下按行解析为用户自己的要点（“标题：说明”），在 AI 模式下作为优先要求交给模型。该镜头没有可用的渲染图时返回 `400`。
+
+探测结果按场景文件缓存于 `data/{id}/layers/probes/`。`GET /api/system` 的 `runtime.capabilities.layer_probe` 表示探测组件（`blender/layer_probe.py`、`blender/pick_surface.py`）与 Blender 是否就绪；不就绪时智能排版仍可用，退回 `probe:"image"`。
+
+**绘制与导出在浏览器中完成**（`static/layer.js`）：同一个函数既画屏幕上的图层，也生成导出的 SVG；PNG / JPG 由浏览器把渲染图与该 SVG 合成。服务端不栅格化文字。详见 [TEXT_LAYER_UPDATE.md](TEXT_LAYER_UPDATE.md)。
+
 ## v22 使用场景图
 
 **生成。** `POST /api/projects/{id}/scene`，请求体 `{"hint"?: 不超过 300 字的说明, "expected_version"?: 当前方案版本, "seed"?: 1–999999999 的整数}`，返回 `202` 与任务 `{id,project_id,status,stage,error,base_version,created_at}`。任务在后台线程中执行：识别产品与环境 → 检索并下载道具 → 准备地面与背景 → 启动一次无界面的 Blender 计算布置。成功后一次性保存为一个新的方案版本（历史记录的原因是“生成使用场景”），并自动提交镜头 `scene` 的预览任务。`status` 为 `queued`、`running`、`completed`、`failed`、`cancelled`；完成后带 `applied_version`、`job_id`（预览任务）和 `result`：
