@@ -790,3 +790,12 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .layer-swatch.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .overlay-panel input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--field); }
 .overlay-panel .render-reason.is-summary { color: var(--muted); }
+/* The layer's display face: Noto Sans SC Black (SIL OFL 1.1), bundled for headlines and callout titles. */
+@font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 900; font-display: swap; src: url("/static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2") format('woff2'); }
+.layer-look { margin-top: 8px; }
+.layer-look .layer-row { margin-top: 4px; flex-wrap: nowrap; }
+.layer-label { flex-shrink: 0; width: 30px; font-size: 11px; color: var(--subtle); }
+.layer-themes { display: flex; gap: 2px; flex-wrap: wrap; }
+.layer-themes .button { padding: 2px 8px; }
+#layerRole { width: auto; min-width: 84px; }
+.layer-mark { flex: 1; min-width: 0; }

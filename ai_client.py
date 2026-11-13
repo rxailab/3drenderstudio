@@ -88,7 +88,7 @@ def _post(config, body):
             raise ValueError('AI 服务返回了无效响应，请检查接口配置。')
         return data
     except urllib.error.HTTPError as error:
-        messages = {400:'AI 请求被拒绝，请检查模型名称和接口支持的参数。',401:'AI API Key 无效或未授权，请检查 HAI Access Token。',403:'AI 服务拒绝访问，请检查令牌与模型权限。',404:'未找到 AI 接口或模型，请检查地址与模型名称。',408:'AI 服务处理超时，请稍后重试。',413:'AI 请求过大，请减少模型分析信息后重试。',429:'AI 服务限流或额度不足，请检查余额后重试。'}
+        messages = {400:'AI 请求被拒绝，请检查模型名称和接口支持的参数。',402:'AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。',401:'AI API Key 无效或未授权，请检查 HAI Access Token。',403:'AI 服务拒绝访问，请检查令牌与模型权限。',404:'未找到 AI 接口或模型，请检查地址与模型名称。',408:'AI 服务处理超时，请稍后重试。',413:'AI 请求过大，请减少模型分析信息后重试。',429:'AI 服务限流或额度不足，请检查余额后重试。'}
         message = messages.get(error.code, 'AI 服务暂时不可用，请稍后重试。' if error.code >= 500 else 'AI 请求失败，请检查服务配置。')
         error.close()
         raise ValueError(message + '（HTTP %s）' % error.code) from None

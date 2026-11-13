@@ -2595,11 +2595,12 @@ test('items are added, changed and removed with undo, and typing is one undo ste
   h.node('layerAlignCenter').click();h.node('layerColors').querySelector('[data-layer-color="#d92d20"]').click();h.node('layerPlate').click();
   assert.deepEqual(inPage(h,'[layerSelected().align,layerSelected().color,layerSelected().plate.color]'),['center','#d92d20','#ffffff']);
   assert.equal(h.node('layerStage').querySelector('[data-item="e1"] text').getAttribute('text-anchor'),'middle');
-  h.node('layerSize').value='0.08';h.node('layerSize').dispatchEvent(new h.w.Event('input'));
-  assert.equal(h.run('layerSelected().size'),.08);assert.ok(Math.abs(h.run('layerSelected().w')-.5*.08/.06)<1e-9,'the box grows with its type');
+  h.node('layerSize').value='0.1';h.node('layerSize').dispatchEvent(new h.w.Event('input'));
+  assert.equal(h.run('layerSelected().size'),.1);assert.ok(Math.abs(h.run('layerSelected().w')-.56*.1/.08)<1e-9,'the box grows with its type');
   h.node('layerItems').querySelector('[data-layer-item="e2"]').click();
   assert.equal(h.node('layerDetailField').hidden,false);assert.equal(h.node('layerPointer').checked,true);
-  h.node('layerPointer').click();assert.equal(h.run('layerSelected().anchor'),null);assert.equal(h.node('layerStage').querySelector('[data-item="e2"] circle'),null);
+  assert.equal(h.node('layerStage').querySelectorAll('[data-item="e2"] circle').length,3,'the ringed dot at the end of the line, and the icon badge');
+  h.node('layerPointer').click();assert.equal(h.run('layerSelected().anchor'),null);assert.equal(h.node('layerStage').querySelectorAll('[data-item="e2"] circle').length,1,'only the badge is left');
   h.node('layerItems').querySelector('[data-layer-remove="e3"]').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2']);
   h.node('layerUndo').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2','e3']);
   h.node('layerUndo').click();assert.notEqual(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null);
@@ -2719,4 +2720,96 @@ test('coming back to a shot before its save has landed shows what was saved',asy
   assert.deepEqual(inPage(h,'[layerState.items.map(item=>item.text),layerState.revision,layerState.dirty]'),[['标题文字'],1,false]);
   assert.ok(h.node('layerStage').querySelector('[data-item="e1"]'));assert.equal(h.node('layerSaved').textContent,'已保存');
   assert.equal(layerWrites(h).length,1);
+});
+
+// ---- the layer's styles ---------------------------------------------------
+function styledLayer(theme='bold') {
+  return {version:1,revision:2,theme,accent:'#e62a29',items:[
+    {id:'kicker',type:'text',role:'kicker',x:.08,y:.05,w:.4,text:'车间收纳',size:.022,weight:700,align:'left',color:'#141414',plate:null},
+    {id:'headline',type:'text',role:'headline',x:.08,y:.12,w:.5,text:'红色工具柜',mark:'工具柜',size:.074,weight:700,align:'left',color:'#141414',plate:null},
+    {id:'point1',type:'callout',x:.05,y:.4,w:.26,title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',anchor:[.45,.43],size:.032,color:'#141414',plate:null}]};
+}
+
+test('a styled layer is drawn with display type, an accent word, a tag pill and badges; an unstyled one stays plain',async t=>{
+  const p=previewProject();p.layers={hero:styledLayer()};
+  const h=await layerSetup(t,p);const stage=h.node('layerStage');
+  assert.ok(stage.querySelector('defs filter#layer-shadow') && stage.querySelector('defs filter#layer-lift'),'soft shadows are defined once for the picture');
+  const headline=stage.querySelector('[data-item="headline"]'),text=headline.querySelector('text');
+  assert.match(text.getAttribute('font-family'),/^'Noto Sans SC'/);assert.equal(text.getAttribute('font-weight'),'900');
+  assert.equal(Number(text.getAttribute('font-size')),37.89,'7.4% of the 512 px picture');
+  const spans=[...text.querySelectorAll('tspan')];assert.deepEqual(spans.map(node=>node.textContent),['红色','工具柜']);
+  assert.equal(spans[1].getAttribute('fill'),'#e62a29','the emphasised word takes the accent');assert.equal(spans[0].getAttribute('fill'),null);
+  const bar=headline.querySelector('rect');assert.equal(bar.getAttribute('fill'),'#e62a29');assert.ok(Number(bar.getAttribute('x'))<.08*512,'the accent bar stands left of a left-set headline');
+  const pill=stage.querySelector('[data-item="kicker"] rect'),tag=stage.querySelector('[data-item="kicker"] text');
+  assert.equal(pill.getAttribute('fill'),'#e62a29');assert.equal(tag.getAttribute('fill'),'#ffffff');assert.equal(tag.getAttribute('text-anchor'),'middle');
+  assert.ok(Number(pill.getAttribute('width'))<.4*512*.6,'the pill hugs its words');assert.ok(Math.abs(Number(pill.getAttribute('rx'))-Number(pill.getAttribute('height'))/2)<.02,'fully rounded ends');
+  const callout=stage.querySelector('[data-item="point1"]'),circles=[...callout.querySelectorAll('circle')];
+  assert.equal(circles.length,3,'a ringed dot where the line ends, and the badge');assert.equal(circles[2].getAttribute('fill'),'#e62a29');
+  assert.equal(callout.querySelector('g[stroke="#ffffff"]')!==null,true,'the icon is white on its badge');
+  assert.match(callout.querySelector('text').getAttribute('font-family'),/^'Noto Sans SC'/);assert.equal(callout.querySelector('rect'),null,'no card in this style where none is needed');
+  // every style keeps the same measures: only the dress changes
+  const boxes={};
+  for(const theme of ['clean','bold','card','dark','tag']){
+    h.run(`layerState.theme='${theme}';renderLayerStage()`);
+    boxes[theme]=inPage(h,"(()=>{const b=layerBox(layerState.items[2],512,512);return [b.x,b.y,b.w,b.h].map(v=>Math.round(v*100)/100)})()");
+  }
+  for(const theme of ['bold','card','dark','tag'])assert.deepEqual(boxes[theme],boxes.card,theme);
+  h.run("layerState.theme='card';renderLayerStage()");
+  let card=stage.querySelector('[data-item="point1"] rect');assert.equal(card.getAttribute('fill'),'#ffffff');assert.equal(card.getAttribute('filter'),'url(#layer-lift)');
+  h.run("layerState.theme='tag';renderLayerStage()");
+  card=stage.querySelector('[data-item="point1"] rect');assert.equal(card.getAttribute('fill'),'#e62a29');
+  assert.equal([...stage.querySelectorAll('[data-item="point1"] circle')][2].getAttribute('fill'),'#ffffff','on an accent card the badge turns white');
+  assert.equal(stage.querySelector('[data-item="point1"] text').getAttribute('fill'),'#ffffff');
+  h.run("layerState.theme='clean';renderLayerStage()");
+  assert.equal(stage.querySelector('[data-item="headline"] rect'),null,'the plain-spoken style has no accent bar');
+  assert.equal([...stage.querySelectorAll('[data-item="point1"] circle')][2].getAttribute('fill'),'none');
+  // a layer saved before styles existed is drawn exactly as it was
+  h.run("layerState.theme=null;renderLayerStage()");
+  assert.equal(stage.querySelector('defs'),null);assert.equal(stage.querySelector('[data-item="headline"] text').getAttribute('font-weight'),'700');
+  assert.equal(stage.querySelector('[data-item="kicker"] rect'),null);assert.equal(stage.querySelector('[data-item="headline"] tspan').textContent,'红色工具柜');
+});
+
+test('style, accent, role and emphasis are chosen in the panel, saved with the layer and undone like any edit',async t=>{
+  const p=previewProject();p.layers={hero:styledLayer()};
+  const h=await layerSetup(t,p);layerServer(h);
+  assert.equal(h.node('layerLook').hidden,false);
+  assert.deepEqual([...h.node('layerThemes').querySelectorAll('button')].map(node=>[node.textContent,node.getAttribute('aria-pressed')]),[['简洁','false'],['醒目','true'],['卡片','false'],['深色','false'],['色块','false']]);
+  assert.equal(h.node('layerAccent').value,'#e62a29');
+  h.node('layerThemes').querySelector('[data-layer-theme="dark"]').click();
+  assert.equal(h.run('layerState.theme'),'dark');assert.equal(h.node('layerStage').querySelector('[data-item="point1"] rect').getAttribute('fill'),'#16171a');
+  h.node('layerAccents').querySelector('[data-layer-accent="#ffc53d"]').click();
+  assert.equal(h.node('layerStage').querySelector('[data-item="kicker"] rect').getAttribute('fill'),'#ffc53d');
+  assert.equal(h.node('layerStage').querySelector('[data-item="kicker"] text').getAttribute('fill'),'#141414','dark words on a light accent');
+  for(const value of ['#12b76a','#12b76b']){h.node('layerAccent').value=value;h.node('layerAccent').dispatchEvent(new h.w.Event('input'));}
+  assert.equal(h.run('layerState.undo.length'),3,'dragging through the colour picker is one step');
+  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
+  assert.equal(h.node('layerRoleRow').hidden,false);assert.equal(h.node('layerRole').value,'headline');assert.equal(h.node('layerMark').value,'工具柜');assert.equal(h.node('layerBold').disabled,true,'a headline is always set in the display weight');
+  h.node('layerMark').value='红色';h.node('layerMark').dispatchEvent(new h.w.Event('input'));
+  assert.deepEqual([...h.node('layerStage').querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent),['','红色','工具柜']);
+  h.node('layerRole').value='body';h.node('layerRole').dispatchEvent(new h.w.Event('change'));
+  assert.equal(h.node('layerMarkField').hidden,true);assert.equal(h.node('layerStage').querySelector('[data-item="headline"] text').getAttribute('font-weight'),'700');
+  await h.run('layerFlush()');
+  const saved=layerWrites(h).at(-1).body.layer;assert.deepEqual([saved.theme,saved.accent,saved.items[1].role,saved.items[1].mark],['dark','#12b76b','body','红色']);
+  for(let step=0;step<5;step++)h.node('layerUndo').click();
+  assert.deepEqual(inPage(h,'[layerState.theme,layerState.accent,layerState.items[1].role,layerState.items[1].mark]'),['bold','#e62a29','headline','工具柜']);
+  // a layer started by hand is dressed from the first item; one without a style is left alone until a style is picked
+  h.run("activeShot='campaign';cameraShot='campaign';current.outputs.push({job_id:'c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});renderProject()");await tick();
+  assert.equal(h.node('layerLook').hidden,true);h.node('layerAddTitle').click();
+  assert.deepEqual(inPage(h,'[layerState.theme,layerState.items[0].role,layerState.items[0].size]'),['bold','headline',.08]);
+});
+
+test('an exported file carries its own headline type and the same styled drawing',async t=>{
+  const h=await layerSetup(t);
+  const layer=styledLayer('card');
+  h.run('exported=layerSvgDocument('+JSON.stringify(layer.items)+',2048,2048,"",layerLookOf('+JSON.stringify(layer)+'),"@font-face{font-family:\'Noto Sans SC\';font-weight:900;src:url(data:font/woff2;base64,AAAA) format(\'woff2\');}")');
+  const svg=new h.w.DOMParser().parseFromString(h.run('exported'),'image/svg+xml').documentElement;
+  assert.equal(svg.querySelector('parsererror'),null);
+  assert.match(svg.querySelector('style').textContent,/@font-face\{font-family:'Noto Sans SC';font-weight:900;src:url\(data:font\/woff2;base64,AAAA\)/);
+  assert.ok(svg.querySelector('defs filter#layer-lift feDropShadow'));
+  assert.equal(Number(svg.querySelector('[data-item="headline"] text').getAttribute('font-size')),151.55);
+  assert.equal(svg.querySelector('[data-item="point1"] rect').getAttribute('fill'),'#ffffff');
+  assert.equal(svg.querySelector('[data-item="headline"] tspan[fill="#e62a29"]').textContent,'工具柜');
+  // without a style nothing is embedded: the plain drawing uses only system type
+  const plain=h.run('layerSvgDocument('+JSON.stringify(layer.items)+',512,512,"",layerLookOf({}))');
+  assert.doesNotMatch(plain,/<style>|<defs>|Noto Sans SC/);
 });

@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=23">
+<link rel="stylesheet" href="/static/styles.css?v=24">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -638,6 +638,10 @@
 <button id="layerRedo" class="icon-button" type="button" title="重做 (Ctrl+Shift+Z)" aria-label="重做图文修改">↷</button>
 </div>
 </div>
+<div id="layerLook" class="layer-look" hidden>
+<div class="layer-row" role="group" aria-label="风格"><span class="layer-label">风格</span><div id="layerThemes" class="layer-themes"></div></div>
+<div class="layer-row" role="group" aria-label="主色"><span class="layer-label">主色</span><div id="layerAccents" class="layer-colors"></div><input id="layerAccent" type="color" aria-label="自定义主色"></div>
+</div>
 <ul id="layerItems" class="layer-items" aria-label="图文元素"></ul>
 <p id="layerEmpty" class="inspector-empty" hidden>还没有图文。点「智能排版关键信息」，或添加标题、标注后在画面上拖动。</p>
 </section>
@@ -647,6 +651,11 @@
 <div id="layerIconField"><span class="field-label">图标</span><div id="layerIcons" class="layer-icons" role="group" aria-label="图标"></div></div>
 <label class="field-label" for="layerSize">大小 <span id="layerSizeValue" class="layer-value"></span></label>
 <input id="layerSize" type="range" min="0.012" max="0.16" step="0.001">
+<div id="layerRoleRow" class="layer-row">
+<label class="layer-label" for="layerRole">角色</label>
+<select id="layerRole"><option value="headline">标题</option><option value="subline">副标题</option><option value="kicker">标签</option><option value="body">正文</option></select>
+<span id="layerMarkField" class="layer-mark"><input id="layerMark" type="text" maxlength="60" placeholder="强调词" aria-label="用主色强调的词"></span>
+</div>
 <div id="layerStyleRow" class="layer-row" role="group" aria-label="文字样式">
 <button id="layerBold" class="button subtle" type="button" aria-pressed="false">加粗</button>
 <button id="layerAlignLeft" class="button subtle" type="button" aria-pressed="true">左</button>
@@ -903,8 +912,8 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/layer.js?v=23" defer></script>
-<script src="/static/app.js?v=23" defer>
+<script src="/static/layer.js?v=24" defer></script>
+<script src="/static/app.js?v=24" defer>
 </script>
 </body>
 </html>
