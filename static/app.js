@@ -554,7 +554,7 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderSceneSet();renderRealtimeControls();renderEcommerce();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderSceneSet();renderRealtimeControls();renderEcommerce();renderLayerPanel();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
@@ -870,7 +870,7 @@ async function continueUpload(files) {
 }
 const deleteProjectIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
 function realtimeAvailable() { return !!window.WuyingViewport && !!current?.analysis && activeShot==='hero' && system?.viewport?.available!==false && system?.runtime?.capabilities?.viewport!==false; }
-function realtimeActive() { return realtimeAvailable() && realtime.mode==='live' && !comparePrevious && !feedbackMode && !instructionTargetSelection; }
+function realtimeActive() { return realtimeAvailable() && realtime.mode==='live' && !comparePrevious && !feedbackMode && !instructionTargetSelection && !(inspectorTab==='overlay' && currentOutput); }
 function disposeRealtime(clearContext=true) {
   realtime.epoch++;realtime.abort?.abort();clearTimeout(realtime.timer);realtime.instance?.dispose();
   realtime.instance=null;realtime.abort=null;realtime.timer=null;realtime.key='';realtime.record=null;realtime.changed=false;realtime.status='idle';realtime.error='';realtime.preservedView=null;
@@ -1013,7 +1013,7 @@ function renderViewer() {
     const initial=current.initial_preview,running=activeJob(),buildingHero=activeShot==='hero' && running?.origin==='initial_preview';
     $('renderEmpty').querySelector('h2').textContent=!current.analysis && !['failed','cancelled','interrupted'].includes(current.status)?initial?.status==='pending'?'正在分析模型，完成后自动生成白底主图':'正在分析模型':buildingHero?running.status==='queued'?'白底主图已排队':'正在生成白底主图':current.analysis && activeShot==='hero' && initial?.status==='pending'?'正在准备白底主图':'当前镜头还没有预览';
   }
-  renderFeedback();ensureRealtime();renderRealtimeStage();renderReview();renderRenderActivity();renderLatestSceneDownloads();
+  renderFeedback();ensureRealtime();renderRealtimeStage();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderLayerStage();
 }
 function sceneOutputKey(output) {
   return JSON.stringify([output.job_id || '',output.shot_id,output.version,output.quality,output.created_at || '',output.blend_url || '']);
@@ -1882,11 +1882,11 @@ async function readEntry(entry,path='') {
   if (entry.isDirectory) {const reader=entry.createReader();let entries=[],batch;do {batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));entries.push(...batch);}while(batch.length);return (await Promise.all(entries.map(e=>readEntry(e,path+entry.name+'/')))).flat();}return [];
 }
 async function showUpload() {if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');if(!(await resolveUnsavedChanges()))return;ensureEcommerceCatalog().catch(()=>{});$('uploadError').textContent=uploadValidation() || (!workerRenderReady()?runtimeReason():'');$('uploadDialog').showModal();renderActionState();}
-const inspectorTabs=['review','material','plan','ecommerce'];
+const inspectorTabs=['review','material','plan','overlay','ecommerce'];
 function setInspectorTab(tab) {
   if(!inspectorTabs.includes(tab))return;
   if(tab!==inspectorTab){inspectorScrollPositions[inspectorTab]=$('inspectorBody').scrollTop || 0;$('inspectorBody').scrollTop=inspectorScrollPositions[tab] || 0;}
-  inspectorTab=tab;
+  const previousTab=inspectorTab;inspectorTab=tab;
   for(const name of inspectorTabs){
     const button=$('inspector'+name[0].toUpperCase()+name.slice(1)+'Tab');
     button.setAttribute('aria-selected',name===tab);button.tabIndex=name===tab?0:-1;
@@ -1894,6 +1894,9 @@ function setInspectorTab(tab) {
   }
   if(tab==='material' && currentOutput && !feedbackMode){feedbackMode=true;renderFeedback();}
   if(tab==='ecommerce'){renderEcommerce();refreshEcommerce(true);}
+  // The text and icon layer is edited on the rendered picture, so its tab shows the picture rather than the live 3D view.
+  if(previousTab==='overlay' && tab!=='overlay')layerLeave();
+  if((tab==='overlay')!==(previousTab==='overlay') && current){renderViewer();renderLayerPanel();}
 }
 function storeMaterialTask(projectId,task) {
   materialAgentRecords.set(projectId,[task,...(materialAgentRecords.get(projectId) || []).filter(item=>item.id!==task.id)]);
@@ -2143,7 +2146,7 @@ function installEvents() {
   $('reviewRefreshButton').onclick=requestRealismReview;
   $('feedbackAddPoint').onclick=()=>addFeedbackPoint({x:readNumber('feedbackX')/100,y:readNumber('feedbackY')/100});
   $('renderImage').onclick=e=>{if(realtimeActive() || comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
-  $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);
+  $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);bindLayerControls();
   const removePoint=e=>{const button=e.target.closest('[data-remove-point]');if(button && !busy){feedbackPoints=feedbackPoints.filter(point=>point.id!==button.dataset.removePoint);renderFeedback();renderInstruction();}};
   $('feedbackSelection').onclick=removePoint;$('feedbackMarkers').onclick=removePoint;
   $('newProject').onclick=showUpload;$('uploadMain').onclick=()=>pickUploadFiles(false);$('homeBrowseFolder').onclick=()=>pickUploadFiles(true);

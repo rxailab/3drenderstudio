@@ -14,7 +14,8 @@ const vm = require('node:vm');
 const { JSDOM } = require(process.env.UI_TEST_JSDOM_PATH || 'jsdom');
 const root = path.resolve(__dirname,'..');
 const html = fs.readFileSync(path.join(root,'static/index.html'),'utf8');
-const script = fs.readFileSync(path.join(root,'static/app.js'),'utf8').replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/, '');
+// The page loads layer.js before app.js; both share one global scope.
+const script = fs.readFileSync(path.join(root,'static/layer.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'static/app.js'),'utf8').replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/, '');
 const copy = value => JSON.parse(JSON.stringify(value));
 function project(id='a') {
   return {id,name:'测试项目 '+id,status:'ready',version:1,created_at:1,metadata:{},history:[],outputs:[],jobs:[],exports:[],
@@ -2211,9 +2212,9 @@ function rendered(id='a',size=4096) {
 }
 const ecommerceCalls=h=>h.calls.filter(call=>/ecommerce/.test(call.url));
 
-test('电商出图 is the fourth inspector tab and asks the server only once it is opened',async t=>{
+test('电商出图 is the last inspector tab and asks the server only once it is opened',async t=>{
   const h=await setup(t,{projects:[rendered('a',512)]});await h.run("openProject('a')");
-  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','ecommerce']);
+  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','overlay','ecommerce']);
   assert.deepEqual(ecommerceCalls(h),[],'opening a project does not load marketplace data');
   h.node('inspectorEcommerceTab').click();await tick();await tick();
   assert.equal(h.node('inspectorEcommerce').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
@@ -2505,4 +2506,217 @@ test('a render in progress locks the scene control and unsaved edits are saved b
   const writes=h.calls.filter(call=>call.method!=='GET').map(call=>call.url);
   assert.deepEqual(writes,['/api/projects/b/plan','/api/projects/b/scene'],'the edit is saved first, then the scene is requested for the saved version');
   assert.equal(h.calls.find(call=>call.url==='/api/projects/b/scene').body.expected_version,2);
+});
+
+// ---- text and icon layer -------------------------------------------------
+function layerItems() {
+  return [{id:'headline',type:'text',x:.6,y:.05,w:.35,text:'红色工具柜',size:.056,weight:700,align:'right',color:'#141414',plate:null},
+    {id:'point1',type:'callout',x:.05,y:.4,w:.2,title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',anchor:[.45,.43],size:.026,color:'#ffffff',plate:{color:'#111111',opacity:.62}},
+    {id:'i1',type:'icon',icon:'shield',x:.5,y:.9,size:.06,color:'#d92d20'}];
+}
+// The server's layer routes: a revision per save, a refusal when the client's copy is behind.
+function layerServer(h,proposal=null) {
+  h.intercept=call=>{
+    const match=call.url.match(/^\/api\/projects\/([^/]+)\/layers\/([^/]+)(\/suggest)?$/);if(!match)return undefined;
+    const p=h.records.get(match[1]),shot=match[2];
+    if(match[3])return proposal?h.response(proposal):h.response({error:'请先生成这个镜头的预览，再排版图文。'},400);
+    const stored=p.layers?.[shot];
+    if(call.body.expected_revision!==(stored?.revision || 0))return h.response({error:'图文图层已在别处修改，请重新载入后再编辑。'},409);
+    p.layers={...(p.layers || {}),[shot]:{...copy(call.body.layer),revision:(stored?.revision || 0)+1,updated_at:1}};return h.response(p.layers[shot]);
+  };
+}
+// jsdom lays nothing out: give the picture a place on screen so the stage is drawn (2 screen px per picture px here).
+async function layerSetup(t,p=previewProject()) {
+  const h=await setup(t,{projects:[p,previewProject('b')]});await h.run("openProject('"+p.id+"')");
+  h.run('imageContentRect=()=>({left:100,top:50,width:256,height:256})');
+  h.node('inspectorOverlayTab').click();await tick();
+  return h;
+}
+const layerWrites=h=>h.calls.filter(call=>/\/layers\//.test(call.url) && call.method!=='GET');
+// Values built inside the page belong to its realm; compare them as plain data.
+const inPage=(h,code)=>JSON.parse(h.run('JSON.stringify('+code+')'));
+
+test('图文 sits before 导出, edits the rendered picture instead of the live view, and waits for a preview',async t=>{
+  const h=await setup(t,{projects:[project('a'),previewProject('b')]});await h.run("openProject('a')");
+  h.node('inspectorOverlayTab').click();await tick();
+  assert.equal(h.node('inspectorOverlay').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
+  assert.match(h.node('layerStatus').textContent,/先生成这个镜头的预览/);
+  for(const id of ['layerSuggest','layerAddTitle','layerAddCallout','layerExportPng','layerExportSvg'])assert.equal(h.node(id).disabled,true,id);
+  assert.equal(h.node('layerStage').hasAttribute('hidden'),true);
+  await h.run("openProject('b')");h.run('imageContentRect=()=>({left:100,top:50,width:256,height:256})');
+  h.node('inspectorOverlayTab').click();await tick();
+  assert.equal(h.run('realtimeActive()'),false,'with a rendered picture the layer tab never shows the live 3D view');
+  assert.equal(h.node('layerSuggest').disabled,false);assert.equal(h.node('layerAddTitle').disabled,false);assert.equal(h.node('layerEmpty').hidden,false);
+  assert.equal(h.node('viewer').classList.contains('layer-editing'),true);
+  h.node('inspectorReviewTab').click();await tick();assert.equal(h.node('viewer').classList.contains('layer-editing'),false);
+  assert.equal(layerWrites(h).length,0);
+});
+
+test('a suggested layout becomes real, editable SVG text over the picture and is saved once',async t=>{
+  const h=await layerSetup(t);
+  layerServer(h,{layer:{version:1,items:layerItems(),basis:{azimuth:35,elevation:18,focal_length:70,aspect:'1:1'},source:'rules'},report:{source:'rules',probe:'scene',anchored:1,notes:[],output:{job_id:'render-a',version:1,quality:'preview'}}});
+  h.node('layerHint').value=' 抽屉：分层收纳 ';
+  const pending=h.run('layerSuggest()');await h.run('layerSuggest()');await pending;
+  const requests=h.calls.filter(call=>call.url==='/api/projects/a/layers/hero/suggest');
+  assert.equal(requests.length,1,'a second click while it works does not ask again');
+  assert.deepEqual(requests[0].body,{hint:'抽屉：分层收纳',output:{job_id:'render-a',version:1,quality:'preview'}});
+  const stage=h.node('layerStage');assert.equal(stage.hasAttribute('hidden'),false);assert.equal(stage.getAttribute('viewBox'),'0 0 512 512');
+  assert.equal(stage.style.left,'100px');assert.equal(stage.style.width,'256px');
+  const headline=stage.querySelector('[data-item="headline"] text');
+  assert.equal(headline.textContent,'红色工具柜');assert.equal(headline.getAttribute('font-weight'),'700');assert.equal(headline.getAttribute('text-anchor'),'end');
+  assert.equal(Number(headline.getAttribute('font-size')),28.67,'5.6% of the 512 px picture');
+  const callout=stage.querySelector('[data-item="point1"]');
+  assert.deepEqual([...callout.querySelectorAll('text')].map(node=>node.textContent),['抽屉收纳','物品分层放置']);
+  assert.equal(callout.querySelector('circle').getAttribute('cx'),'230.4','the line ends where the part is: 45% across');
+  assert.ok(callout.querySelector('rect[fill="#111111"]'),'its plate');assert.ok(callout.querySelectorAll('path').length>=3,'a line with its halo, and the icon');
+  assert.ok(stage.querySelector('[data-item="i1"] path'));
+  assert.match(h.node('layerStatus').textContent,/按部件名称提取要点，1 处指向了画面中的部件。.*草稿/);
+  assert.deepEqual([...h.node('layerItems').querySelectorAll('.layer-name')].map(node=>node.textContent),['红色工具柜','抽屉收纳','图标']);
+  assert.equal(h.node('layerSaved').textContent,'保存中…');assert.equal(layerWrites(h).length,1,'only the suggestion so far');
+  await h.run('layerFlush()');await h.run('layerFlush()');
+  const saves=layerWrites(h).filter(call=>call.method==='PUT');assert.equal(saves.length,1);
+  assert.equal(saves[0].url,'/api/projects/a/layers/hero');assert.equal(saves[0].body.expected_revision,0);
+  assert.deepEqual(saves[0].body.layer.items.map(item=>item.id),['headline','point1','i1']);assert.equal(saves[0].body.layer.source,'rules');
+  assert.equal(h.node('layerSaved').textContent,'已保存');assert.equal(h.run('current.layers.hero.revision'),1);
+  assert.equal(h.run('current.version'),1,'the plan and its renders are untouched');
+});
+
+test('items are added, changed and removed with undo, and typing is one undo step',async t=>{
+  const h=await layerSetup(t);layerServer(h);
+  h.node('layerAddTitle').click();h.node('layerAddCallout').click();h.node('layerAddIcon').click();
+  assert.deepEqual(inPage(h,'layerState.items.map(item=>item.type)'),['text','callout','icon']);assert.equal(h.run('layerState.selected'),'e3');
+  assert.equal(h.node('layerProperties').hidden,false);assert.equal(h.node('layerTextField').hidden,true,'an icon has no text');assert.equal(h.node('layerIconField').hidden,false);
+  h.node('layerIcons').querySelector('[data-layer-icon="lock"]').click();assert.equal(h.run('layerSelected().icon'),'lock');
+  h.node('layerItems').querySelector('[data-layer-item="e1"]').click();
+  assert.equal(h.node('layerText').value,'标题文字');assert.equal(h.node('layerStyleRow').hidden,false);assert.equal(h.node('layerDetailField').hidden,true);
+  const steps=h.run('layerState.undo.length');
+  for(const value of ['工','工具','工具柜']){h.node('layerText').value=value;h.node('layerText').dispatchEvent(new h.w.Event('input'));}
+  assert.equal(h.run('layerSelected().text'),'工具柜');assert.equal(h.run('layerState.undo.length'),steps+1,'three keystrokes, one step back');
+  h.node('layerAlignCenter').click();h.node('layerColors').querySelector('[data-layer-color="#d92d20"]').click();h.node('layerPlate').click();
+  assert.deepEqual(inPage(h,'[layerSelected().align,layerSelected().color,layerSelected().plate.color]'),['center','#d92d20','#ffffff']);
+  assert.equal(h.node('layerStage').querySelector('[data-item="e1"] text').getAttribute('text-anchor'),'middle');
+  h.node('layerSize').value='0.08';h.node('layerSize').dispatchEvent(new h.w.Event('input'));
+  assert.equal(h.run('layerSelected().size'),.08);assert.ok(Math.abs(h.run('layerSelected().w')-.5*.08/.06)<1e-9,'the box grows with its type');
+  h.node('layerItems').querySelector('[data-layer-item="e2"]').click();
+  assert.equal(h.node('layerDetailField').hidden,false);assert.equal(h.node('layerPointer').checked,true);
+  h.node('layerPointer').click();assert.equal(h.run('layerSelected().anchor'),null);assert.equal(h.node('layerStage').querySelector('[data-item="e2"] circle'),null);
+  h.node('layerItems').querySelector('[data-layer-remove="e3"]').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2']);
+  h.node('layerUndo').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2','e3']);
+  h.node('layerUndo').click();assert.notEqual(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null);
+  h.node('layerRedo').click();assert.equal(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null);
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+  assert.notEqual(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null,'Ctrl+Z works on the layer while its tab is open');
+  h.node('layerClear').click();assert.equal(h.run('layerState.items.length'),0);assert.equal(h.node('layerProperties').hidden,true);
+  h.node('layerUndo').click();assert.equal(h.run('layerState.items.length'),3);
+});
+
+test('dragging moves, resizes and re-aims an item in picture coordinates; a second press edits the text in place',async t=>{
+  const h=await layerSetup(t);layerServer(h);h.run('layerState.items='+JSON.stringify(layerItems())+';renderLayerStage()');
+  const press=(x,y,selector,extra={})=>h.run(`layerPointerDown({button:0,clientX:${x},clientY:${y},timeStamp:${extra.at || 0},target:document.querySelector(${JSON.stringify(selector)}),preventDefault(){}})`);
+  const move=(x,y,alt=false)=>h.run(`layerPointerMove({clientX:${x},clientY:${y},altKey:${alt}})`);
+  // the callout's box starts at 5% / 40% of a 256 px picture shown at (100, 50)
+  press(120,160,'.layer-hit[data-item="point1"]');assert.equal(h.run('layerState.selected'),'point1');
+  move(121,160);assert.equal(h.run('layerState.drag.moved'),false,'a press that barely moves is a click, not a drag');
+  move(120+25.6,160+51.2,true);h.run('layerPointerUp()');
+  const moved=inPage(h,"layerState.items.find(item=>item.id==='point1')");
+  assert.ok(Math.abs(moved.x-.15)<1e-9 && Math.abs(moved.y-.6)<1e-9,'10% right and 20% down');assert.deepEqual(moved.anchor,[.45,.43],'the line still ends on the part');
+  assert.equal(h.run('layerState.undo.length'),1);assert.equal(h.run('layerState.dirty'),true);
+  // near the left margin the box lines up with it and a guide is shown; Alt switches that off
+  press(140,210,'.layer-hit[data-item="point1"]',{at:5000});move(140-25.6+1,210);
+  assert.ok(Math.abs(h.run("layerState.items.find(item=>item.id==='point1').x")-.05)<1e-9);assert.ok(h.node('layerStage').querySelector('.layer-guide'));
+  h.run('layerPointerUp()');assert.equal(h.node('layerStage').querySelector('.layer-guide'),null);
+  // the round handle on the line's end moves the anchor only
+  press(215,160,'[data-handle="anchor"]');move(100+128,50+64);h.run('layerPointerUp()');
+  assert.deepEqual(inPage(h,"layerState.items.find(item=>item.id==='point1').anchor"),[.5,.25]);
+  // the corner handle scales type and box together
+  const before=inPage(h,"layerState.items.find(item=>item.id==='point1')");
+  press(0,0,'[data-handle="size"]');const drag=inPage(h,'layerState.drag.box');
+  move(100+(drag.x+drag.w*2)*256,50+(drag.y+drag.h*2)*256);h.run('layerPointerUp()');
+  const scaled=inPage(h,"layerState.items.find(item=>item.id==='point1')");
+  assert.ok(Math.abs(scaled.size/before.size-2)<1e-6);assert.ok(Math.abs(scaled.w/before.w-2)<1e-6);
+  // two presses on the same item open a field on the picture
+  press(260,70,'.layer-hit[data-item="headline"]',{at:9000});h.run('layerPointerUp()');assert.equal(h.node('layerInline').hidden,true);
+  press(260,70,'.layer-hit[data-item="headline"]',{at:9200});
+  assert.equal(h.node('layerInline').hidden,false);assert.equal(h.node('layerInline').value,'红色工具柜');
+  h.node('layerInline').value='车间工具柜';h.node('layerInline').dispatchEvent(new h.w.Event('input'));
+  h.node('layerInline').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  assert.equal(h.node('layerInline').hidden,true);assert.equal(h.node('layerStage').querySelector('[data-item="headline"] text').textContent,'车间工具柜');
+  // keyboard: nudge, then delete
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',shiftKey:true,bubbles:true}));
+  assert.ok(Math.abs(h.run("layerState.items.find(item=>item.id==='headline').x")-.62)<1e-9);
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Delete',bubbles:true}));
+  assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['point1','i1']);
+  h.node('layerText')?.focus();
+});
+
+test('the exported SVG is a complete file with live text, and typed text can never become markup',async t=>{
+  const h=await layerSetup(t);
+  const items=layerItems();Object.assign(items[0],{text:'<script>alert(1)</script> & "引号"\n第二行',size:.02,w:.9,x:.05,align:'left'});items[1].title='<b>x</b>';
+  h.run('exported=layerSvgDocument('+JSON.stringify(items)+',2048,2048,"data:image/png;base64,AAAA")');
+  const text=h.run('exported');assert.match(text,/^<\?xml version="1.0" encoding="UTF-8"\?>\n<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+  const parsed=new h.w.DOMParser().parseFromString(text,'image/svg+xml');
+  assert.equal(parsed.querySelector('parsererror'),null,'well-formed XML');
+  const svg=parsed.documentElement;assert.equal(svg.getAttribute('viewBox'),'0 0 2048 2048');assert.equal(svg.getAttribute('width'),'2048');
+  assert.equal(svg.querySelector('image').getAttribute('href'),'data:image/png;base64,AAAA');
+  assert.equal(svg.querySelector('script'),null);assert.equal(svg.querySelector('b'),null);
+  const spans=[...svg.querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent);
+  assert.deepEqual(spans,['<script>alert(1)</script> & "引号"','第二行'],'text stays text, line by line');
+  assert.equal(Number(svg.querySelector('[data-item="headline"] text').getAttribute('font-size')),40.96,'2% of 2048 px: the same layer, sharp at any size');
+  assert.equal(svg.querySelector('.layer-outline, .layer-handle, .layer-hit'),null,'editing handles are never exported');
+  const layerOnly=new h.w.DOMParser().parseFromString(h.run('layerSvgDocument('+JSON.stringify(layerItems())+',800,1000)'),'image/svg+xml').documentElement;
+  assert.equal(layerOnly.querySelector('image'),null);
+  assert.equal(Number(layerOnly.querySelector('[data-item="headline"] text').getAttribute('font-size')),44.8,'sizes follow the shorter side');
+  assert.equal(layerOnly.querySelector('[data-item="point1"] circle').getAttribute('cy'),'430');
+});
+
+test('each shot keeps its own layer, pending edits are saved on leaving, and a conflict is reported not overwritten',async t=>{
+  const p=previewProject();p.outputs.push({job_id:'render-c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});
+  p.layers={campaign:{version:1,revision:3,items:[layerItems()[2]]}};
+  const h=await layerSetup(t,p);layerServer(h);
+  assert.equal(h.run('layerState.items.length'),0);
+  h.node('layerAddTitle').click();assert.equal(h.run('layerState.dirty'),true);
+  h.run("activeShot='campaign';cameraShot='campaign';renderProject()");await tick();await tick();
+  assert.deepEqual(layerWrites(h).map(call=>call.method+' '+call.url),['PUT /api/projects/a/layers/hero'],'the edit to the first shot was saved before showing the second');
+  assert.deepEqual(inPage(h,'[layerState.key,layerState.revision,layerState.items.map(item=>item.id)]'),['a:campaign',3,['i1']]);
+  assert.equal(h.run('layerState.undo.length'),0,'undo never crosses shots');
+  assert.ok(h.node('layerStage').querySelector('[data-item="i1"]'));
+  // someone else saved this shot's layer in the meantime
+  h.records.get('a').layers.campaign.revision=4;
+  h.node('layerAddText').click();await h.run('layerFlush()');
+  assert.match(h.node('layerStatus').textContent,/已在别处修改/);assert.equal(h.node('layerSaved').textContent,'未保存');
+  assert.equal(h.records.get('a').layers.campaign.items.length,1,'the newer copy on the server is intact');
+  // a layer shows on the picture outside its tab, without handles, and can be hidden
+  h.run("activeShot='hero';cameraShot='hero';renderProject()");await tick();h.node('inspectorReviewTab').click();await tick();
+  h.run('renderLayerStage()');
+  assert.equal(h.node('layerStage').hasAttribute('hidden'),false);assert.ok(h.node('layerStage').querySelector('[data-item="e1"]'));
+  assert.equal(h.node('layerStage').querySelector('.layer-hit'),null);
+  h.node('layerVisible').click();assert.equal(h.node('layerStage').hasAttribute('hidden'),true);
+});
+
+test('callouts are flagged when the camera changed after they were placed',async t=>{
+  const p=previewProject();const shot=p.plan.shots[0];
+  p.layers={hero:{version:1,revision:1,items:layerItems(),basis:{azimuth:shot.azimuth,elevation:shot.elevation,focal_length:shot.focal_length,aspect:'1:1'}}};
+  const h=await layerSetup(t,p);
+  assert.equal(h.run('layerStale()'),false);assert.equal(h.node('layerStatus').hidden,true);
+  h.run("draft.shots.find(item=>item.id==='hero').azimuth=80;dirty=true;renderProject()");
+  assert.equal(h.run('layerStale()'),true);assert.match(h.node('layerStatus').textContent,/镜头在排版后变过/);
+  assert.equal(layerWrites(h).length,0);
+});
+
+test('coming back to a shot before its save has landed shows what was saved',async t=>{
+  const p=previewProject();p.outputs.push({job_id:'render-c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});
+  const h=await layerSetup(t,p);const gate=deferred();
+  h.intercept=async call=>{
+    if(!/\/layers\/hero$/.test(call.url))return undefined;
+    await gate.promise;const record=h.records.get('a');record.layers={hero:{...copy(call.body.layer),revision:1,updated_at:1}};return h.response(record.layers.hero);
+  };
+  h.node('layerAddTitle').click();
+  h.run("activeShot='campaign';cameraShot='campaign';renderProject()");await tick();
+  h.run("activeShot='hero';cameraShot='hero';renderProject()");await tick();
+  assert.equal(h.run('layerState.items.length'),0,'the save is still on its way: the stored copy is the old, empty one');
+  assert.equal(h.node('layerSaved').textContent,'保存中…');
+  gate.resolve();await h.run('layerState.saving');await tick();
+  assert.deepEqual(inPage(h,'[layerState.items.map(item=>item.text),layerState.revision,layerState.dirty]'),[['标题文字'],1,false]);
+  assert.ok(h.node('layerStage').querySelector('[data-item="e1"]'));assert.equal(h.node('layerSaved').textContent,'已保存');
+  assert.equal(layerWrites(h).length,1);
 });

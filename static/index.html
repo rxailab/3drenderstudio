@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=22">
+<link rel="stylesheet" href="/static/styles.css?v=23">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -150,6 +150,8 @@
 </div>
 <div id="feedbackMarkers" class="feedback-markers" aria-label="已选问题位置">
 </div>
+<svg id="layerStage" class="layer-stage" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" role="img" aria-label="图文图层" hidden></svg>
+<textarea id="layerInline" class="layer-inline" aria-label="编辑文字" spellcheck="false" hidden></textarea>
 <div id="renderActivity" class="render-activity" hidden>
 <div class="render-activity-card">
 <div class="render-activity-symbol" aria-hidden="true">
@@ -207,6 +209,7 @@
 <button id="inspectorReviewTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorReview" data-inspector="review">调整</button>
 <button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">材质</button>
 <button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">参数</button>
+<button id="inspectorOverlayTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorOverlay" data-inspector="overlay">图文</button>
 <button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">导出</button>
 </div>
 <div id="inspectorBody" class="inspector-body">
@@ -615,6 +618,65 @@
 </div>
 </details>
 </section>
+<section id="inspectorOverlay" class="overlay-panel" role="tabpanel" aria-labelledby="inspectorOverlayTab" hidden>
+<section class="panel-section">
+<textarea id="layerHint" rows="2" maxlength="400" placeholder="可选：想突出的要点，每行一条，如“台面：可放常用工具”" aria-label="想突出的要点"></textarea>
+<button id="layerSuggest" class="button secondary full-width" type="button" aria-describedby="layerStatus" title="提取产品的关键信息，放到画面的空处，并用引线指向对应部件">智能排版关键信息</button>
+<p id="layerStatus" class="render-reason" role="status" hidden></p>
+</section>
+<section class="panel-section">
+<div class="layer-toolbar">
+<div class="layer-add" role="group" aria-label="添加元素">
+<button id="layerAddTitle" class="button subtle" type="button">标题</button>
+<button id="layerAddText" class="button subtle" type="button">正文</button>
+<button id="layerAddCallout" class="button subtle" type="button">标注</button>
+<button id="layerAddIcon" class="button subtle" type="button">图标</button>
+</div>
+<div class="layer-history">
+<span id="layerSaved" class="layer-saved" role="status"></span>
+<button id="layerUndo" class="icon-button" type="button" title="撤销 (Ctrl+Z)" aria-label="撤销图文修改">↶</button>
+<button id="layerRedo" class="icon-button" type="button" title="重做 (Ctrl+Shift+Z)" aria-label="重做图文修改">↷</button>
+</div>
+</div>
+<ul id="layerItems" class="layer-items" aria-label="图文元素"></ul>
+<p id="layerEmpty" class="inspector-empty" hidden>还没有图文。点「智能排版关键信息」，或添加标题、标注后在画面上拖动。</p>
+</section>
+<section id="layerProperties" class="panel-section layer-properties" aria-label="所选元素" hidden>
+<div id="layerTextField"><label class="field-label" for="layerText">文字</label><textarea id="layerText" rows="2" maxlength="400"></textarea></div>
+<div id="layerDetailField"><label class="field-label" for="layerDetail">说明</label><textarea id="layerDetail" rows="2" maxlength="160"></textarea></div>
+<div id="layerIconField"><span class="field-label">图标</span><div id="layerIcons" class="layer-icons" role="group" aria-label="图标"></div></div>
+<label class="field-label" for="layerSize">大小 <span id="layerSizeValue" class="layer-value"></span></label>
+<input id="layerSize" type="range" min="0.012" max="0.16" step="0.001">
+<div id="layerStyleRow" class="layer-row" role="group" aria-label="文字样式">
+<button id="layerBold" class="button subtle" type="button" aria-pressed="false">加粗</button>
+<button id="layerAlignLeft" class="button subtle" type="button" aria-pressed="true">左</button>
+<button id="layerAlignCenter" class="button subtle" type="button" aria-pressed="false">中</button>
+<button id="layerAlignRight" class="button subtle" type="button" aria-pressed="false">右</button>
+</div>
+<div class="layer-row">
+<div id="layerColors" class="layer-colors" role="group" aria-label="颜色"></div>
+<input id="layerColor" type="color" aria-label="自定义颜色">
+</div>
+<div class="layer-row">
+<label id="layerPlateField" class="check-label"><input id="layerPlate" type="checkbox">底板</label>
+<label id="layerPointerField" class="check-label"><input id="layerPointer" type="checkbox">指向线</label>
+<span class="layer-spacer"></span>
+<button id="layerDuplicate" class="button subtle" type="button">复制</button>
+<button id="layerDelete" class="button subtle" type="button">删除</button>
+</div>
+</section>
+<section class="panel-section">
+<label class="check-label"><input id="layerVisible" type="checkbox" checked>在画面上显示图文</label>
+<div class="layer-row" role="group" aria-label="导出带图文的图片">
+<button id="layerExportPng" class="button subtle" type="button" title="渲染图与图文合成的 PNG">PNG</button>
+<button id="layerExportJpg" class="button subtle" type="button" title="渲染图与图文合成的 JPG">JPG</button>
+<button id="layerExportSvg" class="button subtle" type="button" title="矢量文件：内含渲染图，文字与图标可继续编辑">SVG</button>
+<button id="layerExportSvgLayer" class="button subtle" type="button" title="只有图文的透明矢量图层">仅图层</button>
+</div>
+<button id="layerClear" class="button subtle" type="button">清空图文</button>
+<p class="field-help">文字与图标是矢量图层：在画面上拖动、双击改字，导出的 SVG 可在设计软件里继续编辑。电商套图导出不含图文。</p>
+</section>
+</section>
 <section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>
 <div class="prop-row">
 <label for="ecommercePlatform">平台</label>
@@ -841,7 +903,8 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=22" defer>
+<script src="/static/layer.js?v=23" defer></script>
+<script src="/static/app.js?v=23" defer>
 </script>
 </body>
 </html>

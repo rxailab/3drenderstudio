@@ -50,6 +50,7 @@ RUNTIME_COMPONENTS={
     'export_c4d':('blender/export_scene.py','c4d/convert_scene.py'),
     'matte':('blender/render_matte.py',),
     'scene_set':('blender/worker.py','blender/scene_dress.py','blender/scene_layout.py','scene_set.py','scene_props.py'),
+    'layer_probe':('blender/layer_probe.py','blender/pick_surface.py'),
 }
 
 def runtime_status():
