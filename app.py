@@ -308,6 +308,12 @@ def validate_project_plan(ident,plan):
             if channel not in ['base_color','roughness','metallic','normal','transmission']: raise ValueError('未知 PBR 通道')
             resolved=Path(path).resolve()
             if root not in resolved.parents or not resolved.is_file(): raise ValueError('PBR 贴图必须先导入到当前项目')
+    if plan.get('scene_set'):
+        import scene_set
+        props=(DATA/ident/'props').resolve()
+        for path in scene_set.files(plan['scene_set']):
+            resolved=Path(path).resolve()
+            if props not in resolved.parents or not resolved.is_file(): raise ValueError('场景道具必须先下载到当前项目')
     return plan
 
 @app.post('/api/projects/<ident>/undo')
@@ -477,6 +483,28 @@ def selected_material_apply(ident):
 def material_agent_create(ident):
     import material_agent
     return jsonify(material_agent.submit(ident,request.get_json(force=True))),202
+
+@app.route('/api/projects/<ident>/scene',methods=['GET','POST'])
+def scene_create(ident):
+    """A usage scene for this product: props from the CC0 catalogue, placed and previewed."""
+    import scene_stylist
+    if request.method=='GET':
+        project=get('project',ident)
+        return jsonify(task=scene_stylist.latest(ident),scene_set=project['plan'].get('scene_set'),
+                       available=engine.runtime_status().get('capabilities',{}).get('scene_set',False))
+    return jsonify(scene_stylist.submit(ident,request.get_json(force=True))),202
+
+@app.post('/api/projects/<ident>/scene/<task_id>/cancel')
+def scene_cancel(ident,task_id):
+    import scene_stylist
+    return jsonify(scene_stylist.cancel(ident,task_id))
+
+@app.post('/api/projects/<ident>/scene/remove')
+def scene_remove(ident):
+    import scene_stylist
+    body=request.get_json(silent=True) or {}
+    scene_stylist.remove(ident,body.get('expected_version'))
+    return jsonify(engine.project_view(ident))
 
 @app.get('/api/projects/<ident>/material-agent/tasks')
 def material_agent_list(ident):
@@ -768,6 +796,8 @@ if __name__=='__main__':
     ecommerce.start()
     import material_agent
     material_agent.recover_interrupted()
+    import scene_stylist
+    scene_stylist.recover_interrupted()
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

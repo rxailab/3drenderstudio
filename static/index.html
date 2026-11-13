@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=21">
+<link rel="stylesheet" href="/static/styles.css?v=22">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -249,6 +249,17 @@
 <section class="panel-section hero-optimize" aria-label="主图优化">
 <button id="optimizeHeroButton" class="button secondary full-width" type="button" aria-describedby="optimizeHeroReason" hidden>自动优化主图</button>
 <p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
+</section>
+<section class="panel-section scene-set" aria-label="使用场景">
+<input id="sceneHint" type="text" maxlength="300" placeholder="可选：产品是什么、想要的场景，如“车间里的工具柜”" aria-label="使用场景说明">
+<button id="sceneButton" class="button secondary full-width" type="button" aria-describedby="sceneStatus">生成使用场景图</button>
+<p id="sceneStatus" class="render-reason" role="status" hidden></p>
+<details id="sceneDetails" class="scene-details" hidden>
+<summary>场景道具与来源</summary>
+<ul id="sceneProps"></ul>
+<p id="sceneNote" class="field-help"></p>
+<button id="sceneRemove" class="button subtle" type="button">移除使用场景</button>
+</details>
 </section></section>
 <section id="inspectorMaterial" role="tabpanel" aria-labelledby="inspectorMaterialTab" hidden>
 <div class="material-intro">
@@ -830,7 +841,7 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=21-thumbnails1" defer>
+<script src="/static/app.js?v=22" defer>
 </script>
 </body>
 </html>

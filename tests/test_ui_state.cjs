@@ -2422,3 +2422,87 @@ test('home cards name the background pass and never call a 2K image 4K',async t=
   const text=cards.join('\n');
   assert.match(text,/正在生成高清图 · 后台继续/);assert.match(text,/1 张高清 2K/);assert.doesNotMatch(text,/4K/);
 });
+
+function sceneSet(overrides={}) {
+  return {version:1,shot_id:'scene',setting:'workshop',source:'rules',summary:'工具柜 / 工具箱：台面 2 件、抽屉内 1 件',units_per_meter:2.7,seed:1,
+    product:{max_dimension_mm:740,size_basis:'model_units'},open:{objects:['Drawer'],translation:[0,-.4,0]},skipped:[{concept:'work gloves',reason:'not_in_catalogue'}],
+    props:[{id:'p1',asset_id:'adjustable_wrench',name:'Adjustable Wrench',file:'/qa/props/adjustable_wrench/a.gltf',zone:'on_top',pose:'flat',license:'CC0 1.0',provider:'Poly Haven',source_url:'https://polyhaven.com/a/adjustable_wrench'},
+           {id:'p2',asset_id:'x',name:'<img src=x onerror=alert(1)>',file:'/qa/props/x/x.gltf',zone:'inside',pose:'flat',license:'CC0 1.0',provider:'Poly Haven',source_url:'javascript:alert(1)'}],...overrides};
+}
+// The server's scene routes: one task per request, a new plan version with the scene shot when it finishes.
+function sceneServer(h) {
+  h.intercept=call=>{
+    const match=call.url.match(/^\/api\/projects\/([^/]+)\/scene(\/remove)?$/);if(!match)return undefined;
+    const p=h.records.get(match[1]);
+    if(call.body.expected_version!==p.version)return h.response({error:'方案已在后台更新'},409);
+    if(match[2]){
+      p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'移除使用场景'});delete p.plan.scene_set;p.plan.shots=p.plan.shots.filter(shot=>shot.id!=='scene');p.version++;return h.response(p);
+    }
+    p.scene_task={id:'scene-'+h.calls.length,project_id:p.id,status:'queued',stage:'等待布置场景',base_version:p.version,hint:call.body.hint};return h.response(p.scene_task,202);
+  };
+}
+function finishScene(h,id='a') {
+  const p=h.records.get(id);p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'生成使用场景'});
+  p.plan.shots.push({id:'scene',label:'使用场景',kind:'full',style:'soft',projection:'perspective',azimuth:35,elevation:36,focal_length:55,camera_distance:5.2,target_offset:[0,0,0]});
+  p.plan.scene_set=sceneSet();p.version++;p.scene_task={...p.scene_task,status:'completed',stage:'已完成',applied_version:p.version};
+}
+
+test('a usage scene is requested once with the plan version, then its shot is shown with the props and their licence',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");sceneServer(h);
+  assert.equal(h.node('sceneButton').disabled,false);assert.equal(h.node('sceneDetails').hidden,true);assert.match(h.node('sceneButton').textContent,/生成使用场景图/);
+  h.node('sceneHint').value='  车间里的工具柜  ';
+  const pending=h.run('generateScene()');await h.run('generateScene()');await pending;
+  const requests=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
+  assert.equal(requests.length,1,'a second click while submitting does not start another scene');
+  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜'});
+  assert.equal(h.node('sceneButton').disabled,true);assert.equal(h.node('sceneButton').getAttribute('aria-busy'),'true');assert.match(h.node('sceneStatus').textContent,/等待布置场景/);
+  await h.run('generateScene()');assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST').length,1,'a running task is not submitted again');
+  finishScene(h);await h.run('poll()');await tick();
+  assert.equal(h.run('activeShot'),'scene','the finished scene is the picture on screen');assert.equal(h.run('current.version'),2);
+  assert.equal(h.node('sceneDetails').hidden,false);assert.match(h.node('sceneButton').textContent,/换一组场景道具/);assert.equal(h.node('sceneButton').disabled,false);
+  assert.match(h.node('sceneStatus').textContent,/台面 2 件/);assert.equal(h.node('sceneStatus').classList.contains('is-summary'),true,'a finished scene is described, not warned about');
+  const rows=[...h.node('sceneProps').querySelectorAll('li')];assert.equal(rows.length,2);
+  assert.match(rows[0].textContent,/Adjustable Wrench/);assert.match(rows[0].textContent,/台面/);assert.match(rows[0].textContent,/CC0/);
+  assert.equal(rows[0].querySelector('a').href,'https://polyhaven.com/a/adjustable_wrench');assert.equal(rows[0].querySelector('a').rel,'noopener');
+  assert.equal(rows[1].querySelector('a'),null,'only Poly Haven asset pages become links');assert.equal(h.node('sceneProps').querySelector('img'),null,'names are text, never markup');
+  assert.match(rows[1].textContent,/抽屉内/);
+  const note=h.node('sceneNote').textContent;assert.match(note,/内置品类规则/);assert.match(note,/740 mm/);assert.match(note,/已拉开抽屉/);assert.match(note,/未放入 1 项/);assert.match(note,/只出现在这个镜头里/);
+});
+
+test('removing a usage scene is one versioned change and returns to the main image',async t=>{
+  const a=previewProject();const h=await setup(t,{projects:[a]});await h.run("openProject('a')");sceneServer(h);
+  await h.run('generateScene()');finishScene(h);await h.run('poll()');await tick();assert.equal(h.run('activeShot'),'scene');
+  await h.run('removeScene()');
+  const removal=h.calls.filter(call=>call.url==='/api/projects/a/scene/remove');assert.equal(removal.length,1);assert.deepEqual(removal[0].body,{expected_version:2});
+  assert.equal(h.run('activeShot'),'hero');assert.equal(h.run('current.version'),3);assert.equal(h.node('sceneDetails').hidden,true);
+  assert.equal(h.run("shots().some(shot=>shot.id==='scene')"),false);assert.match(h.node('sceneButton').textContent,/生成使用场景图/);
+  assert.equal(h.node('undoButton').disabled,false,'the scene can be brought back with undo');
+});
+
+test('the scene control explains why it is unavailable and reports a refused or failed request',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");
+  h.run('system.runtime.capabilities.scene_set=false;renderProject()');
+  assert.equal(h.node('sceneButton').disabled,true);assert.equal(h.node('sceneHint').disabled,true);assert.match(h.node('sceneStatus').textContent,/场景组件未就绪/);
+  await h.run('generateScene()');assert.equal(h.calls.some(call=>/\/scene$/.test(call.url)),false);
+  h.run('delete system.runtime.capabilities.scene_set;serviceDisconnected=true;renderProject()');
+  assert.equal(h.node('sceneButton').disabled,true);assert.match(h.node('sceneStatus').textContent,/连接恢复后/);
+  h.run('serviceDisconnected=false;renderProject()');assert.equal(h.node('sceneButton').disabled,false);
+  h.intercept=call=>/\/scene$/.test(call.url)?h.response({error:'模型库暂时无法访问，请稍后重试。'},503):undefined;
+  await h.run('generateScene()');
+  assert.match(h.node('sceneStatus').textContent,/模型库暂时无法访问/);assert.equal(h.node('sceneStatus').classList.contains('is-summary'),false);assert.equal(h.node('sceneButton').disabled,false,'the request can be tried again');
+  h.intercept=null;h.records.get('a').scene_task={id:'scene-f',status:'failed',stage:'未完成',error:'没有找到可用的抽屉或台面。',base_version:1};
+  h.run('sceneErrors.clear()');await h.run('poll()');
+  assert.match(h.node('sceneStatus').textContent,/没有找到可用的抽屉或台面/);assert.equal(h.run('activeShot'),'hero');
+});
+
+test('a render in progress locks the scene control and unsaved edits are saved before a scene is made',async t=>{
+  const a=previewProject();a.jobs=[{id:'run',kind:'render',status:'running',quality:'final',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
+  const h=await setup(t,{projects:[a,previewProject('b')]});await h.run("openProject('a')");
+  assert.equal(h.node('sceneButton').disabled,true,'one Blender job at a time');
+  await h.run("openProject('b')");sceneServer(h);
+  h.run("draft.exposure=.4;dirty=true;renderProject()");assert.match(h.node('sceneButton').textContent,/保存并生成使用场景图/);
+  await h.run('generateScene()');
+  const writes=h.calls.filter(call=>call.method!=='GET').map(call=>call.url);
+  assert.deepEqual(writes,['/api/projects/b/plan','/api/projects/b/scene'],'the edit is saved first, then the scene is requested for the saved version');
+  assert.equal(h.calls.find(call=>call.url==='/api/projects/b/scene').body.expected_version,2);
+});

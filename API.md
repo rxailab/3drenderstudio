@@ -1,5 +1,46 @@
 # 本地接口与可复现性
 
+## v22 使用场景图
+
+**生成。** `POST /api/projects/{id}/scene`，请求体 `{"hint"?: 不超过 300 字的说明, "expected_version"?: 当前方案版本, "seed"?: 1–999999999 的整数}`，返回 `202` 与任务 `{id,project_id,status,stage,error,base_version,created_at}`。任务在后台线程中执行：识别产品与环境 → 检索并下载道具 → 准备地面与背景 → 启动一次无界面的 Blender 计算布置。成功后一次性保存为一个新的方案版本（历史记录的原因是“生成使用场景”），并自动提交镜头 `scene` 的预览任务。`status` 为 `queued`、`running`、`completed`、`failed`、`cancelled`；完成后带 `applied_version`、`job_id`（预览任务）和 `result`：
+
+```json
+{"summary":"工具柜 / 工具箱：台面 5 件、旁边 2 件、抽屉内 2 件","source":"rules","setting":"workshop",
+ "placed":9,"opened":true,"size_basis":"model_units","max_dimension_mm":737.6,
+ "props":[{"id":"p1","asset_id":"adjustable_wrench","name":"Adjustable Wrench","zone":"on_top",
+           "source_url":"https://polyhaven.com/a/adjustable_wrench","license":"CC0 1.0"}],
+ "skipped":[{"concept":"work gloves","reason":"not_in_catalogue"}]}
+```
+
+`skipped[].reason` 为 `not_in_catalogue`、`duplicate`、`download_failed`、`import_failed`、`no_flat_top`、`no_open_compartment`、`no_room`。项目已有排队或运行中的渲染任务、已有进行中的场景任务、或 `expected_version` 与当前版本不一致时返回 `409`；模型尚未分析完成或找不到 Blender 时返回 `400`。后台高清图会像其他操作一样先让路。任务执行期间方案被别的操作修改时，任务以 `failed` 结束，方案不变。服务重启时未完成的任务标记为 `failed`。
+
+`GET /api/projects/{id}/scene` 返回 `{task, scene_set, available}`；项目详情也带 `scene_task`（最近一次任务）。`POST /api/projects/{id}/scene/{task_id}/cancel` 取消进行中的任务，方案不变。`POST /api/projects/{id}/scene/remove`（请求体可带 `expected_version`）把场景镜头和 `scene_set` 从方案中移除，保存为一个新版本并返回项目详情；两者都可用 `/undo` 恢复。
+
+**方案字段。** 场景保存在 `plan.scene_set`，对应的镜头是 `plan.shots` 中 `id` 为 `"scene"` 的一项（55 mm 透视镜头，`camera_distance` 与 `target_offset` 由布置时算出，之后可像其他镜头一样修改）：
+
+```json
+{"version":1,"shot_id":"scene","setting":"workshop","source":"rules","summary":"…","seed":7,
+ "product":{"type":"工具柜 / 工具箱","max_dimension_mm":737.6,"size_basis":"model_units"},
+ "units_per_meter":2.7115,
+ "props":[{"id":"p1","asset_id":"adjustable_wrench","name":"Adjustable Wrench","provider":"Poly Haven",
+           "license":"CC0 1.0","source_url":"https://polyhaven.com/a/adjustable_wrench",
+           "file":"<data>/<项目>/props/models/adjustable_wrench/adjustable_wrench.gltf",
+           "zone":"on_top","pose":"flat","matrix":[16 个数，行主序],"size_mm":[68.3,30.6,254.1],"concept":"adjustable wrench"}],
+ "open":{"objects":["抽屉…"],"translation":[0,-0.583,0],"cavity_area":0.625,"cavity_depth":0.199},
+ "surface":{"asset_id":"scuffed_cement","textures":{"base_color":"…","roughness":"…","normal":"…"},"tile_m":1.62,"color":[0.55,0.53,0.5]},
+ "wall":{"asset_id":"concrete_wall_008","textures":{…},"tile_m":2.71,"color":[0.6,0.6,0.58],"distance_m":1.18},
+ "basis":{"rotation":[0,0,0],"pose":{},"dimensions_mm":null},
+ "skipped":[]}
+```
+
+`setting` 为 `workshop`、`kitchen`、`bathroom`、`living`、`office`、`garden`、`studio`；`source` 为 `rules` 或 `ai`；`zone` 为 `on_top`、`inside`、`beside`、`behind`；`size_basis` 为 `user`、`ai`、`model_units`、`category`。`units_per_meter` 是产品归一化后（最长边 2 个单位）每米对应的单位数，道具按它缩放到真实比例。`matrix` 与 `open.translation` 都在这个归一化空间中。
+
+`scene_set` 通过 `POST /plan` 提交时按同一份约定校验：只接受上述字段；道具最多 12 件；`file` 与贴图必须是已存在于该项目 `props/` 目录内的本地文件，不接受 URL。渲染时只有 `shot_id` 指向的镜头会布置道具；`basis` 与方案当前的 `rotation`、`pose`、`dimensions_mm` 不一致时（布置之后改过朝向或姿态），该镜头按没有场景渲染，并在输出的 `warnings` 中说明需要重新生成。
+
+**运行能力。** `GET /api/system` 的 `runtime.capabilities.scene_set` 表示布置组件（`blender/scene_dress.py`、`blender/scene_layout.py`、`scene_set.py`、`scene_props.py`）是否齐全；为 `false` 时含场景镜头的渲染请求会被拒绝并说明缺少的文件。
+
+**网络访问。** 只请求 `https://api.polyhaven.com/assets?t=models|textures`、`https://api.polyhaven.com/files/{asset}` 和 `https://dl.polyhaven.org/file/ph-assets/Models|Textures/…`，不跟随重定向。目录在 `data/props_cache/` 中缓存 6 小时，网络不可用时使用已有的旧目录；模型与贴图按清单中的大小和 MD5 校验后缓存，再复制进项目。道具模型取 1K 贴图版本，地面与墙面取 2K。详见 [SCENE_IMAGES_UPDATE.md](SCENE_IMAGES_UPDATE.md)。
+
 ## v21 展示级首图、后台高清图与指令智能体
 
 **方案字段。** `plan.look` 为 `"classic"`（缺省，旧项目保持不变）或 `"showcase"`（新上传的项目）。`plan.auto_polish` 为布尔值：预览完成后是否在后台补渲一张高清 2K。`plan.lookdev` 是服务端写入的只读记录 `{version,source,summary,decisions:[{scope,material,object?,finish,label,reason,parts?,twin_of?}]}`，说明分析完成时为占位材质推断了哪些质感及依据。材质覆盖（`material_overrides`、`object_material_overrides`）新增可选的 `coat`（0–1，清漆层）；质感推断写入的条目带 `source:"lookdev"`、`lookdev_finish`、`lookdev_reason`。通过 `POST /api/projects/{id}/plan` 把旧项目的 `look` 改为 `showcase` 且方案尚无任何材质覆盖时，服务端按同样规则补一次质感推断。
