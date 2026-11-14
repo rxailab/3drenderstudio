@@ -210,8 +210,8 @@ class KeyPointTests(unittest.TestCase):
                             {'value': '42', 'unit': '件', 'label': '套装', 'icon': 'package', 'values': []}]}
         hint = '突出抽屉\n台面承重 120 kg\n扳手：8、10、12、24 mm'
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value=answer) as ask:
-            content, source, notes, layout = info_layer.content_for(project(), hint, None, ['G-07C抽屉(2)_8'])
-        self.assertEqual((source, layout, content['headline'], content['kicker']), ('ai', 'callouts', '车间工具柜', '车间收纳'))
+            content, source, notes, layout = info_layer.content_for(project(), hint, None, ['G-07C抽屉(2)_8'], 'zh')
+        self.assertEqual((source, layout, content['headline'], content['kicker'], content['language']), ('ai', 'callouts', '车间工具柜', '车间收纳', 'zh'))
         self.assertEqual(content['points'], [{'title': '全拉出抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['G-07C抽屉(2)_8']}])
         self.assertEqual([row['value'] for row in content['figures']], ['120'])            # 500 kg was never given
         self.assertEqual([(row['label'], row['value'], row.get('values')) for row in content['specs']],
@@ -224,12 +224,40 @@ class KeyPointTests(unittest.TestCase):
         self.assertEqual([row['label'] for row in facts['user_specs']], ['台面承重', '扳手'])
         prompt = ask.call_args.args[1]
         self.assertIn('never estimate, convert, round or invent a number', prompt); self.assertIn('Do not praise', prompt)
+        self.assertIn('Write every word in Simplified Chinese.', prompt); self.assertNotIn('{', prompt)
+
+    def test_the_words_are_english_by_default_and_the_users_own_figures_survive_the_translation(self):
+        answer = {'kicker': 'Workshop storage', 'headline': 'Mobile tool cabinet', 'subline': 'Seven drawers on casters', 'layout': 'specs', 'free_area': 'none',
+                  'product_box': [.2, .1, .8, .9], 'points': [{'title': 'Full-extension drawers', 'detail': '', 'icon': 'drawer', 'parts': []}],
+                  'figures': [{'value': '120', 'unit': 'kg', 'label': 'Worktop load', 'icon': 'weight'}],
+                  'specs': [{'value': '8–24', 'unit': 'mm', 'label': 'Wrench sizes', 'icon': 'wrench', 'values': ['8', '10', '13', '24']}]}
+        hint = '台面承重 120 kg\n扳手：8、10、12、24 mm'
+        with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value=answer) as ask:
+            content, source, notes, layout = info_layer.content_for(project(), hint)
+        self.assertEqual((source, content['language'], content['headline']), ('ai', 'en', 'Mobile tool cabinet'))
+        self.assertEqual([(row['label'], row['value'], row.get('values')) for row in content['specs']],
+                         [('Worktop load', '120', None), ('Wrench sizes', '8–24', ['8', '10', '12', '24'])])   # the model's words, the user's sizes
+        prompt = ask.call_args.args[1]
+        self.assertIn('Write every word in English', prompt); self.assertIn('its label in English', prompt); self.assertIn('at most 28 characters', prompt)
+        with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value={**answer, 'specs': []}):
+            unmatched = info_layer.content_for(project(), '扳手：8、10、12、24 mm')[0]
+        self.assertEqual(unmatched['specs'][0]['label'], '扳手')                    # nothing to take English words from: the user's own label stays
+
+    def test_without_a_model_the_rules_write_english_and_say_what_they_could_not_translate(self):
+        content, notes = info_layer.content_rules(project(dimensions_mm=[690, 380.5, 738]), '台面承重 120 kg')
+        self.assertEqual((content['language'], content['kicker']), ('en', 'Workshop storage'))
+        self.assertEqual([point['title'] for point in content['points']], ['Drawer storage', 'On casters', 'Lockable', 'Stainless steel worktop'])
+        self.assertEqual([(row['label'], row['value']) for row in content['specs']], [('台面承重', '120'), ('Dimensions', '690×380×738')])
+        self.assertIn('无法把中文翻译成英文', notes[0]); self.assertEqual(content['headline'], '红色工具柜')
+        named, notes = info_layer.content_rules(project(name='Mobile Tool Cabinet'), '')
+        self.assertEqual((named['headline'], notes), ('Mobile Tool Cabinet', []))
+        self.assertEqual(info_layer.content_rules(project(), '', language='zh')[0]['points'][0]['title'], '抽屉收纳')
 
     def test_without_a_model_or_when_it_fails_the_rules_answer(self):
-        self.assertEqual(info_layer.content_for(project())[1:], ('rules', [], None))
+        self.assertEqual(info_layer.content_for(project(), language='zh')[1:], ('rules', [], None))
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', side_effect=RuntimeError('down')):
             content, source, notes, layout = info_layer.content_for(project())
-        self.assertEqual((source, layout, content['points'][0]['title']), ('rules', None, '抽屉收纳')); self.assertEqual(notes[-1], 'AI 未返回可用结果，已改用名称规则。')
+        self.assertEqual((source, layout, content['points'][0]['title']), ('rules', None, 'Drawer storage')); self.assertEqual(notes[-1], 'AI 未返回可用结果，已改用名称规则。')
         refused = ValueError('AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402）')
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', side_effect=refused):
             notes = info_layer.content_for(project())[2]
@@ -295,7 +323,7 @@ class StorageTests(unittest.TestCase):
         report = result['report']; layer = result['layer']
         self.assertEqual((report['source'], report['probe'], report['layout']), ('rules', 'scene', layer['layout']))
         self.assertEqual(report['suitable'][0], layer['layout']); self.assertEqual(sorted(report['suitable']), sorted(['split', 'callouts', 'scene', 'cards', 'spotlight', 'specs']))
-        drawer = next(point for point in layer['content']['points'] if point['title'] == '抽屉收纳')
+        drawer = next(point for point in layer['content']['points'] if point['title'] == 'Drawer storage')
         self.assertTrue(22 / 64 <= drawer['anchor'][0] <= 42 / 64 and 20 / 64 <= drawer['anchor'][1] <= 26 / 64)    # where the drawer is in the render
         self.assertTrue(report['icons']); self.assertTrue(all(icon['source'] in ('lucide', 'tabler') and icon['license'] in ('ISC', 'MIT') for icon in report['icons'].values()))
         self.assertIn(layer['content']['points'][0]['glyph'], layer['glyphs'])
@@ -304,7 +332,7 @@ class StorageTests(unittest.TestCase):
         # The same words as structure notes: the line ends on the drawer, wherever the layout put the picture.
         with patch.object(info_layer, 'probe', return_value=scene):
             notes = info_layer.suggest('p', 'hero', {'layout': 'callouts'})
-        note = next(item for item in notes['layer']['items'] if item['type'] == 'callout' and item['title'] == '抽屉收纳')
+        note = next(item for item in notes['layer']['items'] if item['type'] == 'callout' and item['title'] == 'Drawer storage')
         x, y = in_render(notes['layer'], note['anchor'])
         self.assertTrue(22 / 64 - .01 <= x <= 42 / 64 + .01 and 20 / 64 - .01 <= y <= 26 / 64 + .01)
         self.assertEqual((notes['report']['layout'], notes['report']['anchored']), ('callouts', 1))
@@ -313,7 +341,7 @@ class StorageTests(unittest.TestCase):
     def test_without_the_scene_the_picture_itself_is_read_and_the_report_says_so(self):
         with patch.object(info_layer, 'probe', return_value=None):
             result = info_layer.suggest('p', 'hero', {})
-        self.assertEqual(result['report']['probe'], 'image'); self.assertIn('没有指向线', result['report']['notes'][0])
+        self.assertEqual(result['report']['probe'], 'image'); self.assertTrue(any('没有指向线' in note for note in result['report']['notes']))
         layer = result['layer']; headline = next(entry for entry in layer['items'] if entry['id'] == 'headline')
         left, top = on_canvas(layer, (20 / 64, 16 / 64)); right, bottom = on_canvas(layer, (44 / 64, 54 / 64))      # the red block, as the layout shows it
         end = headline['y'] + len(headline['text'].split('\n')) * headline['size'] * headline['leading']
@@ -426,7 +454,7 @@ class SceneProbeRuntimeTests(unittest.TestCase):
         result = info_layer.suggest('p', 'hero', {})
         self.assertEqual((result['report']['probe'], result['report']['source'], result['layer']['layout']), ('scene', 'rules', 'callouts'))
         callouts = {entry['title']: entry for entry in result['layer']['items'] if entry['type'] == 'callout'}
-        self.assertEqual(sorted(callouts), ['带轮移动', '抽屉收纳'])
+        self.assertEqual(sorted(callouts), ['Drawer storage', 'On casters'])
         view = info_layer.Picture(info_layer.probe('p', self.output))
         for entry in callouts.values():
             self.assertTrue(view.on_product(*in_render(result['layer'], entry['anchor'])))

@@ -11,7 +11,6 @@ import itertools
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 for folder in (ROOT, ROOT / 'tests'):
@@ -34,6 +33,15 @@ CONTENT = {'kicker': '车间收纳', 'headline': '红色移动工具柜', 'subli
                      {'value': '8–24', 'unit': 'mm', 'label': '扳手尺寸', 'icon': 'wrench', 'glyph': 'g4',
                       'values': ['8', '10', '12', '14', '17', '19', '22', '24']}],
            'free_area': 'none'}
+CONTENT_EN = {'kicker': 'Workshop storage', 'headline': 'Mobile tool cabinet', 'subline': 'Seven drawers on smooth casters',
+              'points': [{'title': 'Drawer storage', 'detail': 'Tools sorted by drawer', 'icon': 'drawer', 'parts': ['drawer'], 'glyph': 'g1'},
+                         {'title': 'On casters', 'detail': 'Rolls to where you work', 'icon': 'caster wheel', 'parts': ['wheel'], 'glyph': 'g2'},
+                         {'title': 'Lockable', 'detail': 'Keeps tools secure', 'icon': 'lock', 'parts': ['lock']}],
+              'figures': [{'value': '120', 'unit': 'kg', 'label': 'Worktop load', 'icon': 'weight', 'glyph': 'g3'}],
+              'specs': [{'value': '690×380×738', 'unit': 'mm', 'label': 'Dimensions', 'icon': 'ruler'},
+                        {'value': '8–24', 'unit': 'mm', 'label': 'Wrench sizes', 'icon': 'wrench', 'glyph': 'g4',
+                         'values': ['8', '10', '12', '14', '17', '19', '22', '24']}],
+              'free_area': 'none', 'language': 'en'}
 GLYPHS = {'g1': 'lucide:archive', 'g2': 'lucide:circle-dot', 'g3': 'lucide:weight', 'g4': 'lucide:wrench'}
 VIEWS = {   # name: (picture, its parts, a generated photo)
     'studio': (lambda: picture(parts=PARTS, color=(214, 40, 34)), PARTS, False),
@@ -108,10 +116,10 @@ def composed(layout, aspect, view, generated=False, content=CONTENT):
 
 class ProofTests(unittest.TestCase):
     def test_every_layout_fits_its_canvas_keeps_words_apart_and_off_the_product(self):
-        for (name, (make, parts, generated)), layout, aspect in itertools.product(VIEWS.items(), compose.LAYOUTS, ASPECTS):
-            with self.subTest(picture=name, layout=layout, aspect=aspect):
+        for (name, (make, parts, generated)), layout, aspect, words in itertools.product(VIEWS.items(), compose.LAYOUTS, ASPECTS, (CONTENT, CONTENT_EN)):
+            with self.subTest(picture=name, layout=layout, aspect=aspect, language=words.get('language', 'zh')):
                 view = make()
-                content, canvas, items, report = composed(layout, aspect, view, generated)
+                content, canvas, items, report = composed(layout, aspect, view, generated, words)
                 layer = info_layer.validate({'version': 1, 'layout': layout, 'canvas': canvas, 'content': content, 'glyphs': glyphs(), 'items': items})
                 self.assertEqual(len(layer['items']), len(items))
                 # Nothing is lost silently: what a layout does not show is named, so the user can pick another.
@@ -199,6 +207,17 @@ class ProofTests(unittest.TestCase):
         self.assertEqual(report['dropped'], ['抽屉收纳', '带轮移动', '带锁', '承重3', '外形尺寸', '扳手尺寸'])
 
 
+class TypeTests(unittest.TestCase):
+    def test_a_tag_in_spaced_capitals_is_measured_as_set_and_wraps_before_it_meets_the_headline(self):
+        frame = compose.Frame('1:1')
+        _, _, items, _ = composed('callouts', '1:1', picture(parts=PARTS), content=CONTENT_EN)
+        kicker, headline = (next(item for item in items if item['id'] == name) for name in ('kicker', 'headline'))
+        self.assertEqual(kicker['text'].split('\n'), ['WORKSHOP', 'STORAGE'])            # too wide for the column on one line once tracked
+        self.assertGreaterEqual(headline['y'], kicker['y'] + compose._text_height(frame, kicker))
+        _, _, wide, _ = composed('split', '1:1', picture(parts=PARTS), content=CONTENT_EN)
+        self.assertEqual(next(item for item in wide if item['id'] == 'kicker')['text'], 'WORKSHOP STORAGE')
+
+
 class LookTests(unittest.TestCase):
     def test_a_flat_sweep_is_extended_seamlessly_and_anything_else_keeps_hard_edges(self):
         white = compose.palette(picture(parts=PARTS, color=(214, 40, 34)))
@@ -278,11 +297,12 @@ class NumberTests(unittest.TestCase):
         self.assertIn('wrench', layer_icons.search(size['icon'], 3)[0]['name'])
 
     def test_the_rules_never_put_a_number_the_user_did_not_give_into_the_words(self):
-        content, _ = info_layer.content_rules(project(), '')
-        said = ' '.join([content['kicker'], content['headline'], content['subline']] + [point['title'] + point['detail'] for point in content['points']])
-        self.assertNotRegex(said, r'\d')
-        self.assertEqual((content['figures'], content['specs']), ([], []))
-        sized, _ = info_layer.content_rules(project(dimensions_mm=[690, 380.5, 738]), '台面承重 120 kg')
+        for language in ('en', 'zh'):
+            content, _ = info_layer.content_rules(project(), '', language=language)
+            said = ' '.join([content['kicker'], content['headline'], content['subline']] + [point['title'] + point['detail'] for point in content['points']])
+            self.assertNotRegex(said, r'\d')
+            self.assertEqual((content['figures'], content['specs']), ([], []))
+        sized, _ = info_layer.content_rules(project(dimensions_mm=[690, 380.5, 738]), '台面承重 120 kg', language='zh')
         self.assertEqual([(row['label'], row['value']) for row in sized['specs']], [('台面承重', '120'), ('外形尺寸', '690×380×738')])
         self.assertEqual([row['value'] for row in sized['figures']], ['120'])
 

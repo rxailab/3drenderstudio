@@ -10,7 +10,13 @@
 
 ![同一组文字的六种版式](validation/v26-text-layer-layouts.jpg)
 
-**每一项都有图标。** 图标 agent 先在随应用附带的开源图标库（Lucide、Tabler）中查找，也可以在线查找，只取 MIT、ISC、Apache-2.0 授权的图标；都不合适时由 AI 绘制，并由视觉模型核对。例如“扳手尺寸”配扳手，“台面承重”配秤砣。图标随图层保存，并记录来源与授权；在「图文」面板里可以随时查找、替换或重新绘制。
+**每一项都有图标。** 图标 agent 先在随应用附带的开源图标库（Lucide、Tabler）中查找，也可以在线查找，只取 MIT、ISC、Apache-2.0 授权的图标；都不合适时由 AI 绘制，并由视觉模型核对。例如“扳手尺寸”配扳手，“台面承重”配秤砣。图标随图层保存，并记录来源与授权；在「图文」面板里可以随时查找、替换或重新绘制。绘制可以用 `AI_ICON_MODEL` 单独指定更强的模型：在 HAI 上，`gpt-6.1-sol` 画出的图标 6 个里有 5 个通过核对。
+
+**文字默认英文，可改中文。** 说明框里可以写中文，AI 会把它译成英文，你写的数字和尺寸原样保留。
+
+**可导出 Photoshop 工程。** PSD 里每段文字都是可编辑的文字图层，图标、引线和色块是矢量形状图层，照片和画布各占一层，并按元素分组。
+
+![导出的 PSD 及其图层结构](validation/v26-psd-layers.jpg)
 
 用法、规则、验证范围与未验证的部分见 [TEXT_LAYER_LAYOUT_UPDATE.md](TEXT_LAYER_LAYOUT_UPDATE.md)。
 
@@ -272,6 +278,7 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 - `info_layer.py`、`blender/layer_probe.py`、`static/layer.js`：图文图层的数据约定与存储、关键信息提取、按保存场景探测产品与部件位置；浏览器端负责绘制、编辑与导出 SVG / PNG。
 - `layer_compose.py`：六种图文版式（画布、照片的位置与裁切、文字与数字），以及可读的配色。
 - `layer_icons.py`、`scripts/vendor_icons.py`、`static/vendor/icons/`：图标 agent（随附图标库查找、在线查找、视觉模型挑选、AI 绘制与核对），以及随附图标库的下载与校验。
+- `scripts/vendor_psd_writer.py`、`static/vendor/ag-psd/`：浏览器端写 Photoshop 文件的 ag-psd（MIT），以及它的下载与校验。
 - `scene_stylist.py`、`scene_props.py`、`scene_set.py`、`blender/scene_layout.py`、`blender/scene_dress.py`：使用场景的导演与采购、Poly Haven 目录检索与下载校验、场景数据约定、无界面布置求解，以及渲染时按记录重建道具、地面、背景墙与景深。
 - `ecommerce.py`、`ecommerce_platforms.py`、`blender/render_matte.py`：平台主图规则、真实图片的合规检查、产品蒙版、纯白底／透明底合成与平台套图导出。
 - `ai_client.py`、`ai_config.py`：AI服务配置、结构化视觉诊断与修改请求；失败时明确退回有限规则检查。

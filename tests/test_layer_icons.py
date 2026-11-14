@@ -78,6 +78,16 @@ class CatalogueTests(Offline):
             self.assertGreater((folder / name).stat().st_size, 200)
         self.assertIn('ISC', (folder / 'LICENSE-lucide.txt').read_text(encoding='utf-8'))
 
+    def test_the_photoshop_writer_is_the_recorded_one_with_its_licences(self):
+        folder = ROOT / 'static' / 'vendor' / 'ag-psd'
+        record = json.loads((folder / 'VENDORED.json').read_text(encoding='utf-8'))
+        writer = record['packages'][0]
+        self.assertEqual((writer['package'], writer['license']), ('ag-psd', 'MIT'))
+        self.assertEqual(hashlib.sha256((folder / writer['file']).read_bytes()).hexdigest(), writer['sha256'])
+        self.assertEqual({row['package'] for row in record['packages'][1:]}, {'pako', 'base64-js'})      # bundled inside it
+        for name in ('ag-psd', 'pako', 'base64-js'):
+            self.assertIn('Permission is hereby granted', (folder / ('LICENSE-%s.txt' % name)).read_text(encoding='utf-8'))
+
     def test_a_word_finds_the_literal_picture(self):
         for query, wanted in (('扳手', 'wrench'), ('扳手尺寸', 'wrench'), ('尺寸', 'ruler'), ('承重', 'weight'), ('锁', 'lock'), ('padlock', 'lock'),
                               ('weights', 'weight'), ('drawers', 'archive'), ('电池续航', 'battery'), ('wrench', 'wrench')):
@@ -91,6 +101,11 @@ class CatalogueTests(Offline):
         for query in ('nut', '螺母', 'socket', 'bolt'):
             with self.subTest(query=query):
                 self.assertNotIn(('lucide', 'nut'), {(row['prefix'], row['name']) for row in icons.search(query, 40)})     # Lucide's nut is a hazelnut
+        for query in ('台面', 'worktop', 'table', 'workbench'):
+            with self.subTest(query=query):
+                found = {(row['prefix'], row['name']) for row in icons.search(query, 40)}
+                self.assertEqual(icons.search(query, 1)[0]['name'], 'desk')
+                self.assertFalse(found & {('lucide', 'table'), ('lucide', 'table-2'), ('tabler', 'table')}, 'a spreadsheet is not a worktop')
 
     def test_a_stored_glyph_is_looked_up_by_set_and_name(self):
         wrench = icons.glyph('lucide:wrench')
@@ -161,8 +176,9 @@ class AgentTests(Offline):
         self.assertEqual([glyphs[key]['name'] for key in chosen], ['weight', 'wrench'])      # known words win; unknown ones leave it to the keywords
 
     def test_which_word_names_the_picture(self):
-        for query, wanted in (('台面承重', 'weight'), ('扳手尺寸', 'wrench'), ('7层抽屉', 'archive'), ('抽屉数量', 'archive'), ('不锈钢台面', 'table'),
-                              ('外形尺寸', 'ruler'), ('电池续航', 'battery'), ('扭矩', 'gauge')):
+        for query, wanted in (('台面承重', 'weight'), ('扳手尺寸', 'wrench'), ('7层抽屉', 'archive'), ('抽屉数量', 'archive'), ('不锈钢台面', 'desk'),
+                              ('外形尺寸', 'ruler'), ('电池续航', 'battery'), ('扭矩', 'gauge'), ('Top load', 'weight'), ('Wrench sizes', 'wrench'),
+                              ('Locking door', 'lock'), ('On casters', 'wheel'), ('Stainless steel worktop', 'desk'), ('Battery runtime', 'battery')):
             with self.subTest(query=query):
                 self.assertIn(wanted, icons.search(query, 1)[0]['name'])
 
@@ -204,6 +220,30 @@ class AgentTests(Offline):
         self.assertEqual((value['source'], value['license'], value['model'], value['check']['status']), ('drawn', 'own', 'text', 'passed'))
         self.assertEqual(value['ops'], [['s', 'M6 18 L18 6'], ['s', 'M15 4a3 3 0 1 0 5 5']])
         self.assertIsNone(checks[0]); self.assertIn('not valid SVG path syntax', checks[1][0])          # the second attempt is told what was wrong
+
+    def test_a_malformed_answer_is_drawn_again_and_a_drawing_model_can_be_named(self):
+        answers = iter([ValueError('AI 缺少必要字段（$：note、paths、plan），当前方案未修改。'),
+                        {'plan': 'x', 'paths': [{'mode': 'stroke', 'd': 'M4 4 L20 20'}], 'note': 'x'}])
+        models = []
+        def ask(config, system, facts, schema, image_path=None, max_tokens=2500):
+            if system == icons.DRAW_PROMPT:
+                models.append(config['model']); answer = next(answers)
+                if isinstance(answer, Exception): raise answer
+                return answer
+            return {'recognisable': True, 'clean': True, 'issues': [], 'note': '能认出。'}
+        with patch.object(icons, '_config', return_value={'model': 'writer'}), patch.object(icons, '_ask', side_effect=ask), \
+                patch.object(icons, 'drawing_model', return_value='painter'):
+            value = icons.draw('扳手')
+        self.assertEqual(models, ['painter', 'painter']); self.assertEqual((value['model'], value['check']['status']), ('painter', 'passed'))
+        refused = ValueError('AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402）')
+        with patch.object(icons, '_config', return_value={'model': 'writer'}), patch.object(icons, '_ask', side_effect=refused) as asked, \
+                self.assertRaisesRegex(ValueError, 'HTTP 402'):
+            icons.draw('扳手')
+        self.assertEqual(asked.call_count, 1, 'a refusal is not asked twice')
+        with patch('ai_config.read_env', return_value={'AI_ICON_MODEL': ' gpt-6.1-sol '}):
+            self.assertEqual(icons.drawing_model(), 'gpt-6.1-sol')
+        with patch('ai_config.read_env', return_value={}), patch.dict('os.environ', {}, clear=True):
+            self.assertEqual(icons.drawing_model(), '')
 
     def test_a_drawing_that_never_passes_its_check_is_still_offered_and_marked(self):
         def ask(config, system, facts, schema, image_path=None, max_tokens=2500):

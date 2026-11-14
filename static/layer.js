@@ -305,7 +305,7 @@ function compBox(item, W, H, glyphs) {
   }
   if (item.type === 'chips') {
     const chipSize = size * .62, labelSize = size * .5, padX = size * .55, gap = size * .28, chipH = size * 1.5;
-    const label = (item.label || '') + (item.unit ? `（${item.unit}）` : '');
+    const label = (item.label || '') + (item.unit ? (compHasCjk(item.label) ? `（${item.unit}）` : ` (${item.unit})`) : '');
     const chipWidths = item.values.map(value => Math.max(chipH, layerMeasure(value, chipSize, compType(600)) + padX * 2));
     const rows = []; let row = [], rowWidth = 0;
     chipWidths.forEach((chip, index) => { if (row.length && rowWidth + gap + chip > width) { rows.push(row); row = []; rowWidth = 0; } row.push(index); rowWidth += (row.length > 1 ? gap : 0) + chip; });
@@ -375,10 +375,10 @@ function compItemMarkup(item, W, H, layer) {
   return `<g data-item="${esc(item.id)}" data-type="${item.type}">${body}</g>`;
 }
 // The canvas and the photo in its frame. ``image`` is the render's URL (or a data URL in an exported file).
-function compCanvasMarkup(layer, W, H, image) {
+function compCanvasMarkup(layer, W, H, image, background = true) {
   // Without a canvas the words are set on the picture itself, which fills the frame.
   const canvas = layer.canvas; if (!canvas) return image ? `<image href="${esc(image)}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"/>` : '';
-  let markup = `<rect x="0" y="0" width="${W}" height="${H}" fill="${esc(canvas.color)}"/>`;
+  let markup = background ? `<rect x="0" y="0" width="${W}" height="${H}" fill="${esc(canvas.color)}"/>` : '';
   const photo = canvas.photo; if (!photo || !image) return markup;
   const [c0, c1, c2, c3] = photo.crop, fx = photo.x * W, fy = photo.y * H, fw = photo.w * W, fh = photo.h * H, unit = Math.min(W, H);
   const id = 'photo-clip', radius = (photo.radius || 0) * unit;
@@ -399,6 +399,13 @@ function compCanvasMarkup(layer, W, H, image) {
 // A whole composition: canvas, photo and items, as SVG content in picture pixels.
 function compMarkup(layer, W, H, image) { return compCanvasMarkup(layer, W, H, image) + (layer.items || []).map(item => compItemMarkup(item, W, H, layer)).join(''); }
 function layerComposed(layer) { return !!(layer && layer.layout && COMP_LAYOUTS[layer.layout]); }
+const LAYER_LANGUAGES = ['en', 'zh'];
+// The language of the next smart layout: one just picked in the panel, else the layer's own, else the last one picked here, else English.
+function layerLanguage() {
+  const own = layerState.content?.language, chosen = (() => { try { return localStorage.getItem('studio.layerLanguage'); } catch (_) { return null; } })();
+  return [layerState.languageChoice, own, chosen].find(value => LAYER_LANGUAGES.includes(value)) || 'en';
+}
+function compHasCjk(text) { return /[\u3400-\u9fff]/.test(String(text || '')); }
 // Small diagrams of the six layouts for the picker: the photo as a filled shape, words as lines.
 const COMP_SKETCHES = {
   split: '<rect x="13" y="4" width="8" height="16" rx="1.5" fill="currentColor" opacity=".35"/><path d="M3 6h6M3 9h5M3 16h4M3 19h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
@@ -432,7 +439,7 @@ function layerSync() {
   if (key !== layerState.key) {
     if (layerState.dirty) layerFlush();
     Object.assign(layerState, {key, items: structuredCloneSafe(stored?.items || []), ...layerFieldsOf(stored), basis: stored?.basis || null, source: stored?.source || null, revision: stored?.revision || 0,
-      selected: null, dirty: false, undo: [], redo: [], coalesce: '', report: null, error: '', drag: null, editing: null, guides: [], iconResults: null, iconError: ''});
+      selected: null, dirty: false, undo: [], redo: [], coalesce: '', report: null, error: '', drag: null, editing: null, guides: [], iconResults: null, iconError: '', languageChoice: null});
     if (key && !layerState.inflight) layerRevisions.set(key, layerState.revision);
   } else if (!layerState.dirty && !layerState.inflight && (stored?.revision || 0) > layerState.revision) {
     Object.assign(layerState, {items: structuredCloneSafe(stored.items || []), ...layerFieldsOf(stored), basis: stored.basis || null, source: stored.source || null, revision: stored.revision});
@@ -508,9 +515,10 @@ function layerAdd(kind) {
   if (!layerSize() || layerState.items.length >= LAYER_MAX_ITEMS) return;
   const id = layerNewId(), offset = (layerState.items.length % 5) * .03;
   const composed = layerComposed(layerState), ink = composed ? (layerState.items.find(entry => entry.role === 'headline')?.color || '#1d1d1f') : '#141414';
-  const item = kind === 'title' ? {id, type: 'text', role: 'headline', x: .08 + offset, y: .06 + offset, w: .56, text: '标题文字', size: composed ? .056 : .08, weight: 700, align: 'left', color: ink, plate: null, ...(composed ? {leading: 1.16} : {})}
-    : kind === 'text' ? {id, type: 'text', role: 'body', x: .08 + offset, y: .2 + offset, w: .36, text: '在这里写说明文字', size: composed ? .024 : .028, weight: 400, align: 'left', color: ink, plate: null, ...(composed ? {leading: 1.45} : {})}
-    : kind === 'callout' ? (composed ? {id, type: 'callout', style: 'line', x: .66 + offset * .3, y: .4 + offset, w: .26, title: '要点', detail: '补充说明', icon: null, anchor: [.45, .5], size: .024, color: ink, plate: null}
+  const english = composed && layerLanguage() === 'en';
+  const item = kind === 'title' ? {id, type: 'text', role: 'headline', x: .08 + offset, y: .06 + offset, w: .56, text: english ? 'Headline' : '标题文字', size: composed ? .056 : .08, weight: 700, align: 'left', color: ink, plate: null, ...(composed ? {leading: 1.16} : {})}
+    : kind === 'text' ? {id, type: 'text', role: 'body', x: .08 + offset, y: .2 + offset, w: .36, text: english ? 'Supporting text' : '在这里写说明文字', size: composed ? .024 : .028, weight: 400, align: 'left', color: ink, plate: null, ...(composed ? {leading: 1.45} : {})}
+    : kind === 'callout' ? (composed ? {id, type: 'callout', style: 'line', x: .66 + offset * .3, y: .4 + offset, w: .26, title: english ? 'Key point' : '要点', detail: english ? 'Detail' : '补充说明', icon: null, anchor: [.45, .5], size: .024, color: ink, plate: null}
       : {id, type: 'callout', x: .06 + offset, y: .4 + offset, w: .27, title: '要点', detail: '补充说明', icon: 'check', anchor: [.5, .5], size: .03, color: '#141414', plate: {color: '#ffffff', opacity: .9}})
     : {id, type: 'icon', icon: 'star', x: .12 + offset, y: .82 - offset, size: composed ? .05 : .07, color: ink};
   // A layer started by hand is dressed from the first item on; one saved before styles existed stays as it was until a style is chosen.
@@ -543,9 +551,9 @@ async function layerSuggest(layout = null) {
   layerState.busy = true; layerState.error = ''; renderLayerPanel();
   try {
     const output = {job_id: currentOutput.job_id, version: currentOutput.version, quality: currentOutput.quality};
-    const result = await api(`/api/projects/${encodeURIComponent(projectId)}/layers/${encodeURIComponent(shotId)}/suggest`, {method: 'POST', body: {hint: $('layerHint').value.trim().slice(0, 400), output, ...(layout ? {layout} : {})}});
+    const result = await api(`/api/projects/${encodeURIComponent(projectId)}/layers/${encodeURIComponent(shotId)}/suggest`, {method: 'POST', body: {hint: $('layerHint').value.trim().slice(0, 400), output, language: $('layerLanguage').value, ...(layout ? {layout} : {})}});
     if (layerState.key !== key) return;
-    layerState.report = result.report;
+    layerState.report = result.report; layerState.languageChoice = null;     // the words now carry the language
     layerChange(() => { Object.assign(layerState, {items: result.layer.items, ...layerFieldsOf(result.layer), basis: result.layer.basis || null, source: result.layer.source || 'rules', selected: null}); });
   } catch (error) { if (layerState.key === key) layerState.error = error.message || '排版未完成，请重试。'; }
   finally { layerState.busy = false; if (current) { renderLayerStage(); renderLayerPanel(); } }
@@ -792,6 +800,8 @@ function renderLayerPanel() {
   }
   const status = $('layerStatus'); status.textContent = message; status.hidden = !message; status.classList.toggle('is-summary', !!report && !layerState.error && ready && !layerStale());
   $('layerSuggest').disabled = !ready || layerState.busy || serviceDisconnected; $('layerHint').disabled = !ready || layerState.busy;
+  $('layerLanguage').disabled = !ready || layerState.busy;
+  if (document.activeElement !== $('layerLanguage')) $('layerLanguage').value = layerLanguage();
   $('layerSuggest').textContent = layerState.busy ? '正在排版…' : layerState.items.length ? '重新智能排版' : '智能排版关键信息';
   const composed = layerComposed(layerState);
   stableHTML($('layerLayouts'), Object.entries(COMP_LAYOUTS).map(([name, label]) => `<button type="button" class="layer-layout${layerState.layout === name ? ' selected' : ''}" data-layer-layout="${name}" aria-pressed="${layerState.layout === name}" title="${label}：${COMP_REFERENCES[name]}" ${!ready || layerState.busy || serviceDisconnected ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${COMP_SKETCHES[name]}</svg><span>${label}</span></button>`).join(''));
@@ -847,7 +857,11 @@ function renderLayerPanel() {
     $('layerPlate').checked = !!item.plate; $('layerPointer').checked = !!item.anchor;
   }
   $('layerVisible').checked = layerState.visible;
-  for (const id of ['layerExportPng', 'layerExportJpg', 'layerExportSvg', 'layerExportSvgLayer']) $(id).disabled = !ready || !layerState.items.length;
+  for (const id of ['layerExportPng', 'layerExportJpg', 'layerExportSvg', 'layerExportSvgLayer']) $(id).disabled = !ready || !layerState.items.length || !!layerState.exporting;
+  // The Photoshop file is built from a composition's drawing; an overlay layer saved before v26 is laid out again first.
+  $('layerExportPsd').disabled = !ready || !layerState.items.length || !composed || !!layerState.exporting;
+  $('layerExportPsd').textContent = layerState.exporting === 'psd' ? '生成中…' : 'PSD';
+  $('layerExportPsd').title = composed ? 'Photoshop 工程：每段文字是可编辑的文字图层，图标、引线与色块是矢量形状图层，照片与画布各占一层，按元素分组' : '旧版图文请先「重新智能排版」，再导出 Photoshop 工程';
   $('layerClear').disabled = !layerState.items.length;
 }
 function layerLeave() { layerCloseInline(true); layerState.selected = null; layerState.drag = null; layerState.guides = []; layerFlush(); }
@@ -858,6 +872,8 @@ function bindLayerControls() {
   document.addEventListener('keydown', layerKeyDown);
   $('layerInline').addEventListener('input', layerInlineInput); $('layerInline').addEventListener('blur', () => layerCloseInline());
   $('layerSuggest').onclick = () => layerSuggest();
+  // A language chosen here is used for the next smart layout and remembered for the next layer.
+  $('layerLanguage').onchange = () => { layerState.languageChoice = $('layerLanguage').value; try { localStorage.setItem('studio.layerLanguage', $('layerLanguage').value); } catch (_) {} };
   $('layerLayouts').onclick = event => { const button = event.target.closest('[data-layer-layout]'); if (button && !button.disabled) layerCompose(button.dataset.layerLayout); };
   for (const [id, key] of [['layerFigureValue', 'value'], ['layerFigureUnit', 'unit'], ['layerFigureLabel', 'label']])
     $(id).oninput = () => layerSet({[key]: key === 'value' ? ($(id).value.slice(0, 24) || ' ') : $(id).value.slice(0, key === 'unit' ? 12 : 40)}, 'figure-' + key);
@@ -895,6 +911,7 @@ function bindLayerControls() {
   $('layerClear').onclick = layerClear;
   $('layerExportPng').onclick = () => layerExport('png'); $('layerExportJpg').onclick = () => layerExport('jpg');
   $('layerExportSvg').onclick = () => layerExport('svg'); $('layerExportSvgLayer').onclick = () => layerExport('svg-layer');
+  $('layerExportPsd').onclick = () => layerExport('psd');
   $('renderImage').addEventListener('load', renderLayerStage); window.addEventListener('resize', renderLayerStage);
 }
 
@@ -933,7 +950,291 @@ async function layerDataUrl(url) {
   const blob = await (await fetch(url)).blob();
   return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('图片未能读取，请重试。')); reader.readAsDataURL(blob); });
 }
+// ------------------------------------------------------------------ Photoshop export
+// A composition as a layered Photoshop file. The canvas colour and the photo are pixel layers; every run of words is an
+// editable text layer; icons, hairlines, dots, size chips, cards and bands are vector shape layers; each item is a group.
+// It is built from the same SVG that is drawn on screen, element by element, so the file matches what is shown.
+let compPsdWriter = null;
+function compLoadPsdWriter() {
+  compPsdWriter ||= new Promise((resolve, reject) => {
+    if (window.agPsd) return resolve(window.agPsd);
+    const script = Object.assign(document.createElement('script'), {src: '/static/vendor/ag-psd/ag-psd.js', async: true});
+    script.onload = () => window.agPsd ? resolve(window.agPsd) : reject(new Error('Photoshop 导出组件未能载入，请重试。'));
+    script.onerror = () => reject(new Error('Photoshop 导出组件未能载入，请重试。'));
+    document.head.append(script);
+  }).catch(error => { compPsdWriter = null; throw error; });
+  return compPsdWriter;
+}
+const COMP_PATH_NUMBER = /[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/y;
+// Commands with their numbers; arc flags may be written without separators ("a1 1 0 011 1").
+function compPathCommands(d) {
+  const out = [], text = String(d || ''); let position = 0, command = null, numbers = [];
+  while (position < text.length) {
+    const char = text[position];
+    if (' ,\t\n\r'.includes(char)) { position++; continue; }
+    if (/[A-Za-z]/.test(char)) { if (command) out.push([command, numbers]); command = char; numbers = []; position++; continue; }
+    if ((command === 'A' || command === 'a') && [3, 4].includes(numbers.length % 7) && (char === '0' || char === '1')) { numbers.push(Number(char)); position++; continue; }
+    COMP_PATH_NUMBER.lastIndex = position; const match = COMP_PATH_NUMBER.exec(text);
+    if (!match) throw new Error('bad path');
+    numbers.push(Number(match[0])); position = COMP_PATH_NUMBER.lastIndex;
+  }
+  if (command) out.push([command, numbers]);
+  return out;
+}
+// An SVG elliptical arc as cubic segments [x1, y1, x2, y2, x, y] (endpoint parameterisation, SVG 1.1 F.6.5).
+function compArcCubics(x1, y1, rx, ry, angle, large, sweep, x2, y2) {
+  if (x1 === x2 && y1 === y2) return [];
+  if (!rx || !ry) return [[x1, y1, x2, y2, x2, y2]];
+  const phi = (angle % 360) * Math.PI / 180, cos = Math.cos(phi), sin = Math.sin(phi);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2, x1p = cos * dx + sin * dy, y1p = -sin * dx + cos * dy;
+  rx = Math.abs(rx); ry = Math.abs(ry);
+  const scale = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+  if (scale > 1) { rx *= Math.sqrt(scale); ry *= Math.sqrt(scale); }
+  const num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p, den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+  let factor = den ? Math.sqrt(Math.max(0, num / den)) : 0; if (!!large === !!sweep) factor = -factor;
+  const cxp = factor * rx * y1p / ry, cyp = -factor * ry * x1p / rx, cx = cos * cxp - sin * cyp + (x1 + x2) / 2, cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
+  const angleOf = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const start = angleOf(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let delta = angleOf((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  if (!sweep && delta > 0) delta -= 2 * Math.PI; else if (sweep && delta < 0) delta += 2 * Math.PI;
+  const parts = Math.max(1, Math.ceil(Math.abs(delta) / (Math.PI / 2) - 1e-6)), step = delta / parts, k = 4 / 3 * Math.tan(step / 4);
+  const at = theta => [cos * rx * Math.cos(theta) - sin * ry * Math.sin(theta) + cx, sin * rx * Math.cos(theta) + cos * ry * Math.sin(theta) + cy];
+  const slope = theta => [-cos * rx * Math.sin(theta) - sin * ry * Math.cos(theta), -sin * rx * Math.sin(theta) + cos * ry * Math.cos(theta)];
+  const out = [];
+  for (let index = 0; index < parts; index++) {
+    const a = start + step * index, b = a + step, [ax, ay] = at(a), [bx, by] = at(b), [dax, day] = slope(a), [dbx, dby] = slope(b);
+    out.push([ax + k * dax, ay + k * day, bx - k * dbx, by - k * dby, bx, by]);
+  }
+  out[out.length - 1][4] = x2; out[out.length - 1][5] = y2;
+  return out;
+}
+// Path data as subpaths of absolute cubic segments: [{start: [x, y], segments: [[x1, y1, x2, y2, x, y], ...], closed}].
+function compPathCubics(d) {
+  const subpaths = []; let path = null, x = 0, y = 0, sx = 0, sy = 0, cubic = null, quad = null;
+  const begin = (px, py) => { path = {start: [px, py], segments: [], closed: false}; subpaths.push(path); x = sx = px; y = sy = py; };
+  const ensure = () => { if (!path || path.closed) begin(sx, sy); };
+  const curve = (x1, y1, x2, y2, px, py) => { ensure(); path.segments.push([x1, y1, x2, y2, px, py]); x = px; y = py; };
+  const line = (px, py) => curve(x, y, px, py, px, py);
+  for (const [command, numbers] of compPathCommands(d)) {
+    const upper = command.toUpperCase(), relative = command !== upper;
+    const groups = {M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0}[upper];
+    if (groups === undefined) throw new Error('bad path');
+    if (upper === 'Z') { if (path && !path.closed) { if (x !== path.start[0] || y !== path.start[1]) line(path.start[0], path.start[1]); path.closed = true; x = sx; y = sy; } cubic = quad = null; continue; }
+    if (!numbers.length || numbers.length % groups) throw new Error('bad path');
+    for (let index = 0; index < numbers.length; index += groups) {
+      const n = numbers.slice(index, index + groups), ox = relative ? x : 0, oy = relative ? y : 0;
+      let nextCubic = null, nextQuad = null;
+      if (upper === 'M') { if (index === 0) begin(n[0] + ox, n[1] + oy); else line(n[0] + ox, n[1] + oy); }
+      else if (upper === 'L') line(n[0] + ox, n[1] + oy);
+      else if (upper === 'H') line(n[0] + (relative ? x : 0), y);
+      else if (upper === 'V') line(x, n[0] + (relative ? y : 0));
+      else if (upper === 'C') { curve(n[0] + ox, n[1] + oy, n[2] + ox, n[3] + oy, n[4] + ox, n[5] + oy); nextCubic = [n[2] + ox, n[3] + oy]; }
+      else if (upper === 'S') { const [rx, ry] = cubic ? [2 * x - cubic[0], 2 * y - cubic[1]] : [x, y]; curve(rx, ry, n[0] + ox, n[1] + oy, n[2] + ox, n[3] + oy); nextCubic = [n[0] + ox, n[1] + oy]; }
+      else if (upper === 'Q' || upper === 'T') {
+        const [qx, qy] = upper === 'Q' ? [n[0] + ox, n[1] + oy] : quad ? [2 * x - quad[0], 2 * y - quad[1]] : [x, y];
+        const [px, py] = upper === 'Q' ? [n[2] + ox, n[3] + oy] : [n[0] + ox, n[1] + oy];
+        curve(x + 2 / 3 * (qx - x), y + 2 / 3 * (qy - y), px + 2 / 3 * (qx - px), py + 2 / 3 * (qy - py), px, py); nextQuad = [qx, qy];
+      } else {
+        ensure();
+        for (const segment of compArcCubics(x, y, n[0], n[1], n[2], n[3], n[4], n[5] + ox, n[6] + oy)) path.segments.push(segment);
+        x = n[5] + ox; y = n[6] + oy;
+      }
+      cubic = nextCubic; quad = nextQuad;
+    }
+  }
+  return subpaths;
+}
+// One subpath as Photoshop knots, each [before x, y, anchor x, y, after x, y] in document pixels.
+function compKnots(subpath, apply) {
+  const segments = subpath.segments, anchors = [subpath.start, ...segments.map(segment => [segment[4], segment[5]])];
+  if (subpath.closed && anchors.length > 1) {
+    const last = anchors[anchors.length - 1];
+    if (Math.abs(last[0] - subpath.start[0]) < 1e-6 && Math.abs(last[1] - subpath.start[1]) < 1e-6) anchors.pop();
+  }
+  return anchors.map((anchor, index) => {
+    const incoming = index > 0 ? segments[index - 1] : subpath.closed ? segments[segments.length - 1] : null;
+    const outgoing = index < segments.length && (index < anchors.length - 1 || subpath.closed) ? segments[index] : null;
+    const [bx, by] = apply(incoming ? [incoming[2], incoming[3]] : anchor), [ax, ay] = apply(anchor), [nx, ny] = apply(outgoing ? [outgoing[0], outgoing[1]] : anchor);
+    return {linked: false, points: [bx, by, ax, ay, nx, ny]};
+  });
+}
+// The transform of an element in the document: translate, scale and matrix, as [a, b, c, d, e, f].
+function compMatrix(element) {
+  let matrix = [1, 0, 0, 1, 0, 0];
+  const multiply = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+  const chain = []; for (let node = element; node && node.getAttribute; node = node.parentNode) if (node.getAttribute('transform')) chain.unshift(node.getAttribute('transform'));
+  for (const transform of chain) for (const [, name, args] of transform.matchAll(/(translate|scale|matrix)\s*\(([^)]*)\)/g)) {
+    const v = args.split(/[\s,]+/).filter(Boolean).map(Number);
+    matrix = multiply(matrix, name === 'translate' ? [1, 0, 0, 1, v[0] || 0, v[1] || 0] : name === 'scale' ? [v[0], 0, 0, v[1] ?? v[0], 0, 0] : v);
+  }
+  return matrix;
+}
+function compRgb(color) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(color || '').trim()), value = match ? parseInt(match[1], 16) : 0;
+  return {r: value >> 16 & 255, g: value >> 8 & 255, b: value & 255};
+}
+// The font Photoshop is told to set a run in: Inter for Latin words (as on screen), Source Han Sans for Chinese.
+function compPsdFont(text, weight) {
+  const w = Number(weight) || 400;
+  if (compHasCjk(text)) return 'SourceHanSansSC-' + (w >= 800 ? 'Heavy' : w >= 600 ? 'Bold' : w >= 500 ? 'Medium' : 'Regular');
+  return 'Inter-' + (w >= 900 ? 'Black' : w >= 800 ? 'ExtraBold' : w >= 700 ? 'Bold' : w >= 600 ? 'SemiBold' : w >= 500 ? 'Medium' : w >= 300 ? 'Regular' : 'Light');
+}
+function compPsdItemName(item, glyphs) {
+  const words = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (item.type === 'text') return `${{headline: '标题', kicker: '标签', subline: '副标题', caption: '说明'}[item.role] || '文字'} · ${words(item.text)}`;
+  if (item.type === 'figure') return `数据 · ${words(`${item.value}${item.unit ? ' ' + item.unit : ''} ${item.label || ''}`)}`;
+  if (item.type === 'callout') return `要点 · ${words(item.title)}`;
+  if (item.type === 'chips') return `规格 · ${words(item.label || item.values.join(' '))}`;
+  if (item.type === 'icon') return `图标 · ${words(glyphs?.[item.glyph]?.name || item.icon)}`;
+  if (item.type === 'rule') return '细线';
+  return {band: '色带', scrim: '渐变遮罩'}[item.id] || (/^card/.test(item.id) ? '卡片' : '底板');
+}
+// What the Photoshop file holds for a composition, without pixels: groups of text, shape and pixel nodes, each with the
+// SVG markup that draws it (for its preview). Coordinates are document pixels.
+function compPsdModel(layer, W, H) {
+  const glyphs = layer.glyphs || {}, svg = compSvgDocument({...layer, canvas: null}, W, H, '', '', false);
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml'), defs = id => doc.getElementById(id)?.outerHTML || '';
+  const serial = node => new XMLSerializer().serializeToString(node);
+  const wrap = (node, matrix) => `<g transform="matrix(${matrix.map(layerNumber).join(' ')})">${serial(node)}</g>`;
+  const paint = node => {
+    const get = name => node.getAttribute(name), fill = get('fill'), stroke = get('stroke'), m = compMatrix(node), scale = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])) || 1;
+    return {fill: fill && fill !== 'none' && !fill.startsWith('url(') ? fill : fill === null && !stroke ? '#000000' : null, gradient: !!fill?.startsWith('url('),
+      fillOpacity: Number(get('fill-opacity') ?? 1), evenOdd: get('fill-rule') === 'evenodd', stroke: stroke && stroke !== 'none' ? stroke : null,
+      strokeWidth: Number(get('stroke-width') ?? 1) * scale, strokeOpacity: Number(get('stroke-opacity') ?? 1),
+      cap: get('stroke-linecap') || 'butt', join: get('stroke-linejoin') || 'miter'};
+  };
+  const outline = node => {
+    const n = name => Number(node.getAttribute(name)) || 0, tag = node.tagName.toLowerCase();
+    if (tag === 'path') return node.getAttribute('d');
+    if (tag === 'line') return `M${n('x1')} ${n('y1')}L${n('x2')} ${n('y2')}`;
+    if (tag === 'circle' || tag === 'ellipse') { const rx = tag === 'circle' ? n('r') : n('rx'), ry = tag === 'circle' ? n('r') : n('ry'); return `M${n('cx') - rx} ${n('cy')}A${rx} ${ry} 0 1 0 ${n('cx') + rx} ${n('cy')}A${rx} ${ry} 0 1 0 ${n('cx') - rx} ${n('cy')}Z`; }
+    if (tag === 'rect') {
+      const x = n('x'), y = n('y'), w = n('width'), h = n('height'), r = Math.min(n('rx') || n('ry'), w / 2, h / 2);
+      return r ? `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z` : `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+    }
+    if (tag === 'polyline' || tag === 'polygon') { const v = (node.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number); return v.length >= 4 ? 'M' + v.join(' ') + (tag === 'polygon' ? 'Z' : '') : null; }
+    return null;
+  };
+  const shape = (node, name) => {
+    const style = paint(node), d = outline(node); if (!d) return null;
+    const m = compMatrix(node), apply = ([px, py]) => [m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]];
+    const paths = compPathCubics(d).map(subpath => ({open: !subpath.closed, operation: 'combine', fillRule: style.evenOdd ? 'even-odd' : 'non-zero', knots: compKnots(subpath, apply)})).filter(path => path.knots.length);
+    if (!paths.length) return null;
+    const box = compPsdBounds(paths.flatMap(path => path.knots.flatMap(knot => knot.points)), (style.stroke ? style.strokeWidth / 2 : 0) + 2);
+    if (style.gradient) {
+      const id = /url\(#([^)]+)\)/.exec(node.getAttribute('fill'))?.[1];
+      return {kind: 'pixel', name, box, markup: (id ? `<defs>${defs(id)}</defs>` : '') + wrap(node, m)};
+    }
+    return {kind: 'shape', name, paths, ...style, box, markup: wrap(node, m)};
+  };
+  const texts = (node, name) => {
+    const spans = [...node.querySelectorAll('tspan')], base = {size: Number(node.getAttribute('font-size')) || 16, weight: node.getAttribute('font-weight') || 400,
+      spacing: Number(node.getAttribute('letter-spacing')) || 0, color: node.getAttribute('fill') || '#000000', opacity: Number(node.getAttribute('fill-opacity') ?? 1), anchor: node.getAttribute('text-anchor') || 'start'};
+    const run = span => ({...base, size: Number(span.getAttribute('font-size')) || base.size, weight: span.getAttribute('font-weight') || base.weight,
+      spacing: span.hasAttribute('letter-spacing') ? Number(span.getAttribute('letter-spacing')) || 0 : base.spacing, x: Number(span.getAttribute('x')) || 0, y: Number(span.getAttribute('y')) || 0, text: span.textContent});
+    const runs = spans.map(run), lines = new Set(runs.map(row => row.y)).size === runs.length && new Set(runs.map(row => row.x)).size === 1;
+    const node_ = (rows, own) => {
+      const first = rows[0], text = rows.map(row => row.text).join('\n'), copy = node.cloneNode(true);
+      if (own) for (const span of [...copy.querySelectorAll('tspan')]) if (span.textContent !== first.text || Number(span.getAttribute('x')) !== first.x) span.remove();
+      const leading = rows.length > 1 ? rows[1].y - rows[0].y : first.size * 1.2, type = compType(first.weight, first.size ? first.spacing / first.size : 0);
+      const width = Math.max(...rows.map(row => layerMeasure(row.text, first.size, type))), left = first.anchor === 'middle' ? first.x - width / 2 : first.anchor === 'end' ? first.x - width : first.x;
+      return {kind: 'text', name: `${name} · ${text.replace(/\s+/g, ' ').slice(0, 30)}`, text, x: first.x, y: first.y, size: first.size, weight: Number(first.weight), font: compPsdFont(text, first.weight),
+        tracking: first.size ? Math.round(first.spacing / first.size * 1000) : 0, color: first.color, opacity: first.opacity, anchor: first.anchor, leading, lines: rows.length,
+        box: compPsdBounds([left, first.y - first.size, left + width, first.y + (rows.length - 1) * leading + first.size * .4], first.size * .3 + 2), markup: serial(copy)};
+    };
+    return runs.length ? (lines || runs.length === 1 ? [node_(runs, false)] : runs.map(row => node_([row], true))) : [];
+  };
+  const groups = [];
+  for (const item of layer.items || []) {
+    const element = doc.querySelector(`[data-item="${CSS.escape ? CSS.escape(item.id) : item.id}"]`); if (!element) continue;
+    const children = [];
+    const visit = (node, label) => {
+      for (const child of node.children) {
+        const tag = child.tagName.toLowerCase();
+        if (tag === 'defs') continue;
+        if (tag === 'g') {
+          // An icon: its strokes in one shape layer and its fills in another, gathered under the icon's name.
+          const glyph = glyphs[item.glyph], icon = `图标 · ${glyph?.name || item.icon || ''}${glyph?.source ? `（${{lucide: 'Lucide', tabler: 'Tabler', drawn: 'AI 绘制'}[glyph.source] || glyph.source}${glyph.license && glyph.license !== 'own' ? ' · ' + glyph.license : ''}）` : ''}`;
+          const parts = [...child.children].map(part => shape(part, icon)).filter(Boolean), merged = [];
+          for (const part of parts) {
+            const same = merged.find(other => other.kind === 'shape' && part.kind === 'shape' && ['fill', 'stroke', 'strokeWidth', 'cap', 'join', 'fillOpacity', 'strokeOpacity'].every(key => other[key] === part[key]));
+            if (same) { same.paths.push(...part.paths); same.markup += part.markup; same.box = compPsdUnion(same.box, part.box); } else merged.push(part);
+          }
+          if (merged.length === 1) children.push(merged[0]); else if (merged.length) children.push({kind: 'group', name: icon, children: merged.map((part, index) => ({...part, name: `${icon} ${index + 1}`}))});
+        } else if (tag === 'text') children.push(...texts(child, label));
+        else {
+          const name = tag === 'circle' ? '圆点' : item.type === 'callout' && tag === 'path' ? '引线' : item.type === 'chips' && tag === 'rect' ? '尺寸底' : item.type === 'rule' ? '细线' : compPsdItemName(item, glyphs);
+          const node_ = shape(child, name); if (node_) children.push(node_);
+        }
+      }
+    };
+    visit(element, item.type === 'text' ? '文字' : item.type === 'figure' ? '数字' : item.type === 'chips' ? '尺寸' : '文字');
+    if (children.length === 1 && children[0].kind !== 'group') groups.push({...children[0], name: compPsdItemName(item, glyphs)});
+    else if (children.length) groups.push({kind: 'group', name: compPsdItemName(item, glyphs), children});
+  }
+  return groups;
+}
+// The rectangle [x0, y0, x1, y1] around a list of coordinates (x, y, x, y, ...), widened by ``pad``.
+function compPsdBounds(values, pad = 0) {
+  const xs = values.filter((_, index) => index % 2 === 0), ys = values.filter((_, index) => index % 2 === 1);
+  return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+}
+function compPsdUnion(a, b) { return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]; }
+// Draws SVG markup (in document coordinates) inside ``box`` and returns its pixels cropped to what it covers: {canvas, left, top}.
+async function compPsdRaster(markup, W, H, fonts, box = [0, 0, W, H]) {
+  const x0 = Math.max(0, Math.floor(box[0])), y0 = Math.max(0, Math.floor(box[1])), x1 = Math.min(W, Math.ceil(box[2])), y1 = Math.min(H, Math.ceil(box[3]));
+  const w = x1 - x0, h = y1 - y0; if (w < 1 || h < 1) return null;
+  const url = URL.createObjectURL(new Blob([`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${x0} ${y0} ${w} ${h}">${fonts ? `<style>${fonts}</style>` : ''}${markup}</svg>`], {type: 'image/svg+xml'}));
+  const area = Object.assign(document.createElement('canvas'), {width: w, height: h}), context = area.getContext('2d');
+  try { context.drawImage(await layerLoadImage(url), 0, 0, w, h); } finally { URL.revokeObjectURL(url); }
+  const data = context.getImageData(0, 0, w, h).data; let left = w, top = h, right = -1, bottom = -1;
+  for (let y = 0; y < h; y++) { const row = y * w * 4; for (let x = 0; x < w; x++) if (data[row + x * 4 + 3]) { if (x < left) left = x; if (x > right) right = x; if (y < top) top = y; bottom = y; } }
+  if (right < 0) return null;
+  const canvas = Object.assign(document.createElement('canvas'), {width: right - left + 1, height: bottom - top + 1});
+  canvas.getContext('2d').drawImage(area, left, top, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  return {canvas, left: x0 + left, top: y0 + top};
+}
+// The ag-psd layer for one node of the model, with its preview pixels.
+async function compPsdLayer(node, W, H, fonts) {
+  if (node.kind === 'group') {
+    const children = [];
+    for (const child of node.children) { const built = await compPsdLayer(child, W, H, fonts); if (built) children.push(built); }     // one at a time: each preview is a canvas
+    return children.length ? {name: node.name, opened: true, children} : null;
+  }
+  const pixels = await compPsdRaster(node.markup, W, H, fonts, node.box), base = {name: node.name, ...(pixels || {})};
+  if (node.kind === 'text') {
+    return {...base, opacity: node.opacity, text: {text: node.text, transform: [1, 0, 0, 1, node.x, node.y], antiAlias: 'smooth',
+      style: {font: {name: node.font}, fontSize: node.size, fillColor: compRgb(node.color), tracking: node.tracking, autoLeading: node.lines < 2, ...(node.lines > 1 ? {leading: node.leading} : {})},
+      paragraphStyle: {justification: node.anchor === 'middle' ? 'center' : node.anchor === 'end' ? 'right' : 'left'}}};
+  }
+  if (node.kind === 'shape') {
+    const solid = node.fill || node.stroke;
+    return {...base, opacity: node.stroke ? 1 : node.fillOpacity, vectorFill: {type: 'color', color: compRgb(solid)},
+      vectorStroke: node.stroke ? {strokeEnabled: true, fillEnabled: !!node.fill, lineWidth: {units: 'Pixels', value: node.strokeWidth}, lineCapType: node.cap === 'round' ? 'round' : node.cap === 'square' ? 'square' : 'butt',
+        lineJoinType: node.join === 'round' ? 'round' : node.join === 'bevel' ? 'bevel' : 'miter', lineAlignment: 'center', opacity: node.strokeOpacity, content: {type: 'color', color: compRgb(node.stroke)}} : {strokeEnabled: false, fillEnabled: true},
+      vectorMask: {paths: node.paths}};
+  }
+  return pixels ? base : null;
+}
+// The whole file: canvas colour, photo, then one group per item, bottom to top; the flattened picture as its preview.
+async function compPsdExport(output, layer) {
+  const W = output.width, H = output.height, [agPsd, fonts, image] = await Promise.all([compLoadPsdWriter(), compFontCss(), layerDataUrl(output.png_url)]);
+  const children = [];
+  if (layer.canvas) {
+    const background = Object.assign(document.createElement('canvas'), {width: W, height: H}), context = background.getContext('2d');
+    context.fillStyle = layer.canvas.color; context.fillRect(0, 0, W, H);
+    children.push({name: '画布', canvas: background, left: 0, top: 0});
+  }
+  const photo = await compPsdRaster(compCanvasMarkup(layer, W, H, image, false), W, H, '');
+  if (photo) children.push({name: '照片', ...photo});
+  for (const node of compPsdModel(layer, W, H)) { const built = await compPsdLayer(node, W, H, fonts); if (built) children.push(built); }
+  const composite = Object.assign(document.createElement('canvas'), {width: W, height: H}), url = URL.createObjectURL(new Blob([compSvgDocument(layer, W, H, image, fonts)], {type: 'image/svg+xml'}));
+  try { composite.getContext('2d').drawImage(await layerLoadImage(url), 0, 0, W, H); } finally { URL.revokeObjectURL(url); }
+  const buffer = agPsd.writePsd({width: W, height: H, children, canvas: composite}, {invalidateTextLayers: true, generateThumbnail: true});
+  return new Blob([buffer], {type: 'image/vnd.adobe.photoshop'});
+}
 async function compExport(kind, output, layer) {
+  if (kind === 'psd') return layerDownload(await compPsdExport(output, layer), 'psd');
   const W = output.width, H = output.height, fonts = await compFontCss();
   if (kind === 'svg-layer') return layerDownload(new Blob([compSvgDocument(layer, W, H, '', fonts, false)], {type: 'image/svg+xml'}), 'svg');
   const document = compSvgDocument(layer, W, H, await layerDataUrl(output.png_url), fonts);
@@ -946,7 +1247,15 @@ async function compExport(kind, output, layer) {
 async function layerExport(kind) {
   if (!current || !currentOutput || !layerState.items.length) return;
   const output = currentOutput, items = structuredCloneSafe(layerState.items), look = layerLook();
-  if (layerComposed(layerState)) { try { await compExport(kind, output, structuredCloneSafe(layerCurrent())); } catch (error) { toast(error.message || '导出未完成，请重试。', true); } return; }
+  if (layerComposed(layerState)) {
+    if (layerState.exporting) return;
+    layerState.exporting = kind; renderLayerPanel();
+    try { await compExport(kind, output, structuredCloneSafe(layerCurrent())); if (kind === 'psd') toast('Photoshop 工程已生成。打开时如提示更新文字图层，请选「更新」。'); }
+    catch (error) { toast(error.message || '导出未完成，请重试。', true); }
+    finally { layerState.exporting = null; if (current) renderLayerPanel(); }
+    return;
+  }
+  if (kind === 'psd') return;
   try {
     if (kind === 'png') return layerDownload(await layerRaster(output, items, look, 'image/png'), 'png');
     if (kind === 'jpg') return layerDownload(await layerRaster(output, items, look, 'image/jpeg', .93), 'jpg');

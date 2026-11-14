@@ -222,10 +222,10 @@ CHINESE = (
     (('锁', '防盗'), ('lock', 'lock-keyhole')),
     (('钥匙',), ('key',)),
     (('抽屉',), ('archive', 'inbox', 'layout-rows')),
-    (('脚轮', '万向轮', '轮子', '滚轮', '刹车', '移动'), ('circle-dot', 'disc', 'wheel', 'move')),
+    (('脚轮', '万向轮', '轮子', '滚轮', '刹车', '移动'), ('wheel', 'circle-dot', 'disc', 'move')),
     (('拉手', '把手', '手柄', '握把', '提手'), ('grip-horizontal', 'hand-grab', 'hand')),
     (('柜门', '门'), ('door-closed', 'door')),
-    (('台面', '桌面', '工作台'), ('table-2', 'layout-panel-top', 'square')),
+    (('台面', '桌面', '工作台'), ('desk', 'square')),
     (('不锈钢', '金属', '钢', '铝', '铁'), ('shield', 'layers', 'sparkles')),
     (('防锈', '耐腐蚀', '防护', '安全', '保护'), ('shield-check', 'shield')),
     (('防水', '防潮'), ('droplet', 'umbrella')),
@@ -258,18 +258,18 @@ SYNONYMS = {
     'spanner': ('wrench',), 'wrench': ('wrench', 'tool'), 'size': ('ruler-dimension-line', 'ruler'), 'dimension': ('ruler-dimension-line', 'dimensions'),
     'dimensions': ('ruler-dimension-line', 'dimensions'), 'length': ('ruler', 'move-horizontal'), 'width': ('move-horizontal', 'ruler'),
     'height': ('move-vertical', 'ruler'), 'load': ('weight',), 'capacity': ('weight', 'package'), 'runtime': ('battery', 'clock'),
-    'drawer': ('archive', 'inbox'), 'drawers': ('archive', 'layers'), 'caster': ('circle-dot', 'disc'), 'casters': ('circle-dot', 'disc'),
+    'drawer': ('archive', 'inbox'), 'drawers': ('archive', 'layers'), 'caster': ('wheel', 'circle-dot', 'disc'), 'casters': ('wheel', 'circle-dot', 'disc'),
     'handle': ('grip-horizontal', 'hand-grab'), 'storage': ('archive', 'package', 'layers'), 'set': ('package', 'boxes'), 'kit': ('package', 'boxes'),
     'motor': ('zap', 'engine'), 'brushless': ('zap',), 'torque': ('gauge', 'rotate-cw'), 'speed': ('gauge',), 'power': ('zap', 'bolt'),
-    'charging': ('battery-charging',), 'worktop': ('table-2', 'layout-panel-top'), 'surface': ('square', 'layers'), 'steel': ('shield', 'layers'),
+    'charging': ('battery-charging',), 'worktop': ('desk',), 'surface': ('square', 'layers'), 'steel': ('shield', 'layers'),
     'stainless': ('shield', 'sparkles'), 'rust': ('shield-check',), 'waterproof': ('droplet',), 'portable': ('briefcase', 'hand'),
     'light': ('lightbulb', 'flashlight'), 'lamp': ('lamp', 'lightbulb'), 'precision': ('crosshair', 'target'), 'angle': ('angle', 'rotate-cw'),
     'magnetic': ('magnet',), 'warranty': ('badge-check', 'shield-check'), 'quiet': ('volume-x',), 'socket': ('nut', 'hexagon'),
     'screwdriver': ('screw', 'tool'), 'pliers': ('pliers',), 'saw': ('saw', 'axe'), 'wheel': ('circle-dot', 'disc', 'wheel'),
     'padlock': ('lock',), 'locked': ('lock',), 'keyhole': ('lock-keyhole',), 'kilogram': ('weight',), 'kg': ('weight',), 'heavy': ('weight',),
     'tray': ('layout-panel-top', 'archive'), 'compartment': ('archive', 'layout-grid'), 'cabinet': ('archive', 'toolbox'), 'door': ('door-closed',),
-    'castor': ('circle-dot', 'disc'), 'trolley': ('shopping-cart', 'truck'), 'mobile': ('move', 'circle-dot'), 'move': ('move',),
-    'top': ('layout-panel-top', 'square'), 'tabletop': ('table-2',), 'shelf': ('layers', 'layout-rows'), 'shelves': ('layers', 'layout-rows'),
+    'castor': ('wheel', 'circle-dot', 'disc'), 'castors': ('wheel', 'circle-dot', 'disc'), 'locking': ('lock',), 'lockable': ('lock',), 'trolley': ('shopping-cart', 'truck'), 'mobile': ('move', 'circle-dot'), 'move': ('move',),
+    'top': ('desk', 'square'), 'tabletop': ('desk',), 'table': ('desk',), 'workbench': ('desk',), 'bench': ('desk',), 'shelf': ('layers', 'layout-rows'), 'shelves': ('layers', 'layout-rows'),
     'layers': ('layers',), 'layer': ('layers',), 'tool': ('wrench', 'tool'), 'tools': ('wrench', 'tool', 'toolbox'), 'hex': ('hexagon', 'nut'),
     'bolt': ('bolt', 'nut'), 'nut': ('nut', 'hexagon'), 'voltage': ('zap', 'battery'), 'volt': ('zap', 'battery'),
 }
@@ -279,8 +279,14 @@ SYNONYMS = {
 SPECIFIC = ('承重', '载重', '重量', '净重', '公斤', '千克', '扭力', '扭矩', '转矩', '转速', '续航', '电量', '电池', '功率', '温度',
             '角度', '精度', '速度', '时间', '小时', '分钟', '亮度', '噪音', '静音')
 GENERIC = ('尺寸', '规格', '大小', '数量', '件数', '个数', '长度', '宽度', '高度', '层', '分层', '不锈钢', '金属', '钢', '铝', '铁')
-# Names whose picture means something else on a product photo (Lucide's nut is a hazelnut).
-MISLEADING = {'lucide': {'nut', 'nut-off', 'bolt'}}
+# The same in English ("Top load": a weight; "Wrench sizes": a wrench).
+SPECIFIC_EN = ('load', 'weight', 'capacity', 'torque', 'runtime', 'battery', 'speed', 'power', 'voltage', 'volt', 'kg', 'kilogram',
+               'heavy', 'temperature', 'angle', 'precision', 'brightness', 'lock', 'locking', 'lockable', 'locked')
+GENERIC_EN = ('size', 'sizes', 'dimension', 'dimensions', 'length', 'width', 'height', 'count', 'number', 'layer', 'layers',
+              'stainless', 'steel', 'metal', 'aluminium', 'aluminum')
+# Names whose picture means something else on a product photo: Lucide's nut is a hazelnut, and the
+# "table" icons of both sets are spreadsheets (the worktop is Tabler's desk).
+MISLEADING = {'lucide': {'nut', 'nut-off', 'bolt', 'table', 'table-2', 'table-properties'}, 'tabler': {'table'}}
 VARIANT = re.compile(r'-(?:\d+|alt|outline|square|circle|off|x|plus|minus|check|cog|search|question|exclamation|dashed|slash|dot)\b')
 
 
@@ -302,9 +308,10 @@ def terms_for(query):
         for word in latin:
             # "weights", "drawers", "boxes" are looked up as the thing itself.
             forms = [word] + ([word[:-2]] if word.endswith('es') and len(word) > 4 else []) + ([word[:-1]] if word.endswith('s') and len(word) > 3 else [])
+            lift = .1 if word in SPECIFIC_EN else -.06 if word in GENERIC_EN and len(latin) > 1 else 0
             for form in forms:
-                found.append((form, .85 if form == word else .83))
-                found += [(name, .8 - .05 * index) for index, name in enumerate(SYNONYMS.get(form, ()))]
+                found.append((form, (.85 if form == word else .83) + lift))
+                found += [(name, .8 - .05 * index + lift) for index, name in enumerate(SYNONYMS.get(form, ()))]
     seen = {}; ordered = []
     for term, weight in found:
         if term not in seen or seen[term] < weight:
@@ -620,7 +627,10 @@ Return data only:
 - paths: 1 to 12 entries. mode is "stroke" for outlines (almost everything) or "fill" for a small solid dot. d is SVG path data with only M L H V C S Q T A Z commands (upper or lower case) and numbers, coordinates between 2 and 22.
 - note: one short English sentence describing what you drew.'''
 
-CHECK_PROMPT = '''You check an icon that was drawn for a product photo. The image shows the icon large (left) and at the size it will be printed (right). Say whether a shopper would recognise it at a glance as the stated concept, and whether it is a clean line icon (even strokes, nothing broken, stray or overlapping by mistake, no text). Return data only: recognisable, clean (booleans), issues (up to 3 short English notes on what to fix, empty when none), note (one short sentence in Chinese).'''
+CHECK_PROMPT = '''You check an icon that was drawn for a product image. The image shows the icon large (left) and at the size it will be printed (right). The icon is always printed beside its label (concept), so it does not have to explain the label on its own: it has to be a fitting picture for it. An object is shown as that object; a measure or a quality is shown by its usual symbol (a weight for a load, a ruler or a dimension line for a size, a gauge for torque, a shield for protection), and plan says what the drawer meant to show.
+- recognisable: true when someone reading the label beside it would connect the two at a glance and the picture is clearly what plan says; false when it reads as something else (a bottle for a screwdriver bit) or as nothing in particular.
+- clean: true when it is a tidy line icon: even strokes, no stray marks, nothing broken or overlapping by mistake, no text or letters. A small imperfection at the printed size alone is not a reason for false.
+Return data only: recognisable, clean (booleans), issues (up to 3 short English notes on what to fix, empty when none), note (one short sentence in Chinese).'''
 
 
 def _obj(properties):
@@ -691,13 +701,13 @@ def pick(points, candidates):
     return result
 
 
-def _check_drawing(value, concept, config):
+def _check_drawing(value, concept, config, plan=''):
     from PIL import Image
     big = rasterise(value, 256); small = rasterise(value, 32)
     sheet = Image.new('RGB', (256 + 24 + 64, 256), (255, 255, 255)); sheet.paste(big, (0, 0)); sheet.paste(small.resize((64, 64), Image.Resampling.NEAREST), (280, 96))
     path = _temporary_png(sheet)
     try:
-        answer = _ask(config, CHECK_PROMPT, {'concept': concept}, check_schema(), path, max_tokens=800)
+        answer = _ask(config, CHECK_PROMPT, {'concept': concept, 'plan': plan}, check_schema(), path, max_tokens=800)
     finally:
         path.unlink(missing_ok=True)
     ok = answer['recognisable'] and answer['clean']
@@ -715,6 +725,10 @@ def draw(concept, attempts=2):
     config = _config(False)
     if not config:
         raise ValueError('未配置 AI，无法绘制图标；可从图标库中选择。')
+    # Drawing asks more of a model than writing does: a stronger one may be named for it alone (same endpoint and key).
+    model = drawing_model()
+    if model:
+        config = {**config, 'model': model}
     checker = _config(True); issues = []; best = None
     # Related icons from the vendored set show the model the style, and often most of the shape.
     examples = [{'name': row['name'], 'paths': [{'mode': 'stroke' if op[0] == 's' else 'fill', 'd': op[1]} for op in row['ops']]}
@@ -726,7 +740,15 @@ def draw(concept, attempts=2):
         facts = {'concept': concept, 'examples': examples}
         if issues:
             facts['fix'] = issues
-        answer = _ask(config, DRAW_PROMPT, facts, draw_schema(), max_tokens=3000)
+        try:
+            answer = _ask(config, DRAW_PROMPT, facts, draw_schema(), max_tokens=3000)
+        except ValueError as exc:
+            if attempt + 1 < attempts and not _refused(exc):
+                issues = ['Your answer did not follow the schema: return an object with plan, paths and note.']
+                continue
+            if best:
+                return best
+            raise
         ops = [['s' if row['mode'] == 'stroke' else 'f', ' '.join(row['d'].split())] for row in answer['paths']]
         try:
             value = validate_glyph({'source': 'drawn', 'name': concept, 'concept': concept, 'license': 'own', 'ops': ops, 'stroke': 2,
@@ -740,7 +762,7 @@ def draw(concept, attempts=2):
             value['check'] = {'status': 'unchecked', 'note': '未配置视觉模型，未核对图形。'}
             return value
         try:
-            ok, issues, note = _check_drawing(value, concept, checker)
+            ok, issues, note = _check_drawing(value, concept, checker, re.sub(r'\s+', ' ', str(answer.get('plan', ''))).strip()[:400])
         except Exception:
             value['check'] = {'status': 'unchecked', 'note': '视觉模型未能核对图形。'}
             return value
@@ -819,6 +841,22 @@ def resolve(points, online=None, allow_draw=True):
         keys.append(key)
     chosen = [keys[position[(text or query or '').strip()]] for text, query in points]
     return glyphs, chosen, notes
+
+
+def _refused(exc):
+    """An error no second attempt would cure: the service refused the request (no credit, no access, unknown model)."""
+    return bool(re.search(r'HTTP (40[0-4]|429)|额度|欠费|密钥|权限|模型不存在', str(exc)))
+
+
+def drawing_model():
+    """The model named for drawing icons (AI_ICON_MODEL), or '' for the configured text model."""
+    import os
+    try:
+        import ai_config
+        values = ai_config.read_env()
+    except Exception:
+        values = {}
+    return str(values.get('AI_ICON_MODEL', os.getenv('AI_ICON_MODEL', ''))).strip()[:120]
 
 
 def online_allowed():

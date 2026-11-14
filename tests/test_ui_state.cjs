@@ -2690,7 +2690,7 @@ test('a suggested layout becomes real, editable SVG text over the picture and is
   const pending=h.run('layerSuggest()');await h.run('layerSuggest()');await pending;
   const requests=h.calls.filter(call=>call.url==='/api/projects/a/layers/hero/suggest');
   assert.equal(requests.length,1,'a second click while it works does not ask again');
-  assert.deepEqual(requests[0].body,{hint:'抽屉：分层收纳',output:{job_id:'render-a',version:1,quality:'preview'}});
+  assert.deepEqual(requests[0].body,{hint:'抽屉：分层收纳',output:{job_id:'render-a',version:1,quality:'preview'},language:'en'});
   const stage=h.node('layerStage');assert.equal(stage.hasAttribute('hidden'),false);assert.equal(stage.getAttribute('viewBox'),'0 0 512 512');
   assert.equal(stage.style.left,'100px');assert.equal(stage.style.width,'256px');
   const headline=stage.querySelector('[data-item="headline"] text');
@@ -3101,4 +3101,105 @@ test('an exported composition is one complete file, and a layout without a canva
   composeServer(h);h.intercept=(original=>call=>/\/suggest$/.test(call.url)?h.response({layer:{...composedLayer('scene'),canvas:null},report:composedReport('scene')}):original(call))(h.intercept);
   await h.run('layerSuggest()');
   assert.equal(h.node('layerStage').querySelector('image'),null);
+});
+
+test('the words are written in English unless Chinese is picked, and the choice is kept with the layer and for the next one',async t=>{
+  const h=await layerSetup(t);composeServer(h);
+  assert.equal(h.node('layerLanguage').value,'en','English by default');
+  await h.run('layerSuggest()');
+  assert.equal(h.calls.filter(call=>/\/suggest$/.test(call.url)).at(-1).body.language,'en');
+  h.node('layerLanguage').value='zh';h.node('layerLanguage').dispatchEvent(new h.w.Event('change'));
+  h.run('renderLayerPanel()');assert.equal(h.node('layerLanguage').value,'zh','a choice just made is not undone by a redraw');
+  assert.equal(h.w.localStorage.getItem('studio.layerLanguage'),'zh');
+  await h.run('layerSuggest()');
+  assert.equal(h.calls.filter(call=>/\/suggest$/.test(call.url)).at(-1).body.language,'zh');
+  // the words the layer holds say which language they are in; words added by hand follow it
+  h.run("layerState.content.language='en';layerState.languageChoice=null;renderLayerPanel()");
+  assert.equal(h.node('layerLanguage').value,'en');
+  h.node('layerAddTitle').click();
+  assert.equal(h.run('layerSelected().text'),'Headline');
+  h.run("layerState.content.language='zh';renderLayerPanel()");h.node('layerAddCallout').click();
+  assert.deepEqual(inPage(h,'[layerSelected().title,layerSelected().detail]'),['要点','补充说明']);
+  // a row of sizes takes brackets of its own script
+  const chips=(label)=>{h.run("layerState.items.find(item=>item.id==='ladder').label="+JSON.stringify(label)+";renderLayerStage()");return [...h.node('layerStage').querySelectorAll('[data-item="ladder"] text')].map(node=>node.textContent).find(text=>text.includes('mm'));};
+  assert.equal(chips('Wrench sizes'),'Wrench sizes (mm)');assert.equal(chips('扳手尺寸'),'扳手尺寸（mm）');
+});
+
+// ------------------------------------------------------------------ Photoshop export
+test('SVG paths become Photoshop knots: lines, arcs, smooth and quadratic curves, relative commands and packed arc flags',async t=>{
+  const h=await layerSetup(t);
+  const cubics=d=>inPage(h,'compPathCubics('+JSON.stringify(d)+')');
+  const square=cubics('M2 2h4v4H2z');
+  assert.equal(square.length,1);assert.equal(square[0].closed,true);assert.deepEqual(square[0].start,[2,2]);
+  assert.deepEqual(square[0].segments.map(s=>s.slice(4)),[[6,2],[6,6],[2,6],[2,2]]);
+  const circle=cubics('M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0');
+  assert.equal(circle[0].segments.length,4,'two half circles, two quarter curves each');
+  for(const segment of circle[0].segments){const [x,y]=segment.slice(4);assert.ok(Math.abs(Math.hypot(x-12,y-12)-4)<1e-6);}
+  const mid=circle[0].segments[0];const [mx,my]=[(mid[0]+mid[2])/2,(mid[1]+mid[3])/2];assert.ok(Math.hypot(mx-12,my-12)>3.5,'control points bow outwards');
+  assert.deepEqual(cubics('M0 0a1 1 0 011 1').at(-1).segments.at(-1).slice(4),[1,1],'arc flags written without separators');
+  const smooth=cubics('M0 0C1 1 2 1 3 0S5 -1 6 0Q7 1 8 0T10 0');
+  assert.deepEqual(smooth[0].segments[1].slice(0,2),[4,-1],'S reflects the previous control point');
+  assert.deepEqual(smooth[0].segments.at(-1).slice(4),[10,0]);
+  assert.throws(()=>h.run('compPathCubics("M0 0 L1")'));
+  const knots=inPage(h,'compKnots(compPathCubics("M0 0L10 0L10 10Z")[0],p=>[p[0]*2,p[1]*2])');
+  assert.deepEqual(knots.map(k=>k.points.slice(2,4)),[[0,0],[20,0],[20,20]],'a closed path does not repeat its first point; points are in document pixels');
+  const open=inPage(h,'compKnots(compPathCubics("M0 0C0 5 5 10 10 10")[0],p=>p)');
+  assert.deepEqual(open.map(k=>k.points),[[0,0,0,0,0,5],[5,10,10,10,10,10]],'an open curve: no control before its start or after its end');
+});
+
+test('a composition becomes Photoshop layers: words as editable text, icons and lines as vector shapes, one named group per item',async t=>{
+  const h=await layerSetup(t);
+  const model=inPage(h,'compPsdModel('+JSON.stringify(composedLayer())+',1000,1000)');
+  const names=model.map(node=>node.name);
+  assert.deepEqual(names.slice(0,3),['标签 · 车间收纳','标题 · 红色工具柜','细线']);
+  const headline=model[1];
+  assert.deepEqual([headline.kind,headline.text.replace(/\n/g,''),headline.font,headline.anchor],['text','红色工具柜','SourceHanSansSC-Bold','start']);
+  assert.equal(headline.lines,headline.text.split('\n').length,'the lines of the drawing stay lines of one text layer');
+  assert.equal(headline.size,64);assert.ok(Math.abs(headline.x-75)<.01);
+  const kicker=model[0];assert.equal(kicker.tracking,140,'the tag keeps its letter spacing');
+  const rule=model[2];assert.deepEqual([rule.kind,rule.stroke,rule.open===undefined],['shape','#1d1d1f',true]);
+  assert.deepEqual(rule.paths[0].knots.map(k=>k.points.slice(2,4)),[[75,580],[170,580]],'a hairline is an open path between its ends, in pixels');
+  assert.equal(rule.paths[0].open,true);
+  const figure=model.find(node=>node.name.startsWith('数据'));
+  assert.equal(figure.kind,'group');assert.equal(figure.name,'数据 · 120 kg 台面承重');
+  assert.deepEqual(figure.children.map(node=>node.kind==='text'?node.text:node.name),['图标 · 承重（AI 绘制）','120','kg','台面承重']);
+  const [value,unit]=figure.children.filter(node=>node.kind==='text');
+  assert.deepEqual([value.font,unit.font],['Inter-SemiBold','Inter-Medium']);assert.ok(unit.size<value.size/2);
+  const point=model.find(node=>node.name==='要点 · 抽屉收纳');
+  const wrench=point.children.find(node=>node.kind==='shape');
+  assert.equal(wrench.name,'图标 · wrench（Lucide · ISC）');assert.equal(wrench.stroke,'#1d1d1f');assert.ok(wrench.strokeWidth>1);
+  for(const knot of wrench.paths.flatMap(path=>path.knots))for(const v of knot.points)assert.ok(v>=0&&v<=1000,'icon knots are placed where the icon is drawn');
+  const note=model.find(node=>node.name==='要点 · 带轮移动');
+  assert.deepEqual(note.children.map(node=>node.name.split(' · ')[0]),['引线','圆点','文字']);
+  assert.equal(note.children[0].paths[0].knots.length,3,'one bend: three knots');
+  const chips=model.find(node=>node.name.startsWith('规格'));
+  assert.equal(chips.children.filter(node=>node.name==='尺寸底').length,4);
+  assert.deepEqual(chips.children.filter(node=>node.kind==='text').map(node=>node.text),['扳手尺寸（mm）','8','10','12','24']);
+  // a band that fades is a pixel layer; the text it carries stays text
+  const scrim=inPage(h,'compPsdModel({...'+JSON.stringify(composedLayer())+',items:[{id:"scrim",type:"panel",x:0,y:0,w:.6,h:1,color:"#000000",opacity:.5,radius:0,fade:"right",size:.02}]},400,400)');
+  assert.deepEqual([scrim[0].kind,scrim[0].name],['pixel','渐变遮罩']);assert.match(scrim[0].markup,/linearGradient/);
+});
+
+test('the PSD button builds the file from the composition through ag-psd, and an overlay layer must be laid out again first',async t=>{
+  const h=await layerSetup(t);composeServer(h);
+  await h.run('layerSuggest()');
+  assert.equal(h.node('layerExportPsd').disabled,false);
+  // no canvas in this test window: draw nothing, keep what the writer is handed
+  h.run(`URL.createObjectURL=()=>'blob:psd';URL.revokeObjectURL=()=>{};
+    HTMLCanvasElement.prototype.getContext=function(){return {fillRect(){},drawImage(){},getImageData:(x,y,w,h)=>({data:new Uint8ClampedArray(w*h*4)}),set fillStyle(v){}};};
+    compPsdRaster=async()=>null;layerDataUrl=async()=>'data:image/png;base64,AAAA';compFontCss=async()=>'';layerLoadImage=async()=>({});
+    window.agPsd={writePsd:(psd,options)=>{window.written={psd,options};return new ArrayBuffer(8);}};layerDownload=(blob,ext)=>{window.saved={type:blob.type,ext};};`);
+  h.node('layerExportPsd').click();
+  for(let i=0;i<20 && !h.run('window.saved');i++)await tick();
+  assert.deepEqual(inPage(h,'window.saved'),{type:'image/vnd.adobe.photoshop',ext:'psd'});
+  const written=inPage(h,'({width:written.psd.width,height:written.psd.height,options:written.options,names:written.psd.children.map(c=>c.name),text:written.psd.children.find(c=>c.text)?.text,shape:written.psd.children.find(c=>c.vectorMask)})');
+  assert.deepEqual([written.width,written.height],[512,512]);
+  assert.deepEqual(written.options,{invalidateTextLayers:true,generateThumbnail:true},'Photoshop redraws the words with its own type engine');
+  assert.equal(written.names[0],'画布');assert.ok(written.names.includes('标题 · 红色工具柜'));
+  assert.deepEqual([written.text.text,written.text.style.font.name,written.text.paragraphStyle.justification,written.text.style.tracking],['车间收纳','SourceHanSansSC-Bold','left',140]);
+  assert.equal(written.shape.vectorStroke.strokeEnabled,true);assert.equal(written.shape.vectorStroke.lineWidth.units,'Pixels');
+  assert.match(h.node('layerExportPsd').textContent,/PSD/);
+  // a layer saved before compositions has no drawing to build from
+  h.run("layerState.layout=null;layerState.canvas=null;renderLayerPanel()");
+  assert.equal(h.node('layerExportPsd').disabled,true);assert.match(h.node('layerExportPsd').title,/重新智能排版/);
 });

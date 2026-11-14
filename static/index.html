@@ -643,7 +643,8 @@
 </section>
 <section id="inspectorOverlay" class="overlay-panel" role="tabpanel" aria-labelledby="inspectorOverlayTab" hidden>
 <section class="panel-section">
-<textarea id="layerHint" rows="2" maxlength="400" placeholder="可选：想突出的要点，每行一条，如“台面：可放常用工具”" aria-label="想突出的要点"></textarea>
+<textarea id="layerHint" rows="2" maxlength="400" placeholder="可选：想突出的要点和规格，每行一条，如“台面承重 120 kg”" aria-label="想突出的要点"></textarea>
+<div class="layer-row layer-language"><label class="field-label" for="layerLanguage">文字语言</label><select id="layerLanguage" title="智能排版用这种语言写画面上的文字；可用中文写要点，AI 会译成英文并保留你的数字"><option value="en">English</option><option value="zh">中文</option></select></div>
 <button id="layerSuggest" class="button secondary full-width" type="button" aria-describedby="layerStatus" title="AI 提取关键信息、选版式、配图标；数字只采用你写下的规格">智能排版关键信息</button>
 <div class="layer-layout-head"><span class="field-label">版式</span><span class="field-help">参考 12 张品牌图文构图；切换版式不改文字</span></div>
 <div id="layerLayouts" class="layer-layouts" role="group" aria-label="版式"></div>
@@ -721,9 +722,10 @@
 <button id="layerExportJpg" class="button subtle" type="button" title="渲染图与图文合成的 JPG">JPG</button>
 <button id="layerExportSvg" class="button subtle" type="button" title="矢量文件：内含渲染图，文字与图标可继续编辑">SVG</button>
 <button id="layerExportSvgLayer" class="button subtle" type="button" title="只有图文的透明矢量图层">仅图层</button>
+<button id="layerExportPsd" class="button subtle" type="button" title="Photoshop 工程：每段文字是可编辑的文字图层，图标、引线与色块是矢量形状图层，照片与画布各占一层，按元素分组">PSD</button>
 </div>
 <button id="layerClear" class="button subtle" type="button">清空图文</button>
-<p class="field-help">文字与图标是矢量图层：在画面上拖动、双击改字，导出的 SVG 可在设计软件里继续编辑。电商套图导出不含图文。</p>
+<p class="field-help">文字与图标是矢量图层：在画面上拖动、双击改字。导出的 SVG 可在设计软件里继续编辑；PSD 是 Photoshop 工程，文字、图标和照片都是分开的图层（打开时选「更新」以重新排版文字）。电商套图导出不含图文。</p>
 </section>
 </section>
 <section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>

@@ -816,6 +816,9 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .overlay-panel .render-reason.is-summary { color: var(--muted); }
 /* The layer's display face: Noto Sans SC Black (SIL OFL 1.1), bundled for headlines and callout titles. */
 @font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 900; font-display: swap; src: url("/static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2") format('woff2'); }
+.layer-language { align-items: center; gap: 8px; margin: 6px 0; }
+.layer-language .field-label { margin: 0; }
+.layer-language select { flex: 1; min-width: 0; }
 .layer-layout-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .layer-layout-head .field-label { margin: 0; }
 .layer-layout-head .field-help { margin: 0; }

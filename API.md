@@ -22,7 +22,7 @@
 
 - `layout`：`split`（左右分区）、`callouts`（结构标注）、`scene`（场景叙事）、`cards`（卡片网格）、`spotlight`（单点卖点）、`specs`（规格清单）。
 - `canvas`：`{color, photo:{x,y,w,h, crop:[x0,y0,x1,y1], feather, radius?, fill?}}`。`x,y,w,h` 是照片在画布上的框（画布宽、高的比例）。`crop` 是这个框显示的渲染图区域（渲染图宽、高的比例），只有 `feather` 为真（平整的影棚背景）时才可能超出 0–1，超出部分是画布颜色。`radius` 是圆角（短边比例），`fill` 是照片框底色。缺少 `canvas` 时，图文直接放在整张渲染图上（场景叙事）。
-- `content`：图文要说的内容，`{kicker, headline, subline, free_area?, product_box?, points:[{title,detail,icon,parts,anchor,glyph?}], figures:[{value,unit,label,icon,glyph?}], specs:[{value,unit,label,icon,values?,glyph?}]}`。`anchor` 与 `product_box` 使用渲染图坐标；`icon` 是查图标用的英文关键词。换版式时由它重新排版。
+- `content`：图文要说的内容，`{kicker, headline, subline, language?, free_area?, product_box?, points:[{title,detail,icon,parts,anchor,glyph?}], figures:[{value,unit,label,icon,glyph?}], specs:[{value,unit,label,icon,values?,glyph?}]}`。`language` 为 `en` 或 `zh`，表示这些文字所用的语言。`anchor` 与 `product_box` 使用渲染图坐标；`icon` 是查图标用的英文关键词。换版式时由它重新排版。
 - `glyphs`：最多 24 个图标，`{id: {source, name, license, ops:[["s"|"f"|"e", d], …], stroke, grid, model?, check?, concept?}}`。`d` 只能含 SVG 路径命令与数字。`source` 为 `lucide`、`tabler`、`iconify:<图标库>` 或 `drawn`（AI 绘制，`license` 为 `own`，`check.status` 为 `passed`、`failed` 或 `unchecked`）。
 
 新增元素类型：`figure`（`w, value, unit, label, align`）、`chips`（`w, values` 1–16 个、`unit, label, fill`）、`panel`（`w, h, opacity, radius, fade?`）、`rule`（`x2, y2, width, opacity`）。元素还可以带以下可选字段：
@@ -43,7 +43,9 @@
 
 这是测试中保存的一层图文（节选）：文字由 AI 看图写出，图标由图标 agent 选择。模型给 120 kg 写的关键词是 `ruler`，图标 agent 按要点文字“台面承重”选了秤砣（`weight`）。
 
-**智能排版。** `POST /api/projects/{id}/layers/{shot_id}/suggest` 的请求体新增可选的 `layout`（六种版式之一，或 `auto`；未知值返回 `400`）。返回的 `layer` 是一个版式。`report` 新增以下字段：
+**智能排版。** `POST /api/projects/{id}/layers/{shot_id}/suggest` 的请求体新增两个可选字段：`layout`（六种版式之一，或 `auto`；未知值返回 `400`），以及 `language`（`en` 为默认，或 `zh`；其他值返回 `400`）。返回的 `layer` 是一个版式，`content.language` 即所用的语言。
+
+AI 按 `language` 写文案。选英文时，`hint`、部件名和用户规格可以是中文：模型把它们的意思译成英文，数字原样保留。合并规格时，用户写的规格仍排在最前面，保留全部数值；如果标签是中文而模型给出了覆盖相同数字的英文规格，就采用模型的英文标签和单位。没有配置 AI 时，名称规则直接给出英文要点（如 `Drawer storage`、`On casters`）和英文品类标签（如 `Workshop storage`）；标题沿用项目名称，中文内容保持原文，并在 `notes` 里说明。`report` 新增以下字段：
 
 - `layout`：所用版式。
 - `suitable`：六种版式按适合程度排序。
@@ -54,7 +56,18 @@
 
 **换版式。** `POST /api/projects/{id}/layers/{shot_id}/compose`，请求体 `{"layout": 版式, "content": {…}, "glyphs": {…}, "output"?: {job_id, version, quality}, "source"?: "rules"|"ai"|"manual"}`。用同一份内容生成另一种版式，不调用模型、不保存，返回 `{layer, report}`，`report` 含 `source, probe, notes, layout, anchored, output`。`content` 引用了 `glyphs` 中不存在的图标时返回 `400`。
 
-**图标。** `GET /api/icons?q=词[&online=1]`：`q` 为 1–60 个字，可以是中文或英文。返回 `{icons, online, online_allowed}`：`icons` 来自随附图标库，`online` 来自 Iconify（只取 MIT、ISC、Apache-2.0 授权；要同时满足 `online=1` 且 `AI_ICON_ONLINE` 未关闭）。每项为 `{id, source, name, license, ops, stroke, grid}`。`POST /api/icons/draw`，请求体 `{"concept": 不超过 80 字}`，返回 `{glyph}`：AI 绘制、校验，并由视觉模型核对（不合格时最多重画一次）；没有配置 AI 时返回 `400`。随附图标库的版本、来源与哈希记录在 `static/vendor/icons/VENDORED.json`，由 `scripts/vendor_icons.py` 生成。
+**图标。** 自动选图标时，候选同时来自模型给的英文关键词和要点自己的文字，两边交替排列。没有可用的视觉模型时，优先采用要点文字对照出的图标。在一个标签里，具体的量（承重、扭矩、load、torque）决定图标，其次是物体本身，泛称（尺寸、数量、sizes、steel）排在最后。`GET /api/icons?q=词[&online=1]`：`q` 为 1–60 个字，可以是中文或英文。返回 `{icons, online, online_allowed}`：`icons` 来自随附图标库，`online` 来自 Iconify（只取 MIT、ISC、Apache-2.0 授权；要同时满足 `online=1` 且 `AI_ICON_ONLINE` 未关闭）。每项为 `{id, source, name, license, ops, stroke, grid}`。`POST /api/icons/draw`，请求体 `{"concept": 不超过 80 字}`，返回 `{glyph}`：AI 绘制、校验，并由视觉模型核对（不合格或回复格式不对时，最多重画一次）；没有配置 AI 时返回 `400`。绘制使用 `AI_ICON_MODEL`；未设置时使用文本模型，接口与 Key 都相同。`glyph.model` 记录实际使用的模型。核对的标准是：放在标签旁边时，这个图形是否贴切，以及它是不是干净的线性图标。随附图标库的版本、来源与哈希记录在 `static/vendor/icons/VENDORED.json`，由 `scripts/vendor_icons.py` 生成。
+
+**Photoshop 导出（浏览器端，没有服务端接口）。** 「图文」面板的 PSD 按钮在浏览器中用随附的 ag-psd 34.2.0 生成文件。各层直接由画面上的 SVG 转换而来，从下到上依次是：
+
+- 「画布」像素层，填充 `canvas.color`。
+- 「照片」像素层：裁切后的照片，只覆盖它的框；没有画布时是整张渲染图。
+- 每个元素一个组，组名写着元素的内容。组里有：
+  - **文字图层：** SVG 里的每个 `<text>` 是一个文字图层，多行仍是一层。字号单位为 px，文档为 72 ppi。字距 = `letter-spacing` ÷ 字号 × 1000。`text-anchor` 换成段落对齐。英文字体用 `Inter-*`，中文用 `SourceHanSansSC-*`，粗细与画面一致。同一行里字号不同的部分（数值与单位）分成两层。
+  - **形状图层：** `<path>`、`<line>`、`<rect>`、`<circle>` 都转成形状图层。圆弧换算成三次贝塞尔，每段不超过 90°；所有坐标为文档像素。描边的线宽、端点、拐角和透明度，以及填充和奇偶填充规则，都写入矢量填充与描边。一个图标的描边与填充各合成一层。
+  - **像素图层：** 用渐变填充的底板写成像素图层。
+
+写出时带 `invalidateTextLayers`，Photoshop 打开时会用自己的排版引擎重画文字。文件里的合成图与 PNG 导出相同。没有 `layout` 的旧图层不能导出 PSD。
 
 ## v24 图文图层的风格、主色与文字角色
 

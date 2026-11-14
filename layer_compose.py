@@ -39,6 +39,7 @@ FIGURE_LABEL = .3
 FIGURE_GAP = .22
 ROW_DETAIL = .78            # a point's detail, as a share of its title's size
 ROW_ICON = 1.5              # a point's icon, as a multiple of its title's size
+KICKER_SPREAD = 1.22        # a tag in capitals with .14 em tracking is about this much wider than plain type
 
 
 # ------------------------------------------------------------------ measuring
@@ -283,8 +284,9 @@ def title_block(frame, content, x, y, w, pal, sizes=(.066, .06, .054, .048, .044
     items = []; limit = w / frame.sx
     kicker = (content.get('kicker') or '').strip()
     if kicker:
-        size = .021
-        item = _text('kicker', 'kicker', [kicker.upper()], x, y, w, size, pal['soft'], 600, align)
+        # Set in capitals with .14 em of letter spacing (static/layer.js): measured as type about a fifth wider.
+        size = .021; tag = _wrap(kicker.upper(), size * KICKER_SPREAD, limit)[:2]
+        item = _text('kicker', 'kicker', tag, x, y, w, size, pal['soft'], 600, align)
         items.append(item); y += _text_height(frame, item) + frame.y(.016)
     headline = (content.get('headline') or '').strip()
     if headline:

@@ -143,6 +143,10 @@ def _content(value, glyphs):
         clean[key] = _text(value.get(key, ''), limit, '内容', empty=True)
     if value.get('free_area') in ('left', 'right', 'top', 'bottom', 'none'):
         clean['free_area'] = value['free_area']
+    if value.get('language') is not None:
+        if value['language'] not in LANGUAGES:
+            raise ValueError('图文图层的文字语言无效')
+        clean['language'] = value['language']
     box = value.get('product_box')
     if box is not None:
         if not isinstance(box, list) or len(box) != 4:
@@ -374,6 +378,21 @@ CUES = (
 )
 MATERIAL_WORDS = ((('不锈钢', 'stainless'), '不锈钢'), (('玻璃', 'glass'), '玻璃'), (('实木', '木', 'wood', 'oak'), '木质'),
                   (('真皮', '皮革', 'leather'), '皮革'), (('铝', 'alumin'), '铝制'), (('帆布', 'canvas'), '帆布'))
+# The language the words of a layer are written in. English unless the user picks Chinese.
+LANGUAGES = ('en', 'zh')
+DEFAULT_LANGUAGE = 'en'
+CJK = re.compile(r'[\u3400-\u9fff]')
+# The same points in English: (title, detail) for each Chinese title above, and the material words.
+CUES_EN = {'抽屉收纳': ('Drawer storage', 'Tools sorted by drawer'), '带轮移动': ('On casters', 'Rolls to where you work'),
+           '带锁': ('Lockable', 'Keeps tools secure'), ('{material}台面', '工作台面'): ('{material} worktop', 'Worktop'),
+           '可放置常用物品': 'Room for everyday tools', ('{material}拉手', '拉手'): ('{material} handles', 'Handles'),
+           '便于开合与提拿': 'Easy to open and carry', '柜门储物': ('Cabinet storage', 'Large items behind the doors'),
+           '按压泵头': ('Pump dispenser', 'One-handed use'), '带盖': ('With lid', ''), '显示屏': ('Display', ''), '按键操作': ('Push-button control', ''),
+           '灯光': ('Built-in light', ''), '口袋': ('Pockets', 'Small items kept apart'), ('{material}提带', '提带'): ('{material} strap', 'Carry strap'),
+           '层板分隔': ('Shelf dividers', ''), '脚垫': ('Feet pads', '')}
+MATERIAL_EN = {'不锈钢': 'Stainless steel', '玻璃': 'Glass', '木质': 'Wooden', '皮革': 'Leather', '铝制': 'Aluminium', '帆布': 'Canvas'}
+DIMENSIONS = {'zh': '产品尺寸', 'en': 'Dimensions'}
+OUTLINE = {'zh': '外形尺寸', 'en': 'Dimensions'}
 def _clip(text, limit):
     text = ' '.join(str(text).split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
@@ -401,17 +420,24 @@ def _hint_points(hint):
     return points[:5]
 
 
-def copy_rules(project, hint='', visible=None):
-    """Key points from what the project's own names say. Returns (copy, notes)."""
+def copy_rules(project, hint='', visible=None, language='zh'):
+    """Key points from what the project's own names say, in ``language``. Returns (copy, notes)."""
     names = _names(project); shown = set(visible) if visible is not None else None
     metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
+    english = language == 'en'
     cues = []
     for words, title, detail, icon in CUES:
         parts = [name for name in names if any(word in name.casefold() for word in words)]
         if not parts:
             continue
+        if english:
+            translated = CUES_EN.get(title)
+            detail = (translated[1] if isinstance(translated, tuple) and not isinstance(title, tuple) else CUES_EN.get(detail, '')) if detail else ''
+            title = translated if isinstance(title, tuple) and translated else translated[0] if translated else ''
         if isinstance(title, tuple):
             material = _material_word(parts)
+            if english:
+                material = MATERIAL_EN.get(material, '')
             title = title[0].replace('{material}', material) if material else title[1]
         seen = [name for name in parts if shown is None or name in shown]
         cues.append({'title': title, 'detail': detail, 'icon': icon, 'parts': seen, 'words': words})
@@ -426,28 +452,34 @@ def copy_rules(project, hint='', visible=None):
         points = [{key: cue[key] for key in ('title', 'detail', 'icon', 'parts')} for cue in usable[:4]]
         dimensions = project['plan'].get('dimensions_mm')
         if dimensions:
-            points.append({'title': '产品尺寸', 'detail': ' × '.join('%g' % round(value, 1) for value in dimensions) + ' mm',
+            points.append({'title': DIMENSIONS[language], 'detail': ' × '.join('%g' % round(value, 1) for value in dimensions) + ' mm',
                            'icon': 'ruler', 'parts': []})
-    headline = _clip(re.sub(r'\.(obj|glb|gltf|fbx|stl|zip)$', '', str(project.get('name', '')).strip(), flags=re.I) or '产品', 28)
+    headline = _clip(re.sub(r'\.(obj|glb|gltf|fbx|stl|zip)$', '', str(project.get('name', '')).strip(), flags=re.I) or ('Product' if english else '产品'), 28)
     subline = _clip(metadata.get('product_category') or metadata.get('material_note') or '', 40)       # the callouts carry the points; no line repeats them
+    if english and CJK.search(subline):
+        subline = ''
     notes = [] if points else ['没有从名称中识别出可介绍的部位；可在上方逐行写下要点，或手动添加文字。']
-    kicker, emphasis = _category(project, headline)
+    kicker, emphasis = _category(project, headline, language)
+    if english and (CJK.search(headline) or any(CJK.search(point['title'] + point['detail']) for point in points)):
+        notes.append('未配置 AI，无法把中文翻译成英文：标题沿用项目名称，你写的要点保持原文，请在画面上改成英文。')
     return {'kicker': kicker, 'headline': headline, 'emphasis': emphasis, 'subline': subline, 'points': points}, notes
 
 
 # A category tag per kind of product, and the word of the headline that names the product.
 KICKERS = {'tool_storage': '车间收纳', 'personal_care': '日常洗护', 'tableware': '餐厨用品', 'bag': '日常出行', 'garden': '园艺户外',
            'electronics': '数码办公', 'furniture': '家居收纳'}
+KICKERS_EN = {'tool_storage': 'Workshop storage', 'personal_care': 'Daily care', 'tableware': 'Kitchen & dining', 'bag': 'Everyday carry',
+              'garden': 'Garden & outdoor', 'electronics': 'Desk & digital', 'furniture': 'Home storage'}
 
 
-def _category(project, headline):
+def _category(project, headline, language='zh'):
     try:
         import scene_stylist
         recipe = scene_stylist.recipe_for(project)
     except Exception:
         return '', ''
     words = sorted((word for word in recipe.get('words', ()) if len(word) >= 2 and word in headline and word != headline), key=len, reverse=True)
-    return KICKERS.get(recipe.get('id'), ''), (words[0] if words else '')
+    return (KICKERS_EN if language == 'en' else KICKERS).get(recipe.get('id'), ''), (words[0] if words else '')
 
 
 def _config(image):
@@ -765,36 +797,58 @@ def _facts_text(project, hint):
                      str(metadata.get('dimensions', '')), ' '.join('%g' % round(value, 1) for value in dims)])
 
 
-def content_rules(project, hint='', visible=None):
+def content_rules(project, hint='', visible=None, language=DEFAULT_LANGUAGE):
     """What a composition says, from the user's own lines and the names in the model. Returns (content, notes)."""
     specs, rest = specs_from(hint)
-    base, notes = copy_rules(project, '\n'.join(rest), visible)
+    base, notes = copy_rules(project, '\n'.join(rest), visible, language)
     points = [{'title': point['title'], 'detail': point.get('detail') or '', 'icon': ICON_WORDS.get(point.get('icon') or '', point['title']),
-               'parts': point.get('parts', [])} for point in base['points'] if point['title'] != '产品尺寸'][:4]
+               'parts': point.get('parts', [])} for point in base['points'] if point['title'] not in DIMENSIONS.values()][:4]
     dims = project['plan'].get('dimensions_mm')
     if dims and not any('×' in spec['value'] for spec in specs):
-        specs.append({'label': '外形尺寸', 'value': '×'.join('%g' % round(value) for value in dims), 'unit': 'mm', 'icon': 'ruler'})
+        specs.append({'label': OUTLINE[language], 'value': '×'.join('%g' % round(value) for value in dims), 'unit': 'mm', 'icon': 'ruler'})
     figures = [dict(spec) for spec in specs if not spec.get('values') and '×' not in spec['value']][:2]
     for figure in figures:
         figure.pop('values', None)
     if specs and not points:
         notes = [note for note in notes if '没有从名称中识别' not in note]
+    if language == 'en' and any(CJK.search(spec['label'] + spec.get('unit', '')) for spec in specs) and not any('无法把中文翻译' in note for note in notes):
+        notes.append('未配置 AI，无法把中文翻译成英文：你写的规格保持原文，请在画面上改成英文。')
     return {'kicker': base['kicker'], 'headline': base['headline'], 'subline': base['subline'], 'points': points, 'figures': figures,
-            'specs': specs[:4], 'free_area': 'none'}, notes
+            'specs': specs[:4], 'free_area': 'none', 'language': language}, notes
 
 
 COMPOSE_PROMPT = '''You write the words of a product image for an online shop, set like a premium tool brand's feature image: very few words, each one earning its place, plain and concrete. You are shown the image and facts about the product.
+{language}
 Return data only:
-- kicker: 2 to 6 Chinese characters (at most 14 Latin) naming the category or where it is used, printed small above the headline; it must not repeat the headline's words; or an empty string.
-- headline: the product or its main use in plain words, at most 10 Chinese characters (24 Latin). No exclamation marks, no superlatives.
-- subline: one short supporting sentence of at most 18 Chinese characters (40 Latin), or an empty string.
-- points: 2 to 4 key points a shopper should notice. title at most 6 Chinese characters (14 Latin); detail at most 12 Chinese characters (26 Latin) or empty; icon: one to three plain English words naming the picture that shows the point ("wrench", "padlock", "caster wheel", "drawer", "ruler"); parts: the visible_parts names the point is about, copied exactly, or [] when it is about the whole product.
-- figures: at most 2 numbers worth showing large, each with value (only the number or range, like 8–24), unit (mm, kg, V, 件, 层 and so on), label (what it measures, at most 8 Chinese characters) and icon (English words). Only numbers that appear in user_specs, hint or the facts: never estimate, convert, round or invent a number. [] when there is none.
-- specs: at most 4 specifications for a row of specifications, with the same fields as figures plus values: for a list of sizes (a set of wrenches, sockets or bits) the sizes as separate numbers in order, otherwise []. The same rule: only numbers that were given.
+- kicker: {kicker} naming the category or where it is used, printed small above the headline; it must not repeat the headline's words; or an empty string.
+- headline: the product or its main use in plain words, {headline}. No exclamation marks, no superlatives.
+- subline: one short supporting sentence of {subline}, or an empty string.
+- points: 2 to 4 key points a shopper should notice. title {title}; detail {detail} or empty; icon: one to three plain English words naming the picture that shows the point ("wrench", "padlock", "caster wheel", "drawer", "ruler"); parts: the visible_parts names the point is about, copied exactly, or [] when it is about the whole product.
+- figures: at most 2 numbers worth showing large, each with value (only the number or range, like 8–24), unit ({units}), label (what it measures, {label}) and icon (English words). Only numbers that appear in user_specs, hint or the facts: never estimate, convert, round or invent a number. [] when there is none.
+- specs: at most 4 specifications for a row of specifications, with the same fields as figures plus values: for a list of sizes (a set of wrenches, sockets or bits) the sizes as separate numbers in order, otherwise []. The same rule: only numbers that were given. Every entry of user_specs appears here{translate_specs}.
 - layout: the composition from layouts that suits this image and these words best.
 - free_area: for a photo with a scene, which side is free of the product, people and busy detail and could hold a headline: left, right, top, bottom, or none.
 - product_box: where the product itself is in the image, as [left, top, right, bottom], each a share of the image's width or height (0 to 1).
-Say only what the image shows or the facts state: what a part is and what it is for. Do not praise. Never claim durability, strength, safety, quietness, smoothness, ease, roominess, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 顺滑, 顺畅, 轻松, 宽敞, 高品质 and the like) unless the facts state it; never compare with other products. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures.'''
+Say only what the image shows or the facts state: what a part is and what it is for. Do not praise. Never claim durability, strength, safety, quietness, smoothness, ease, roominess, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 顺滑, 顺畅, 轻松, 宽敞, 高品质 and the like) unless the facts state it; never compare with other products. hint, when present, is what the user wants said and takes priority; {keep}'''
+WRITING = {
+    'en': dict(language='Write every word in English, in sentence case, the way a premium tool brand writes for international shoppers. hint, part names and user_specs may be in Chinese or another language: say what they say in natural English.',
+               kicker='at most 24 characters', headline='at most 28 characters', subline='at most 48 characters', title='at most 22 characters',
+               detail='at most 36 characters', units='mm, kg, V, Nm, pcs, layers and so on', label='at most 20 characters',
+               translate_specs=', its label in English', keep='keep its meaning and every figure exactly, in English.'),
+    'zh': dict(language='Write every word in Simplified Chinese.',
+               kicker='2 to 6 Chinese characters', headline='at most 10 Chinese characters', subline='at most 18 Chinese characters',
+               title='at most 6 Chinese characters', detail='at most 12 Chinese characters', units='mm, kg, V, 件, 层 and so on',
+               label='at most 8 Chinese characters', translate_specs=', keeping its label', keep="keep the user's own wording and figures."),
+}
+# How long each part may be once written, per language: Latin words take more letters than Chinese characters.
+LIMITS = {'en': {'kicker': 24, 'headline': 30, 'subline': 52, 'title': 24, 'detail': 40, 'label': 22},
+          'zh': {'kicker': 14, 'headline': 24, 'subline': 40, 'title': 16, 'detail': 30, 'label': 16}}
+
+
+def compose_prompt(language=DEFAULT_LANGUAGE):
+    return COMPOSE_PROMPT.format(**WRITING[language])
+
+
 LAYOUT_NOTES = {'split': 'words in a column beside the product: a headline, then up to two key figures or three short points; for a clean product photo',
                 'callouts': 'the product on one side, up to four aligned notes on the other with thin lines to the parts they name; for showing structure',
                 'scene': 'a headline set in the calm part of a photo of the product in use; for scene and lifestyle photos',
@@ -818,10 +872,10 @@ def compose_schema():
                 'product_box': {'type': 'array', 'minItems': 4, 'maxItems': 4, 'items': {'type': 'number', 'minimum': 0, 'maximum': 1}}})
 
 
-def content_for(project, hint='', image_path=None, visible=None):
-    """(content, source, notes, suggested layout): the model's words when one is configured, the rules' otherwise."""
+def content_for(project, hint='', image_path=None, visible=None, language=DEFAULT_LANGUAGE):
+    """(content, source, notes, suggested layout): the model's words when one is configured, the rules' otherwise; in ``language``."""
     import layer_compose
-    rules, notes = content_rules(project, hint, visible)
+    rules, notes = content_rules(project, hint, visible, language)
     config = _config(image_path)
     if not config:
         return rules, 'rules', notes, None
@@ -836,13 +890,13 @@ def content_for(project, hint='', image_path=None, visible=None):
     if hint:
         facts['hint'] = hint
     try:
-        answer = _ask(config, COMPOSE_PROMPT, facts, compose_schema(), image_path)
+        answer = _ask(config, compose_prompt(language), facts, compose_schema(), image_path)
     except Exception as exc:
         reason = str(exc)[:120] if isinstance(exc, ValueError) and str(exc) else ''
         return rules, 'rules', notes + ['AI 未返回可用结果%s，已改用名称规则。' % ('（%s）' % reason.rstrip('。') if reason else '')], None
-    given = _facts_text(project, hint); notes = []; invented = 0
+    given = _facts_text(project, hint); notes = []; invented = 0; limit = LIMITS[language]
     allowed = set(shown)
-    points = [{'title': _clip(point['title'], 16), 'detail': _clip(point['detail'], 30), 'icon': _clip(point['icon'], 40),
+    points = [{'title': _clip(point['title'], limit['title']), 'detail': _clip(point['detail'], limit['detail']), 'icon': _clip(point['icon'], 40),
                'parts': [name for name in point['parts'] if name in allowed]} for point in answer['points'] if point['title'].strip()][:4]
 
     def numbers(rows, listed):
@@ -852,7 +906,7 @@ def content_for(project, hint='', image_path=None, visible=None):
             values = [value for value in (row.get('values') or []) if layer_compose.grounded(value, given)] if listed else []
             if not layer_compose.grounded(row['value'], given):
                 invented += 1; continue
-            entry = {'label': _clip(row['label'], 16), 'value': _clip(row['value'], 20), 'unit': _clip(row['unit'], 10), 'icon': _clip(row['icon'], 40)}
+            entry = {'label': _clip(row['label'], limit['label']), 'value': _clip(row['value'], 20), 'unit': _clip(row['unit'], 10), 'icon': _clip(row['icon'], 40)}
             if listed and len(values) >= 3:
                 entry['values'] = values[:16]
             kept.append(entry)
@@ -860,14 +914,23 @@ def content_for(project, hint='', image_path=None, visible=None):
     figures = numbers(answer['figures'], False)[:2]; specs = numbers(answer['specs'], True)[:4]
     if invented:
         notes.append('AI 给出的 %d 个数字不在你提供的信息里，已去掉；数字只采用你写下或填写的规格。' % invented)
-    # The user's own specifications come first, in their words and with every size they listed; the model's
-    # add only numbers those do not already show.
-    merged = list(rules['specs'])
+    # The user's own specifications come first, with every size they listed; the model's add only numbers those do
+    # not already show. Written in another language than the user's, a specification takes the model's words for it.
+    def worded(spec):
+        if language == 'en' and CJK.search(spec.get('label', '') + spec.get('unit', '')):
+            match = next((row for row in specs + figures if layer_compose.numbers_in(spec['value']) <= layer_compose.numbers_in(row['value'])), None)
+            if match:
+                spec = {**spec, 'label': match['label'], 'icon': match['icon'] or spec.get('icon', ''),
+                        **({'unit': match['unit']} if CJK.search(spec.get('unit', '')) and match['unit'] else {})}
+        return spec
+    merged = [worded(spec) for spec in rules['specs']]
     for row in specs:
         if not any(layer_compose.numbers_in(row['value']) <= layer_compose.numbers_in(spec['value']) for spec in merged):
             merged.append(row)
-    content = {'kicker': _clip(answer['kicker'], 14), 'headline': _clip(answer['headline'], 24) or rules['headline'], 'subline': _clip(answer['subline'], 40),
-               'points': points or rules['points'], 'figures': figures or rules['figures'], 'specs': merged[:4], 'free_area': answer['free_area']}
+    own = [worded(figure) for figure in rules['figures']]
+    content = {'kicker': _clip(answer['kicker'], limit['kicker']), 'headline': _clip(answer['headline'], limit['headline']) or rules['headline'],
+               'subline': _clip(answer['subline'], limit['subline']), 'points': points or rules['points'], 'figures': figures or own,
+               'specs': merged[:4], 'free_area': answer['free_area'], 'language': language}
     box = answer['product_box']
     if box[2] - box[0] >= .05 and box[3] - box[1] >= .05:
         content['product_box'] = [round(value, 4) for value in box]
@@ -923,9 +986,12 @@ def suggest(project_id, shot_id, body):
     wanted_layout = body.get('layout')
     if wanted_layout not in (None, 'auto') and wanted_layout not in layer_compose.LAYOUTS:
         raise ValueError('未知的版式')
+    language = body.get('language') or DEFAULT_LANGUAGE
+    if language not in LANGUAGES:
+        raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
     project, shot, output, image, picture, notes = _picture_for(project_id, shot_id, body.get('output'))
     visible = None if picture.estimated else list(picture.objects)
-    content, source, copy_notes, proposed = content_for(project, hint.strip(), image, visible)
+    content, source, copy_notes, proposed = content_for(project, hint.strip(), image, visible, language)
     if picture.estimated and content.get('product_box'):
         picture.set_product_box(content['product_box'])
     _point_anchors(content, picture)
