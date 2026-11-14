@@ -644,7 +644,9 @@
 <section id="inspectorOverlay" class="overlay-panel" role="tabpanel" aria-labelledby="inspectorOverlayTab" hidden>
 <section class="panel-section">
 <textarea id="layerHint" rows="2" maxlength="400" placeholder="可选：想突出的要点，每行一条，如“台面：可放常用工具”" aria-label="想突出的要点"></textarea>
-<button id="layerSuggest" class="button secondary full-width" type="button" aria-describedby="layerStatus" title="提取产品的关键信息，放到画面的空处，并用引线指向对应部件">智能排版关键信息</button>
+<button id="layerSuggest" class="button secondary full-width" type="button" aria-describedby="layerStatus" title="AI 提取关键信息、选版式、配图标；数字只采用你写下的规格">智能排版关键信息</button>
+<div class="layer-layout-head"><span class="field-label">版式</span><span class="field-help">参考 12 张品牌图文构图；切换版式不改文字</span></div>
+<div id="layerLayouts" class="layer-layouts" role="group" aria-label="版式"></div>
 <p id="layerStatus" class="render-reason" role="status" hidden></p>
 </section>
 <section class="panel-section">
@@ -671,9 +673,24 @@
 <section id="layerProperties" class="panel-section layer-properties" aria-label="所选元素" hidden>
 <div id="layerTextField"><label class="field-label" for="layerText">文字</label><textarea id="layerText" rows="2" maxlength="400"></textarea></div>
 <div id="layerDetailField"><label class="field-label" for="layerDetail">说明</label><textarea id="layerDetail" rows="2" maxlength="160"></textarea></div>
+<div id="layerFigureFields" class="layer-figure-fields" hidden>
+<label class="field-label" for="layerFigureValue">数值</label><input id="layerFigureValue" type="text" maxlength="24">
+<label class="field-label" for="layerFigureUnit">单位</label><input id="layerFigureUnit" type="text" maxlength="12">
+<label class="field-label" for="layerFigureLabel">说明</label><input id="layerFigureLabel" type="text" maxlength="40">
+</div>
+<div id="layerChipsField" hidden><label class="field-label" for="layerChipsValues">规格（用空格分开）</label><input id="layerChipsValues" type="text" maxlength="180"></div>
+<div id="layerGlyphField" class="layer-glyph-field" hidden>
+<span class="field-label">图标</span>
+<p id="layerGlyphCurrent" class="field-help"></p>
+<div class="layer-row layer-glyph-search"><input id="layerGlyphQuery" type="text" maxlength="60" placeholder="找图标，如“扳手”“wrench”" aria-label="要找的图标"><button id="layerGlyphSearch" class="button subtle" type="button">搜索</button></div>
+<div class="layer-row"><label class="check-label"><input id="layerGlyphOnline" type="checkbox" checked>同时在线查找</label><span class="layer-spacer"></span><button id="layerGlyphDraw" class="button subtle" type="button" title="由 AI 画一个线条图标，并由视觉模型核对">AI 绘制</button><button id="layerGlyphNone" class="button subtle" type="button">不用图标</button></div>
+<p id="layerGlyphStatus" class="field-help" role="status" hidden></p>
+<div id="layerGlyphResults" class="layer-icons" role="group" aria-label="找到的图标"></div>
+<p class="field-help">图标来自开源图标库（Lucide ISC、Tabler MIT，在线查找只取 MIT / ISC / Apache-2.0 授权的图标库），或由 AI 绘制；来源与授权随图层保存。</p>
+</div>
 <div id="layerIconField"><span class="field-label">图标</span><div id="layerIcons" class="layer-icons" role="group" aria-label="图标"></div></div>
-<label class="field-label" for="layerSize">大小 <span id="layerSizeValue" class="layer-value"></span></label>
-<input id="layerSize" type="range" min="0.012" max="0.16" step="0.001">
+<div class="layer-size-row"><label class="field-label" for="layerSize">大小 <span id="layerSizeValue" class="layer-value"></span></label>
+<input id="layerSize" type="range" min="0.012" max="0.16" step="0.001"></div>
 <div id="layerRoleRow" class="layer-row">
 <label class="layer-label" for="layerRole">角色</label>
 <select id="layerRole"><option value="headline">标题</option><option value="subline">副标题</option><option value="kicker">标签</option><option value="body">正文</option></select>

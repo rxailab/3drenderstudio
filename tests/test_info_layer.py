@@ -1,7 +1,9 @@
-"""The text and icon layer: data contract, key points, layout and storage.
+"""The text and icon layer: data contract, what to say, proposals and storage.
 
-No network and no model service: model replies are scripted. One class runs
-the real Blender probe on a synthetic cabinet and is skipped without Blender.
+The compositions themselves are proofed in test_layer_compose.py and the icons
+in test_layer_icons.py. No network and no model service: model replies are
+scripted. One class runs the real Blender probe on a synthetic cabinet and is
+skipped without Blender.
 """
 import copy
 import json
@@ -16,6 +18,7 @@ from PIL import Image
 
 import engine
 import info_layer
+import layer_icons
 import planner
 import studio_store as store
 
@@ -24,13 +27,15 @@ _no_model = None
 
 
 def setUpModule():
-    """No test here reaches a model service, whatever this machine's own AI settings are. Tests about the model script its replies."""
+    """No test here reaches a model service or the network, whatever this machine's own AI settings are. Tests about the model script its replies."""
     global _no_model
-    _no_model = patch.object(info_layer, '_config', return_value=None); _no_model.start()
+    _no_model = [patch.object(info_layer, '_config', return_value=None), patch.object(layer_icons, '_config', return_value=None),
+                 patch.object(layer_icons, 'online_allowed', return_value=False)]
+    for mocked in _no_model: mocked.start()
 
 
 def tearDownModule():
-    _no_model.stop()
+    for mocked in _no_model: mocked.stop()
 
 NAMES = ['G-07C抽屉(2)_8', 'G-不锈钢台面_2', '脚轮_1', '脚轮_2', '锁芯', '钥匙', '柜体']
 
@@ -67,13 +72,19 @@ def picture(product=(.3, .25, .7, .85), parts=None, scenery=(), n=48, light=.95,
     return result
 
 
-def box(entry, aspect=(1, 1)):
-    """The rectangle a callout or text item takes, estimated the way the server lays it out."""
-    unit = min(aspect); sy = unit / aspect[1]
-    if entry['type'] == 'text':
-        lines = len(entry['text'].split('\n')); pill = .72 if entry.get('role') == 'kicker' else 0
-        return (entry['x'], entry['y'], entry['x'] + entry['w'], entry['y'] + (lines * info_layer.LINE + pill) * entry['size'] * sy)
-    return (entry['x'], entry['y'], entry['x'] + entry['w'], entry['y'] + entry['size'] * 3.0 * sy)
+def on_canvas(layer, point):
+    """A point of the render, where a composition shows it."""
+    photo = (layer.get('canvas') or {}).get('photo') or {'x': 0, 'y': 0, 'w': 1, 'h': 1, 'crop': [0, 0, 1, 1]}; crop = photo['crop']
+    return (photo['x'] + (point[0] - crop[0]) / (crop[2] - crop[0]) * photo['w'], photo['y'] + (point[1] - crop[1]) / (crop[3] - crop[1]) * photo['h'])
+
+
+def in_render(layer, point):
+    """A point of a composition, where it is in the render."""
+    photo = (layer.get('canvas') or {}).get('photo') or {'x': 0, 'y': 0, 'w': 1, 'h': 1, 'crop': [0, 0, 1, 1]}; crop = photo['crop']
+    return (crop[0] + (point[0] - photo['x']) / photo['w'] * (crop[2] - crop[0]), crop[1] + (point[1] - photo['y']) / photo['h'] * (crop[3] - crop[1]))
+
+
+GLYPH = {'source': 'lucide', 'name': 'wrench', 'license': 'ISC', 'ops': [['s', 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77']], 'stroke': 2, 'grid': 24}
 
 
 class ContractTests(unittest.TestCase):
@@ -113,6 +124,37 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ValueError): info_layer.validate({'version': 1, 'items': [item(id='t%d' % n) for n in range(41)]})
         with self.assertRaises(ValueError): info_layer.validate({'version': 2, 'items': []})
         with self.assertRaises(ValueError): info_layer.validate({'version': 1, 'items': [], 'basis': {'script': 1}})
+
+    def test_a_composition_keeps_its_canvas_words_and_icons_as_plain_data(self):
+        layer = info_layer.validate({'version': 1, 'layout': 'split', 'source': 'ai', 'glyphs': {'g1': GLYPH},
+            'canvas': {'color': '#F2F2F0', 'photo': {'x': .4, 'y': 0, 'w': .6, 'h': 1, 'crop': [-.1, 0, .9, 1], 'feather': True, 'radius': .016, 'fill': '#FFFFFF'}},
+            'content': {'kicker': '车间收纳', 'headline': '工具柜', 'subline': '', 'free_area': 'left', 'product_box': [.2, .1, .8, .9], 'unknown': 1,
+                        'points': [{'title': '抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['抽屉_1'], 'anchor': [.5, .4], 'glyph': 'g1'}],
+                        'figures': [{'value': '120', 'unit': 'kg', 'label': '承重', 'icon': 'weight'}],
+                        'specs': [{'value': '8–24', 'unit': 'mm', 'label': '扳手尺寸', 'icon': 'wrench', 'values': ['8', '24']}]},
+            'items': [{'id': 'headline', 'type': 'text', 'role': 'headline', 'x': .08, 'y': .1, 'w': .3, 'size': .06, 'text': '工具柜', 'color': '#1D1D1F', 'leading': 1.16, 'slot': 'headline'},
+                      {'id': 'fig1', 'type': 'figure', 'x': .08, 'y': .7, 'w': .3, 'size': .07, 'value': '120', 'unit': 'kg', 'label': '承重', 'color': '#E62A29', 'soft': '#6E6E73', 'glyph': 'g1', 'slot': 'figures.0'},
+                      {'id': 'point1', 'type': 'callout', 'style': 'line', 'x': .7, 'y': .3, 'w': .25, 'size': .024, 'title': '抽屉', 'detail': '', 'anchor': [.5, .4], 'elbow': .62, 'slot': 'points.0'},
+                      {'id': 'ladder', 'type': 'chips', 'x': .08, 'y': .85, 'w': .8, 'size': .03, 'values': ['8', '24'], 'unit': 'mm', 'label': '扳手尺寸', 'slot': 'specs.0'},
+                      {'id': 'band', 'type': 'panel', 'x': 0, 'y': .8, 'w': 1, 'h': .2, 'size': .02, 'color': '#E62A29', 'fade': 'up'},
+                      {'id': 'rule1', 'type': 'rule', 'x': .1, 'y': .5, 'x2': .3, 'y2': .5, 'size': .02, 'color': '#1D1D1F', 'width': .0016}]})
+        self.assertEqual((layer['layout'], layer['canvas']['color'], layer['canvas']['photo']['fill']), ('split', '#f2f2f0', '#ffffff'))
+        self.assertNotIn('unknown', layer['content']); self.assertEqual(layer['content']['points'][0]['glyph'], 'g1')
+        headline, figure, note, chips, band, rule = layer['items']
+        self.assertEqual((figure['glyph'], figure['soft'], note['style'], note['elbow']), ('g1', '#6e6e73', 'line', .62))
+        self.assertEqual((chips['values'], chips['fill'], band['fade'], rule['x2']), (['8', '24'], '#ffffff', 'up', .3))
+        self.assertEqual(layer['glyphs']['g1']['ops'], GLYPH['ops']); json.dumps(layer)
+        base = {'version': 1, 'items': [], 'glyphs': {'g1': GLYPH}}
+        for bad in ({'layout': 'collage'}, {'canvas': {'color': '#fff'}}, {'canvas': {'color': '#ffffff', 'photo': {'x': 0, 'y': 0, 'w': 1, 'h': 1, 'crop': [0, 0, 1]}}},
+                    {'content': {'points': [{'title': 'a', 'glyph': 'g9'}]}}, {'content': {'specs': [{'value': '1', 'values': ['x' * 11]}]}},
+                    {'items': [{'id': 'i', 'type': 'text', 'x': 0, 'y': 0, 'w': .2, 'size': .05, 'text': 'a', 'glyph': 'g1'}]},
+                    {'items': [{'id': 'i', 'type': 'figure', 'x': 0, 'y': 0, 'w': .2, 'size': .05, 'value': '1', 'glyph': 'g2'}]},
+                    {'items': [{'id': 'i', 'type': 'chips', 'x': 0, 'y': 0, 'w': .2, 'size': .05, 'values': []}]},
+                    {'items': [{'id': 'i', 'type': 'callout', 'x': 0, 'y': 0, 'w': .2, 'size': .05, 'title': 'a', 'style': 'bubble'}]},
+                    {'items': [{'id': 'i', 'type': 'text', 'x': 0, 'y': 0, 'w': .2, 'size': .05, 'text': 'a', 'slot': 'points.9'}]},
+                    {'glyphs': {'g1': {**GLYPH, 'ops': [['s', 'M0 0 <script>']]}}}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                info_layer.validate({**base, **bad})
 
     def test_the_page_draws_exactly_the_icons_the_server_accepts(self):
         script = (ROOT / 'static' / 'layer.js').read_text(encoding='utf-8')
@@ -159,134 +201,46 @@ class KeyPointTests(unittest.TestCase):
         self.assertEqual((content['headline'], content['points']), ('model_final', []))
         self.assertIn('没有从名称中识别', notes[0])
 
-    def test_a_model_writes_the_points_when_configured_and_may_only_point_at_parts_it_was_shown(self):
-        answer = {'kicker': '车间收纳', 'headline': '车间工具柜', 'emphasis': '工具柜', 'subline': '收纳与移动', 'points': [
-            {'title': '全拉出抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['G-07C抽屉(2)_8', '不存在的部件']},
-            {'title': '   ', 'detail': '', 'icon': 'check', 'parts': []}]}
+    def test_a_model_writes_the_words_when_configured_and_only_numbers_that_were_given_survive(self):
+        answer = {'kicker': '车间收纳', 'headline': '车间工具柜', 'subline': '收纳与移动', 'layout': 'callouts', 'free_area': 'none', 'product_box': [.2, .1, .8, .9],
+                  'points': [{'title': '全拉出抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['G-07C抽屉(2)_8', '不存在的部件']},
+                             {'title': '   ', 'detail': '', 'icon': 'check', 'parts': []}],
+                  'figures': [{'value': '120', 'unit': 'kg', 'label': '台面承重', 'icon': 'weight'}, {'value': '500', 'unit': 'kg', 'label': '总承重', 'icon': 'weight'}],
+                  'specs': [{'value': '8–24', 'unit': 'mm', 'label': '扳手尺寸', 'icon': 'wrench', 'values': ['8', '10', '13', '24']},
+                            {'value': '42', 'unit': '件', 'label': '套装', 'icon': 'package', 'values': []}]}
+        hint = '突出抽屉\n台面承重 120 kg\n扳手：8、10、12、24 mm'
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value=answer) as ask:
-            content, source, notes = info_layer.copy_for(project(), '突出抽屉', None, ['G-07C抽屉(2)_8'])
-        self.assertEqual((source, content['headline'], content['emphasis'], content['kicker']), ('ai', '车间工具柜', '工具柜', '车间收纳'))
+            content, source, notes, layout = info_layer.content_for(project(), hint, None, ['G-07C抽屉(2)_8'])
+        self.assertEqual((source, layout, content['headline'], content['kicker']), ('ai', 'callouts', '车间工具柜', '车间收纳'))
         self.assertEqual(content['points'], [{'title': '全拉出抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['G-07C抽屉(2)_8']}])
+        self.assertEqual([row['value'] for row in content['figures']], ['120'])            # 500 kg was never given
+        self.assertEqual([(row['label'], row['value'], row.get('values')) for row in content['specs']],
+                         [('台面承重', '120', None), ('扳手', '8–24', ['8', '10', '12', '24'])])   # the user's own list, in their words; "42 件" was made up
+        self.assertEqual(content['product_box'], [.2, .1, .8, .9])
+        self.assertIn('2 个数字不在你提供的信息里', notes[0])
         facts = ask.call_args.args[2]
-        self.assertEqual((facts['hint'], facts['visible_parts']), ('突出抽屉', ['G-07C抽屉(2)_8']))
-        self.assertEqual(set(facts['available_icons']), set(info_layer.ICONS))     # every icon is offered with what it stands for
-        self.assertIn('worktop', facts['available_icons']['layers'])
-        self.assertIn('Never give a number', ask.call_args.args[1]); self.assertIn('Do not praise', ask.call_args.args[1])
-        with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value={**answer, 'emphasis': '不在标题里'}):
-            self.assertEqual(info_layer.copy_for(project())[0]['emphasis'], '')       # only a word that is really in the headline can be set in colour
+        self.assertEqual((facts['hint'], facts['visible_parts']), (hint, ['G-07C抽屉(2)_8']))
+        self.assertEqual(set(facts['layouts']), {'split', 'callouts', 'scene', 'cards', 'spotlight', 'specs'})
+        self.assertEqual([row['label'] for row in facts['user_specs']], ['台面承重', '扳手'])
+        prompt = ask.call_args.args[1]
+        self.assertIn('never estimate, convert, round or invent a number', prompt); self.assertIn('Do not praise', prompt)
 
     def test_without_a_model_or_when_it_fails_the_rules_answer(self):
-        self.assertEqual(info_layer.copy_for(project())[1], 'rules')
+        self.assertEqual(info_layer.content_for(project())[1:], ('rules', [], None))
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', side_effect=RuntimeError('down')):
-            content, source, notes = info_layer.copy_for(project())
-        self.assertEqual((source, content['points'][0]['title']), ('rules', '抽屉收纳')); self.assertEqual(notes[-1], 'AI 未返回可用结果，已改用名称规则。')
+            content, source, notes, layout = info_layer.content_for(project())
+        self.assertEqual((source, layout, content['points'][0]['title']), ('rules', None, '抽屉收纳')); self.assertEqual(notes[-1], 'AI 未返回可用结果，已改用名称规则。')
         refused = ValueError('AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402）')
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', side_effect=refused):
-            notes = info_layer.copy_for(project())[2]
+            notes = info_layer.content_for(project())[2]
         self.assertIn('额度已用尽', notes[-1]); self.assertIn('HTTP 402', notes[-1])   # the service's own reason reaches the user
 
 
-class LayoutTests(unittest.TestCase):
-    CONTENT = {'headline': '红色工具柜', 'subline': '抽屉收纳 · 带轮移动', 'points': [
-        {'title': '抽屉收纳', 'detail': '物品分层放置', 'icon': 'drawer', 'parts': ['drawer']},
-        {'title': '带轮移动', 'detail': '可推到手边使用', 'icon': 'wheel', 'parts': ['wheel']},
-        {'title': '带锁', 'detail': '可上锁存放', 'icon': 'lock', 'parts': ['lock']}]}
-    PARTS = {'drawer': (.32, .3, .5, .4), 'wheel': (.6, .78, .68, .85), 'lock': (.33, .6, .37, .64)}
-
-    def assert_clean(self, items, aspect=(1, 1)):
-        rects = [box(entry, aspect) for entry in items]
-        for rect in rects:
-            self.assertGreaterEqual(rect[0], .04); self.assertLessEqual(rect[2], .97); self.assertGreaterEqual(rect[1], .04); self.assertLessEqual(rect[3], .97)
-        for index, a in enumerate(rects):
-            for b in rects[index + 1:]:
-                if items[index]['id'] in ('headline', 'subline') and items[rects.index(b)]['id'] in ('headline', 'subline'): continue
-                self.assertFalse(a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3], (a, b))
-        info_layer.validate({'version': 1, 'items': items})
-
-    def test_text_goes_where_the_picture_is_free_and_each_callout_beside_its_part(self):
-        view = picture(parts=self.PARTS)
-        items, dropped, crowded, look = info_layer.arrange(self.CONTENT, view)
-        self.assertEqual((dropped, crowded), ([], False)); self.assert_clean(items)
-        self.assertEqual(look['theme'], 'bold')                                  # a calm light backdrop: bare type, no cards
-        by_id = {entry['id']: entry for entry in items}
-        self.assertEqual(view.cover(box(by_id['headline']))[0], 0)               # the headline is off the product
-        self.assertEqual((by_id['headline']['role'], by_id['headline']['weight']), ('headline', 700))
-        self.assertGreaterEqual(by_id['headline']['size'], .05)                  # and set large
-        drawer, wheel, lock = by_id['point1'], by_id['point2'], by_id['point3']
-        self.assertLess(drawer['x'] + drawer['w'], .32); self.assertLess(lock['x'] + lock['w'], .32)       # parts on the left: labels on the left
-        self.assertGreater(wheel['x'] + wheel['w'] / 2, .7)                      # the part on the right: its label on the right
-        self.assertLess(drawer['y'], lock['y'])                                  # same order as the parts, so the lines do not cross
-        for entry, name in ((drawer, 'drawer'), (wheel, 'wheel'), (lock, 'lock')):
-            rect = self.PARTS[name]
-            self.assertTrue(rect[0] <= entry['anchor'][0] <= rect[2] and rect[1] <= entry['anchor'][1] <= rect[3])    # the line ends on the part
-            self.assertLess(abs(entry['y'] - entry['anchor'][1]), .2)            # and the label stays near it
-        self.assertEqual({entry['color'] for entry in items}, {'#141414'})       # dark type on a light picture
-        self.assertTrue(all(entry.get('plate') is None for entry in items))
-
-    def test_a_dark_picture_gets_light_type_and_a_full_frame_gets_smaller_labels_on_plates(self):
-        dark, _, _, look = info_layer.arrange(self.CONTENT, picture(parts=self.PARTS, light=.12))
-        self.assertEqual({entry['color'] for entry in dark}, {'#ffffff'})
-        self.assertEqual((look['theme'], look['accent']), ('card', '#ffc53d'))    # a dark picture: cards, and a warm accent when the product has no colour
-        self.assertTrue(all(entry.get('plate') is None for entry in dark if entry['type'] == 'callout'))       # the style draws the cards itself
-        roomy, _, _, _ = info_layer.arrange(self.CONTENT, picture(parts=self.PARTS))
-        tight_parts = {'drawer': (.2, .3, .5, .4), 'wheel': (.7, .8, .8, .88), 'lock': (.2, .6, .26, .66)}
-        tight, _, crowded, _ = info_layer.arrange(self.CONTENT, picture(product=(.14, .12, .86, .9), parts=tight_parts))
-        self.assertTrue(crowded); self.assert_clean(tight)
-        size = lambda items: next(entry['size'] for entry in items if entry['id'] == 'point1')
-        self.assertLess(size(tight), size(roomy))
-        self.assertTrue(any(entry.get('plate') for entry in tight if entry['type'] == 'callout'))
-        for entry in tight:
-            if entry.get('anchor'): self.assertLess(abs(entry['y'] - entry['anchor'][1]), .25)     # short lines, not labels pushed to a far corner
-
-    def test_scenery_is_avoided_and_points_without_a_part_form_a_tidy_group(self):
-        view = picture(parts=self.PARTS, scenery=[(.05, .1, .28, .5)])
-        items, _, _, _ = info_layer.arrange(self.CONTENT, view)
-        drawer = next(entry for entry in items if entry['id'] == 'point1')
-        self.assertLess(view.cover(box(drawer))[1], .2)
-        loose = {'headline': '哑光按压瓶', 'subline': '', 'points': [{'title': '500 ml 大容量', 'detail': '', 'icon': 'check', 'parts': []},
-                                                               {'title': '哑光瓶身', 'detail': '', 'icon': 'check', 'parts': []}]}
-        items, dropped, _, _ = info_layer.arrange(loose, picture(product=(.4, .15, .6, .85)))
-        self.assert_clean(items); self.assertEqual(dropped, [])
-        first, second = [entry for entry in items if entry['type'] == 'callout']
-        self.assertTrue(first['anchor'] is None and second['anchor'] is None)
-        self.assertTrue(abs(first['y'] - second['y']) < 1e-6 or abs(first['x'] - second['x']) < 1e-6)       # one row or one column
-
-    def test_other_picture_shapes_keep_everything_inside_the_frame(self):
-        for aspect in ('3:4', '16:9'):
-            with self.subTest(aspect=aspect):
-                items, _, _, _ = info_layer.arrange(self.CONTENT, picture(parts=self.PARTS), aspect)
-                self.assert_clean(items, tuple(float(part) for part in aspect.split(':')))
-
-    def test_a_picture_read_without_its_scene_gets_no_pointing_lines(self):
-        items, _, _, _ = info_layer.arrange(self.CONTENT, picture(parts=self.PARTS, estimated=True))
-        self.assertTrue(all(entry.get('anchor') is None for entry in items)); self.assert_clean(items)
-
-    def test_the_accent_is_the_products_own_colour_and_the_tag_and_emphasis_are_laid_out(self):
-        red = picture(parts=self.PARTS, color=(214, 40, 34))
-        import colorsys
-        hue, saturation, value = colorsys.rgb_to_hsv(*(int(red.accent()[index:index + 2], 16) / 255 for index in (1, 3, 5)))
-        self.assertTrue((hue < .04 or hue > .96) and saturation > .7 and value > .8)      # a vivid red, whatever the render's exact shade
-        self.assertIsNone(picture(parts=self.PARTS, color=(180, 182, 186)).accent())     # brushed steel has no hue to take
-        self.assertEqual(info_layer.look_for(picture(parts=self.PARTS, color=(180, 182, 186)))['accent'], '#e8452c')
-        content = {**self.CONTENT, 'kicker': '车间收纳', 'emphasis': '工具柜', 'subline': ''}
-        items, _, _, look = info_layer.arrange(content, red)
-        self.assertEqual(look['accent'], red.accent()); self.assert_clean(items)
-        kicker, headline = items[0], items[1]
-        self.assertEqual((kicker['role'], kicker['text'], headline['mark']), ('kicker', '车间收纳', '工具柜'))
-        self.assertLess(kicker['y'], headline['y']); self.assertEqual(kicker['align'], headline['align'])
-        self.assertLess(kicker['size'], headline['size'] * .5)
-        self.assertNotIn('mark', info_layer.arrange({**content, 'emphasis': '别的词'}, red)[0][1])
-
-    def test_the_supporting_line_is_left_out_before_the_headline_block_may_touch_the_product(self):
-        content = {'kicker': '车间收纳', 'headline': '红色工具柜', 'emphasis': '', 'subline': '抽屉与柜门组合，工具分类存放', 'points': []}
-        roomy, dropped, _, _ = info_layer.arrange(content, picture(product=(.3, .4, .7, .95)))
-        self.assertEqual(([entry['id'] for entry in roomy], dropped), (['kicker', 'headline', 'subline'], []))
-        # a band above the product that holds the tag and the headline, but not a third line
-        view = picture(product=(0, .19, 1, 1))
-        tight, dropped, crowded, _ = info_layer.arrange(content, view)
-        self.assertEqual(([entry['id'] for entry in tight], dropped), (['kicker', 'headline'], ['抽屉与柜门组合，工具分类存放']))
-        self.assertFalse(crowded)
-        for entry in tight: self.assertEqual(view.cover(box(entry))[0], 0)
+class PictureTests(unittest.TestCase):
+    def test_the_edge_of_a_flat_sweep_is_even_and_that_of_a_lit_floor_is_not(self):
+        self.assertEqual(picture().edge_spread(), 0)
+        lit = picture(); lit.luminance = [.55 + .25 * (index // lit.nx) / lit.ny for index in range(lit.nx * lit.ny)]
+        self.assertGreater(lit.edge_spread(), .1)
 
     def test_a_line_points_at_the_largest_visible_patch_of_its_parts(self):
         view = picture(parts={'wheel_a': (.31, .8, .35, .84), 'wheel_b': (.55, .74, .69, .84)})
@@ -338,26 +292,55 @@ class StorageTests(unittest.TestCase):
         with patch.object(info_layer, 'probe', return_value=scene) as probe:
             result = info_layer.suggest('p', 'hero', {'hint': '', 'output': {'job_id': 'j1', 'version': 1, 'quality': 'preview'}})
         self.assertEqual(probe.call_args.args[1]['job_id'], 'j1')
-        report = result['report']
-        self.assertEqual((report['source'], report['probe'], report['anchored']), ('rules', 'scene', 1))
-        drawer = next(entry for entry in result['layer']['items'] if entry['type'] == 'callout')
-        self.assertEqual(drawer['title'], '抽屉收纳'); self.assertTrue(22 / 64 <= drawer['anchor'][0] <= 42 / 64 and 20 / 64 <= drawer['anchor'][1] <= 26 / 64)
-        self.assertEqual(result['layer']['basis']['aspect'], '1:1'); self.assertEqual(result['layer']['basis']['azimuth'], store.get('project', 'p')['plan']['shots'][0]['azimuth'])
-        self.assertEqual(result['layer']['theme'], 'bold'); self.assertRegex(result['layer']['accent'], r'^#[0-9a-f]{6}$')     # dressed for this picture: white sweep, red product
+        report = result['report']; layer = result['layer']
+        self.assertEqual((report['source'], report['probe'], report['layout']), ('rules', 'scene', layer['layout']))
+        self.assertEqual(report['suitable'][0], layer['layout']); self.assertEqual(sorted(report['suitable']), sorted(['split', 'callouts', 'scene', 'cards', 'spotlight', 'specs']))
+        drawer = next(point for point in layer['content']['points'] if point['title'] == '抽屉收纳')
+        self.assertTrue(22 / 64 <= drawer['anchor'][0] <= 42 / 64 and 20 / 64 <= drawer['anchor'][1] <= 26 / 64)    # where the drawer is in the render
+        self.assertTrue(report['icons']); self.assertTrue(all(icon['source'] in ('lucide', 'tabler') and icon['license'] in ('ISC', 'MIT') for icon in report['icons'].values()))
+        self.assertIn(layer['content']['points'][0]['glyph'], layer['glyphs'])
+        self.assertEqual(layer['basis']['aspect'], '1:1'); self.assertEqual(layer['basis']['azimuth'], store.get('project', 'p')['plan']['shots'][0]['azimuth'])
+        self.assertNotIn('theme', layer); self.assertRegex(layer['canvas']['color'], r'^#[0-9a-f]{6}$')
+        # The same words as structure notes: the line ends on the drawer, wherever the layout put the picture.
+        with patch.object(info_layer, 'probe', return_value=scene):
+            notes = info_layer.suggest('p', 'hero', {'layout': 'callouts'})
+        note = next(item for item in notes['layer']['items'] if item['type'] == 'callout' and item['title'] == '抽屉收纳')
+        x, y = in_render(notes['layer'], note['anchor'])
+        self.assertTrue(22 / 64 - .01 <= x <= 42 / 64 + .01 and 20 / 64 - .01 <= y <= 26 / 64 + .01)
+        self.assertEqual((notes['report']['layout'], notes['report']['anchored']), ('callouts', 1))
         self.assertNotIn('layers', store.get('project', 'p'))
 
     def test_without_the_scene_the_picture_itself_is_read_and_the_report_says_so(self):
         with patch.object(info_layer, 'probe', return_value=None):
             result = info_layer.suggest('p', 'hero', {})
         self.assertEqual(result['report']['probe'], 'image'); self.assertIn('没有指向线', result['report']['notes'][0])
-        headline = next(entry for entry in result['layer']['items'] if entry['id'] == 'headline')
-        self.assertTrue(headline['x'] + headline['w'] <= 20 / 64 + .02 or headline['x'] >= 44 / 64 - .02 or headline['y'] + headline['size'] * 1.3 <= 16 / 64 + .02)
-        self.assertTrue(all(entry.get('anchor') is None for entry in result['layer']['items']))
+        layer = result['layer']; headline = next(entry for entry in layer['items'] if entry['id'] == 'headline')
+        left, top = on_canvas(layer, (20 / 64, 16 / 64)); right, bottom = on_canvas(layer, (44 / 64, 54 / 64))      # the red block, as the layout shows it
+        end = headline['y'] + len(headline['text'].split('\n')) * headline['size'] * headline['leading']
+        self.assertTrue(headline['x'] + headline['w'] <= left + .01 or headline['x'] >= right - .01 or end <= top + .01 or headline['y'] >= bottom - .01)
+        self.assertTrue(all(entry.get('anchor') is None for entry in layer['items']))
+        self.assertTrue(all(point['anchor'] is None for point in layer['content']['points']))
+
+    def test_another_layout_keeps_the_words_and_asks_no_model(self):
+        with patch.object(info_layer, 'probe', return_value=None):
+            first = info_layer.suggest('p', 'hero', {'hint': '台面承重 120 kg'})
+        content = copy.deepcopy(first['layer']['content']); content['headline'] = '我的标题'
+        with patch.object(info_layer, 'probe', return_value=None), patch.object(info_layer, '_ask', side_effect=AssertionError('no model')):
+            again = info_layer.recompose('p', 'hero', {'layout': 'spotlight', 'content': content, 'glyphs': first['layer'].get('glyphs', {})})
+        layer = again['layer']
+        self.assertEqual((layer['layout'], layer['source'], again['report']['layout']), ('spotlight', 'manual', 'spotlight'))
+        self.assertEqual(next(item for item in layer['items'] if item['id'] == 'headline')['text'].replace('\n', ''), '我的标题')
+        self.assertEqual([item['value'] for item in layer['items'] if item['type'] == 'figure'], ['120'])
+        self.assertEqual(layer['content']['headline'], '我的标题')
+        self.assertNotIn('layers', store.get('project', 'p'))
 
     def test_requests_that_cannot_be_served_say_why(self):
         with self.assertRaisesRegex(ValueError, '先生成'): info_layer.suggest('p', 'campaign', {})
         with self.assertRaisesRegex(ValueError, '先生成'): info_layer.suggest('p', 'hero', {'output': {'job_id': 'other', 'version': 1, 'quality': 'preview'}})
         with self.assertRaisesRegex(ValueError, '不能超过'): info_layer.suggest('p', 'hero', {'hint': 'x' * 401})
+        with self.assertRaisesRegex(ValueError, '未知的版式'): info_layer.suggest('p', 'hero', {'layout': 'collage'})
+        with self.assertRaisesRegex(ValueError, '请选择一个版式'): info_layer.recompose('p', 'hero', {'layout': 'collage'})
+        with self.assertRaisesRegex(ValueError, '引用了不存在的图标'): info_layer.recompose('p', 'hero', {'layout': 'split', 'content': {'points': [{'title': 'a', 'glyph': 'g1'}]}})
         with self.assertRaises(KeyError): info_layer.suggest('p', 'nope', {})
 
     def test_the_web_layer_reads_writes_and_reports_conflicts(self):
@@ -375,6 +358,14 @@ class StorageTests(unittest.TestCase):
             with patch.object(info_layer, 'probe', return_value=None):
                 proposal = client.post('/api/projects/p/layers/hero/suggest', json={'hint': ''})
             self.assertEqual(proposal.status_code, 200); self.assertEqual([entry['id'] for entry in proposal.get_json()['layer']['items']][:2], ['kicker', 'headline'])
+            content, glyphs = proposal.get_json()['layer']['content'], proposal.get_json()['layer'].get('glyphs', {})
+            with patch.object(info_layer, 'probe', return_value=None):
+                switched = client.post('/api/projects/p/layers/hero/compose', json={'layout': 'cards', 'content': content, 'glyphs': glyphs})
+                orphan = client.post('/api/projects/p/layers/hero/compose', json={'layout': 'cards', 'content': content})
+            self.assertEqual((switched.status_code, switched.get_json()['layer']['layout']), (200, 'cards'))
+            if glyphs: self.assertEqual(orphan.status_code, 400)                     # an icon is only referred to with its drawing
+            self.assertEqual(client.post('/api/projects/p/layers/hero/compose', json={'layout': 'collage'}).status_code, 400)
+            self.assertEqual(client.post('/api/projects/p/layers/hero/suggest', json={'layout': 'collage'}).status_code, 400)
             self.assertEqual(client.delete('/api/projects/p/layers/hero').get_json()['removed'], True)
 
 
@@ -433,12 +424,12 @@ class SceneProbeRuntimeTests(unittest.TestCase):
 
     def test_a_proposal_on_the_real_scene_points_at_the_parts(self):
         result = info_layer.suggest('p', 'hero', {})
-        self.assertEqual((result['report']['probe'], result['report']['source']), ('scene', 'rules'))
+        self.assertEqual((result['report']['probe'], result['report']['source'], result['layer']['layout']), ('scene', 'rules', 'callouts'))
         callouts = {entry['title']: entry for entry in result['layer']['items'] if entry['type'] == 'callout'}
         self.assertEqual(sorted(callouts), ['带轮移动', '抽屉收纳'])
         view = info_layer.Picture(info_layer.probe('p', self.output))
         for entry in callouts.values():
-            self.assertTrue(view.on_product(*entry['anchor']))
+            self.assertTrue(view.on_product(*in_render(result['layer'], entry['anchor'])))
 
 
 if __name__ == '__main__':

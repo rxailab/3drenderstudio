@@ -2595,16 +2595,48 @@ test('the scene control explains why it is unavailable and reports a refused or 
   assert.match(h.node('sceneStatus').textContent,/没有找到可用的抽屉或台面/);assert.equal(h.run('activeShot'),'hero');
 });
 
-test('a render in progress locks the scene control and unsaved edits are saved before a scene is made',async t=>{
+test('a render in progress does not hold a scene back, and unsaved edits are saved before a scene is made',async t=>{
   const a=previewProject();a.jobs=[{id:'run',kind:'render',status:'running',quality:'final',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
-  const h=await setup(t,{projects:[a,previewProject('b')]});await h.run("openProject('a')");
-  assert.equal(h.node('sceneButton').disabled,true,'one Blender job at a time');
+  const h=await setup(t,{projects:[a,previewProject('b')]});await h.run("openProject('a')");sceneServer(h);
+  assert.equal(h.node('sceneButton').disabled,false,'the scene is built meanwhile and saved in its turn');
+  await h.run('generateScene()');
+  assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST').length,1);
+  h.records.get('a').scene_task={...h.records.get('a').scene_task,status:'running',stage:'场景已就绪，排队等待保存：前面还有 1 项会修改方案的任务',queued_behind:1};
+  h.records.get('a').jobs.unshift({id:'pre',kind:'preview',status:'queued',quality:'preview',shot_ids:['hero'],completed:[],version:1,created_at:6});
+  await h.run('poll()');await tick();
+  assert.match(h.node('sceneStatus').textContent,/排队等待保存/);
+  const queue=h.node('jobPanel').querySelector('.job-queue');assert.ok(queue,'the job panel lists what waits');
+  assert.match(queue.textContent,/之后还有 2 项/);assert.match(queue.textContent,/预览 · 白底主图/);assert.match(queue.textContent,/使用场景 · 已生成/);
   await h.run("openProject('b')");sceneServer(h);
   h.run("draft.exposure=.4;dirty=true;renderProject()");assert.match(h.node('sceneButton').textContent,/保存并生成使用场景图/);
   await h.run('generateScene()');
-  const writes=h.calls.filter(call=>call.method!=='GET').map(call=>call.url);
+  const writes=h.calls.filter(call=>call.method!=='GET' && call.url.startsWith('/api/projects/b/')).map(call=>call.url);
   assert.deepEqual(writes,['/api/projects/b/plan','/api/projects/b/scene'],'the edit is saved first, then the scene is requested for the saved version');
   assert.equal(h.calls.find(call=>call.url==='/api/projects/b/scene').body.expected_version,2);
+});
+
+test('a preview or 4K render asked for while another job runs joins the queue and can be taken out of it',async t=>{
+  const a=previewProject();a.jobs=[{id:'run',kind:'render',status:'running',quality:'standard',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  assert.equal(h.node('previewButton').disabled,false,'a running job no longer locks the next request');
+  assert.equal(h.node('previewButton').textContent,'排队预览');assert.match(h.node('renderButton').textContent,/^排队渲染/);
+  const project=h.records.get('a');
+  h.intercept=call=>{
+    if(call.url==='/api/projects/a' && call.method==='GET')return h.response({...project,queue:project.jobs.filter(job=>['running','queued'].includes(job.status)).sort((x,y)=>Number(x.status!=='running')-Number(y.status!=='running') || x.created_at-y.created_at).map((job,position)=>({type:'job',id:job.id,status:job.status,position}))});
+    if(/^\/api\/jobs\/[^/]+\/cancel$/.test(call.url)){const job=project.jobs.find(item=>call.url.includes(item.id));job.status='cancelled';return h.response(job);}
+    return undefined;
+  };
+  await h.run("run('preview')");
+  const request=h.calls.find(call=>call.url==='/api/projects/a/jobs');
+  assert.deepEqual(request.body,{kind:'preview',quality:'preview',shot_ids:['hero'],expected_version:1,queue:true});
+  assert.match(h.node('toast').textContent,/已加入渲染队列，前面还有 1 项/);
+  const queued=project.jobs.find(job=>job.id!=='run');
+  assert.equal(h.run('activeJob().id'),'run','the running job stays the one shown');
+  const list=h.node('jobPanel').querySelector('.job-queue');assert.ok(list);assert.match(list.textContent,/之后还有 1 项/);
+  list.querySelector(`[data-cancel="${queued.id}"]`).click();await tick();await tick();
+  assert.equal(queued.status,'cancelled');assert.equal(h.node('jobPanel').querySelector('.job-queue'),null,'taken out of the queue');
+  h.run("draft.exposure=.3;dirty=true;renderProject()");
+  assert.equal(h.node('previewButton').disabled,true,'an unsaved edit waits for the running job: the plan cannot be saved under it');
 });
 
 // ---- text and icon layer -------------------------------------------------
@@ -2911,4 +2943,162 @@ test('an exported file carries its own headline type and the same styled drawing
   // without a style nothing is embedded: the plain drawing uses only system type
   const plain=h.run('layerSvgDocument('+JSON.stringify(layer.items)+',512,512,"",layerLookOf({}))');
   assert.doesNotMatch(plain,/<style>|<defs>|Noto Sans SC/);
+});
+
+// ------------------------------------------------------------------ compositions (v25): the twelve-reference layouts
+const WRENCH={source:'lucide',name:'wrench',license:'ISC',stroke:2,grid:24,ops:[['s','M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z']]};
+function composedLayer(layout='split') {
+  return {version:1,layout,source:'ai',basis:{azimuth:35,elevation:18,focal_length:70,aspect:'1:1'},
+    glyphs:{g1:WRENCH,g2:{source:'drawn',name:'承重',license:'own',stroke:2,grid:24,ops:[['s','M4 20h16'],['f','M12 6a2 2 0 1 0 0.01 0z']],check:{status:'passed',note:'能认出'}}},
+    canvas:{color:'#f2f2f0',photo:{x:.41,y:0,w:.59,h:1,crop:[.12,0,.82,1],feather:true}},
+    content:{kicker:'车间收纳',headline:'红色工具柜',subline:'',free_area:'none',
+      points:[{title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',parts:['抽屉_1'],anchor:null,glyph:'g1'},{title:'带轮移动',detail:'',icon:'caster wheel',parts:['脚轮_1'],anchor:[.6,.85]}],
+      figures:[{value:'120',unit:'kg',label:'台面承重',icon:'weight',glyph:'g2'}],
+      specs:[{value:'8–24',unit:'mm',label:'扳手尺寸',icon:'wrench',values:['8','10','12','24']}]},
+    items:[{id:'kicker',type:'text',role:'kicker',x:.075,y:.08,w:.3,text:'车间收纳',size:.021,weight:600,align:'left',color:'#6e6e73',plate:null,leading:1.2,slot:'kicker'},
+      {id:'headline',type:'text',role:'headline',x:.075,y:.12,w:.3,text:'红色工具柜',size:.064,weight:700,align:'left',color:'#1d1d1f',plate:null,leading:1.16,slot:'headline'},
+      {id:'figrule',type:'rule',x:.075,y:.58,x2:.17,y2:.58,color:'#1d1d1f',width:.0016,opacity:.3,size:.02},
+      {id:'fig1',type:'figure',x:.075,y:.62,w:.3,value:'120',unit:'kg',label:'台面承重',size:.074,color:'#e62a29',soft:'#6e6e73',align:'left',glyph:'g2',slot:'figures.0'},
+      {id:'point1',type:'callout',style:'row',x:.075,y:.4,w:.3,title:'抽屉收纳',detail:'物品分层放置',icon:null,anchor:null,size:.023,color:'#1d1d1f',soft:'#6e6e73',plate:null,glyph:'g1',slot:'points.0'},
+      {id:'point2',type:'callout',style:'line',x:.7,y:.8,w:.25,title:'带轮移动',detail:'',icon:null,anchor:[.6,.85],elbow:.65,size:.024,color:'#1d1d1f',soft:'#6e6e73',plate:null,slot:'points.1'},
+      {id:'ladder',type:'chips',x:.075,y:.86,w:.85,values:['8','10','12','24'],unit:'mm',label:'扳手尺寸',size:.03,color:'#1d1d1f',fill:'#ffffff',slot:'specs.0'}]};
+}
+function composedReport(layout='split') {
+  return {source:'ai',probe:'scene',anchored:1,layout,suitable:['split','callouts','cards','spotlight','specs','scene'],notes:[],
+    icons:{g1:{source:'lucide',name:'wrench',license:'ISC'},g2:{source:'drawn',name:'承重',license:'own'}},output:{job_id:'render-a',version:1,quality:'preview'}};
+}
+// The layer routes, plus another layout of the same words and the icon routes.
+function composeServer(h,{compose=null,icons=null,drawn=null}={}) {
+  layerServer(h,{layer:composedLayer(),report:composedReport()});
+  const layers=h.intercept;
+  h.intercept=call=>{
+    if(/\/layers\/hero\/compose$/.test(call.url))return compose?h.response(compose(call.body)):h.response({error:'请选择一个版式'},400);
+    if(call.url.startsWith('/api/icons?'))return h.response(icons || {icons:[],online:[],online_allowed:true});
+    if(call.url==='/api/icons/draw')return drawn?h.response({glyph:drawn}):h.response({error:'未配置 AI，无法绘制图标；可从图标库中选择。'},400);
+    return layers(call);
+  };
+}
+
+test('a suggested composition is drawn on its own canvas: the photo in its frame, the words, figures and icons around it',async t=>{
+  const h=await layerSetup(t);composeServer(h);
+  await h.run('layerSuggest()');
+  const stage=h.node('layerStage');
+  assert.equal(stage.querySelector('rect').getAttribute('fill'),'#f2f2f0','the canvas lies under everything');
+  const frame=stage.querySelector('clipPath rect');assert.deepEqual(['x','width','height'].map(name=>Number(frame.getAttribute(name))),[209.92,302.08,512]);
+  const photo=stage.querySelector('svg[viewBox]');assert.equal(photo.getAttribute('viewBox'),'61.44 0 358.4 512','the crop of the render shown in the frame');
+  assert.equal(photo.querySelector('image').getAttribute('href'),'/qa/synthetic-preview-a.png');
+  assert.ok(photo.querySelector('linearGradient#feather-x'),'a studio sweep fades into the canvas');
+  assert.equal(stage.querySelector('[data-item="headline"] text').textContent,'红色工具柜');
+  const figure=[...stage.querySelectorAll('[data-item="fig1"] text')];
+  assert.deepEqual([...figure[0].querySelectorAll('tspan')].map(node=>node.textContent),['120','kg'],'the unit is set small beside the value');
+  assert.equal(figure[1].textContent,'台面承重');
+  assert.ok(stage.querySelector('[data-item="fig1"] path[d^="M4 20h16"]'),'the drawn icon is part of the figure');
+  assert.ok(stage.querySelector('[data-item="point1"] path[d^="M14.7 6.3"]'),'the wrench beside its point');
+  assert.ok(stage.querySelector('[data-item="point2"] circle'),'a note ends in a dot on its part');
+  assert.deepEqual([...stage.querySelectorAll('[data-item="ladder"] text')].map(node=>node.textContent).filter(text=>/^\d+$/.test(text)),['8','10','12','24']);
+  // the panel: six layouts, this one chosen; the overlay styles are not offered for a composition
+  const layouts=[...h.node('layerLayouts').querySelectorAll('button')];
+  assert.deepEqual(layouts.map(node=>node.dataset.layerLayout),['split','callouts','scene','cards','spotlight','specs']);
+  assert.deepEqual(layouts.map(node=>node.getAttribute('aria-pressed')),['true','false','false','false','false','false']);
+  assert.match(layouts[0].title,/左右分区/);assert.equal(h.node('layerLook').hidden,true);
+  assert.match(h.node('layerStatus').textContent,/版式「左右分区」.*图标：Lucide 1、AI 绘制 1.*数字只来自你写下的规格/);
+  assert.deepEqual([...h.node('layerItems').querySelectorAll('[data-layer-item]')].map(node=>node.dataset.layerItem),['kicker','headline','fig1','point1','point2','ladder'],'hairlines and panels are not listed');
+  await h.run('layerFlush()');
+  const saved=layerWrites(h).at(-1).body.layer;
+  assert.deepEqual([saved.layout,saved.canvas.color,Object.keys(saved.glyphs),saved.content.headline],['split','#f2f2f0',['g1','g2'],'红色工具柜']);
+});
+
+test('another layout keeps the words as edited, is laid out by the server and is one undo step',async t=>{
+  const h=await layerSetup(t);
+  composeServer(h,{compose:body=>{const layer=composedLayer(body.layout);layer.items[1].text=body.content.headline;layer.content=body.content;layer.canvas={color:'#ffffff',photo:{x:.05,y:.05,w:.55,h:.9,crop:[0,0,1,1],feather:true,radius:.024}};return {layer,report:{source:'manual',layout:body.layout,anchored:0,notes:[]}};}});
+  await h.run('layerSuggest()');
+  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
+  input(h,'layerText','新的\n标题');
+  assert.equal(h.run('layerState.content.headline'),'新的标题','an edit of the words is kept in the content');
+  h.node('layerLayouts').querySelector('[data-layer-layout="cards"]').click();await tick();await tick();
+  const request=h.calls.filter(call=>call.url==='/api/projects/a/layers/hero/compose').at(-1).body;
+  assert.equal(request.layout,'cards');assert.equal(request.content.headline,'新的标题');assert.deepEqual(Object.keys(request.glyphs),['g1','g2']);
+  assert.deepEqual(request.output,{job_id:'render-a',version:1,quality:'preview'});
+  assert.deepEqual(inPage(h,'[layerState.layout,layerState.canvas.photo.radius,layerState.items[1].text]'),['cards',.024,'新的标题']);
+  assert.equal(h.node('layerLayouts').querySelector('[aria-pressed="true"]').dataset.layerLayout,'cards');
+  h.node('layerUndo').click();
+  assert.deepEqual(inPage(h,'[layerState.layout,layerState.content.headline]'),['split','新的标题']);
+  h.node('layerUndo').click();assert.equal(h.run('layerState.content.headline'),'红色工具柜');
+});
+
+test('an icon is searched in the open sets and online, drawn by AI on request, or left out, and saved with its source',async t=>{
+  const ruler={id:'lucide:ruler',source:'lucide',name:'ruler',license:'ISC',stroke:2,grid:24,ops:[['s','M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6']]};
+  const online={id:'mdi:wrench',source:'iconify:mdi',name:'wrench',license:'Apache-2.0',stroke:2,grid:24,ops:[['f','M22.7 19l-9.1-9.1z']]};
+  const drawn={source:'drawn',name:'扳手',license:'own',concept:'扳手',model:'m',stroke:2,grid:24,ops:[['s','M6 18L18 6']],check:{status:'failed',note:'看不太出'}};
+  const h=await layerSetup(t);composeServer(h,{icons:{icons:[ruler],online:[online],online_allowed:true},drawn});
+  await h.run('layerSuggest()');
+  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
+  assert.equal(h.node('layerGlyphField').hidden,true,'words have no icon of their own');
+  h.node('layerItems').querySelector('[data-layer-item="point2"]').click();
+  assert.equal(h.node('layerGlyphField').hidden,true,'nor has a note with a line to its part');
+  h.node('layerItems').querySelector('[data-layer-item="point1"]').click();
+  assert.equal(h.node('layerGlyphField').hidden,false);assert.match(h.node('layerGlyphCurrent').textContent,/Lucide · wrench · ISC/);
+  assert.match(h.node('layerGlyphQuery').placeholder,/抽屉收纳/);
+  h.node('layerGlyphQuery').value='扳手';h.node('layerGlyphSearch').click();await tick();await tick();
+  assert.equal(h.calls.at(-1).url,'/api/icons?q='+encodeURIComponent('扳手')+'&online=1');
+  const found=[...h.node('layerGlyphResults').querySelectorAll('[data-layer-glyph]')];
+  assert.equal(found.length,2);assert.match(found[1].title,/在线 · mdi · wrench · Apache-2.0/);
+  found[1].click();
+  assert.deepEqual(inPage(h,'[layerSelected().glyph,layerState.glyphs[layerSelected().glyph].source,layerState.content.points[0].glyph]'),['g3','iconify:mdi','g3']);
+  h.node('layerGlyphOnline').checked=false;h.node('layerGlyphSearch').click();await tick();await tick();
+  assert.equal(h.calls.at(-1).url,'/api/icons?q='+encodeURIComponent('扳手'),'online only when asked');
+  h.node('layerGlyphResults').querySelector('[data-layer-glyph="0"]').click();
+  assert.equal(h.run('layerState.glyphs[layerSelected().glyph].name'),'ruler');
+  h.node('layerGlyphDraw').click();await tick();await tick();
+  assert.deepEqual(h.calls.filter(call=>call.url==='/api/icons/draw').at(-1).body,{concept:'扳手'});
+  assert.match(h.node('layerGlyphCurrent').textContent,/AI 绘制 · 扳手 · 未通过核对/,'a drawing that failed its check says so');
+  h.node('layerGlyphNone').click();
+  assert.deepEqual(inPage(h,'[layerSelected().glyph,"glyph" in layerState.content.points[0]]'),[null,false]);
+  assert.equal(h.node('layerStage').querySelector('[data-item="point1"] path[d^="M6 18"]'),null);
+  await h.run('layerFlush()');
+  const saved=layerWrites(h).at(-1).body.layer;
+  assert.equal(saved.items.find(item=>item.id==='point1').glyph,null);
+  assert.deepEqual(Object.values(saved.glyphs).map(glyph=>glyph.source).sort(),['drawn','drawn','iconify:mdi','lucide','lucide'],'icons stay with the layer, with where they came from');
+  // a search that finds nothing offers a drawing; an icon on its own cannot be left without its picture
+  composeServer(h,{icons:{icons:[],online:[],online_allowed:true}});
+  h.node('layerGlyphSearch').click();await tick();await tick();
+  assert.match(h.node('layerGlyphStatus').textContent,/可以让 AI 画一个/);
+  h.run("layerState.items.push({id:'i9',type:'icon',icon:'dot',glyph:'g1',x:.5,y:.5,size:.05,color:'#1d1d1f'});layerSelect('i9')");
+  assert.equal(h.node('layerGlyphNone').hidden,true);
+});
+
+test('a figure and a row of sizes are edited in their own fields, and the words follow',async t=>{
+  const h=await layerSetup(t);composeServer(h);
+  await h.run('layerSuggest()');
+  h.node('layerItems').querySelector('[data-layer-item="fig1"]').click();
+  assert.equal(h.node('layerFigureFields').hidden,false);assert.equal(h.node('layerTextField').hidden,true);
+  assert.deepEqual(['layerFigureValue','layerFigureUnit','layerFigureLabel'].map(id=>h.node(id).value),['120','kg','台面承重']);
+  input(h,'layerFigureValue','150');input(h,'layerFigureLabel','承重');
+  assert.deepEqual(inPage(h,'[layerSelected().value,layerSelected().label,layerState.content.figures[0].value,layerState.content.figures[0].label]'),['150','承重','150','承重']);
+  assert.equal(h.node('layerStage').querySelector('[data-item="fig1"] text').firstChild.textContent,'150');
+  h.node('layerItems').querySelector('[data-layer-item="ladder"]').click();
+  assert.equal(h.node('layerChipsField').hidden,false);assert.equal(h.node('layerChipsValues').value,'8 10 12 24');
+  input(h,'layerChipsValues','8、10，13 19');
+  assert.deepEqual(inPage(h,'[layerSelected().values,layerState.content.specs[0].values]'),[['8','10','13','19'],['8','10','13','19']]);
+  input(h,'layerChipsValues','  ');assert.deepEqual(inPage(h,'layerSelected().values'),['8','10','13','19'],'an empty field keeps the last sizes');
+});
+
+test('an exported composition is one complete file, and a layout without a canvas carries the full picture',async t=>{
+  const h=await layerSetup(t);
+  const layer=composedLayer();layer.items[1].text='<script>x</script> & 标题';
+  const svg=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify(layer)+',2048,2048,"data:image/png;base64,AAAA","")'),'image/svg+xml').documentElement;
+  assert.equal(svg.querySelector('parsererror'),null);assert.equal(svg.querySelector('script'),null);
+  assert.equal(svg.querySelector('rect').getAttribute('fill'),'#f2f2f0');
+  assert.equal(svg.querySelector('svg[viewBox] image').getAttribute('href'),'data:image/png;base64,AAAA');
+  assert.equal([...svg.querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent).join(''),'<script>x</script>& 标题','text stays text, line by line');
+  assert.ok(svg.querySelector('[data-item="fig1"] path'));assert.equal(svg.querySelector('.layer-hit, .layer-handle'),null);
+  const bare=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify({...layer,canvas:null})+',2048,2048,"data:image/png;base64,AAAA","")'),'image/svg+xml').documentElement;
+  const picture=bare.querySelector('image');
+  assert.deepEqual(['href','x','y','width','height'].map(name=>picture.getAttribute(name)),['data:image/png;base64,AAAA','0','0','2048','2048'],'the words lie on the full picture');
+  const only=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify(layer)+',2048,2048,"","",false)'),'image/svg+xml').documentElement;
+  assert.equal(only.querySelector('image'),null);assert.equal(only.querySelector('[data-item="headline"]')!==null,true);
+  // on screen a layout without a canvas lies over the render the viewer already shows
+  composeServer(h);h.intercept=(original=>call=>/\/suggest$/.test(call.url)?h.response({layer:{...composedLayer('scene'),canvas:null},report:composedReport('scene')}):original(call))(h.intercept);
+  await h.run('layerSuggest()');
+  assert.equal(h.node('layerStage').querySelector('image'),null);
 });
