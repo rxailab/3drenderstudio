@@ -704,7 +704,7 @@ def render(req,objects,meshes):
     scene['studio_source_plan']=json.dumps(plan,ensure_ascii=False)
     plan=effective_render_plan(plan,shot['id'])
     scene['studio_product_objects']=json.dumps([ob.name for ob in objects])
-    quality=req.get('quality','preview');long={'thumbnail':256,'preview':512,'showcase':2048}.get(quality,4096)
+    quality=req.get('quality','preview');long={'thumbnail':256,'preview':512,'reference':1024,'showcase':2048}.get(quality,4096)
     aspect=plan.get('aspect','1:1');a,b=[int(x) for x in aspect.split(':')]
     scene.render.resolution_x=round(long*a/max(a,b));scene.render.resolution_y=round(long*b/max(a,b));scene.render.resolution_percentage=100
     operations,warnings=prepare(objects,meshes,plan)
@@ -727,8 +727,8 @@ def render(req,objects,meshes):
     settings=studio(plan,shot,meshes,set_meshes)
     if scene_set: settings['scene_set']=scene_dress.surface(scene_set,shot,meshes)
     dev=device(req.get('force_cpu',False))
-    scene.cycles.samples={'thumbnail':8,'preview':24,'showcase':160,'standard':128,'fine':1024}[quality]
-    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'showcase':.015,'standard':.015,'fine':.005}[quality]
+    scene.cycles.samples={'thumbnail':8,'preview':24,'reference':48,'showcase':160,'standard':128,'fine':1024}[quality]
+    scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'reference':.04,'showcase':.015,'standard':.015,'fine':.005}[quality]
     scene.cycles.use_denoising=True;scene.cycles.max_bounces=12;scene.cycles.transmission_bounces=12
     scene.cycles.time_limit=0 if quality!='fine' else float(plan.get('time_budget',1200))
     scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGB';scene.render.image_settings.color_depth='8'

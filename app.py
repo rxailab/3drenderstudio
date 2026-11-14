@@ -491,8 +491,30 @@ def scene_create(ident):
     if request.method=='GET':
         project=get('project',ident)
         return jsonify(task=scene_stylist.latest(ident),scene_set=project['plan'].get('scene_set'),
+                       scene_brief=project['plan'].get('scene_brief'),proposal=project.get('scene_proposal'),
                        available=engine.runtime_status().get('capabilities',{}).get('scene_set',False))
     return jsonify(scene_stylist.submit(ident,request.get_json(force=True))),202
+
+@app.get('/api/scene/audiences')
+def scene_audiences():
+    """The audience reference pack and whether scenes with people can be generated."""
+    import scene_audience
+    return jsonify(**scene_audience.public(),image=ai_config.public_image_config())
+
+@app.post('/api/projects/<ident>/scene/recommend')
+def scene_recommend(ident):
+    """Which buyers this product's scene should address, and the picture to make for them."""
+    import scene_stylist
+    return jsonify(scene_stylist.recommend(ident,request.get_json(force=True)))
+
+@app.get('/references/<pack>/<name>')
+def scene_reference_pack(pack,name):
+    """The pack's own index and terms. Links and words only: it holds no images."""
+    import scene_audience
+    if pack!=scene_audience.PACK_ID or name not in ('index.html','README.md'): abort(404)
+    response=send_from_directory(scene_audience.PACK,name,mimetype='text/html' if name.endswith('.html') else 'text/plain; charset=utf-8')
+    response.headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'";response.headers['X-Content-Type-Options']='nosniff'
+    return response
 
 @app.post('/api/projects/<ident>/scene/<task_id>/cancel')
 def scene_cancel(ident,task_id):

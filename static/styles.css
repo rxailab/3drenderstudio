@@ -750,6 +750,24 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .scene-details li small { color: var(--muted); white-space: nowrap; }
 .scene-details li a { color: inherit; text-decoration: underline; }
 .scene-details .button { margin-top: 4px; }
+.scene-audience { display: grid; gap: 6px; }
+.scene-audience-row { display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: center; gap: 8px; }
+.scene-audience-row .field-label { margin: 0; }
+.scene-audience .field-help { margin: 0; color: var(--amber); }
+.scene-proposal, .scene-brief { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--field); font-size: 11px; line-height: 1.6; }
+.scene-proposal strong, .scene-brief strong { display: block; font-size: 12px; color: var(--ink); }
+.scene-proposal p, .scene-brief p { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.scene-proposal .scene-method { color: var(--ink); }
+.scene-proposal a, .scene-brief a, .scene-generated a { color: inherit; text-decoration: underline; }
+.scene-brief { margin: 6px 0; }
+.scene-generated { font-size: 11px; line-height: 1.6; color: var(--muted); }
+.scene-generated p { margin: 4px 0 0; }
+.scene-check.is-passed strong { color: var(--green); }
+.scene-check.is-failed strong { color: var(--amber); }
+.scene-details .scene-issues { margin: 2px 0 0; padding-left: 16px; list-style: disc; max-height: none; }
+.scene-details .scene-issues li { display: list-item; border: 0; padding: 0; }
+.scene-refs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.scene-refs img { display: block; width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
 
 /* Text and icon layer: the vector annotations drawn over the picture, and their panel. */
 .layer-stage { position: absolute; overflow: visible; pointer-events: none; user-select: none; -webkit-user-select: none; }

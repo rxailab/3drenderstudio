@@ -141,6 +141,9 @@ def validate(plan):
     if 'scene_set' in p:
         import scene_set
         scene_set.validate(p['scene_set'],p)
+    if 'scene_brief' in p:
+        import scene_audience
+        scene_audience.validate_brief(p['scene_brief'],p)
     pose = p.get('pose',{})
     if not isinstance(pose,dict): raise ValueError('pose 无效')
     if 'frame' in pose: number(pose['frame'],0,100000,'frame')

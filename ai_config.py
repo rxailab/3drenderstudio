@@ -20,6 +20,13 @@ ENV_KEYS = {'provider':'AI_PROVIDER', 'base_url':'AI_BASE_URL', 'model':'AI_MODE
             'api_key':'AI_API_KEY', 'enabled':'AI_ENABLED'}
 VISION_KEYS = {'provider':'AI_VISION_PROVIDER','base_url':'AI_VISION_BASE_URL','model':'AI_VISION_MODEL',
                'api_key':'AI_VISION_API_KEY','enabled':'AI_VISION_ENABLED'}
+# Image generation (OpenAI Images API). On HAI it follows the main account:
+# same token, the gateway's OpenAI route, its current image model.
+IMAGE_KEYS = {'base_url':'AI_IMAGE_BASE_URL','model':'AI_IMAGE_MODEL','api_key':'AI_IMAGE_API_KEY',
+              'enabled':'AI_IMAGE_ENABLED','quality':'AI_IMAGE_QUALITY'}
+HAI_IMAGE_BASE = 'https://api.hai.network/openai/v1'
+DEFAULT_IMAGE_MODEL = 'gpt-image-2'
+IMAGE_QUALITIES = ('low','medium','high')
 
 
 def _official_hai(url):
@@ -72,6 +79,39 @@ def get_vision_config():
         return {'provider':provider,'base_url':base,'model':model,'api_key':key,'enabled':enabled,'inherits':inherits}
 
 
+def get_image_config():
+    """Where usage scenes with people are generated. A key never follows to an unrelated host."""
+    with CONFIG_LOCK:
+        main=get_config();values=read_env()
+        fields={name:values.get(key,os.getenv(key,'')).strip() for name,key in IMAGE_KEYS.items()}
+        hai=_official_hai(main['base_url'])
+        base=(fields['base_url'] or (HAI_IMAGE_BASE if hai else '')).rstrip('/')
+        model=fields['model'] or (DEFAULT_IMAGE_MODEL if _official_hai(base) else '')
+        same=bool(base) and (base==main['base_url'] or (hai and _official_hai(base)))
+        key=fields['api_key'] or (main['api_key'] if same else '')
+        enabled=fields['enabled'].lower() not in ('0','false','no','off') if fields['enabled'] else main['enabled']
+        quality=fields['quality'].lower() if fields['quality'].lower() in IMAGE_QUALITIES else 'medium'
+        return {'provider':'openai','base_url':base,'model':model,'api_key':key,'enabled':enabled,'quality':quality}
+
+
+def public_image_config():
+    config=get_image_config()
+    visible={k:v for k,v in config.items() if k!='api_key'}
+    visible['key_configured']=bool(config['api_key'])
+    problem=''
+    if config['base_url'] and config['model']:
+        try: validate_config({**config,'api_key':config['api_key'] or 'x'})
+        except ValueError as exc: problem=str(exc)
+    if not config['enabled']: visible.update(status='disabled',message='图像生成已关闭')
+    elif not config['base_url'] or not config['model']:
+        visible.update(status='not_configured',message='未配置图像模型：在 .env 中填写 AI_IMAGE_BASE_URL 与 AI_IMAGE_MODEL，或使用 HAI 接口')
+    elif problem: visible.update(status='error',message='图像模型配置无效：'+problem)
+    elif not config['api_key']: visible.update(status='missing_key',message='图像接口缺少 API Key')
+    else: visible.update(status='configured',message='图像模型 '+config['model']+' 已配置')
+    visible['available']=visible['status']=='configured'
+    return visible
+
+
 def public_config():
     config = get_config()
     public = {k:v for k,v in config.items() if k != 'api_key'}
@@ -112,6 +152,7 @@ def public_config():
                 visible.update(status='verified' if saved['success'] else 'error',message=saved['message'],last_test=saved['at'])
         except (OSError,ValueError,KeyError): pass
     public['vision_config']=visible
+    public['image_config']=public_image_config()
     public['model_presets']=model_presets()
     return public
 

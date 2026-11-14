@@ -2455,7 +2455,7 @@ test('a usage scene is requested once with the plan version, then its shot is sh
   const pending=h.run('generateScene()');await h.run('generateScene()');await pending;
   const requests=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
   assert.equal(requests.length,1,'a second click while submitting does not start another scene');
-  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜'});
+  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜',audience:'auto',method:'auto'});
   assert.equal(h.node('sceneButton').disabled,true);assert.equal(h.node('sceneButton').getAttribute('aria-busy'),'true');assert.match(h.node('sceneStatus').textContent,/等待布置场景/);
   await h.run('generateScene()');assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST').length,1,'a running task is not submitted again');
   finishScene(h);await h.run('poll()');await tick();
@@ -2478,6 +2478,105 @@ test('removing a usage scene is one versioned change and returns to the main ima
   assert.equal(h.run('activeShot'),'hero');assert.equal(h.run('current.version'),3);assert.equal(h.node('sceneDetails').hidden,true);
   assert.equal(h.run("shots().some(shot=>shot.id==='scene')"),false);assert.match(h.node('sceneButton').textContent,/生成使用场景图/);
   assert.equal(h.node('undoButton').disabled,false,'the scene can be brought back with undo');
+});
+
+// Audience-led scenes: the reference pack, the strategist's proposal and pictures made by the image model.
+function audienceLibrary(image={available:true,model:'gpt-image-2',message:'图像模型 gpt-image-2 已配置'}) {
+  const references=(number,first)=>Array.from({length:3},(_,index)=>({id:`0${number}-0${index+1}`,title:index?`参考 ${index+1}`:first,
+    url:index===1?'javascript:alert(1)':`https://example.com/${number}/${index}`,locator:'页面顶部',attribution:'Example Tools',note:'把工具放进真实任务。',in_use:index===0}));
+  return {pack:{id:'eu-tool-ecommerce',title:'欧洲工具电商视觉参考',accessed:'2026-11-13',count:6,index_url:'/references/eu-tool-ecommerce/index.html'},image,
+    segments:[{id:'site_team',number:5,label:'小型施工与安装团队',question:'如何运输、配置和管理',priority:'堆叠、抽屉、车载',focus:'系统兼容',scene:'A jobsite.',references:references(5,'<b>套装</b>')},
+              {id:'home_garden',number:7,label:'家庭园艺与庭院维护者',question:'是否适合空间',priority:'修剪动作',focus:'轻松',scene:'A garden.',references:references(7,'割草场景')}]};
+}
+function audienceServer(h,library=audienceLibrary(),proposal={}) {
+  const scenes=h.intercept;
+  h.intercept=call=>{
+    if(call.url==='/api/scene/audiences')return library?h.response(library):h.response({error:'不可用'},500);
+    const match=call.url.match(/^\/api\/projects\/([^/]+)\/scene\/recommend$/);
+    if(match){
+      const p=h.records.get(match[1]),chosen=call.body.audience && call.body.audience!=='auto';
+      p.scene_proposal={id:'proposal-'+h.calls.length,version:p.version,hint:call.body.hint,audience:chosen?call.body.audience:'auto',reference:call.body.reference || null,
+        segment_id:chosen?call.body.audience:'site_team',reference_id:call.body.reference || '05-01',source:'ai',reason:'带脚轮的工具柜 <script>alert(1)</script>',
+        summary:'安装工人从抽屉取工具',people:true,complex:false,method:'generate',method_note:null,image_available:true,...proposal};
+      return h.response(p.scene_proposal);
+    }
+    return scenes?scenes(call):undefined;
+  };
+}
+function choose(h,id,value) { const select=h.node(id);select.value=value;select.dispatchEvent(new h.w.Event('change')); }
+
+test('the audience pack is read once, a proposal is shown for what is on screen, and the request carries the user\'s choices',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  assert.equal(h.node('sceneAudience').hidden,false);assert.equal(h.node('sceneProposal').hidden,true);
+  assert.deepEqual([...h.node('sceneAudienceSelect').options].map(option=>option.value),['auto','site_team','home_garden']);
+  assert.equal(h.node('sceneReferenceRow').hidden,true,'a reference is chosen within a segment');
+  await h.run('recommendScene()');
+  const asked=h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend');assert.equal(asked.length,1);
+  assert.deepEqual(asked[0].body,{hint:'',audience:'auto',method:'auto'});
+  const card=h.node('sceneProposal');assert.equal(card.hidden,false);
+  assert.match(card.textContent,/推荐人群：小型施工与安装团队/);assert.match(card.textContent,/如何运输、配置和管理/);assert.match(card.textContent,/AI 图像生成（画面含人物）/);
+  assert.equal(card.querySelector('script'),null,'model text is text');assert.equal(card.querySelector('b'),null,'reference titles are text');
+  const link=card.querySelector('a[href^="https://example.com"]');assert.equal(link.href,'https://example.com/5/0');assert.equal(link.rel,'noopener noreferrer');assert.equal(link.textContent,'<b>套装</b>');
+  assert.equal(card.querySelector('a[href^="/references/"]').getAttribute('href'),'/references/eu-tool-ecommerce/index.html');
+  choose(h,'sceneMethodSelect','render');assert.match(card.textContent,/3D 道具场景（Blender 渲染）（你指定）/);
+  choose(h,'sceneMethodSelect','auto');
+  h.node('sceneHint').value='工地';h.node('sceneHint').dispatchEvent(new h.w.Event('input'));
+  assert.equal(card.hidden,true,'a proposal for other words is not shown as the plan');
+  h.node('sceneHint').value='';h.node('sceneHint').dispatchEvent(new h.w.Event('input'));assert.equal(card.hidden,false);
+  choose(h,'sceneAudienceSelect','home_garden');
+  assert.match(card.textContent,/将按你选择的人群「家庭园艺与庭院维护者」/);assert.doesNotMatch(card.textContent,/推荐人群：/);
+  assert.equal(h.node('sceneReferenceRow').hidden,false);assert.equal(h.node('sceneReferenceSelect').options.length,4);
+  choose(h,'sceneReferenceSelect','07-02');choose(h,'sceneMethodSelect','generate');
+  await h.run('generateScene()');
+  const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
+  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'home_garden',reference:'07-02',method:'generate'});
+  assert.equal(h.node('sceneAudienceSelect').disabled,true,'choices are fixed while the scene is being made');
+  assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1);
+});
+
+test('a generated scene is labelled as made by the image model and shows what it was checked against',async t=>{
+  const p=previewProject();
+  p.plan.shots.push({id:'scene',label:'使用场景',kind:'full',style:'soft',projection:'perspective',azimuth:30,elevation:20,focal_length:55});
+  p.plan.scene_brief={version:1,shot_id:'scene',segment_id:'site_team',reference_id:'05-02',source:'ai',method:'generate',reason:'带脚轮的工具柜',summary:'安装工人从抽屉取工具',people:true,complex:false};
+  p.outputs.push({job_id:'task',shot_id:'scene',version:1,quality:'generated',width:2048,height:2048,png_url:'/files/a/scene_ai/task/scene/scene.png',jpg_url:'/files/a/scene_ai/task/scene/scene.jpg',blend_url:null,
+    generated:{model:'gpt-image-2',attempts:2,check:{status:'failed',note:'台面颜色不符。',issues:['top surface is black','<img src=x onerror=alert(1)>']},
+      references:[{url:'/files/a/scene_ai/references/r1/r1.png'},{url:'https://elsewhere.example/x.png'},{url:'/files/a/scene_ai/references/r3/r3.png'}]}});
+  const h=await setup(t,{projects:[p]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  h.node('shotList').querySelector('[data-shot="scene"]').click();
+  assert.equal(h.node('renderKind').textContent,'AI 生成');assert.match(h.node('previewNotice').textContent,/不是 Blender 渲染/);
+  assert.match(h.node('shotList').querySelector('[data-shot="scene"]').closest('.shot-card').textContent,/AI 生成 · v1/);
+  assert.match(h.node('shotList').querySelector('[data-shot="scene"] img').alt,/AI 生成/);
+  assert.equal(h.node('sceneDetails').hidden,false);assert.equal(h.node('sceneDetailsTitle').textContent,'场景图的来源与核对');
+  assert.match(h.node('sceneButton').textContent,/重新生成使用场景图/);assert.match(h.node('sceneStatus').textContent,/安装工人从抽屉取工具/);
+  assert.match(h.node('sceneBrief').textContent,/面向：小型施工与安装团队/);assert.match(h.node('sceneBrief').textContent,/由 AI 推荐：带脚轮的工具柜/);
+  assert.match(h.node('sceneBrief').textContent,/参考 05-02/);assert.equal(h.node('sceneBrief').querySelector('a'),null,'only https sources become links');
+  const made=h.node('sceneGenerated');assert.equal(made.hidden,false);
+  assert.match(made.querySelector('.scene-check.is-failed').textContent,/产品与参考图有差异/);assert.match(made.textContent,/台面颜色不符/);
+  assert.equal(made.querySelectorAll('.scene-issues li').length,2);assert.equal(made.querySelectorAll('img').length,2,'issues are text; only local reference renders are shown');
+  assert.deepEqual([...made.querySelectorAll('.scene-refs img')].map(image=>image.getAttribute('src')),['/files/a/scene_ai/references/r1/r1.png','/files/a/scene_ai/references/r3/r3.png']);
+  assert.equal(h.node('sceneProps').hidden,true);
+  const note=h.node('sceneNote').textContent;assert.match(note,/gpt-image-2/);assert.match(note,/不是 Blender 渲染/);assert.match(note,/重新生成过一次/);
+  p.version=h.records.get('a').version=2;await h.run('poll()');await tick();
+  assert.match(h.node('previewNotice').textContent,/基于方案 v1/);assert.match(h.node('sceneNote').textContent,/基于方案 v1/);
+});
+
+test('without the audience pack the scene control works as before and the pack is not asked for again',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});sceneServer(h);audienceServer(h,null);await h.run("openProject('a')");await tick();
+  h.run('renderProject()');await tick();h.run('renderProject()');await tick();
+  assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1,'a failed load is not retried on every redraw');
+  assert.equal(h.node('sceneAudience').hidden,true);assert.equal(h.node('sceneButton').disabled,false);
+  await h.run('generateScene()');
+  assert.deepEqual(h.calls.find(call=>call.url==='/api/projects/a/scene' && call.method==='POST').body,{expected_version:1,hint:'',audience:'auto',method:'auto'});
+});
+
+test('an unavailable image model is said before a picture with people is asked for',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});sceneServer(h);
+  audienceServer(h,audienceLibrary({available:false,message:'图像接口缺少 API Key'}),{method:'render',method_note:'图像模型未配置，已改为 3D 道具场景（不含人物）。',image_available:false});
+  await h.run("openProject('a')");await tick();
+  assert.match(h.node('sceneMethodHelp').textContent,/图像模型不可用（图像接口缺少 API Key）/);
+  choose(h,'sceneMethodSelect','render');assert.equal(h.node('sceneMethodHelp').hidden,true);
+  choose(h,'sceneMethodSelect','auto');await h.run('recommendScene()');
+  assert.match(h.node('sceneProposal').textContent,/3D 道具场景（Blender 渲染）（画面含人物） 图像模型未配置，已改为 3D 道具场景/);
 });
 
 test('the scene control explains why it is unavailable and reports a refused or failed request',async t=>{

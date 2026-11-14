@@ -51,6 +51,7 @@ RUNTIME_COMPONENTS={
     'matte':('blender/render_matte.py',),
     'scene_set':('blender/worker.py','blender/scene_dress.py','blender/scene_layout.py','scene_set.py','scene_props.py'),
     'layer_probe':('blender/layer_probe.py','blender/pick_surface.py'),
+    'scene_image':('blender/worker.py','scene_imagegen.py','scene_audience.py','references/eu-tool-ecommerce/references.csv'),
 }
 
 def runtime_status():
@@ -120,6 +121,13 @@ def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None
         if not (request_key or '').startswith((POLISH_KEY,THUMBNAIL_KEY)): yield_to_user(ident)
         project_jobs=[j for j in all_records('job') if j['project_id']==ident]
         ids=list(dict.fromkeys([s['id'] for s in p['plan']['shots']] if shot_ids is None else shot_ids))
+        # A shot whose picture the image model made has nothing for Blender to render.
+        import scene_audience
+        generated=scene_audience.image_shots(p['plan'])
+        if kind!='analyze' and generated and all(isinstance(shot,str) for shot in ids) and generated&set(ids):
+            ids=[shot for shot in ids if shot not in generated]
+            if not ids: raise ValueError('「使用场景」由图像模型生成，不经 Blender 渲染。修改产品或镜头后，请在「使用场景」中重新生成。')
+            shot_ids=ids
         desired_quality=quality if kind=='preview' and quality=='thumbnail' else 'preview' if kind=='preview' else quality
         for j in project_jobs:
             if request_key and j.get('request_key')==request_key:
@@ -267,7 +275,9 @@ def schedule_thumbnails(project_id,expected_version,polish_after_job_id=None):
         active=next((j for j in jobs if j.get('status') in ('queued','running')),None)
         if active:return active if active.get('origin')==THUMBNAIL_ORIGIN else None
         if any(task.get('project_id')==project_id and task.get('status') in ('queued','running','rendering') for task in all_records('material_task')):return None
-        missing=[s['id'] for s in project['plan']['shots'] if s['id']!='hero' and not any(
+        import scene_audience
+        generated=scene_audience.image_shots(project['plan'])
+        missing=[s['id'] for s in project['plan']['shots'] if s['id']!='hero' and s['id'] not in generated and not any(
             o.get('shot_id')==s['id'] and o.get('version')==expected_version and _thumbnail_source_exists(project_id,o) for o in outputs)]
         if not missing:return None
         base=THUMBNAIL_KEY+project_id+':v'+str(expected_version)+':'
