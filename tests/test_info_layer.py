@@ -20,6 +20,18 @@ import planner
 import studio_store as store
 
 ROOT = Path(__file__).resolve().parents[1]
+_no_model = None
+
+
+def setUpModule():
+    """No test here reaches a model service, whatever this machine's own AI settings are. Tests about the model script its replies."""
+    global _no_model
+    _no_model = patch.object(info_layer, '_config', return_value=None); _no_model.start()
+
+
+def tearDownModule():
+    _no_model.stop()
+
 NAMES = ['G-07C抽屉(2)_8', 'G-不锈钢台面_2', '脚轮_1', '脚轮_2', '锁芯', '钥匙', '柜体']
 
 
@@ -157,6 +169,8 @@ class KeyPointTests(unittest.TestCase):
         self.assertEqual(content['points'], [{'title': '全拉出抽屉', 'detail': '', 'icon': 'drawer', 'parts': ['G-07C抽屉(2)_8']}])
         facts = ask.call_args.args[2]
         self.assertEqual((facts['hint'], facts['visible_parts']), ('突出抽屉', ['G-07C抽屉(2)_8']))
+        self.assertEqual(set(facts['available_icons']), set(info_layer.ICONS))     # every icon is offered with what it stands for
+        self.assertIn('worktop', facts['available_icons']['layers'])
         self.assertIn('Never give a number', ask.call_args.args[1]); self.assertIn('Do not praise', ask.call_args.args[1])
         with patch.object(info_layer, '_config', return_value={'enabled': True}), patch.object(info_layer, '_ask', return_value={**answer, 'emphasis': '不在标题里'}):
             self.assertEqual(info_layer.copy_for(project())[0]['emphasis'], '')       # only a word that is really in the headline can be set in colour
@@ -262,6 +276,17 @@ class LayoutTests(unittest.TestCase):
         self.assertLess(kicker['y'], headline['y']); self.assertEqual(kicker['align'], headline['align'])
         self.assertLess(kicker['size'], headline['size'] * .5)
         self.assertNotIn('mark', info_layer.arrange({**content, 'emphasis': '别的词'}, red)[0][1])
+
+    def test_the_supporting_line_is_left_out_before_the_headline_block_may_touch_the_product(self):
+        content = {'kicker': '车间收纳', 'headline': '红色工具柜', 'emphasis': '', 'subline': '抽屉与柜门组合，工具分类存放', 'points': []}
+        roomy, dropped, _, _ = info_layer.arrange(content, picture(product=(.3, .4, .7, .95)))
+        self.assertEqual(([entry['id'] for entry in roomy], dropped), (['kicker', 'headline', 'subline'], []))
+        # a band above the product that holds the tag and the headline, but not a third line
+        view = picture(product=(0, .19, 1, 1))
+        tight, dropped, crowded, _ = info_layer.arrange(content, view)
+        self.assertEqual(([entry['id'] for entry in tight], dropped), (['kicker', 'headline'], ['抽屉与柜门组合，工具分类存放']))
+        self.assertFalse(crowded)
+        for entry in tight: self.assertEqual(view.cover(box(entry))[0], 0)
 
     def test_a_line_points_at_the_largest_visible_patch_of_its_parts(self):
         view = picture(parts={'wheel_a': (.31, .8, .35, .84), 'wheel_b': (.55, .74, .69, .84)})
