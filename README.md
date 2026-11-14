@@ -2,6 +2,24 @@
 
 在本机用 Blender Cycles 拍摄商品模型。中文浏览器界面，原始资源、任务、渲染结果均存储在本地 `data/`；不需要 Blender 操作经验。
 
+## 渲染队列、图文版式与图标 v26
+
+**渲染中也能继续提交。** 渲染进行中，「预览」和「渲染 4K」改为「排队预览」「排队渲染」，任务按顺序执行，队列显示在当前任务下方，每项都可以移出。渲染时请求使用场景图也不再被拒绝（以前提示“已有渲染任务开始执行，本次场景未保存，请稍后重试”）：场景照常搭好，等前面可能修改方案的预览结束后再保存。
+
+**图文改为六种版式。** 参照 HOTO、Fanttik、Wera、Bosch Professional 的 12 张品牌图文（[参考包](references/tool-layout-12/README.md)），智能排版改为先留出文字区域，再放产品：左右分区、结构标注、场景叙事、卡片网格、单点卖点、规格清单。每张图只有一个短标题、一个主要视觉、少量说明；产品永远完整，文字不会压在产品上。数字只采用你写下的规格。切换版式时文字不变，也不需要再调用模型。
+
+![同一组文字的六种版式](validation/v26-text-layer-layouts.jpg)
+
+**每一项都有图标。** 图标 agent 先在随应用附带的开源图标库（Lucide、Tabler）中查找，也可以在线查找，只取 MIT、ISC、Apache-2.0 授权的图标；都不合适时由 AI 绘制，并由视觉模型核对。例如“扳手尺寸”配扳手，“台面承重”配秤砣。图标随图层保存，并记录来源与授权；在「图文」面板里可以随时查找、替换或重新绘制。绘制可以用 `AI_ICON_MODEL` 单独指定更强的模型：在 HAI 上，`gpt-6.1-sol` 画出的图标 6 个里有 5 个通过核对。
+
+**文字默认英文，可改中文。** 说明框里可以写中文，AI 会把它译成英文，你写的数字和尺寸原样保留。
+
+**可导出 Photoshop 工程。** PSD 里每段文字都是可编辑的文字图层，图标、引线和色块是矢量形状图层，照片和画布各占一层，并按元素分组。
+
+![导出的 PSD 及其图层结构](validation/v26-psd-layers.jpg)
+
+用法、规则、验证范围与未验证的部分见 [TEXT_LAYER_LAYOUT_UPDATE.md](TEXT_LAYER_LAYOUT_UPDATE.md)。
+
 ## 按人群策划的使用场景图 v25
 
 **场景图先问“给谁看”。** 「使用场景」新增目标人群：应用读入一份参考库（八类工具买家，每类十条已发布画面的文字观察），为当前产品推荐一类人群、一条可借鉴的参考和一张计划中的画面，并说明理由。人群、参考和生成方式都可以改。
@@ -257,7 +275,10 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 - `engine.py`：单任务队列、真实 Blender 子进程、日志、取消、重试、恢复、结果校验。
 - `lookdev.py`：按名称为占位材质推断质感；`blender/worker.py` 中的 `showcase_rig`、`soften_edges`：展示级布光与棱边高光；`engine.schedule_polish`、`engine.yield_to_user`：可随时让路的后台高清图。
 - `instruction_agents.py`：核对、定位与质感智能体及其调用预算；`semantic_planner.repair_material_scope`：修改范围的数据修正。
-- `info_layer.py`、`blender/layer_probe.py`、`static/layer.js`：图文图层的数据约定与存储、关键信息提取、按保存场景探测产品与部件位置、排版求解；浏览器端负责绘制、编辑与导出 SVG / PNG。
+- `info_layer.py`、`blender/layer_probe.py`、`static/layer.js`：图文图层的数据约定与存储、关键信息提取、按保存场景探测产品与部件位置；浏览器端负责绘制、编辑与导出 SVG / PNG。
+- `layer_compose.py`：六种图文版式（画布、照片的位置与裁切、文字与数字），以及可读的配色。
+- `layer_icons.py`、`scripts/vendor_icons.py`、`static/vendor/icons/`：图标 agent（随附图标库查找、在线查找、视觉模型挑选、AI 绘制与核对），以及随附图标库的下载与校验。
+- `scripts/vendor_psd_writer.py`、`static/vendor/ag-psd/`：浏览器端写 Photoshop 文件的 ag-psd（MIT），以及它的下载与校验。
 - `scene_stylist.py`、`scene_props.py`、`scene_set.py`、`blender/scene_layout.py`、`blender/scene_dress.py`：使用场景的导演与采购、Poly Haven 目录检索与下载校验、场景数据约定、无界面布置求解，以及渲染时按记录重建道具、地面、背景墙与景深。
 - `ecommerce.py`、`ecommerce_platforms.py`、`blender/render_matte.py`：平台主图规则、真实图片的合规检查、产品蒙版、纯白底／透明底合成与平台套图导出。
 - `ai_client.py`、`ai_config.py`：AI服务配置、结构化视觉诊断与修改请求；失败时明确退回有限规则检查。

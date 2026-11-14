@@ -351,6 +351,12 @@ body:not(.has-project) .workspace-notice { margin-bottom: 20px; border: 1px soli
 .job-panel.failed { background: var(--red-soft); border-top-color: var(--red-line); }
 .job-panel.failed .job-top strong { color: var(--red); }
 .job-error { order: 7; flex-basis: 100%; color: var(--red); font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 96px; overflow: auto; }
+/* The work waiting behind the running job: one line under it, each item with its own way out. */
+.job-queue { order: 8; flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding: 3px 0 1px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.job-queue-title { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.job-queue ol { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.job-queue li { display: flex; align-items: center; gap: 6px; min-height: 24px; white-space: nowrap; }
+.job-queue li .button { min-height: 22px; padding: 1px 8px; }
 .job-log { order: 4; font-size: 11px; color: var(--subtle); }
 .job-log > summary { color: var(--subtle); list-style: none; padding: 2px 4px; border-radius: 3px; }
 .job-log > summary::-webkit-details-marker { display: none; }
@@ -810,6 +816,22 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .overlay-panel .render-reason.is-summary { color: var(--muted); }
 /* The layer's display face: Noto Sans SC Black (SIL OFL 1.1), bundled for headlines and callout titles. */
 @font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 900; font-display: swap; src: url("/static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2") format('woff2'); }
+.layer-language { align-items: center; gap: 8px; margin: 6px 0; }
+.layer-language .field-label { margin: 0; }
+.layer-language select { flex: 1; min-width: 0; }
+.layer-layout-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.layer-layout-head .field-label { margin: 0; }
+.layer-layout-head .field-help { margin: 0; }
+.layer-layouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.layer-layout { display: grid; justify-items: center; gap: 2px; padding: 6px 2px 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--field); color: var(--muted); font-size: 11px; cursor: pointer; }
+.layer-layout svg { width: 34px; height: 34px; }
+.layer-layout:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink); }
+.layer-layout.selected { border-color: var(--accent-line); background: var(--accent-soft); color: var(--ink); }
+.layer-layout:disabled { opacity: .5; cursor: default; }
+.layer-figure-fields { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 4px 6px; margin-bottom: 6px; }
+.layer-figure-fields .field-label { margin: 0; }
+.layer-glyph-field .field-help { margin: 2px 0 4px; }
+.layer-glyph-search input { flex: 1; min-width: 0; }
 .layer-look { margin-top: 8px; }
 .layer-look .layer-row { margin-top: 4px; flex-wrap: nowrap; }
 .layer-label { flex-shrink: 0; width: 30px; font-size: 11px; color: var(--subtle); }

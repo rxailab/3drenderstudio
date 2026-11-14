@@ -544,6 +544,35 @@ def layer_suggest(ident,shot_id):
     import info_layer
     return jsonify(info_layer.suggest(ident,shot_id,request.get_json(force=True)))
 
+@app.post('/api/projects/<ident>/layers/<shot_id>/compose')
+def layer_compose_route(ident,shot_id):
+    """The layer's words laid out in another composition. No model is asked; nothing is saved."""
+    import info_layer
+    return jsonify(info_layer.recompose(ident,shot_id,request.get_json(force=True)))
+
+@app.get('/api/icons')
+def icon_search():
+    """Icons for a word, from the vendored open sets and, when asked for, Iconify's free sets online."""
+    import layer_icons
+    query=request.args.get('q','')
+    if not isinstance(query,str) or not query.strip() or len(query)>60: raise ValueError('请输入要找的图标，最多 60 个字')
+    rows=layer_icons.search(query,32)
+    online=[]
+    if request.args.get('online')=='1' and layer_icons.online_allowed():
+        known={row['id'] for row in rows}
+        online=[row for row in layer_icons.search_online(query,16) if row['id'] not in known]
+    return jsonify(icons=[layer_icons.public(row) for row in rows],online=[layer_icons.public(row) for row in online],
+                   online_allowed=layer_icons.online_allowed())
+
+@app.post('/api/icons/draw')
+def icon_draw():
+    """A line icon drawn by the configured model and checked by the vision model."""
+    import layer_icons
+    body=request.get_json(force=True)
+    if not isinstance(body,dict) or not isinstance(body.get('concept'),str) or not body['concept'].strip() or len(body['concept'])>80:
+        raise ValueError('请写出要画的图标是什么，最多 80 个字')
+    return jsonify(glyph=layer_icons.draw(body['concept']))
+
 @app.get('/api/projects/<ident>/material-agent/tasks')
 def material_agent_list(ident):
     import material_agent
@@ -631,7 +660,9 @@ def job_create(ident):
     engine.require_render_runtime(get('project',ident)['plan'],body.get('shot_ids'))
     kind=body.get('kind','preview')
     try:
-        result=engine.submit(ident,kind,body.get('quality','standard' if kind=='render' else 'preview'),body.get('shot_ids'),request.headers.get('Idempotency-Key'),expected_version=body.get('expected_version'))
+        if body.get('queue') not in (None,True,False): raise ValueError('排队参数无效')
+        result=engine.submit(ident,kind,body.get('quality','standard' if kind=='render' else 'preview'),body.get('shot_ids'),request.headers.get('Idempotency-Key'),
+                             expected_version=body.get('expected_version'),queue=body.get('queue') is True)
     except engine.JobConflictError as exc:
         abort(409,description=str(exc))
     return jsonify(result),202

@@ -518,7 +518,8 @@ function renderSceneSet() {
   if(!sceneLibrary)loadSceneLibrary();
   const task=current.scene_task,set=current.plan?.scene_set,brief=current.plan?.scene_brief,made=brief?.method==='generate',has=!!set || made;
   const active=sceneTaskActive(),job=activeJob();
-  const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || !!job || automaticMaterialBusy() || sceneSubmitting || sceneRecommending;
+  // A render in progress does not hold a scene back: it is built meanwhile and saved in its turn.
+  const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || sceneSubmitting || sceneRecommending;
   const ready=sceneAvailable() && !!current.analysis && !serviceDisconnected;
   let message='';
   if(serviceDisconnected)message='连接恢复后可生成场景。';
@@ -586,7 +587,7 @@ async function recommendScene() {
   finally{sceneRecommending=false;if(current)renderSceneSet();}
 }
 async function generateScene() {
-  if(!current || sceneSubmitting || sceneRecommending || sceneTaskActive() || activeJob() || !sceneAvailable() || serviceDisconnected || !current.analysis)return;
+  if(!current || sceneSubmitting || sceneRecommending || sceneTaskActive() || !sceneAvailable() || serviceDisconnected || !current.analysis || (activeJob() && dirty))return;
   const id=current.id;sceneErrors.delete(id);sceneSubmitting=true;renderSceneSet();
   try{
     if(dirty)await savePlan(true);
@@ -660,10 +661,11 @@ function renderActionState() {
   $('mobileDeleteProject').setAttribute('aria-label',current?`删除项目「${current.name}」`:'删除当前项目');
   document.querySelectorAll('[data-delete-project]').forEach(button=>button.disabled=navigationBlocked());
   const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || !!activeJob() || automaticMaterialBusy();
-  const blocked=locked || !current?.analysis;
-  $('previewButton').disabled=blocked || !renderReady() || !activeShot;$('renderButton').disabled=blocked || !selectedShots.size || [...selectedShots].some(id=>!renderReadyForShot(id));
-  $('previewButton').textContent=dirty?'保存并预览':'预览';$('previewButton').title=dirty?'保存当前参数并预览这个镜头':'预览当前镜头';
-  $('renderButton').textContent=selectedShots.size?`渲染 ${selectedShots.size} 张 4K`:'渲染 4K';
+  // A render in progress does not stop the next one: it joins the queue and runs after it.
+  const queueing=!!activeJob(),blocked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !current?.analysis;
+  $('previewButton').disabled=blocked || !renderReady() || !activeShot || (queueing && dirty);$('renderButton').disabled=blocked || !selectedShots.size || [...selectedShots].some(id=>!renderReadyForShot(id)) || (queueing && dirty);
+  $('previewButton').textContent=dirty?'保存并预览':queueing?'排队预览':'预览';$('previewButton').title=dirty?'保存当前参数并预览这个镜头':queueing?'当前任务完成后预览这个镜头':'预览当前镜头';
+  $('renderButton').textContent=(queueing?'排队渲染':'渲染')+(selectedShots.size?` ${selectedShots.size} 张 4K`:' 4K');
   const reason=renderReady() && current?.analysis && !locked && !selectedShots.size?'勾选镜头后可输出 4K。':'';
   setText('renderReason',reason);if($('renderReason'))$('renderReason').hidden=!reason;
   $('renderButton').title=reason || '按勾选的镜头输出 4K 成品';
@@ -697,7 +699,19 @@ async function api(path, options = {}) {
 }
 function toast(message, error = false) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').className = 'toast' + (error ? ' error' : ''); $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, error ? 8000 : 4500); }
 // The background high-quality pass never locks the workspace: any request pre-empts it.
-function activeJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status) && !['auto_polish','auto_thumbnails'].includes(j.origin)); }
+// The project's render queue: the running job first, then what waits behind it in the order it will run.
+function activeJobs() {
+  return (current?.jobs || []).filter(j => ['running','queued'].includes(j.status) && !['auto_polish','auto_thumbnails'].includes(j.origin))
+    .sort((a,b)=>Number(a.status!=='running')-Number(b.status!=='running') || (a.created_at || 0)-(b.created_at || 0));
+}
+function activeJob() { return activeJobs()[0]; }
+function jobQueueLabel(job) {
+  const ids=job.shot_ids || [],first=ids.length?sceneShotLabel(ids[0]):'';
+  if(job.kind==='analyze')return '模型分析';
+  if(job.kind==='hero_optimize')return '主图优化';
+  if(job.kind==='render')return `4K 渲染 · ${ids.length} 张`;
+  return `预览 · ${first}${ids.length>1?` 等 ${ids.length} 个镜头`:''}`;
+}
 function polishJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status) && j.origin==='auto_polish'); }
 function renderActivityState() {
   if(!current)return null;
@@ -1670,6 +1684,10 @@ function renderJob() {
   const candidatesHTML=candidates.length?`<details class="hero-optimization-candidates"><summary>查看试渲染记录</summary><div class="review-attempts">${candidates.map((candidate,index)=>{const url=typeof candidate.png_url==='string' && candidate.png_url.startsWith('/files/'+current.id+'/') && /\.(png|jpg)$/i.test(candidate.png_url)?candidate.png_url:'';return `<div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}" loading="lazy"></a>`:''}<span>${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}</span>${candidate.reason?`<small>${esc(candidate.reason)}</small>`:''}</div>`;}).join('')}</div></details>`:'';
   const progressText=job.origin==='auto_polish'?(running?`可继续操作，新的要求会立即接管${typeof sample==='number'?' · 采样 '+sample+'%':''}`:'当前预览保留'):hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
   $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="已完成镜头进度" aria-valuenow="${Number(job.progress)||0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,Number(job.progress)||0))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
+  const waiting=activeJobs().filter(item=>item.id!==job.id),scene=current.scene_task,sceneWaiting=['queued','running'].includes(scene?.status) && Number(scene.queued_behind)>0;
+  if(waiting.length || sceneWaiting){
+    $('jobPanel').insertAdjacentHTML('beforeend',`<div class="job-queue"><span class="job-queue-title">渲染队列 · 之后还有 ${waiting.length+(sceneWaiting?1:0)} 项</span><ol>${waiting.map(item=>`<li><span>${esc(jobQueueLabel(item))}</span><button type="button" class="button subtle" data-cancel="${esc(item.id)}" aria-label="把${esc(jobQueueLabel(item))}移出队列">移出</button></li>`).join('')}${sceneWaiting?`<li><span>使用场景 · 已生成，等前面的预览结束后保存</span></li>`:''}</ol></div>`);
+  }
   if (logWasOpen) $('jobPanel').querySelector('.job-log').open = true;
   if(candidatesWereOpen && $('jobPanel').querySelector('.hero-optimization-candidates'))$('jobPanel').querySelector('.hero-optimization-candidates').open=true;
 }
@@ -1851,7 +1869,7 @@ async function confirmFinalRender(ids) {
   return false;
 }
 async function run(kind) {
-  if(!current || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy())return;
+  if(!current || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || (activeJob() && dirty))return;
   if(!current.analysis)return toast('模型分析完成后才能生成图片。',true);
   const projectId=current.id,ids=kind==='preview'?[activeShot]:[...selectedShots];
   if(!ids.length || !ids[0])return toast('请先勾选至少一个 4K 输出镜头。',true);
@@ -1860,14 +1878,15 @@ async function run(kind) {
   // writes a plan, creates a version, or starts an offline render by itself.
   if(ids.includes(activeShot) && realtimeActive() && realtime.changed){try{applyRealtimeView(false);}catch(error){return toast(error.message,true);}}
   if(kind!=='preview' && !(await confirmFinalRender(ids)))return;
-  if(current?.id!==projectId || busy || activeJob())return;
+  if(current?.id!==projectId || busy)return;
   const quality=kind==='preview'?'preview':$('quality').value;
   busy=true;renderProject();
   try{
     await savePlan(true);if(current?.id!==projectId)return;
-    await api(`/api/projects/${projectId}/jobs`,{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:{kind,quality,shot_ids:ids,expected_version:current.version}});
+    const job=await api(`/api/projects/${projectId}/jobs`,{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:{kind,quality,shot_ids:ids,expected_version:current.version,queue:true}});
     const project=await api('/api/projects/'+projectId);if(current?.id===projectId)current=project;
-    toast(kind==='preview'?`正在生成「${sceneShotLabel(ids[0])}」的预览。`:`已提交 ${ids.length} 张 4K 渲染。`);
+    const ahead=(project.queue || []).findIndex(row=>row.id===job.id);
+    toast(ahead>0?`已加入渲染队列，前面还有 ${ahead} 项，完成后自动开始。`:kind==='preview'?`正在生成「${sceneShotLabel(ids[0])}」的预览。`:`已提交 ${ids.length} 张 4K 渲染。`);
   }catch(error){toast(error.message,true);}finally{busy=false;renderProject();}
 }
 function instructionReceiptIsValid(receipt,attempt) {

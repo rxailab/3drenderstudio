@@ -609,6 +609,40 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     return plan, record, picture
 
 
+# What a generated picture shows of the product: when any of these change while it is being made,
+# the picture no longer matches the product and is not saved.
+APPEARANCE_KEYS = ('rotation', 'pose', 'dimensions_mm', 'material_overrides', 'object_material_overrides', 'look',
+                   'texture_scale', 'texture_rotation', 'repair')
+
+
+def rebase(current_plan, built_plan, base_plan, method):
+    """The new scene put onto the plan as it is now: (plan, None), or (None, why) when what changed meanwhile affects it.
+
+    Only the scene's own parts come from the plan it was built on: its shot, plan['scene_set'] and plan['scene_brief'].
+    Everything else (exposure, other shots, corrections made by a preview) is kept as it is now.
+    """
+    if method == 'generate':
+        if any(base_plan.get(key) != current_plan.get(key) for key in APPEARANCE_KEYS):
+            return None, '生成期间产品的材质、朝向或尺寸被修改，这张场景图与当前产品不一致，未保存（图片保留在项目目录中）。请重新生成。'
+    elif 'scene_set' in built_plan and scene_set.basis(current_plan) != built_plan['scene_set']['basis']:
+        return None, '布置期间模型的朝向、姿态或尺寸被修改，道具位置已不适用，本次场景未保存，请重新生成。'
+    plan = copy.deepcopy(current_plan)
+    plan['shots'] = [shot for shot in plan['shots'] if shot['id'] != SHOT_ID]
+    if len(plan['shots']) >= 12:
+        return None, '镜头数量已达上限，本次场景未保存，请先删除一个镜头。'
+    for key in ('scene_set', 'scene_brief'):
+        plan.pop(key, None)
+    plan.get('scene_checkpoints', {}).pop(SHOT_ID, None); plan.get('shot_adjustments', {}).pop(SHOT_ID, None)
+    plan['shots'].append(copy.deepcopy(next(shot for shot in built_plan['shots'] if shot['id'] == SHOT_ID)))
+    for key in ('scene_set', 'scene_brief'):
+        if key in built_plan:
+            plan[key] = copy.deepcopy(built_plan[key])
+    return planner.validate(plan), None
+
+
+QUEUE_POLL = 1.0
+
+
 def _proposal(project, task, image, say):
     """The proposal the user last saw, if it still answers this request; a new one otherwise."""
     stored = project.get('scene_proposal'); hint = task.get('hint', '')
@@ -636,6 +670,7 @@ def _run(task_id):
     try:
         _update(task_id, status='running', stage='识别产品与使用场景', started_at=time.time())
         project = get('project', task['project_id'])
+        built_from = project['version']; base_plan = copy.deepcopy(project['plan'])
         def cancelled():
             return get(KIND, task_id)['status'] == 'cancelled'
         say = lambda stage: _update(task_id, stage=stage)
@@ -647,38 +682,53 @@ def _run(task_id):
         else:
             plan, record = build(project, task.get('hint', ''), task.get('seed'), cancelled, say, proposal=proposal)
         record.update(audience=_audience_record(proposal), method_note=proposal.get('method_note'))
-        with LOCK:
-            current = get('project', task['project_id'])
-            if get(KIND, task_id)['status'] == 'cancelled': return
-            if current['version'] != task['base_version']:
-                raise ValueError('方案在布置场景期间已被修改，本次场景未保存，请重新生成。')
-            if any(job['project_id'] == current['id'] and job['status'] in ('queued', 'running')
-                   and job.get('origin') not in (engine.POLISH_ORIGIN, engine.THUMBNAIL_ORIGIN) for job in all_records('job')):
-                raise ValueError('已有渲染任务开始执行，本次场景未保存，请稍后重试。')
-            current.setdefault('history', []).append({'version': current['version'], 'plan': copy.deepcopy(current['plan']),
-                                                      'at': time.time(), 'reason': '生成使用场景'})
-            current['plan'] = plan; current['version'] += 1
-            version = current['version']
-            if picture:
-                # The picture is this shot's image for this version of the plan, like a render would be.
-                url = lambda path: '/files/' + Path(path).relative_to(DATA).as_posix()
-                current.setdefault('outputs', []).append(dict(
-                    shot_id=SHOT_ID, shot_label='使用场景', quality=GENERATED, version=version, job_id=task_id,
-                    png_url=url(picture['png']), jpg_url=url(picture['jpg']), blend_url=None, blend_sha256=None,
-                    width=picture['width'], height=picture['height'], checks={}, metrics={}, device=None, created_at=time.time(),
-                    result_url=None, effective_plan=engine.effective_plan(plan, SHOT_ID), generated=picture['record']))
-            put('project', current)
-            job = None
-            if not picture:
-                try:
-                    job = engine.submit(current['id'], 'preview', 'preview', [SHOT_ID], request_key='scene:' + task_id,
-                                        expected_version=version)
-                except (ValueError, OSError):
-                    pass
-            task = get(KIND, task_id)
-            task.update(status='completed', stage='场景已生成，正在预览' if job else '场景图已生成' if picture else '场景已生成',
-                        result=record, applied_version=version, job_id=job['id'] if job else None, finished_at=time.time())
-            put(KIND, task)
+        # The render queue: the scene is saved once nothing that may still change the plan (a preview with its
+        # automatic corrections, a material check, an optimisation) is queued or running. Final renders do not wait it out.
+        waiting = None
+        while True:
+            if cancelled(): return
+            with LOCK:
+                ahead = engine.plan_busy(task['project_id'])
+                if not ahead:
+                    current = get('project', task['project_id'])
+                    if get(KIND, task_id)['status'] == 'cancelled': return
+                    if current['version'] != built_from:
+                        plan, why = rebase(current['plan'], plan, base_plan, proposal['method'])
+                        if plan is None:
+                            raise ValueError(why)
+                        record['rebased_from'] = built_from
+                    current.setdefault('history', []).append({'version': current['version'], 'plan': copy.deepcopy(current['plan']),
+                                                              'at': time.time(), 'reason': '生成使用场景'})
+                    current['plan'] = plan; current['version'] += 1
+                    version = current['version']
+                    if picture:
+                        # The picture is this shot's image for this version of the plan, like a render would be.
+                        url = lambda path: '/files/' + Path(path).relative_to(DATA).as_posix()
+                        current.setdefault('outputs', []).append(dict(
+                            shot_id=SHOT_ID, shot_label='使用场景', quality=GENERATED, version=version, job_id=task_id,
+                            png_url=url(picture['png']), jpg_url=url(picture['jpg']), blend_url=None, blend_sha256=None,
+                            width=picture['width'], height=picture['height'], checks={}, metrics={}, device=None, created_at=time.time(),
+                            result_url=None, effective_plan=engine.effective_plan(plan, SHOT_ID), generated=picture['record']))
+                    put('project', current)
+                    job = None; behind = 0
+                    if not picture:
+                        try:
+                            behind = len(engine.active_jobs(current['id']))
+                            job = engine.submit(current['id'], 'preview', 'preview', [SHOT_ID], request_key='scene:' + task_id,
+                                                expected_version=version, queue=True)
+                        except (ValueError, OSError):
+                            pass
+                    task = get(KIND, task_id)
+                    stage = ('场景已保存，预览已加入渲染队列' if job and behind else '场景已生成，正在预览' if job
+                             else '场景图已生成' if picture else '场景已生成')
+                    task.update(status='completed', stage=stage, result=record, applied_version=version, job_id=job['id'] if job else None,
+                                finished_at=time.time(), **({'waited_seconds': round(time.time() - waiting, 1)} if waiting else {}))
+                    put(KIND, task)
+                    break
+            if waiting is None:
+                waiting = time.time()
+            _update(task_id, stage='场景已就绪，排队等待保存：前面还有 %d 项会修改方案的任务' % ahead, queued_behind=ahead)
+            time.sleep(QUEUE_POLL)
     except InterruptedError:
         pass
     except Exception as exc:
@@ -691,7 +741,8 @@ def _run(task_id):
 
 
 def public(task):
-    keys = ('id', 'project_id', 'status', 'stage', 'error', 'result', 'applied_version', 'job_id', 'created_at', 'finished_at', 'base_version')
+    keys = ('id', 'project_id', 'status', 'stage', 'error', 'result', 'applied_version', 'job_id', 'created_at', 'finished_at', 'base_version',
+            'queued_behind', 'waited_seconds')
     return {key: copy.deepcopy(task[key]) for key in keys if key in task}
 
 
@@ -741,8 +792,7 @@ def submit(project_id, body):
         if not engine.blender_path(): raise ValueError('未找到 Blender，无法布置场景。')
         if method == 'generate': with_method({}, method)       # refuse now, not after the queue, when no image model can be called
         engine.yield_to_user(project_id)
-        if any(job['project_id'] == project_id and job['status'] in ('queued', 'running') for job in all_records('job')):
-            raise engine.JobConflictError('当前项目已有渲染任务，请等待完成或取消后再生成场景。')
+        # A render in progress does not stop a scene: it is built meanwhile and saved in its turn (see _run).
         if any(task['project_id'] == project_id and task['status'] in ACTIVE for task in all_records(KIND)):
             raise engine.JobConflictError('场景正在生成，请稍候。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': '等待开始', 'error': None,

@@ -5,13 +5,15 @@ shares of the picture's shorter side), so it stays sharp at any resolution and
 every item remains editable. It is stored per shot beside the plan, not in it:
 writing a headline never makes a render stale.
 
-    validate()   the data contract
-    copy_for()   the key points worth saying: a vision model when one is
-                 configured, name-based rules otherwise; never invented specs
-    probe()      what each part of the picture shows, from the saved scene
-    arrange()    where headline and callouts go: free areas first, callouts
-                 beside the product with a line to the part they describe
-    suggest()    the three above, as one proposal the user then edits
+    validate()      the data contract, for compositions and for the overlay
+                    layers saved before them (v23/v24), which still load
+    content_for()   what the image says: a vision model when one is configured,
+                    name rules and the user's own lines otherwise; a number is
+                    only shown when the user gave it
+    probe()         what each part of the picture shows, from the saved scene
+    suggest()       content, icons (layer_icons) and a composition
+                    (layer_compose) as one proposal the user then edits
+    recompose()     the same words in another composition, without a model
 
 The browser draws and exports the layer (static/layer.js); this module never
 rasterises text.
@@ -39,14 +41,14 @@ GRID = 96
 ICONS = ('check', 'star', 'shield', 'lock', 'drawer', 'wheel', 'layers', 'ruler', 'drop', 'leaf', 'bolt', 'sparkle', 'heart',
          'handle', 'door', 'box', 'truck', 'clock', 'weight', 'tool', 'sun', 'wave', 'flame', 'bulb', 'screen', 'power', 'bag',
          'eye', 'award', 'tag', 'info', 'size', 'gear', 'dot', 'arrow', 'plus', 'home', 'cup')
-TYPES = ('text', 'icon', 'callout')
+TYPES = ('text', 'icon', 'callout', 'figure', 'panel', 'rule', 'chips')
 THEMES = ('clean', 'bold', 'card', 'dark', 'tag')          # how a layer is dressed; none means the plain drawing
-ROLES = ('headline', 'subline', 'kicker', 'body')
+ROLES = ('headline', 'subline', 'kicker', 'body', 'caption')
+CALLOUT_STYLES = ('card', 'row', 'line')        # card: the v23/v24 drawing; row and line belong to compositions
+FADES = ('up', 'down', 'left', 'right')
 MAX_ITEMS = 40
 MAX_HINT = 400
-MARGIN = .05
-DARK, LIGHT = '#141414', '#ffffff'
-TOUCH = .005             # a headline block with more than this share of it on the product counts as touching it
+DARK = '#141414'
 BASIS_KEYS = ('azimuth', 'elevation', 'focal_length', 'projection', 'ortho_scale', 'camera_distance', 'target_offset')
 
 
@@ -80,10 +82,137 @@ def _plate(value):
     return {'color': _color(value.get('color'), '底板颜色'), 'opacity': _number(value.get('opacity', .85), 0, 1, '底板透明度')}
 
 
+def _shape(kind, item, row):
+    """The composition items: a figure, a panel, a hairline or a row of size chips."""
+    if kind == 'panel':
+        row.update(w=_number(item.get('w'), 0, 1.5, '宽度'), h=_number(item.get('h'), 0, 1.5, '高度'),
+                   opacity=_number(item.get('opacity', 1), 0, 1, '透明度'), radius=_number(item.get('radius', 0), 0, .5, '圆角'))
+        if item.get('fade') is not None:
+            if item['fade'] not in FADES:
+                raise ValueError('图文图层的渐变方向无效')
+            row['fade'] = item['fade']
+    elif kind == 'rule':
+        row.update(x2=_number(item.get('x2'), -.5, 1.5, '位置'), y2=_number(item.get('y2'), -.5, 1.5, '位置'),
+                   width=_number(item.get('width', .0016), .0004, .05, '线宽'), opacity=_number(item.get('opacity', 1), 0, 1, '透明度'))
+    elif kind == 'figure':
+        row.update(w=_number(item.get('w'), .02, 1.5, '宽度'), value=_text(item.get('value'), 24, '数值'), unit=_text(item.get('unit', ''), 12, '单位', empty=True),
+                   label=_text(item.get('label', ''), 40, '说明', empty=True))
+        if item.get('align', 'left') not in ('left', 'center', 'right'):
+            raise ValueError('图文图层的对齐方式无效')
+        row['align'] = item.get('align', 'left')
+    else:
+        values = item.get('values')
+        if not isinstance(values, list) or not 1 <= len(values) <= 16:
+            raise ValueError('图文图层的规格数量无效')
+        row.update(w=_number(item.get('w'), .02, 1.5, '宽度'), values=[_text(value, 10, '规格') for value in values],
+                   unit=_text(item.get('unit', ''), 12, '单位', empty=True), label=_text(item.get('label', ''), 40, '说明', empty=True),
+                   fill=_color(item.get('fill', '#ffffff'), '底色'))
+    return row
+
+
+def _canvas(value):
+    if not isinstance(value, dict) or set(value) - {'color', 'photo'}:
+        raise ValueError('图文图层的画布无效')
+    canvas = {'color': _color(value.get('color'), '画布颜色')}
+    photo = value.get('photo')
+    if photo is not None:
+        if not isinstance(photo, dict) or set(photo) - {'x', 'y', 'w', 'h', 'crop', 'feather', 'radius', 'fill'}:
+            raise ValueError('图文图层的图片位置无效')
+        crop = photo.get('crop')
+        if not isinstance(crop, list) or len(crop) != 4:
+            raise ValueError('图文图层的图片裁切无效')
+        crop = [_number(number, -5, 6, '图片裁切') for number in crop]
+        if crop[2] - crop[0] < .01 or crop[3] - crop[1] < .01:
+            raise ValueError('图文图层的图片裁切无效')
+        frame = {key: _number(photo.get(key), -.5, 1.5, '图片位置') for key in ('x', 'y', 'w', 'h')}
+        if frame['w'] <= .01 or frame['h'] <= .01:
+            raise ValueError('图文图层的图片位置无效')
+        canvas['photo'] = {**frame, 'crop': crop, 'feather': bool(photo.get('feather', False)),
+                           'radius': _number(photo.get('radius', 0), 0, .5, '图片圆角')}
+        if photo.get('fill') is not None:
+            canvas['photo']['fill'] = _color(photo['fill'], '图片底色')
+    return canvas
+
+
+def _content(value, glyphs):
+    """What a composition says, kept so the same words can be laid out again in another composition."""
+    if not isinstance(value, dict) or len(json.dumps(value, ensure_ascii=False)) > 20000:
+        raise ValueError('图文图层的内容无效')
+    clean = {}
+    for key, limit in (('kicker', 30), ('headline', 60), ('subline', 80)):
+        clean[key] = _text(value.get(key, ''), limit, '内容', empty=True)
+    if value.get('free_area') in ('left', 'right', 'top', 'bottom', 'none'):
+        clean['free_area'] = value['free_area']
+    if value.get('language') is not None:
+        if value['language'] not in LANGUAGES:
+            raise ValueError('图文图层的文字语言无效')
+        clean['language'] = value['language']
+    box = value.get('product_box')
+    if box is not None:
+        if not isinstance(box, list) or len(box) != 4:
+            raise ValueError('图文图层的产品位置无效')
+        box = [_number(number, 0, 1, '产品位置') for number in box]
+        if box[2] - box[0] < .05 or box[3] - box[1] < .05:
+            raise ValueError('图文图层的产品位置无效')
+        clean['product_box'] = box
+    def entry(row, fields, label):
+        if not isinstance(row, dict):
+            raise ValueError('图文图层的%s无效' % label)
+        out = {}
+        for key, limit in fields:
+            out[key] = _text(row.get(key, ''), limit, label, empty=True)
+        if row.get('glyph') is not None:
+            if row['glyph'] not in glyphs:
+                raise ValueError('图文图层引用了不存在的图标')
+            out['glyph'] = row['glyph']
+        return out
+    points = value.get('points', [])
+    if not isinstance(points, list) or len(points) > 6:
+        raise ValueError('图文图层的要点无效')
+    clean['points'] = []
+    for row in points:
+        point = entry(row, (('title', 40), ('detail', 80), ('icon', 60)), '要点')
+        parts = row.get('parts', [])
+        if not isinstance(parts, list) or len(parts) > 40 or any(not isinstance(name, str) or len(name) > 300 for name in parts):
+            raise ValueError('图文图层的要点部件无效')
+        point['parts'] = list(parts)
+        anchor = row.get('anchor')
+        if anchor is not None:
+            if not isinstance(anchor, list) or len(anchor) != 2:
+                raise ValueError('图文图层的要点位置无效')
+            anchor = [_number(anchor[0], 0, 1, '要点位置'), _number(anchor[1], 0, 1, '要点位置')]
+        point['anchor'] = anchor
+        clean['points'].append(point)
+    for key, label in (('figures', '数据'), ('specs', '规格')):
+        rows = value.get(key, [])
+        if not isinstance(rows, list) or len(rows) > 6:
+            raise ValueError('图文图层的%s无效' % label)
+        clean[key] = []
+        for row in rows:
+            item = entry(row, (('value', 24), ('unit', 12), ('label', 40), ('icon', 60)), label)
+            values = row.get('values') or []
+            if not isinstance(values, list) or len(values) > 16 or any(not isinstance(number, str) or len(number) > 10 for number in values):
+                raise ValueError('图文图层的%s列表无效' % label)
+            if values:
+                item['values'] = list(values)
+            clean[key].append(item)
+    return clean
+
+
 def validate(value):
     """A clean copy of a layer, or ValueError. Only known fields survive."""
     if not isinstance(value, dict) or value.get('version', 1) != 1:
         raise ValueError('图文图层数据无效')
+    glyphs = {}
+    if value.get('glyphs') is not None:
+        import layer_icons
+        stored = value['glyphs']
+        if not isinstance(stored, dict) or len(stored) > layer_icons.MAX_GLYPHS:
+            raise ValueError('图文图层的图标数量无效')
+        for key, glyph in stored.items():
+            if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}', key):
+                raise ValueError('图文图层的图标标识无效')
+            glyphs[key] = layer_icons.validate_glyph(glyph)
     items = value.get('items')
     if not isinstance(items, list) or len(items) > MAX_ITEMS:
         raise ValueError('图文图层最多 %d 个元素' % MAX_ITEMS)
@@ -98,6 +227,18 @@ def validate(value):
         kind = item['type']
         row = {'id': ident, 'type': kind, 'x': _number(item.get('x'), -.5, 1.5, '位置'), 'y': _number(item.get('y'), -.5, 1.5, '位置'),
                'size': _number(item.get('size'), .008, .5, '大小'), 'color': _color(item.get('color', DARK), '颜色')}
+        if item.get('glyph') is not None:
+            if kind not in ('icon', 'callout', 'figure') or not isinstance(item['glyph'], str) or item['glyph'] not in glyphs:
+                raise ValueError('图文图层引用了不存在的图标')
+            row['glyph'] = item['glyph']
+        if item.get('soft') is not None:
+            row['soft'] = _color(item['soft'], '次要颜色')
+        if item.get('slot') is not None:
+            if not isinstance(item['slot'], str) or not re.fullmatch(r'(kicker|headline|subline|(points|figures|specs)\.[0-5](\.(title|detail))?)', item['slot']):
+                raise ValueError('图文图层的内容位置无效')
+            row['slot'] = item['slot']
+        if kind in ('panel', 'rule', 'chips', 'figure'):
+            clean.append(_shape(kind, item, row)); continue
         if kind == 'icon':
             if item.get('icon') not in ICONS:
                 raise ValueError('图文图层含有未知的图标')
@@ -116,6 +257,8 @@ def validate(value):
                 row['role'] = item['role']
             if item.get('mark'):
                 row['mark'] = _text(item['mark'], 60, '强调词')
+            if item.get('leading') is not None:
+                row['leading'] = _number(item['leading'], .8, 2.5, '行距')
         if kind == 'callout':
             row['title'] = _text(item.get('title'), 80, '标注标题')
             row['detail'] = _text(item.get('detail', ''), 160, '标注说明', empty=True)
@@ -128,8 +271,25 @@ def validate(value):
                     raise ValueError('图文图层的标注指向无效')
                 anchor = [_number(anchor[0], 0, 1, '标注指向'), _number(anchor[1], 0, 1, '标注指向')]
             row['anchor'] = anchor
+            if item.get('style', 'card') not in CALLOUT_STYLES:
+                raise ValueError('图文图层的标注样式无效')
+            if item.get('style', 'card') != 'card':
+                row['style'] = item['style']
+            if item.get('elbow') is not None:
+                row['elbow'] = _number(item['elbow'], -.5, 1.5, '引线拐点')
         clean.append(row)
     layer = {'version': 1, 'items': clean}
+    if glyphs:
+        layer['glyphs'] = glyphs
+    if value.get('layout') is not None:
+        import layer_compose
+        if value['layout'] not in layer_compose.LAYOUTS:
+            raise ValueError('图文图层的版式无效')
+        layer['layout'] = value['layout']
+    if value.get('canvas') is not None:
+        layer['canvas'] = _canvas(value['canvas'])
+    if value.get('content') is not None:
+        layer['content'] = _content(value['content'], glyphs)
     if value.get('theme') is not None:
         if value['theme'] not in THEMES:
             raise ValueError('图文图层的风格无效')
@@ -216,36 +376,23 @@ CUES = (
     (('瓶身', '机身', '壳体', '外壳', 'body', 'shell', 'housing'), '', '', 'check'),
     (('柜体', '箱体', '框架', 'frame', 'cabinet'), '', '', 'box'),
 )
-# What each icon stands for, so a model picks by meaning and not by the look of a name.
-ICON_MEANINGS = {
-    'check': 'a general point', 'star': 'a highlight', 'shield': 'protection, cover', 'lock': 'lock, key', 'drawer': 'drawer, storage', 'wheel': 'wheel, caster',
-    'layers': 'surface, material, worktop, layers', 'ruler': 'size, dimensions', 'drop': 'liquid, pump', 'leaf': 'natural, plant', 'bolt': 'electric power',
-    'sparkle': 'finish, shine', 'heart': 'care', 'handle': 'handle, grip', 'door': 'door', 'box': 'body, case, packaging', 'truck': 'delivery, transport',
-    'clock': 'time', 'weight': 'weight, load', 'tool': 'tools, repair', 'sun': 'light, outdoor', 'wave': 'water', 'flame': 'heat', 'bulb': 'lamp',
-    'screen': 'display', 'power': 'switch, button', 'bag': 'bag, carrying', 'eye': 'window, visibility', 'award': 'award', 'tag': 'label, brand',
-    'info': 'information', 'size': 'space, expansion', 'gear': 'mechanism, adjustment', 'dot': 'a small part', 'arrow': 'direction, movement', 'plus': 'an extra',
-    'home': 'home use', 'cup': 'drink, kitchen'}
 MATERIAL_WORDS = ((('不锈钢', 'stainless'), '不锈钢'), (('玻璃', 'glass'), '玻璃'), (('实木', '木', 'wood', 'oak'), '木质'),
                   (('真皮', '皮革', 'leather'), '皮革'), (('铝', 'alumin'), '铝制'), (('帆布', 'canvas'), '帆布'))
-COPY_PROMPT = '''You write the short key points that are placed on a product photo for an online shop. You are shown the photo and facts about the product.
-Return data only:
-- kicker: a tag of 2 to 6 Chinese characters (at most 14 Latin) naming the category or where the product is used, shown in a small pill above the headline; it must add something and not repeat the headline's own words; or an empty string.
-- headline: the product in a few words, in the user's language (at most 12 characters for Chinese, 26 for Latin text). It is set large: keep it short and concrete.
-- emphasis: the one word or phrase inside headline to draw in the accent colour, copied exactly from headline; or an empty string.
-- subline: one short supporting line, or an empty string.
-- points: 3 to 5 key points a shopper should notice. title is at most 7 Chinese characters (14 Latin), detail at most 12 Chinese characters (26 Latin) or empty. icon is the name from available_icons whose meaning fits the point best. parts lists the visible_parts names that this point is about, copied exactly, so a line can point at them; leave it empty when the point is about the whole product.
-Say only what the photo shows or the facts state: what a part is and what it is for. Do not praise it. Never give a number, size, weight, capacity, grade, certification or warranty unless it appears in the facts; never claim durability, strength, safety, quietness, smoothness, ease, roominess, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 顺滑, 顺畅, 轻松, 宽敞, 高品质 and the like) unless the facts state it; never compare with other products. Prefer points about parts that are clearly visible in this photo, and spread them over different parts of the product. hint, when present, is what the user wants said and takes priority; keep the user's own wording and figures for it.'''
-
-
-def copy_schema():
-    def obj(properties):
-        return {'type': 'object', 'additionalProperties': False, 'properties': properties, 'required': list(properties)}
-    point = obj({'title': {'type': 'string', 'maxLength': 40}, 'detail': {'type': 'string', 'maxLength': 80},
-                 'icon': {'type': 'string', 'enum': list(ICONS)}, 'parts': {'type': 'array', 'maxItems': 40, 'items': {'type': 'string', 'maxLength': 300}}})
-    return obj({'kicker': {'type': 'string', 'maxLength': 30}, 'headline': {'type': 'string', 'maxLength': 60}, 'emphasis': {'type': 'string', 'maxLength': 60},
-                'subline': {'type': 'string', 'maxLength': 80}, 'points': {'type': 'array', 'minItems': 1, 'maxItems': 6, 'items': point}})
-
-
+# The language the words of a layer are written in. English unless the user picks Chinese.
+LANGUAGES = ('en', 'zh')
+DEFAULT_LANGUAGE = 'en'
+CJK = re.compile(r'[\u3400-\u9fff]')
+# The same points in English: (title, detail) for each Chinese title above, and the material words.
+CUES_EN = {'抽屉收纳': ('Drawer storage', 'Tools sorted by drawer'), '带轮移动': ('On casters', 'Rolls to where you work'),
+           '带锁': ('Lockable', 'Keeps tools secure'), ('{material}台面', '工作台面'): ('{material} worktop', 'Worktop'),
+           '可放置常用物品': 'Room for everyday tools', ('{material}拉手', '拉手'): ('{material} handles', 'Handles'),
+           '便于开合与提拿': 'Easy to open and carry', '柜门储物': ('Cabinet storage', 'Large items behind the doors'),
+           '按压泵头': ('Pump dispenser', 'One-handed use'), '带盖': ('With lid', ''), '显示屏': ('Display', ''), '按键操作': ('Push-button control', ''),
+           '灯光': ('Built-in light', ''), '口袋': ('Pockets', 'Small items kept apart'), ('{material}提带', '提带'): ('{material} strap', 'Carry strap'),
+           '层板分隔': ('Shelf dividers', ''), '脚垫': ('Feet pads', '')}
+MATERIAL_EN = {'不锈钢': 'Stainless steel', '玻璃': 'Glass', '木质': 'Wooden', '皮革': 'Leather', '铝制': 'Aluminium', '帆布': 'Canvas'}
+DIMENSIONS = {'zh': '产品尺寸', 'en': 'Dimensions'}
+OUTLINE = {'zh': '外形尺寸', 'en': 'Dimensions'}
 def _clip(text, limit):
     text = ' '.join(str(text).split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
@@ -273,17 +420,24 @@ def _hint_points(hint):
     return points[:5]
 
 
-def copy_rules(project, hint='', visible=None):
-    """Key points from what the project's own names say. Returns (copy, notes)."""
+def copy_rules(project, hint='', visible=None, language='zh'):
+    """Key points from what the project's own names say, in ``language``. Returns (copy, notes)."""
     names = _names(project); shown = set(visible) if visible is not None else None
     metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
+    english = language == 'en'
     cues = []
     for words, title, detail, icon in CUES:
         parts = [name for name in names if any(word in name.casefold() for word in words)]
         if not parts:
             continue
+        if english:
+            translated = CUES_EN.get(title)
+            detail = (translated[1] if isinstance(translated, tuple) and not isinstance(title, tuple) else CUES_EN.get(detail, '')) if detail else ''
+            title = translated if isinstance(title, tuple) and translated else translated[0] if translated else ''
         if isinstance(title, tuple):
             material = _material_word(parts)
+            if english:
+                material = MATERIAL_EN.get(material, '')
             title = title[0].replace('{material}', material) if material else title[1]
         seen = [name for name in parts if shown is None or name in shown]
         cues.append({'title': title, 'detail': detail, 'icon': icon, 'parts': seen, 'words': words})
@@ -298,28 +452,34 @@ def copy_rules(project, hint='', visible=None):
         points = [{key: cue[key] for key in ('title', 'detail', 'icon', 'parts')} for cue in usable[:4]]
         dimensions = project['plan'].get('dimensions_mm')
         if dimensions:
-            points.append({'title': '产品尺寸', 'detail': ' × '.join('%g' % round(value, 1) for value in dimensions) + ' mm',
+            points.append({'title': DIMENSIONS[language], 'detail': ' × '.join('%g' % round(value, 1) for value in dimensions) + ' mm',
                            'icon': 'ruler', 'parts': []})
-    headline = _clip(re.sub(r'\.(obj|glb|gltf|fbx|stl|zip)$', '', str(project.get('name', '')).strip(), flags=re.I) or '产品', 28)
+    headline = _clip(re.sub(r'\.(obj|glb|gltf|fbx|stl|zip)$', '', str(project.get('name', '')).strip(), flags=re.I) or ('Product' if english else '产品'), 28)
     subline = _clip(metadata.get('product_category') or metadata.get('material_note') or '', 40)       # the callouts carry the points; no line repeats them
+    if english and CJK.search(subline):
+        subline = ''
     notes = [] if points else ['没有从名称中识别出可介绍的部位；可在上方逐行写下要点，或手动添加文字。']
-    kicker, emphasis = _category(project, headline)
+    kicker, emphasis = _category(project, headline, language)
+    if english and (CJK.search(headline) or any(CJK.search(point['title'] + point['detail']) for point in points)):
+        notes.append('未配置 AI，无法把中文翻译成英文：标题沿用项目名称，你写的要点保持原文，请在画面上改成英文。')
     return {'kicker': kicker, 'headline': headline, 'emphasis': emphasis, 'subline': subline, 'points': points}, notes
 
 
 # A category tag per kind of product, and the word of the headline that names the product.
 KICKERS = {'tool_storage': '车间收纳', 'personal_care': '日常洗护', 'tableware': '餐厨用品', 'bag': '日常出行', 'garden': '园艺户外',
            'electronics': '数码办公', 'furniture': '家居收纳'}
+KICKERS_EN = {'tool_storage': 'Workshop storage', 'personal_care': 'Daily care', 'tableware': 'Kitchen & dining', 'bag': 'Everyday carry',
+              'garden': 'Garden & outdoor', 'electronics': 'Desk & digital', 'furniture': 'Home storage'}
 
 
-def _category(project, headline):
+def _category(project, headline, language='zh'):
     try:
         import scene_stylist
         recipe = scene_stylist.recipe_for(project)
     except Exception:
         return '', ''
     words = sorted((word for word in recipe.get('words', ()) if len(word) >= 2 and word in headline and word != headline), key=len, reverse=True)
-    return KICKERS.get(recipe.get('id'), ''), (words[0] if words else '')
+    return (KICKERS_EN if language == 'en' else KICKERS).get(recipe.get('id'), ''), (words[0] if words else '')
 
 
 def _config(image):
@@ -334,37 +494,6 @@ def _ask(config, system, facts, schema, image_path=None):
     output = ai._response(ai._post(config, body), config, ai.TOOL_NAME)
     ai._check_schema(output, schema)
     return output
-
-
-def copy_for(project, hint='', image_path=None, visible=None):
-    """(copy, source, notes): the model's key points when there is one, the rules' otherwise."""
-    rules, notes = copy_rules(project, hint, visible)
-    config = _config(image_path)
-    if not config:
-        return rules, 'rules', notes
-    metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
-    lookdev = (project['plan'].get('lookdev') or {}).get('decisions', [])
-    shown = list(visible if visible is not None else _names(project))[:80]
-    facts = {'product_name': str(project.get('name', ''))[:200], 'product_category': str(metadata.get('product_category', ''))[:200],
-             'material_note': str(metadata.get('material_note', ''))[:500], 'real_dimensions_mm': project['plan'].get('dimensions_mm'),
-             'visible_parts': shown, 'available_icons': dict(ICON_MEANINGS),
-             'surface_finishes': [{'part': str(row.get('object') or row.get('material', ''))[:80], 'finish': str(row.get('label', ''))[:40]}
-                                  for row in lookdev[:30] if isinstance(row, dict)]}
-    if hint:
-        facts['hint'] = hint
-    try:
-        answer = _ask(config, COPY_PROMPT, facts, copy_schema(), image_path)
-    except Exception as exc:    # no answer is not a reason to have no layout; say why, in the service's own safe words
-        reason = str(exc)[:120] if isinstance(exc, ValueError) and str(exc) else ''
-        return rules, 'rules', notes + ['AI 未返回可用结果%s，已改用名称规则。' % ('（%s）' % reason.rstrip('。') if reason else '')]
-    allowed = set(shown)
-    points = [{'title': _clip(point['title'], 16), 'detail': _clip(point['detail'], 30), 'icon': point['icon'],
-               'parts': [name for name in point['parts'] if name in allowed]} for point in answer['points'] if point['title'].strip()]
-    if not points:
-        return rules, 'rules', notes
-    headline = _clip(answer['headline'], 28) or rules['headline']; emphasis = answer['emphasis'].strip()
-    return {'kicker': _clip(answer['kicker'], 14), 'headline': headline, 'emphasis': emphasis if emphasis and emphasis in headline and emphasis != headline else '',
-            'subline': _clip(answer['subline'], 40), 'points': points[:5]}, 'ai', []
 
 
 # ------------------------------------------------------------------ what the picture shows
@@ -497,6 +626,17 @@ class Picture:
         mean = sum(values) / len(values)
         return mean, math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
 
+    def edge_spread(self):
+        """How far the backdrop along the picture's edge strays from its usual colour (85th percentile of the
+        brightness difference). Small for a flat sweep, large for a gradient or a scene that runs to the edge."""
+        ring = [light for index, (light, cell) in enumerate(zip(self.luminance, self.cells))
+                if cell == -1 and (index % self.nx in (0, 1, self.nx - 2, self.nx - 1) or index // self.nx in (0, 1, self.ny - 2, self.ny - 1))]
+        if len(ring) < 8:
+            return 1.0
+        middle = sorted(ring)[len(ring) // 2]
+        spread = sorted(abs(light - middle) for light in ring)
+        return spread[int(len(spread) * .85)]
+
     def accent(self):
         """The product's own colour, made vivid, as '#rrggbb'; None when the product has no colour to speak of."""
         if not self.colors:
@@ -519,12 +659,34 @@ class Picture:
         r, g, b = colorsys.hsv_to_rgb(hue, .82, .9)
         return '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
 
+    def set_product_box(self, box):
+        """Where the product is in a picture read without its scene, as said by the vision model: (x0, y0, x1, y1)."""
+        x0, y0, x1, y1 = [min(1.0, max(0.0, float(value))) for value in box]
+        if x1 - x0 < .05 or y1 - y0 < .05:
+            return
+        self.cells = [0 if x0 <= (index % self.nx + .5) / self.nx <= x1 and y0 <= (index // self.nx + .5) / self.ny <= y1 else -1
+                      for index in range(self.nx * self.ny)]
+        self._product = self._table([1 if cell >= 0 else 0 for cell in self.cells])
+        self.rect = (x0, y0, x1, y1); self.boxed = True
+
+    def border_color(self):
+        """The colour of the picture's edge, as '#rrggbb': the canvas a studio render can be moved on without a seam."""
+        if not self.colors:
+            return None
+        border = [self.colors[y * self.nx + x] for y in range(self.ny) for x in range(self.nx) if x in (0, self.nx - 1) or y in (0, self.ny - 1)]
+        middle = [sorted(pixel[channel] for pixel in border)[len(border) // 2] for channel in range(3)]
+        return '#%02x%02x%02x' % tuple(middle)
+
     def on_product(self, x, y):
         ix = max(0, min(self.nx - 1, math.floor(x * self.nx))); iy = max(0, min(self.ny - 1, math.floor(y * self.ny)))
         return self.cells[iy * self.nx + ix] >= 0
 
-    def anchor(self, names):
-        """A visible point of these parts to aim a line at, and how much of the picture they take."""
+    def anchor(self, names, facing=None):
+        """A visible point of these parts to aim a line at, and how much of the picture they take.
+
+        ``facing`` ('left' or 'right') moves the point towards that side of the part, so a line from a
+        column of notes on that side does not have to cross the part to reach it.
+        """
         wanted = {index for index, name in enumerate(self.objects) if name in set(names)}
         hits = [(index % self.nx, index // self.nx) for index, cell in enumerate(self.cells) if cell in wanted]
         if len(hits) < 3:
@@ -541,11 +703,14 @@ class Picture:
             if len(patch) > len(best):
                 best = patch
         cx = sum(x for x, _ in best) / len(best); cy = sum(y for _, y in best) / len(best)
+        if facing in ('left', 'right'):
+            span = max(x for x, _ in best) - min(x for x, _ in best)
+            cx = cx + (.3 if facing == 'right' else -.3) * span
         x, y = min(best, key=lambda cell: (cell[0] - cx) ** 2 + (cell[1] - cy) ** 2)
         return [(x + .5) / self.nx, (y + .5) / self.ny], len(hits) / (self.nx * self.ny)
 
 
-# ------------------------------------------------------------------ where to put it
+# ------------------------------------------------------------------ measuring text
 
 def text_width(text, size):
     """Estimated width of one line, in the same unit as ``size``. Mirrored by static/layer.js."""
@@ -579,229 +744,205 @@ def wrap(text, size, limit):
     return lines or ['']
 
 
-LINE = 1.28          # line height as a multiple of the type size
+# ------------------------------------------------------------------ compositions: what to say
+
+# The built-in icon names of the name rules, as words the icon agent can look up.
+ICON_WORDS = {'drawer': 'drawer', 'wheel': 'caster wheel', 'lock': 'lock', 'layers': 'worktop', 'handle': 'handle', 'door': 'door', 'drop': 'droplet',
+              'check': 'check', 'screen': 'screen', 'power': 'power button', 'bulb': 'lightbulb', 'bag': 'bag', 'dot': 'circle dot', 'tag': 'tag',
+              'box': 'box', 'ruler': 'ruler', 'shield': 'shield'}
+UNIT_ICONS = (('mm', 'ruler'), ('cm', 'ruler'), ('kg', 'weight'), ('g', 'weight'), ('v', 'battery'), ('ah', 'battery'), ('w', 'zap'),
+              ('nm', 'gauge'), ('n·m', 'gauge'), ('rpm', 'gauge'), ('层', 'layers'), ('件', 'package'), ('只', 'package'), ('个', 'package'))
+NUMBER_TEXT = r'\d+(?:\.\d+)?'
+SPEC_LINE = re.compile(r'^\s*(?P<label>[^\d:：]{1,16}?)\s*[:：]?\s*(?P<value>' + NUMBER_TEXT + r'(?:\s*(?:[-–~～至到×xX*])\s*' + NUMBER_TEXT
+                       + r')*)\s*(?P<unit>[A-Za-z%°·]{1,6}|[件个层格只把套位档级挡寸]{1,2})?\s*$')
+LIST_LINE = re.compile(r'^\s*(?P<label>[^\d:：]{1,16}?)\s*[:：]?\s*(?P<values>' + NUMBER_TEXT + r'(?:\s*[,，、/\s]\s*' + NUMBER_TEXT
+                       + r'){2,})\s*(?P<unit>[A-Za-z%°]{1,6}|[件个层格只把套位档级挡寸]{1,2})?\s*$')
 
 
-def _tone(picture, rect):
-    """(colour for type set straight on the picture here, whether it needs a backing to be read)."""
-    mean, uneven = picture.tone(rect); product, _ = picture.cover(rect)
-    return (DARK if mean >= .56 else LIGHT), (uneven > .16 or product > .25 or .44 < mean < .6)
+def _icon_for_unit(unit, label):
+    """What to look an icon up by: the label when it names something drawable ("扳手尺寸" → a wrench), else the unit."""
+    import layer_icons
+    if layer_icons.terms_for(label):
+        return label
+    text = (unit or '').casefold()
+    return next((word for key, word in UNIT_ICONS if text == key), label)
 
 
-def _overlap(a, b, gap=0.0):
-    return a[0] < b[2] + gap and b[0] < a[2] + gap and a[1] < b[3] + gap and b[1] < a[3] + gap
+def specs_from(hint):
+    """The specifications the user wrote, one per line ("扳手尺寸 8-24mm", "规格: 8,10,12,13 mm"), and the other lines."""
+    specs = []; rest = []
+    for line in re.split(r'[\n;；]+', hint or ''):
+        line = line.strip(' \t-·•*')
+        if not line:
+            continue
+        listed = LIST_LINE.match(line); single = SPEC_LINE.match(line) if not listed else None
+        if listed:
+            values = re.findall(NUMBER_TEXT, listed.group('values'))
+            specs.append({'label': listed.group('label').strip(' ：:'), 'value': '%s–%s' % (values[0], values[-1]), 'unit': listed.group('unit') or '',
+                          'values': values[:16], 'icon': _icon_for_unit(listed.group('unit'), listed.group('label'))})
+        elif single and single.group('label').strip(' ：:'):
+            value = re.sub(r'\s*(?:-|~|～|至|到)\s*', '–', single.group('value'))
+            value = re.sub(r'\s*[xX*]\s*', '×', value)
+            specs.append({'label': single.group('label').strip(' ：:'), 'value': value, 'unit': single.group('unit') or '',
+                          'icon': _icon_for_unit(single.group('unit'), single.group('label'))})
+        else:
+            rest.append(line)
+    return specs[:6], rest
 
 
-def look_for(picture):
-    """How to dress a layer on this picture: bare type on a calm light backdrop, cards on anything else; the product's own colour as the accent."""
-    mean, uneven = picture.backdrop()
-    light = mean >= .75 and uneven < .2         # a white sweep with the product's soft shadow on it still counts as calm
-    return {'theme': 'bold' if light else 'card', 'accent': picture.accent() or ('#e8452c' if mean >= .5 else '#ffc53d')}
+def _facts_text(project, hint):
+    metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
+    dims = project['plan'].get('dimensions_mm') or []
+    return ' '.join([hint or '', str(project.get('name', '')), str(metadata.get('product_category', '')), str(metadata.get('material_note', '')),
+                     str(metadata.get('dimensions', '')), ' '.join('%g' % round(value, 1) for value in dims)])
 
 
-def arrange(copy_data, picture, aspect='1:1', look=None):
-    """Items for a tag, a headline, a subline and the points, placed on this picture.
-
-    Returns (items, titles that found no room, whether text had to sit on the product, the look).
-    The measures here mirror static/layer.js, which draws the items.
-    """
-    width, height = [float(part) for part in aspect.split(':')]
-    unit = min(width, height); sx = unit / width; sy = unit / height        # a length in units, as a share of each side
-    look = look or look_for(picture)
-    cards = look['theme'] in ('card', 'dark', 'tag')
-    items = []; taken = []
-    product = picture.rect or (.3, .3, .7, .7)
-
-    # --- tag, headline and subline: one block, set large, in the freest corner or band
-    kicker = copy_data.get('kicker') or ''; headline = copy_data.get('headline') or ''; subline = copy_data.get('subline') or ''
-    places = (('left', 'top', 0), ('right', 'top', .03), ('center', 'top', .05), ('left', 'bottom', .09), ('right', 'bottom', .11),
-              ('center', 'bottom', .13))
-
-    def block(subline):
-        """The best place and size for the block with this subline: (score, share on the product, ...measures)."""
-        found = None
-        for step, size in enumerate((.1, .086, .074, .062, .052)):
-            for limit in (.6, .46, .36):
-                lines = wrap(headline, size, limit / sx)
-                if len(lines) > 3:
-                    continue
-                sub_size = max(.021, size * .4); kick_size = max(.02, size * .3)
-                sub_lines = wrap(subline, sub_size, limit / sx) if subline else []
-                kick_w = text_width(kicker, kick_size) * 1.12 + kick_size * 1.5 if kicker else 0
-                # Slack for the browser's real glyph widths: the heavy face and tracked lines run wider than the estimate.
-                block_w = max([text_width(line, size) * 1.06 for line in lines] + [text_width(line, sub_size) * 1.12 for line in sub_lines] + [kick_w]) * sx + .01
-                block_w = min(limit + .05, block_w)
-                kick_h = kick_size * (LINE + .72) * sy if kicker else 0; kick_gap = size * .28 * sy if kicker else 0
-                head_h = len(lines) * size * LINE * sy; gap = size * .2 * sy if sub_lines else 0
-                block_h = kick_h + kick_gap + head_h + gap + len(sub_lines) * sub_size * LINE * sy
-                for align, edge, bias in places:
-                    inset = size * .42 * sx if look['theme'] != 'clean' and align != 'center' else 0        # room for the accent bar beside the headline
-                    x0 = MARGIN + inset if align == 'left' else 1 - MARGIN - inset - block_w if align == 'right' else (1 - block_w) / 2
-                    y0 = MARGIN if edge == 'top' else 1 - MARGIN - block_h
-                    rect = (x0, y0, x0 + block_w, y0 + block_h)
-                    on_product, on_scenery = picture.cover(rect)
-                    # Large type is wanted, but not across the product: a headline that touches it at all pays for that first.
-                    score = (-(7 * on_product + 2.5 * on_scenery) - (.3 if on_product > TOUCH else 0) - picture.tone(rect)[1] * .8 - bias - step * .055
-                             - (len(lines) - 1) * .02)
-                    if found is None or score > found[0]:
-                        found = (score, on_product, rect, align, size, sub_size, kick_size, lines, sub_lines, kick_h + kick_gap, head_h, gap)
-        return found
-
-    best = block(subline) if headline else None
-    unplaced = []
-    if best and subline and best[1] > TOUCH:
-        # The supporting line is the first thing to go when the block would otherwise lie on the product.
-        shorter = block('')
-        if shorter and shorter[1] <= TOUCH:
-            best = shorter; unplaced.append(subline)
-    if best:
-        _, _, rect, align, size, sub_size, kick_size, lines, sub_lines, head_y, head_h, gap = best
-        color, backing = _tone(picture, rect)
-        plate = ({'color': '#ffffff', 'opacity': .92} if color == DARK else {'color': '#111111', 'opacity': .6}) if backing and picture.cover(rect)[0] > .25 else None
-        common = {'type': 'text', 'x': rect[0], 'w': rect[2] - rect[0], 'align': align, 'color': color}
-        if kicker:
-            items.append({**common, 'id': 'kicker', 'role': 'kicker', 'y': rect[1], 'text': kicker, 'size': kick_size, 'weight': 700, 'plate': None})
-        mark = copy_data.get('emphasis') or ''
-        items.append({**common, 'id': 'headline', 'role': 'headline', 'y': rect[1] + head_y, 'text': '\n'.join(lines), 'size': size, 'weight': 700,
-                      'plate': plate, **({'mark': mark} if mark and mark in headline else {})})
-        if sub_lines:
-            items.append({**common, 'id': 'subline', 'role': 'subline', 'y': rect[1] + head_y + head_h + gap, 'text': '\n'.join(sub_lines),
-                          'size': sub_size, 'weight': 400, 'plate': plate})
-        taken.append(rect)
-
-    # --- points: a label each; those that are about a visible part get a line to it
-    points = copy_data.get('points', [])[:6]
-    anchors = [picture.anchor(point.get('parts') or [])[0] if not picture.estimated else None for point in points]
-    centre_x = (product[0] + product[2]) / 2
-
-    def build(scale):
-        title_size = .032 * scale; detail_size = title_size * .68; icon_size = title_size * 1.9; pad = title_size * .5; pad_y = title_size * .42
-        rows = []
-        for index, point in enumerate(points):
-            limit = .25 / sx
-            title_lines = wrap(point['title'], title_size, limit); detail_lines = wrap(point['detail'], detail_size, limit) if point.get('detail') else []
-            text_w = max([text_width(line, title_size) for line in title_lines] + [text_width(line, detail_size) for line in detail_lines]) * 1.1 + .006
-            icon_w = icon_size + title_size * .55 if point.get('icon') else 0
-            text_h = len(title_lines) * title_size * LINE + len(detail_lines) * detail_size * LINE
-            rows.append({'id': 'point%d' % (index + 1), 'point': point, 'anchor': anchors[index], 'size': title_size,
-                         'w': (icon_w + text_w + pad * 2) * sx, 'h': (max(icon_size if point.get('icon') else 0, text_h) + pad_y * 2) * sy})
-        return rows
-
-    def stack(side_labels, x0, inner_right, blocked):
-        """Top to bottom in the order of their anchors, so no two lines cross. Returns (cost, rects) or None."""
-        rects = []; cost = 0.0; floor = MARGIN
-        for label in sorted(side_labels, key=lambda item: item['anchor'][1]):
-            ax, ay = label['anchor']; chosen = None
-            for step in range(81):
-                y0 = MARGIN + (1 - 2 * MARGIN - label['h']) * step / 80
-                if y0 < floor:
-                    continue
-                rect = (x0, y0, x0 + label['w'], y0 + label['h'])
-                if any(_overlap(rect, other, .012) for other in blocked):
-                    continue
-                if any(point and rect[0] - .02 < point[0] < rect[2] + .02 and rect[1] - .02 < point[1] < rect[3] + .02 for point in anchors):
-                    continue                                  # a label never sits on a spot that a line points at
-                edge = rect[2] if inner_right else rect[0]; middle = (rect[1] + rect[3]) / 2
-                length = math.hypot((ax - edge) / sx, (ay - middle) / sy)
-                # A line that runs a long way across the product to reach its part reads badly: count that stretch twice.
-                crossing = sum(picture.on_product(edge + (ax - edge) * t / 10, middle + (ay - middle) * t / 10) for t in range(1, 9)) / 8
-                on_product, on_scenery = picture.cover(rect)
-                price = length * (1 + crossing * 2.5) + on_product * (3.0 if cards else 2.2) + on_scenery * 2.2
-                if chosen is None or price < chosen[0]:
-                    chosen = (price, rect)
-            if chosen is None:
-                return None
-            cost += chosen[0]; rects.append((label, chosen[1])); floor = chosen[1][3] + .018
-        return cost, rects
-
-    chosen = None; labels = build(1)
-    for scale in (1, .88, .76):
-        rows = build(scale); anchored = [label for label in rows if label['anchor']]
-        if not anchored:
-            break
-        widest = max(label['w'] for label in anchored)
-        left_x = max(MARGIN, min(product[0] - .025 - widest, .5 - widest))
-        right_x = min(1 - MARGIN - widest, max(product[2] + .025, .5))
-        for mask in range(1 << len(anchored)):
-            sides = [(mask >> position) & 1 for position in range(len(anchored))]         # 0 left, 1 right
-            left = [label for label, side in zip(anchored, sides) if side == 0]; right = [label for label, side in zip(anchored, sides) if side == 1]
-            if abs(len(left) - len(right)) > 2:
-                continue
-            a = stack(left, left_x, True, taken)
-            b = stack(right, right_x, False, taken) if a is not None else None
-            if a is None or b is None:
-                continue
-            # A label belongs on the side its part is on, and larger type is worth a little crowding.
-            wrong = sum(1 for label, side in zip(anchored, sides) if (label['anchor'][0] > centre_x) != bool(side))
-            cost = a[0] + b[0] + wrong * .35 + abs(len(left) - len(right)) * .03 + (1 - scale) * .45 * len(anchored)
-            if chosen is None or cost < chosen[0]:
-                chosen = (cost, a[1] + b[1], rows)
-    placed = list(chosen[1]) if chosen else []
-    if chosen:
-        labels = chosen[2]
-    pointing = {label['id'] for label, _ in placed}
-    loose = [label for label in labels if label['id'] not in pointing]         # no part, or no room for its line: a plain label
-    for label, rect in placed:
-        taken.append(rect)
-
-    # --- points without a part: a column under the headline, or a row along the freest edge
-    if loose:
-        options = []
-        gap = .02
-        column_h = sum(label['h'] for label in loose) + gap * (len(loose) - 1); column_w = max(label['w'] for label in loose)
-        head = taken[0] if items else None
-        starts = []
-        if head:
-            starts.append((head[0] if head[0] < .5 else head[2] - column_w, head[3] + .035))
-        starts += [(MARGIN, 1 - MARGIN - column_h), (1 - MARGIN - column_w, 1 - MARGIN - column_h), (MARGIN, MARGIN), (1 - MARGIN - column_w, MARGIN)]
-        for position, (x0, y0) in enumerate(starts):
-            if y0 < MARGIN or y0 + column_h > 1 - MARGIN + 1e-6:
-                continue
-            rects = []; y = y0
-            for label in loose:
-                rects.append((label, (x0, y, x0 + label['w'], y + label['h']))); y += label['h'] + gap
-            if any(_overlap(rect, other, .01) for _, rect in rects for other in taken):
-                continue
-            cost = sum(picture.cover(rect)[0] * 3.2 + picture.cover(rect)[1] for _, rect in rects) / len(rects) + position * .03
-            options.append((cost, rects))
-        row_w = sum(label['w'] for label in loose) + .03 * (len(loose) - 1); row_h = max(label['h'] for label in loose)
-        if row_w <= 1 - 2 * MARGIN:
-            for position, y0 in enumerate((1 - MARGIN - row_h, MARGIN)):
-                rects = []; x = (1 - row_w) / 2
-                for label in loose:
-                    rects.append((label, (x, y0, x + label['w'], y0 + label['h']))); x += label['w'] + .03
-                if any(_overlap(rect, other, .01) for _, rect in rects for other in taken):
-                    continue
-                cost = sum(picture.cover(rect)[0] * 3.2 + picture.cover(rect)[1] for _, rect in rects) / len(rects) + .02 + position * .05
-                options.append((cost, rects))
-        if options:
-            placed += min(options, key=lambda option: option[0])[1]
-
-    for label, rect in placed:
-        point = label['point']; color, backing = _tone(picture, rect)
-        # In the card styles every label has its card; in the others one is added only where the type could not be read without it.
-        plate = ({'color': '#ffffff', 'opacity': .95} if color == DARK else {'color': '#111111', 'opacity': .7}) if backing and not cards else None
-        items.append({'id': label['id'], 'type': 'callout', 'x': rect[0], 'y': rect[1], 'w': rect[2] - rect[0], 'title': point['title'],
-                      'detail': point.get('detail') or '', 'icon': point.get('icon'), 'anchor': label['anchor'] if label['id'] in pointing else None,
-                      'size': label['size'], 'color': color, 'plate': plate})
-    dropped = unplaced + [label['point']['title'] for label in labels if label['id'] not in {item['id'] for item in items}]
-    crowded = any(picture.cover(rect)[0] > .12 for rect in taken) or any(picture.cover(rect)[0] > .12 for _, rect in placed)
-    return items, dropped, crowded, look
+def content_rules(project, hint='', visible=None, language=DEFAULT_LANGUAGE):
+    """What a composition says, from the user's own lines and the names in the model. Returns (content, notes)."""
+    specs, rest = specs_from(hint)
+    base, notes = copy_rules(project, '\n'.join(rest), visible, language)
+    points = [{'title': point['title'], 'detail': point.get('detail') or '', 'icon': ICON_WORDS.get(point.get('icon') or '', point['title']),
+               'parts': point.get('parts', [])} for point in base['points'] if point['title'] not in DIMENSIONS.values()][:4]
+    dims = project['plan'].get('dimensions_mm')
+    if dims and not any('×' in spec['value'] for spec in specs):
+        specs.append({'label': OUTLINE[language], 'value': '×'.join('%g' % round(value) for value in dims), 'unit': 'mm', 'icon': 'ruler'})
+    figures = [dict(spec) for spec in specs if not spec.get('values') and '×' not in spec['value']][:2]
+    for figure in figures:
+        figure.pop('values', None)
+    if specs and not points:
+        notes = [note for note in notes if '没有从名称中识别' not in note]
+    if language == 'en' and any(CJK.search(spec['label'] + spec.get('unit', '')) for spec in specs) and not any('无法把中文翻译' in note for note in notes):
+        notes.append('未配置 AI，无法把中文翻译成英文：你写的规格保持原文，请在画面上改成英文。')
+    return {'kicker': base['kicker'], 'headline': base['headline'], 'subline': base['subline'], 'points': points, 'figures': figures,
+            'specs': specs[:4], 'free_area': 'none', 'language': language}, notes
 
 
-# ------------------------------------------------------------------ the proposal
+COMPOSE_PROMPT = '''You write the words of a product image for an online shop, set like a premium tool brand's feature image: very few words, each one earning its place, plain and concrete. You are shown the image and facts about the product.
+{language}
+Return data only:
+- kicker: {kicker} naming the category or where it is used, printed small above the headline; it must not repeat the headline's words; or an empty string.
+- headline: the product or its main use in plain words, {headline}. No exclamation marks, no superlatives.
+- subline: one short supporting sentence of {subline}, or an empty string.
+- points: 2 to 4 key points a shopper should notice. title {title}; detail {detail} or empty; icon: one to three plain English words naming the picture that shows the point ("wrench", "padlock", "caster wheel", "drawer", "ruler"); parts: the visible_parts names the point is about, copied exactly, or [] when it is about the whole product.
+- figures: at most 2 numbers worth showing large, each with value (only the number or range, like 8–24), unit ({units}), label (what it measures, {label}) and icon (English words). Only numbers that appear in user_specs, hint or the facts: never estimate, convert, round or invent a number. [] when there is none.
+- specs: at most 4 specifications for a row of specifications, with the same fields as figures plus values: for a list of sizes (a set of wrenches, sockets or bits) the sizes as separate numbers in order, otherwise []. The same rule: only numbers that were given. Every entry of user_specs appears here{translate_specs}.
+- layout: the composition from layouts that suits this image and these words best.
+- free_area: for a photo with a scene, which side is free of the product, people and busy detail and could hold a headline: left, right, top, bottom, or none.
+- product_box: where the product itself is in the image, as [left, top, right, bottom], each a share of the image's width or height (0 to 1).
+Say only what the image shows or the facts state: what a part is and what it is for. Do not praise. Never claim durability, strength, safety, quietness, smoothness, ease, roominess, comfort or quality (耐磨, 防锈, 稳固, 安全, 结实, 静音, 顺滑, 顺畅, 轻松, 宽敞, 高品质 and the like) unless the facts state it; never compare with other products. hint, when present, is what the user wants said and takes priority; {keep}'''
+WRITING = {
+    'en': dict(language='Write every word in English, in sentence case, the way a premium tool brand writes for international shoppers. hint, part names and user_specs may be in Chinese or another language: say what they say in natural English.',
+               kicker='at most 24 characters', headline='at most 28 characters', subline='at most 48 characters', title='at most 22 characters',
+               detail='at most 36 characters', units='mm, kg, V, Nm, pcs, layers and so on', label='at most 20 characters',
+               translate_specs=', its label in English', keep='keep its meaning and every figure exactly, in English.'),
+    'zh': dict(language='Write every word in Simplified Chinese.',
+               kicker='2 to 6 Chinese characters', headline='at most 10 Chinese characters', subline='at most 18 Chinese characters',
+               title='at most 6 Chinese characters', detail='at most 12 Chinese characters', units='mm, kg, V, 件, 层 and so on',
+               label='at most 8 Chinese characters', translate_specs=', keeping its label', keep="keep the user's own wording and figures."),
+}
+# How long each part may be once written, per language: Latin words take more letters than Chinese characters.
+LIMITS = {'en': {'kicker': 24, 'headline': 30, 'subline': 52, 'title': 24, 'detail': 40, 'label': 22},
+          'zh': {'kicker': 14, 'headline': 24, 'subline': 40, 'title': 16, 'detail': 30, 'label': 16}}
 
-def suggest(project_id, shot_id, body):
-    """A proposed layer for this image: what to say and where. Nothing is saved."""
-    if not isinstance(body, dict):
-        raise ValueError('图文图层请求格式无效')
-    hint = body.get('hint', '')
-    if not isinstance(hint, str) or len(hint) > MAX_HINT:
-        raise ValueError('要点说明不能超过 %d 字' % MAX_HINT)
+
+def compose_prompt(language=DEFAULT_LANGUAGE):
+    return COMPOSE_PROMPT.format(**WRITING[language])
+
+
+LAYOUT_NOTES = {'split': 'words in a column beside the product: a headline, then up to two key figures or three short points; for a clean product photo',
+                'callouts': 'the product on one side, up to four aligned notes on the other with thin lines to the parts they name; for showing structure',
+                'scene': 'a headline set in the calm part of a photo of the product in use; for scene and lifestyle photos',
+                'cards': 'the product in a large card and up to three small cards with an icon and a point or figure each; an overview',
+                'spotlight': 'one buying question: a headline, the product, and a band with one or two key figures; needs a figure',
+                'specs': 'the product above a row of specifications or a row of sizes; needs at least two specifications'}
+
+
+def compose_schema():
+    def obj(properties):
+        return {'type': 'object', 'additionalProperties': False, 'properties': properties, 'required': list(properties)}
+    import layer_compose
+    text = lambda limit: {'type': 'string', 'maxLength': limit}
+    point = obj({'title': text(40), 'detail': text(80), 'icon': text(60), 'parts': {'type': 'array', 'maxItems': 40, 'items': text(300)}})
+    figure = obj({'value': text(24), 'unit': text(12), 'label': text(40), 'icon': text(60)})
+    spec = obj({'value': text(24), 'unit': text(12), 'label': text(40), 'icon': text(60), 'values': {'type': 'array', 'maxItems': 16, 'items': text(10)}})
+    return obj({'kicker': text(30), 'headline': text(60), 'subline': text(80), 'points': {'type': 'array', 'maxItems': 6, 'items': point},
+                'figures': {'type': 'array', 'maxItems': 4, 'items': figure}, 'specs': {'type': 'array', 'maxItems': 6, 'items': spec},
+                'layout': {'type': 'string', 'enum': list(layer_compose.LAYOUTS)},
+                'free_area': {'type': 'string', 'enum': ['left', 'right', 'top', 'bottom', 'none']},
+                'product_box': {'type': 'array', 'minItems': 4, 'maxItems': 4, 'items': {'type': 'number', 'minimum': 0, 'maximum': 1}}})
+
+
+def content_for(project, hint='', image_path=None, visible=None, language=DEFAULT_LANGUAGE):
+    """(content, source, notes, suggested layout): the model's words when one is configured, the rules' otherwise; in ``language``."""
+    import layer_compose
+    rules, notes = content_rules(project, hint, visible, language)
+    config = _config(image_path)
+    if not config:
+        return rules, 'rules', notes, None
+    metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
+    lookdev = (project['plan'].get('lookdev') or {}).get('decisions', [])
+    shown = list(visible if visible is not None else _names(project))[:80]
+    facts = {'product_name': str(project.get('name', ''))[:200], 'product_category': str(metadata.get('product_category', ''))[:200],
+             'material_note': str(metadata.get('material_note', ''))[:500], 'real_dimensions_mm': project['plan'].get('dimensions_mm'),
+             'visible_parts': shown, 'user_specs': rules['specs'], 'layouts': LAYOUT_NOTES,
+             'surface_finishes': [{'part': str(row.get('object') or row.get('material', ''))[:80], 'finish': str(row.get('label', ''))[:40]}
+                                  for row in lookdev[:30] if isinstance(row, dict)]}
+    if hint:
+        facts['hint'] = hint
+    try:
+        answer = _ask(config, compose_prompt(language), facts, compose_schema(), image_path)
+    except Exception as exc:
+        reason = str(exc)[:120] if isinstance(exc, ValueError) and str(exc) else ''
+        return rules, 'rules', notes + ['AI 未返回可用结果%s，已改用名称规则。' % ('（%s）' % reason.rstrip('。') if reason else '')], None
+    given = _facts_text(project, hint); notes = []; invented = 0; limit = LIMITS[language]
+    allowed = set(shown)
+    points = [{'title': _clip(point['title'], limit['title']), 'detail': _clip(point['detail'], limit['detail']), 'icon': _clip(point['icon'], 40),
+               'parts': [name for name in point['parts'] if name in allowed]} for point in answer['points'] if point['title'].strip()][:4]
+
+    def numbers(rows, listed):
+        nonlocal invented
+        kept = []
+        for row in rows:
+            values = [value for value in (row.get('values') or []) if layer_compose.grounded(value, given)] if listed else []
+            if not layer_compose.grounded(row['value'], given):
+                invented += 1; continue
+            entry = {'label': _clip(row['label'], limit['label']), 'value': _clip(row['value'], 20), 'unit': _clip(row['unit'], 10), 'icon': _clip(row['icon'], 40)}
+            if listed and len(values) >= 3:
+                entry['values'] = values[:16]
+            kept.append(entry)
+        return kept
+    figures = numbers(answer['figures'], False)[:2]; specs = numbers(answer['specs'], True)[:4]
+    if invented:
+        notes.append('AI 给出的 %d 个数字不在你提供的信息里，已去掉；数字只采用你写下或填写的规格。' % invented)
+    # The user's own specifications come first, with every size they listed; the model's add only numbers those do
+    # not already show. Written in another language than the user's, a specification takes the model's words for it.
+    def worded(spec):
+        if language == 'en' and CJK.search(spec.get('label', '') + spec.get('unit', '')):
+            match = next((row for row in specs + figures if layer_compose.numbers_in(spec['value']) <= layer_compose.numbers_in(row['value'])), None)
+            if match:
+                spec = {**spec, 'label': match['label'], 'icon': match['icon'] or spec.get('icon', ''),
+                        **({'unit': match['unit']} if CJK.search(spec.get('unit', '')) and match['unit'] else {})}
+        return spec
+    merged = [worded(spec) for spec in rules['specs']]
+    for row in specs:
+        if not any(layer_compose.numbers_in(row['value']) <= layer_compose.numbers_in(spec['value']) for spec in merged):
+            merged.append(row)
+    own = [worded(figure) for figure in rules['figures']]
+    content = {'kicker': _clip(answer['kicker'], limit['kicker']), 'headline': _clip(answer['headline'], limit['headline']) or rules['headline'],
+               'subline': _clip(answer['subline'], limit['subline']), 'points': points or rules['points'], 'figures': figures or own,
+               'specs': merged[:4], 'free_area': answer['free_area'], 'language': language}
+    box = answer['product_box']
+    if box[2] - box[0] >= .05 and box[3] - box[1] >= .05:
+        content['product_box'] = [round(value, 4) for value in box]
+    return content, 'ai', notes, answer['layout']
+
+
+def _picture_for(project_id, shot_id, wanted=None):
+    """(project, shot, output, image path, picture, notes) for the newest picture of a shot."""
     project = get('project', project_id); shot = _shot(project, shot_id)
     if not project.get('analysis'):
         raise ValueError('请先等待模型分析完成')
-    wanted = body.get('output') if isinstance(body.get('output'), dict) else {}
+    wanted = wanted if isinstance(wanted, dict) else {}
     outputs = [o for o in project.get('outputs', []) if o.get('shot_id') == shot_id and o.get('quality') != 'thumbnail'
                and (not wanted or all(o.get(key) == wanted.get(key) for key in ('job_id', 'version', 'quality')))]
     if not outputs:
@@ -810,21 +951,85 @@ def suggest(project_id, shot_id, body):
     image = _project_file(project_id, output.get('png_url'), ('.png',))
     if image is None:
         raise ValueError('这张图片的文件不存在，请重新生成预览。')
-    scene = probe(project_id, output)
-    notes = []
+    scene = probe(project_id, output); notes = []
     if scene is None:
         width, height = output.get('width') or 1, output.get('height') or 1
         scene = probe_from_image(image, max(8, round(GRID * width / max(width, height))), max(8, round(GRID * height / max(width, height))))
-        notes.append('无法读取这张图片保存的场景，按画面颜色估计了产品位置，标注没有指向线。')
-    picture = Picture(scene, image)
+        if output.get('quality') != 'generated':
+            notes.append('无法读取这张图片保存的场景，按画面颜色估计了产品位置，标注没有指向线。')
+    return project, shot, output, image, Picture(scene, image), notes
+
+
+def _point_anchors(content, picture, facing='right'):
+    for point in content['points']:
+        point['anchor'] = picture.anchor(point.get('parts') or [], facing)[0] if point.get('parts') and not picture.estimated else None
+
+
+def _layer_from(project, shot, output, picture, content, glyphs, layout, source):
+    import layer_compose
+    aspect = '%d:%d' % (output.get('width') or 1, output.get('height') or 1)
+    canvas, items, report = layer_compose.compose(layout, content, picture, aspect, output.get('quality') == 'generated')
+    layer = validate({'version': 1, 'layout': layout, 'canvas': canvas, 'content': content, 'glyphs': glyphs, 'items': items,
+                      'basis': basis(project['plan'], shot), 'source': source})
+    return layer, report
+
+
+def suggest(project_id, shot_id, body):
+    """A proposed composition for this image: what to say, its icons and where everything goes. Nothing is saved."""
+    import layer_compose
+    import layer_icons
+    if not isinstance(body, dict):
+        raise ValueError('图文图层请求格式无效')
+    hint = body.get('hint', '')
+    if not isinstance(hint, str) or len(hint) > MAX_HINT:
+        raise ValueError('要点说明不能超过 %d 字' % MAX_HINT)
+    wanted_layout = body.get('layout')
+    if wanted_layout not in (None, 'auto') and wanted_layout not in layer_compose.LAYOUTS:
+        raise ValueError('未知的版式')
+    language = body.get('language') or DEFAULT_LANGUAGE
+    if language not in LANGUAGES:
+        raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
+    project, shot, output, image, picture, notes = _picture_for(project_id, shot_id, body.get('output'))
     visible = None if picture.estimated else list(picture.objects)
-    content, source, copy_notes = copy_for(project, hint.strip(), image, visible)
-    items, dropped, crowded, look = arrange(content, picture, '%d:%d' % (output.get('width') or 1, output.get('height') or 1))
-    if dropped:
-        notes.append('画面放不下：' + '、'.join(dropped[:4]) + '。')
-    if crowded:
-        notes.append('画面较满，部分文字压在了产品上；需要更多版面时可在「调整」里输入“增加留白”后重新预览。')
-    layer = validate({'version': 1, 'items': items, 'theme': look['theme'], 'accent': look['accent'], 'basis': basis(project['plan'], shot), 'source': source})
-    return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': copy_notes + notes,
-                                       'anchored': sum(1 for item in items if item.get('anchor')),
+    content, source, copy_notes, proposed = content_for(project, hint.strip(), image, visible, language)
+    if picture.estimated and content.get('product_box'):
+        picture.set_product_box(content['product_box'])
+    _point_anchors(content, picture)
+    # One icon per point, figure and specification: from the open sets, online, or drawn.
+    wants = [(entry.get('title') or entry.get('label') or '', entry.get('icon') or '') for entry in content['points'] + content['figures'] + content['specs']]
+    glyphs, chosen, icon_notes = layer_icons.resolve(wants) if wants else ({}, [], [])
+    for entry, key in zip(content['points'] + content['figures'] + content['specs'], chosen):
+        if key:
+            entry['glyph'] = key
+    pal = layer_compose.palette(picture, output.get('quality') == 'generated')
+    order = layer_compose.suitable(content, pal, picture)
+    layout = wanted_layout if wanted_layout in layer_compose.LAYOUTS else proposed if proposed in order[:3] else order[0]
+    layer, report = _layer_from(project, shot, output, picture, content, glyphs, layout, source)
+    if report['dropped']:
+        notes.append('这个版式没有显示：%s%s；可换用其他版式，或删减文字。' % ('、'.join(report['dropped'][:4]), ' 等' if len(report['dropped']) > 4 else ''))
+    return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': copy_notes + icon_notes + notes,
+                                       'anchored': sum(1 for item in layer['items'] if item.get('anchor')), 'layout': layout, 'suitable': order,
+                                       'icons': {key: {'source': glyph['source'], 'name': glyph.get('name', ''), 'license': glyph.get('license', '')}
+                                                 for key, glyph in layer.get('glyphs', {}).items()},
+                                       'output': {key: output.get(key) for key in ('job_id', 'version', 'quality')}}}
+
+
+def recompose(project_id, shot_id, body):
+    """The same words in another composition, or laid out again after an edit. No model is asked."""
+    import layer_compose
+    if not isinstance(body, dict) or body.get('layout') not in layer_compose.LAYOUTS:
+        raise ValueError('请选择一个版式')
+    stored = validate({'version': 1, 'items': [], 'glyphs': body.get('glyphs') or {}, 'content': body.get('content') or {}})
+    project, shot, output, image, picture, notes = _picture_for(project_id, shot_id, body.get('output'))
+    content = stored.get('content') or {'kicker': '', 'headline': '', 'subline': '', 'points': [], 'figures': [], 'specs': []}
+    if picture.estimated and content.get('product_box'):
+        picture.set_product_box(content['product_box'])
+    if any(point.get('parts') and point.get('anchor') is None for point in content['points']):
+        _point_anchors(content, picture)
+    source = body.get('source') if body.get('source') in ('rules', 'ai', 'manual') else 'manual'
+    layer, report = _layer_from(project, shot, output, picture, content, stored.get('glyphs', {}), body['layout'], source)
+    if report['dropped']:
+        notes.append('这个版式没有显示：%s%s；可换用其他版式，或删减文字。' % ('、'.join(report['dropped'][:4]), ' 等' if len(report['dropped']) > 4 else ''))
+    return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': notes, 'layout': body['layout'],
+                                       'anchored': sum(1 for item in layer['items'] if item.get('anchor')),
                                        'output': {key: output.get(key) for key in ('job_id', 'version', 'quality')}}}

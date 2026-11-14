@@ -98,13 +98,58 @@ def project_view(ident):
     p['ecommerce_exports']=ecommerce.project_exports(ident)
     import scene_stylist
     p['scene_task']=scene_stylist.latest(ident)
+    p['queue']=queue_view(ident)
     return p
 
 class JobConflictError(ValueError):
     """A strict client must not mistake another render for its own request."""
 
 
-def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None,retry_of=None,force_review=False,review_question=None,review_source=None,expected_version=None):
+# ------------------------------------------------------------------ the render queue
+# One worker renders every job in the order it was submitted. A project's queue is
+# its running job followed by the jobs waiting behind it; work that changes the plan
+# (a scene being saved, for instance) waits until no job that may still change the
+# plan is in that queue.
+
+def active_jobs(project_id,include_background=False):
+    """The project's render queue: the running job first, then the waiting ones in the order they will run."""
+    jobs=[j for j in all_records('job') if j.get('project_id')==project_id and j.get('status') in ('queued','running')
+          and (include_background or j.get('origin') not in (POLISH_ORIGIN,THUMBNAIL_ORIGIN))]
+    return sorted(jobs,key=lambda j:(j['status']!='running',j.get('created_at') or 0))
+
+
+def writes_plan(job):
+    """Whether a job may change the plan when it finishes: an analysis, a preview (its automatic
+    corrections and material checks) or a main-image optimisation. A final render only adds pictures."""
+    return job.get('kind') in ('analyze','hero_optimize') or (job.get('kind')=='preview' and job.get('quality')!='thumbnail')
+
+
+def plan_busy(project_id):
+    """How many queued or running pieces of work may still change this project's plan."""
+    count=sum(1 for job in active_jobs(project_id) if writes_plan(job))
+    try:
+        import material_agent
+        count+=sum(1 for task in all_records(material_agent.KIND) if task.get('project_id')==project_id and task.get('status') in material_agent.ACTIVE)
+    except ImportError:
+        pass
+    try:
+        if (get('project',project_id).get('auto_material') or {}).get('status') in ('queued','running','rendering'): count+=1
+    except KeyError:
+        pass
+    return count
+
+
+def queue_view(project_id):
+    """What the interface lists as the project's queue, in order."""
+    rows=[]
+    for position,job in enumerate(active_jobs(project_id)):
+        rows.append({'type':'job','id':job['id'],'kind':job.get('kind'),'quality':job.get('quality'),'status':job['status'],'stage':job.get('stage'),
+                     'shot_ids':list(job.get('shot_ids') or []),'origin':job.get('origin'),'position':position,'created_at':job.get('created_at')})
+    return rows
+
+
+def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None,retry_of=None,force_review=False,review_question=None,review_source=None,expected_version=None,queue=False):
+    """Start or queue a job. With ``queue`` a request made while another job runs waits behind it instead of being refused."""
     if kind not in ['analyze','preview','render']: raise ValueError('任务类型无效')
     if quality not in ['thumbnail','preview','showcase','standard','fine']: raise ValueError('画质无效')
     if quality=='thumbnail' and (kind!='preview' or not (request_key or '').startswith(THUMBNAIL_KEY)):
@@ -138,6 +183,12 @@ def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None
             raise JobConflictError('方案已在预览提交前更新。本次没有启动新预览，请查看最新方案。')
         for j in project_jobs:
             if j['status'] in ['queued','running']:
+                if queue:
+                    # The same work already waiting is not queued twice.
+                    if (j['status']=='queued' and j.get('kind')==kind and j.get('quality')==desired_quality and j.get('shot_ids')==ids
+                            and j.get('version')==p['version'] and j.get('origin') not in (POLISH_ORIGIN,THUMBNAIL_ORIGIN)):
+                        return j
+                    continue
                 if expected_version is not None:
                     raise JobConflictError('已有另一项渲染任务，请等待或取消它后重试本次预览。')
                 return j

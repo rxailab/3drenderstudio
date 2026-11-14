@@ -1,5 +1,74 @@
 # 本地接口与可复现性
 
+## v26 渲染队列
+
+**排队提交。** `POST /api/projects/{id}/jobs` 的请求体新增可选的 `queue`（布尔值，其他类型返回 `400`）。不带或为 `false` 时行为不变：已有任务在运行时返回 `409`。为 `true` 时，新任务排在已有任务之后，返回 `202` 和 `status:"queued"` 的任务记录；同一项目里已有一个相同的排队任务（相同的 `kind`、`quality`、`shot_ids` 与方案版本）时，直接返回那一个，不重复排队。`expected_version` 与当前方案不一致时，排队请求同样返回 `409`。后台高清任务（`origin` 为 polish）仍然为用户的请求让路。浏览器界面总是带 `queue:true`。
+
+**队列视图。** `GET /api/projects/{id}` 新增 `queue`：运行中的任务在前，排队的按提交先后，后台任务不列入。
+
+```json
+"queue": [
+  {"type":"job","id":"…","kind":"preview","quality":"preview","status":"running","stage":"正在渲染","shot_ids":["side"],"origin":null,"position":0,"created_at":1763091780.1},
+  {"type":"job","id":"…","kind":"preview","quality":"preview","status":"queued","stage":"等待开始","shot_ids":["back"],"origin":null,"position":1,"created_at":1763091781.4}]
+```
+
+移出队列沿用 `POST /api/jobs/{job_id}/cancel`。
+
+**使用场景不再被拒绝。** `POST /api/projects/{id}/scene` 在有任务运行时也接受请求。场景照常搭建或生成；保存前，如果还有可能修改方案的任务（非缩略图的预览、模型分析、首图优化、材质检查或自动材质流程），场景任务就保持 `running`，`stage` 为“场景已就绪，排队等待保存：前面还有 N 项会修改方案的任务”，`queued_behind` 为 N。最终 4K 渲染不计入。这些任务结束后场景才保存；等待期间方案若有变化，场景合并到最新方案上，只加入它自己的镜头与道具。AI 生成的图在材质改变或镜头数已到上限时不合并，任务失败并在 `error` 中说明原因。保存后，场景的预览以 `queue:true` 提交，排在队尾；这时 `stage` 为“场景已保存，预览已加入渲染队列”，结束的任务带 `waited_seconds`。等待中的场景可以用 `POST /api/projects/{id}/scene/{task_id}/cancel` 取消，方案不受影响。
+
+## v26 图文版式与图标
+
+**图层数据。** `layers[shot_id]` 新增四个可选字段；缺少它们的图层按 v23/v24 的方式绘制：
+
+- `layout`：`split`（左右分区）、`callouts`（结构标注）、`scene`（场景叙事）、`cards`（卡片网格）、`spotlight`（单点卖点）、`specs`（规格清单）。
+- `canvas`：`{color, photo:{x,y,w,h, crop:[x0,y0,x1,y1], feather, radius?, fill?}}`。`x,y,w,h` 是照片在画布上的框（画布宽、高的比例）。`crop` 是这个框显示的渲染图区域（渲染图宽、高的比例），只有 `feather` 为真（平整的影棚背景）时才可能超出 0–1，超出部分是画布颜色。`radius` 是圆角（短边比例），`fill` 是照片框底色。缺少 `canvas` 时，图文直接放在整张渲染图上（场景叙事）。
+- `content`：图文要说的内容，`{kicker, headline, subline, language?, free_area?, product_box?, points:[{title,detail,icon,parts,anchor,glyph?}], figures:[{value,unit,label,icon,glyph?}], specs:[{value,unit,label,icon,values?,glyph?}]}`。`language` 为 `en` 或 `zh`，表示这些文字所用的语言。`anchor` 与 `product_box` 使用渲染图坐标；`icon` 是查图标用的英文关键词。换版式时由它重新排版。
+- `glyphs`：最多 24 个图标，`{id: {source, name, license, ops:[["s"|"f"|"e", d], …], stroke, grid, model?, check?, concept?}}`。`d` 只能含 SVG 路径命令与数字。`source` 为 `lucide`、`tabler`、`iconify:<图标库>` 或 `drawn`（AI 绘制，`license` 为 `own`，`check.status` 为 `passed`、`failed` 或 `unchecked`）。
+
+新增元素类型：`figure`（`w, value, unit, label, align`）、`chips`（`w, values` 1–16 个、`unit, label, fill`）、`panel`（`w, h, opacity, radius, fade?`）、`rule`（`x2, y2, width, opacity`）。元素还可以带以下可选字段：
+
+- `glyph`：引用 `glyphs` 中的图标，`icon`、`figure`、`callout` 可用。
+- `soft`：次要文字的颜色。
+- `slot`：这个元素显示的是 `content` 的哪一部分，如 `headline`、`points.0`、`figures.1`、`specs.0`、`points.2.title`；客户端据此把对元素的修改写回 `content`。
+- `leading`：文字行距。
+- `callout` 另有 `style`（`card` 为 v23/v24 的卡片，`row` 为带图标的要点行，`line` 为带细线的说明）和 `elbow`（引线拐点的横坐标）。
+
+```json
+{"version":1,"layout":"split","source":"ai","canvas":{"color":"#ffffff","photo":{"x":0,"y":0,"w":1,"h":1,"crop":[-0.4091,-0.17952,0.87302,1.10259],"feather":true,"radius":0}},
+ "content":{"kicker":"车间收纳","headline":"工具柜","subline":"抽屉带滑轨，分类收纳工具","points":[…],"figures":[{"value":"120","unit":"kg","label":"台面承重","icon":"ruler","glyph":"g5"}],"specs":[…]},
+ "glyphs":{"g5":{"source":"lucide","name":"weight","license":"ISC","ops":[["s","M9 5a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],…],"stroke":2,"grid":24}},
+ "items":[{"id":"headline","type":"text","role":"headline","slot":"headline","x":0.075,"y":0.1362,"w":0.315,"text":"工具柜","size":0.064,"weight":700,"align":"left","color":"#1d1d1f","plate":null,"leading":1.16},
+          {"id":"fig1","type":"figure","slot":"figures.0","glyph":"g5","x":0.075,"y":0.66088,"w":0.315,"value":"120","unit":"kg","label":"台面承重","size":0.066,"color":"#e62a29","soft":"#6e6e73","align":"left"}]}
+```
+
+这是测试中保存的一层图文（节选）：文字由 AI 看图写出，图标由图标 agent 选择。模型给 120 kg 写的关键词是 `ruler`，图标 agent 按要点文字“台面承重”选了秤砣（`weight`）。
+
+**智能排版。** `POST /api/projects/{id}/layers/{shot_id}/suggest` 的请求体新增两个可选字段：`layout`（六种版式之一，或 `auto`；未知值返回 `400`），以及 `language`（`en` 为默认，或 `zh`；其他值返回 `400`）。返回的 `layer` 是一个版式，`content.language` 即所用的语言。
+
+AI 按 `language` 写文案。选英文时，`hint`、部件名和用户规格可以是中文：模型把它们的意思译成英文，数字原样保留。合并规格时，用户写的规格仍排在最前面，保留全部数值；如果标签是中文而模型给出了覆盖相同数字的英文规格，就采用模型的英文标签和单位。没有配置 AI 时，名称规则直接给出英文要点（如 `Drawer storage`、`On casters`）和英文品类标签（如 `Workshop storage`）；标题沿用项目名称，中文内容保持原文，并在 `notes` 里说明。`report` 新增以下字段：
+
+- `layout`：所用版式。
+- `suitable`：六种版式按适合程度排序。
+- `icons`：`{id:{source,name,license}}`。
+- `notes`：除原有说明外，还包括：去掉的不是用户给出的数字；由 AI 绘制或未通过核对而留空的图标；以及这个版式没有显示的要点、数字和规格（“这个版式没有显示：…”）。
+
+`content` 中的数字必须出现在 `hint` 或项目资料（名称、品类、材质说明、`dimensions_mm`）中，否则会被去掉。`hint` 中写成“标签 数值单位”或“标签：数值、数值…单位”的行，作为用户自己的规格放在最前面。AI 的返回结构见 `info_layer.compose_schema()`。
+
+**换版式。** `POST /api/projects/{id}/layers/{shot_id}/compose`，请求体 `{"layout": 版式, "content": {…}, "glyphs": {…}, "output"?: {job_id, version, quality}, "source"?: "rules"|"ai"|"manual"}`。用同一份内容生成另一种版式，不调用模型、不保存，返回 `{layer, report}`，`report` 含 `source, probe, notes, layout, anchored, output`。`content` 引用了 `glyphs` 中不存在的图标时返回 `400`。
+
+**图标。** 自动选图标时，候选同时来自模型给的英文关键词和要点自己的文字，两边交替排列。没有可用的视觉模型时，优先采用要点文字对照出的图标。在一个标签里，具体的量（承重、扭矩、load、torque）决定图标，其次是物体本身，泛称（尺寸、数量、sizes、steel）排在最后。`GET /api/icons?q=词[&online=1]`：`q` 为 1–60 个字，可以是中文或英文。返回 `{icons, online, online_allowed}`：`icons` 来自随附图标库，`online` 来自 Iconify（只取 MIT、ISC、Apache-2.0 授权；要同时满足 `online=1` 且 `AI_ICON_ONLINE` 未关闭）。每项为 `{id, source, name, license, ops, stroke, grid}`。`POST /api/icons/draw`，请求体 `{"concept": 不超过 80 字}`，返回 `{glyph}`：AI 绘制、校验，并由视觉模型核对（不合格或回复格式不对时，最多重画一次）；没有配置 AI 时返回 `400`。绘制使用 `AI_ICON_MODEL`；未设置时使用文本模型，接口与 Key 都相同。`glyph.model` 记录实际使用的模型。核对的标准是：放在标签旁边时，这个图形是否贴切，以及它是不是干净的线性图标。随附图标库的版本、来源与哈希记录在 `static/vendor/icons/VENDORED.json`，由 `scripts/vendor_icons.py` 生成。
+
+**Photoshop 导出（浏览器端，没有服务端接口）。** 「图文」面板的 PSD 按钮在浏览器中用随附的 ag-psd 34.2.0 生成文件。各层直接由画面上的 SVG 转换而来，从下到上依次是：
+
+- 「画布」像素层，填充 `canvas.color`。
+- 「照片」像素层：裁切后的照片，只覆盖它的框；没有画布时是整张渲染图。
+- 每个元素一个组，组名写着元素的内容。组里有：
+  - **文字图层：** SVG 里的每个 `<text>` 是一个文字图层，多行仍是一层。字号单位为 px，文档为 72 ppi。字距 = `letter-spacing` ÷ 字号 × 1000。`text-anchor` 换成段落对齐。英文字体用 `Inter-*`，中文用 `SourceHanSansSC-*`，粗细与画面一致。同一行里字号不同的部分（数值与单位）分成两层。
+  - **形状图层：** `<path>`、`<line>`、`<rect>`、`<circle>` 都转成形状图层。圆弧换算成三次贝塞尔，每段不超过 90°；所有坐标为文档像素。描边的线宽、端点、拐角和透明度，以及填充和奇偶填充规则，都写入矢量填充与描边。一个图标的描边与填充各合成一层。
+  - **像素图层：** 用渐变填充的底板写成像素图层。
+
+写出时带 `invalidateTextLayers`，Photoshop 打开时会用自己的排版引擎重画文字。文件里的合成图与 PNG 导出相同。没有 `layout` 的旧图层不能导出 PSD。
+
 ## v24 图文图层的风格、主色与文字角色
 
 `layers[shot_id]` 新增两个可选字段，`PUT /api/projects/{id}/layers/{shot_id}` 与 `/suggest` 的返回都带它们：
@@ -16,7 +85,7 @@
   {"id":"point1","type":"callout","x":0.05,"y":0.36,"w":0.26,"title":"抽屉收纳","detail":"物品分层放置","icon":"drawer","anchor":[0.45,0.43],"size":0.032,"color":"#ffffff","plate":null}]}
 ```
 
-`/suggest` 按画面决定这两个字段：产品与道具之外的区域平均亮度不低于 0.75 且起伏不大时 `theme` 为 `bold`，否则为 `card`；`accent` 取产品上占比足够的鲜艳色相（饱和度与明度调到醒目），产品没有明显色彩时为 `#e8452c`（浅背景）或 `#ffc53d`（深背景）。元素的 `color` 是直接画在照片上的东西（指向线、无卡片的文字）所用的颜色，仍按其下方画面的明暗取深或浅；卡片上的文字颜色由卡片底色决定。
+（v26 起 `/suggest` 返回的是版式，见上文；本节说明的字段仍用于 v24 保存的图层，以及在编辑器里给它们换风格。）v24 的 `/suggest` 按画面决定这两个字段：产品与道具之外的区域平均亮度不低于 0.75 且起伏不大时 `theme` 为 `bold`，否则为 `card`；`accent` 取产品上占比足够的鲜艳色相（饱和度与明度调到醒目），产品没有明显色彩时为 `#e8452c`（浅背景）或 `#ffc53d`（深背景）。元素的 `color` 是直接画在照片上的东西（指向线、无卡片的文字）所用的颜色，仍按其下方画面的明暗取深或浅；卡片上的文字颜色由卡片底色决定。
 
 AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`emphasis` 只有确实是 `headline` 的一部分时才会成为 `mark`。发给模型的 `available_icons` 是“图标名 → 含义”的对照表。标题块带着副标题会碰到产品时，副标题被省略，并出现在 `report.notes` 的“画面放不下”里。规则模式的 `kicker` 来自品类（如 `车间收纳`），`mark` 取标题中表示品类的词。
 
@@ -42,7 +111,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 坐标与尺寸都与分辨率无关：`x`、`y`、`w` 以及 `anchor` 是画面宽、高的比例（0–1），`size` 是画面短边的比例（文字为字号，图标为边长）。`text` 与 `callout` 的 `x`、`y` 是文字框左上角，`icon` 的是中心。`type` 为 `text`（`text`、`weight` 400/600/700、`align` left/center/right）、`icon`（`icon`）或 `callout`（`title`、`detail`、可选的 `icon`、可选的 `anchor`：引线所指的画面位置）。`color` 为 `#RRGGBB`；`plate` 为空或 `{color, opacity}`。一层最多 40 个元素；未知字段会被丢弃，未知类型、图标或带控制字符的文字会被拒绝。`basis` 记录排版时该镜头的相机参数与画幅，客户端据此提示“镜头在排版后变过”。
 
-**智能排版。** `POST /api/projects/{id}/layers/{shot_id}/suggest`，请求体 `{"hint"?: 不超过 400 字, "output"?: {job_id, version, quality}}`（缺省取该镜头最新的非缩略图输出）。返回 `{layer, report}`，**不保存**：由客户端放进编辑器，再经 `PUT` 保存。
+**智能排版。**（v26 起返回的是版式，见上文；以下是 v23 的行为，接口路径与“不保存”的约定不变。）`POST /api/projects/{id}/layers/{shot_id}/suggest`，请求体 `{"hint"?: 不超过 400 字, "output"?: {job_id, version, quality}}`（缺省取该镜头最新的非缩略图输出）。返回 `{layer, report}`，**不保存**：由客户端放进编辑器，再经 `PUT` 保存。
 
 ```json
 {"layer": {"version":1,"items":[…],"basis":{…},"source":"rules"},
