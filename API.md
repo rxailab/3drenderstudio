@@ -1,6 +1,6 @@
 # 本地接口与可复现性
 
-## v26 画面人物选项与模型摆正
+## v27 画面人物选项与模型摆正
 
 **画面人物。** `POST /api/projects/{id}/scene/recommend` 与 `POST /api/projects/{id}/scene` 的请求体新增 `"people"?: "auto" | "include" | "exclude"`，省略时为 `auto`。`include` 要求画面中有人在使用产品，`exclude` 要求画面中没有人。
 
