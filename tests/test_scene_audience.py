@@ -250,6 +250,11 @@ class ImageClientTests(unittest.TestCase):
                 self.call(self.http_error(code, body))
             message = str(raised.exception)
             self.assertIn(expected, message); self.assertNotIn('sk-123', message); self.assertNotIn('prompt text', message)
+        # A gateway that gave up is told apart from the rest, so the caller can try a quicker picture.
+        for code, kind in ((502, True), (504, True), (500, False), (429, False)):
+            with self.subTest(code=code), self.assertRaises(scene_imagegen.ImageError) as raised:
+                self.call(self.http_error(code, {}))
+            self.assertIs(isinstance(raised.exception, scene_imagegen.GatewayError), kind)
 
     def test_a_request_can_be_cancelled_and_needs_a_usable_key_and_references(self):
         body = events({'type': 'image_edit.completed', 'b64_json': base64.b64encode(png((512, 512))).decode()})
@@ -270,6 +275,18 @@ class ImageClientTests(unittest.TestCase):
         self.assertNotIn('Bosch', text)
         single = scene_imagegen.prompt('small bottle', None, 1, '', '1:1')
         self.assertIn('The attached image is a render of it.', single); self.assertNotIn('largest dimension', single); self.assertNotIn('CORRECTIONS', single)
+        self.assertNotIn('PEOPLE.', single)                    # nothing was asked: the scene description decides
+
+    def test_the_request_says_whether_a_person_is_in_the_picture(self):
+        scene = 'A workshop bench by a window.'
+        wanted = scene_imagegen.prompt('angle grinder', 300, 3, scene, '1:1', people=True)
+        self.assertIn('PEOPLE. The picture must show a person actually using or handling the product', wanted)
+        self.assertLess(wanted.index('THE SCENE.'), wanted.index('PEOPLE.')); self.assertLess(wanted.index('PEOPLE.'), wanted.index('RULES.'))
+        barred = scene_imagegen.prompt('angle grinder', 300, 3, scene, '1:1', people=False)
+        self.assertIn('PEOPLE. Nobody is in the picture', barred); self.assertNotIn('People are ordinary adults', barred)
+        # With no scene of its own, the stock scene follows the choice too.
+        self.assertIn('with a person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=True))
+        self.assertNotIn('person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=False))
 
     def test_sizes_follow_the_plan_and_views_cover_the_other_sides(self):
         self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(2048, 2048), (2048, 1536), (1536, 2048)])
@@ -289,18 +306,18 @@ class FidelityTests(unittest.TestCase):
 
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
-                 'issues': [], 'note': '一致。'}
+                 'person_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
-    def check(self, reply):
+    def check(self, reply, people=None):
         sent = {}
         def post(config, body):
             sent['body'] = body
             if isinstance(reply, Exception): raise reply
             return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch', 'input': reply}]}
         with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
-            return scene_imagegen.check(self.references, self.generated, 'rolling tool cabinet'), sent.get('body')
+            return scene_imagegen.check(self.references, self.generated, 'rolling tool cabinet', people), sent.get('body')
 
     def test_the_picture_is_shown_to_the_vision_model_next_to_every_render(self):
         result, body = self.check(self.verdict())
@@ -313,6 +330,22 @@ class FidelityTests(unittest.TestCase):
         result, _ = self.check(self.verdict(colours_consistent=False, issues=['top surface is black, should be light brushed steel'], note='台面颜色不符。'))
         self.assertEqual(result['status'], 'failed'); self.assertEqual(result['issues'], ['top surface is black, should be light brushed steel'])
         self.assertFalse(result['flags']['colours_consistent'])
+
+    def test_a_picture_without_the_person_that_was_asked_for_fails_and_so_does_an_unwanted_one(self):
+        missing, _ = self.check(self.verdict(person_visible=False), people=True)
+        self.assertEqual((missing['status'], missing['product_consistent'], missing['people']), ('failed', True, {'expected': True, 'visible': False, 'ok': False}))
+        self.assertIn('no person is visible', missing['issues'][0]); self.assertIn('没有出现人物', missing['note'])
+        unwanted, _ = self.check(self.verdict(person_visible=True), people=False)
+        self.assertEqual((unwanted['status'], unwanted['people']['ok']), ('failed', False)); self.assertIn('remove every person', unwanted['issues'][0])
+        self.assertEqual(self.check(self.verdict(person_visible=True), people=True)[0]['status'], 'passed')
+        self.assertEqual(self.check(self.verdict(person_visible=False), people=False)[0]['status'], 'passed')
+        # Nothing asked: who is in the picture is recorded, never a fault.
+        for visible in (True, False):
+            free, _ = self.check(self.verdict(person_visible=visible))
+            self.assertEqual((free['status'], free['people']), ('passed', {'expected': None, 'visible': visible, 'ok': True}))
+        # Both wrong: the person comes first, the product's differences follow.
+        both, _ = self.check(self.verdict(person_visible=False, parts_consistent=False, issues=['one handle is missing']), people=True)
+        self.assertEqual((both['status'], both['product_consistent'], len(both['issues']), both['issues'][1]), ('failed', False, 2, 'one handle is missing'))
 
     def test_a_check_that_cannot_run_keeps_the_picture_and_says_it_was_not_checked(self):
         self.assertEqual(self.check(ValueError('AI 请求超时'))[0]['status'], 'unchecked')
@@ -332,18 +365,22 @@ class CreateTests(unittest.TestCase):
         for index, (azimuth, elevation) in enumerate(scene_imagegen.angles(35, 18)):
             path = self.data / 'fixture' / 'refs' / ('ref%d.png' % index); path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(png())
             self.rows.append({'path': path, 'azimuth': azimuth, 'elevation': elevation, 'cached': False})
-        self.prompts = []; self.verdicts = []
+        self.prompts = []; self.verdicts = []; self.checked = []
+        def check(references, generated, product, people=None):
+            self.checked.append(people)
+            return self.verdicts.pop(0)
         for target, name, effect in ((scene_imagegen, 'config', lambda: IMAGE), (scene_imagegen, 'references', lambda *a, **k: self.rows),
-                                     (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', lambda *a, **k: self.verdicts.pop(0))):
+                                     (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', check)):
             mocked = patch.object(target, name, side_effect=effect); mocked.start(); self.addCleanup(mocked.stop)
 
     def edit(self, value, text, images, size, cancelled=None, progress=None):
         self.prompts.append(text)
         return {'png': png(tuple(size), (len(self.prompts) * 40, 0, 0)), 'size': list(size), 'usage': {'total_tokens': 100}}
 
-    def create(self, aspect='1:1'):
+    def create(self, aspect='1:1', **options):
         record = project(); record['plan']['aspect'] = aspect
-        return scene_imagegen.create(record, record['plan'], 35, 18, 'A jobsite.', 'rolling tool cabinet', 738, self.data / 'fixture' / 'scene_ai' / 't1' / 'scene')
+        return scene_imagegen.create(record, record['plan'], 35, 18, 'A jobsite.', 'rolling tool cabinet', 738,
+                                     self.data / 'fixture' / 'scene_ai' / 't1' / 'scene', **options)
 
     def test_a_picture_that_matches_is_kept_as_png_and_jpg_with_its_record(self):
         self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
@@ -371,6 +408,54 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(len(self.prompts), scene_imagegen.MAX_ATTEMPTS)
         self.assertEqual((made['record']['check']['status'], made['record']['check']['issues']), ('failed', ['one']))
         self.assertEqual(made['png'].read_bytes(), png((2048, 2048), (40, 0, 0)))
+
+    def test_a_picture_without_the_requested_person_is_made_once_more_and_told_why(self):
+        missing = {'status': 'failed', 'issues': [scene_imagegen.PEOPLE_FIXES[True]], 'note': '没有人物。', 'product_consistent': True,
+                   'people': {'expected': True, 'visible': False, 'ok': False}}
+        found = {'status': 'passed', 'issues': [], 'note': '一致。', 'product_consistent': True, 'people': {'expected': True, 'visible': True, 'ok': True}}
+        self.verdicts = [missing, found]
+        stages = []
+        made = self.create(people=True, progress=stages.append)
+        self.assertEqual(self.checked, [True, True]); self.assertEqual((made['record']['attempts'], made['record']['people']), (2, True))
+        self.assertIn('PEOPLE. The picture must show a person', self.prompts[0]); self.assertNotIn('CORRECTIONS', self.prompts[0])
+        self.assertIn('CORRECTIONS.', self.prompts[1]); self.assertIn('no person is visible', self.prompts[1])
+        self.assertIn('画面里没有人物，正在重新生成', stages)
+        self.assertEqual(made['record']['check']['people']['visible'], True)
+
+    def test_when_neither_picture_passes_the_one_that_got_the_people_right_is_kept(self):
+        wrong_people = {'status': 'failed', 'issues': ['p'], 'note': 'a', 'product_consistent': True, 'people': {'expected': False, 'visible': True, 'ok': False}}
+        wrong_product = {'status': 'failed', 'issues': ['one', 'two', 'three'], 'note': 'b', 'product_consistent': False,
+                         'people': {'expected': False, 'visible': False, 'ok': True}}
+        self.verdicts = [wrong_people, wrong_product]
+        made = self.create(people=False)
+        self.assertEqual(made['record']['check']['issues'], ['one', 'two', 'three'])
+        self.assertIn('PEOPLE. Nobody is in the picture', self.prompts[0])
+
+    def test_a_gateway_that_gives_up_gets_one_more_try_at_low_quality_and_the_record_says_so(self):
+        asked = []
+        def edit(value, text, images, size, cancelled=None, progress=None):
+            asked.append(value['quality'])
+            if value['quality'] != 'low': raise scene_imagegen.GatewayError('图像服务暂时不可用，请稍后重试。（HTTP 502）')
+            return self.edit(value, text, images, size)
+        self.verdicts = [{'status': 'failed', 'issues': ['one'], 'note': 'a'}, {'status': 'passed', 'issues': [], 'note': '一致。'}]
+        stages = []
+        with patch.object(scene_imagegen, 'edit', side_effect=edit):
+            made = self.create(progress=stages.append)
+        self.assertEqual(asked, ['medium', 'low', 'low'])                     # the correction does not go back to the quality that failed
+        self.assertEqual((made['record']['quality'], made['record']['quality_lowered_from'], made['record']['attempts']), ('low', 'medium', 2))
+        self.assertTrue(any('改用 low 质量重试' in stage for stage in stages))
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        self.assertNotIn('quality_lowered_from', self.create()['record'])
+        # Already at low quality, or another kind of failure: the error stands.
+        with patch.object(scene_imagegen, 'config', return_value={**IMAGE, 'quality': 'low'}), \
+                patch.object(scene_imagegen, 'edit', side_effect=scene_imagegen.GatewayError('（HTTP 502）')), self.assertRaises(scene_imagegen.GatewayError):
+            self.create()
+        calls = []
+        def refused(*arguments, **options):
+            calls.append(1); raise scene_imagegen.ImageError('图像服务的额度已用尽或账户欠费，请充值后重试。（HTTP 402）')
+        with patch.object(scene_imagegen, 'edit', side_effect=refused), self.assertRaisesRegex(scene_imagegen.ImageError, '额度'):
+            self.create()
+        self.assertEqual(len(calls), 1)
 
     def test_an_unchecked_picture_is_not_regenerated(self):
         self.verdicts = [{'status': 'unchecked', 'issues': [], 'note': '未核对。'}]
@@ -417,6 +502,51 @@ class StrategistTests(unittest.TestCase):
             self.assertEqual(scene_stylist.with_method({**proposal, 'people': False, 'complex': False}, 'generate')['method'], 'generate')
         with patch.object(scene_imagegen, 'config', return_value=None), self.assertRaisesRegex(ValueError, '图像模型未配置'):
             scene_stylist.with_method(proposal, 'generate')
+
+    def test_the_users_choice_about_people_is_binding(self):
+        wanted, asked = self.propose(answer(people=False, complex=False), people='include')
+        self.assertIs(asked['facts']['required_people'], True)
+        self.assertEqual((wanted['people'], wanted['people_choice'], wanted['method']), (True, 'include', 'generate'))
+        barred, asked = self.propose(answer(people=True, complex=False), people='exclude')
+        self.assertIs(asked['facts']['required_people'], False)
+        self.assertEqual((barred['people'], barred['people_choice'], barred['method']), (False, 'exclude', 'render'))
+        self.assertEqual(self.propose(answer(people=True, complex=True), people='exclude')[0]['method'], 'generate')     # a real place, nobody in it
+        free, asked = self.propose(answer(people=True))
+        self.assertNotIn('required_people', asked['facts']); self.assertEqual((free['people'], free['people_choice']), (True, 'auto'))
+        self.assertEqual(scene_stylist._brief(wanted, 'generate')['people_choice'], 'include')
+        self.assertIs(scene_stylist._brief(wanted, 'render')['people'], False)        # props never include a person
+        with self.assertRaisesRegex(ValueError, '人物选项无效'):
+            self.propose(answer(), people='maybe')
+
+    def test_a_person_that_was_asked_for_is_never_silently_dropped(self):
+        proposal, _ = self.propose(answer(), people='include')
+        with patch.object(scene_imagegen, 'config', return_value=IMAGE):
+            with self.assertRaisesRegex(ValueError, '3D 道具场景里没有人物'):
+                scene_stylist.with_method(proposal, 'render')
+            self.assertEqual(scene_stylist.with_method(proposal, 'generate')['people'], True)
+        with self.assertRaisesRegex(ValueError, '无法生成含人物的场景图'):
+            self.propose(answer(), image=False, people='include')
+        with self.assertRaisesRegex(ValueError, '无法生成含人物的场景图'):
+            self.propose(None, image=False, people='include')
+
+    def test_fixed_recipes_show_a_person_when_the_image_model_makes_the_picture(self):
+        team = scene_audience.segment('site_team')
+        auto, _ = self.propose(None)
+        self.assertEqual((auto['method'], auto['people'], auto['scene']), ('render', False, team['place']))
+        with patch.object(scene_imagegen, 'config', return_value=IMAGE):
+            made = scene_stylist.with_method(auto, 'generate')
+            self.assertEqual((made['people'], made['scene']), (True, team['scene']))
+            self.assertEqual(scene_stylist.with_method(made, None)['method'], 'render')       # asked again without a method: props, as before
+        wanted, _ = self.propose(None, people='include')
+        self.assertEqual((wanted['method'], wanted['people'], wanted['scene']), ('generate', True, team['scene']))
+        barred, _ = self.propose(None, people='exclude')
+        self.assertEqual((barred['method'], barred['people'], barred['scene']), ('render', False, team['place']))
+        with patch.object(scene_imagegen, 'config', return_value=IMAGE):
+            self.assertEqual(scene_stylist.with_method(barred, 'generate')['scene'], team['place'])
+        for item in scene_audience.library():
+            with self.subTest(segment=item['id']):
+                self.assertRegex(item['scene'], r'(?i)person|homeowner|enthusiast|tradesperson|installers|technician|groundskeeper')
+                self.assertNotRegex(item['place'], r'(?i)person|people|homeowner|enthusiast|tradesperson|installer|technician|groundskeeper|\bhands?\b(?! tools)')
 
     def test_the_users_segment_and_reference_are_binding(self):
         proposal, asked = self.propose(answer(segment_id='site_team', reference_id='05-06'), audience='home_garden', reference='07-02')
@@ -481,8 +611,9 @@ class SceneFlowTests(unittest.TestCase):
         self.asked += 1
         return {**self.reply, **({'segment_id': facts['required_segment']} if 'required_segment' in facts else {})}
 
-    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None):
-        self.created.append({'azimuth': azimuth, 'elevation': elevation, 'scene': scene, 'product': product, 'size_mm': size_mm, 'plan': copy.deepcopy(plan)})
+    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None):
+        self.created.append({'azimuth': azimuth, 'elevation': elevation, 'scene': scene, 'product': product, 'size_mm': size_mm, 'plan': copy.deepcopy(plan),
+                             'people': people})
         folder.mkdir(parents=True, exist_ok=True)
         picture = folder / 'scene.png'; picture.write_bytes(png((2048, 2048))); (folder / 'scene.jpg').write_bytes(b'jpeg')
         return {'png': picture, 'jpg': folder / 'scene.jpg', 'width': 2048, 'height': 2048,
@@ -532,6 +663,40 @@ class SceneFlowTests(unittest.TestCase):
         self.assertEqual(self.asked, 1)                                   # not asked again
         self.run_task(hint='车间')                                         # other words, or another plan version: asked again
         self.assertEqual(self.asked, 2)
+
+    def test_the_choice_about_people_reaches_the_planner_the_image_model_and_the_plan(self):
+        self.reply = answer(people=False, complex=True)                  # the planner alone would have left the person out
+        task = self.run_task(method='generate', people='include')
+        self.assertEqual(task['status'], 'completed', task.get('error'))
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[0]['people'], brief['people'], brief['people_choice']), (True, True, 'include'))
+        self.run_task(method='generate', people='exclude')
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[1]['people'], brief['people'], brief['people_choice']), (False, False, 'exclude'))
+        self.run_task()                                                  # nothing chosen: the planner's own answer
+        self.assertIs(self.created[2]['people'], False)
+
+    def test_a_proposal_made_for_another_choice_about_people_is_not_reused(self):
+        shown = scene_stylist.recommend('fixture', {'hint': ''})
+        self.assertEqual((self.asked, shown['people_choice']), (1, 'auto'))
+        self.run_task(people='include')
+        self.assertEqual((self.asked, self.created[0]['people']), (2, True))
+        shown = scene_stylist.recommend('fixture', {'people': 'exclude'})
+        self.run_task(people='exclude')
+        self.assertEqual((self.asked, self.created[1]['people'], shown['people']), (3, False, False))
+
+    def test_a_request_that_cannot_show_the_person_is_refused_before_anything_is_asked(self):
+        for body in ({'people': 'include', 'method': 'render'}, {'people': 'sometimes'}):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                scene_stylist.submit('fixture', {'expected_version': 1, **body})
+            with self.subTest(body=body, call='recommend'), self.assertRaises(ValueError):
+                scene_stylist.recommend('fixture', body)
+        with patch.object(scene_imagegen, 'config', return_value=None):
+            with self.assertRaisesRegex(ValueError, '无法生成含人物的场景图'):
+                scene_stylist.submit('fixture', {'expected_version': 1, 'people': 'include'})
+            with self.assertRaisesRegex(ValueError, '无法生成含人物的场景图'):
+                scene_stylist.recommend('fixture', {'people': 'include'})
+        self.assertEqual((self.asked, store.all_records(scene_stylist.KIND)), (0, []))
 
     def test_changing_the_audience_or_method_changes_what_is_made(self):
         task = self.run_task(audience='home_garden', method='generate')

@@ -7,12 +7,15 @@ the description of the scene. The renders are the only pictures the model
 receives: they pin down the product's shape, parts and colours, so the model
 places this product in the scene instead of inventing a similar one. The
 result is then compared with the renders by the vision model, and a picture
-that changed the product is made once more with the differences named.
+that changed the product is made once more with the differences named. The
+same check looks for a person: when the user asked for one and the picture
+has none (or the other way round), that too is corrected once.
 
     references()   the product from the target angle and two others (cached)
     prompt()       the request: what to keep exactly, which scene to build
-    edit()         one call to the Images API, streamed so slow gateways hold
-    check()        does the product in the picture still match the renders
+    edit()         one call to the Images API, streamed so slow gateways hold;
+                   when a gateway gives up all the same, once more at low quality
+    check()        does the product still match the renders; is a person there
     create()       all of the above; returns the image and its record
 
 No third-party picture is ever sent: the reference pack contributes words
@@ -56,13 +59,31 @@ Compare the product in GENERATED with the references. Return data only:
 - parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
+- person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - issues: up to 5 short, concrete differences in English, each naming the part and what is wrong ("top surface is black, should be light brushed steel"). Empty when there are none.
 - note: one sentence in the language of note_language giving the verdict.
 Judge only what can be seen. A side that faces away is not a difference, and a part hidden behind a person or an object is not missing.'''
 
 
+# What the request says about people, and what a picture that got it wrong is told to fix.
+PEOPLE_RULES = {
+    True: ('PEOPLE. The picture must show a person actually using or handling the product: their hands on it and at least their arms '
+           'and upper body in the frame, in a natural working posture. The person is clearly visible, not a blur at the edge. The '
+           'product stays the main subject and is not hidden by the person.'),
+    False: ('PEOPLE. Nobody is in the picture: no person, no hands or other body parts, no silhouettes, shadows or reflections of '
+            'people. The product stands or lies ready for use in the scene.'),
+}
+PEOPLE_FIXES = {True: 'no person is visible: show a person clearly using or handling the product, hands on it, arms and upper body in frame',
+                False: 'a person or a part of one is visible: remove every person, hand and body part from the picture'}
+PEOPLE_NOTES = {True: '画面里没有出现人物，与「包含人物」的要求不符。', False: '画面里出现了人物，与「不含人物」的要求不符。'}
+
+
 class ImageError(ValueError):
     """A generation that did not produce a picture; the message is safe to show."""
+
+
+class GatewayError(ImageError):
+    """The gateway in front of the image model gave up (HTTP 502 or 504), usually because the picture took too long."""
 
 
 def config():
@@ -171,8 +192,12 @@ def references(project, plan, azimuth, elevation, cancelled=None, progress=None)
     return rows
 
 
-def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None):
-    """The words sent with the renders. ``scene`` is the only free text in it."""
+def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None, people=None):
+    """The words sent with the renders. ``scene`` is the only free text in it.
+
+    ``people`` is True when a person must be in the picture, False when nobody
+    may be, and None when the scene description alone decides.
+    """
     scene = scene_audience.scrub(re.sub(r'\s+', ' ', str(scene or '')).strip())[:1500]
     product = re.sub(r'\s+', ' ', str(product or 'product')).strip()[:120]
     size = ''
@@ -187,15 +212,20 @@ def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None):
         'and position of every part, the same colours and materials. Do not redesign, simplify, add or remove anything on it, and '
         'do not put any logo or lettering on it. Show one single product, complete and clearly recognisable, seen from roughly the '
         'side of image 1.' % (product, size, views),
-        'THE SCENE. ' + (scene or 'A believable place where this product is used, with a person using it.'),
-        'RULES. Natural, believable light. Correct scale between the product, people and surroundings. No brand names, logos, '
-        'signs, captions or other text anywhere in the picture, and no watermark. People are ordinary adults in plain clothes '
-        'suited to the work, shown naturally. Composition for a %s frame.' % {'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),
+        'THE SCENE. ' + (scene or ('A believable place where this product is used, the product standing ready for use.' if people is False
+                                   else 'A believable place where this product is used, with a person using it.')),
+        'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
+        'signs, captions or other text anywhere in the picture, and no watermark.%s Composition for a %s frame.'
+        % (((' and its surroundings', '') if people is False else
+            (', people and surroundings', ' People are ordinary adults in plain clothes suited to the work, shown naturally.'))
+           + ({'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),)),
     ]
+    if people in PEOPLE_RULES:
+        lines.insert(3, PEOPLE_RULES[people])
     if corrections:
-        fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:5] if str(item).strip())
+        fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:6] if str(item).strip())
         if fixes:
-            lines.append('CORRECTIONS. An earlier attempt changed the product. Compared with the renders it got these wrong, fix them: ' + fixes + '.')
+            lines.append('CORRECTIONS. An earlier attempt got these wrong, compared with the renders and with this request. Fix each of them: ' + fixes + '.')
     return '\n\n'.join(lines)
 
 
@@ -226,6 +256,7 @@ def _http_message(error):
     messages = {400: '图像请求被拒绝，请检查图像模型名称及其支持的尺寸。', 401: '图像接口的 API Key 无效或未授权。',
                 402: '图像服务的额度已用尽或账户欠费，请充值后重试。', 403: '图像服务拒绝访问，请检查令牌与模型权限。',
                 404: '未找到图像接口或模型，请检查地址与模型名称。', 408: '图像服务处理超时，请重试。',
+                418: '图像服务拒绝了当前网络地址（多次使用无效的 Key 后可能被临时屏蔽）；请核对 Key，稍后再试。',
                 413: '参考图过大，图像服务未接受。', 429: '图像服务请求过于频繁或额度受限，请稍后重试。'}
     return messages.get(error.code, '图像服务暂时不可用，请稍后重试。' if error.code >= 500 else '图像请求失败，请检查服务配置。') + '（HTTP %s）' % error.code
 
@@ -330,8 +361,8 @@ def edit(value, text, images, size, cancelled=None, progress=None):
     except InterruptedError:             # a cancellation is an OSError by inheritance; it is not a network failure
         raise
     except urllib.error.HTTPError as error:
-        message = _http_message(error); error.close()
-        raise ImageError(message) from None
+        message = _http_message(error); code = error.code; error.close()
+        raise (GatewayError if code in (502, 504) else ImageError)(message) from None
     except (socket.timeout, TimeoutError):
         raise ImageError('图像生成超时，请重试。') from None
     except urllib.error.URLError:
@@ -344,18 +375,22 @@ def edit(value, text, images, size, cancelled=None, progress=None):
     return {'png': content, 'size': list(actual), 'usage': usage}
 
 
+FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text')
+
+
 def fidelity_schema():
-    flags = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text')
-    properties = {name: {'type': 'boolean'} for name in flags}
+    properties = {name: {'type': 'boolean'} for name in FIDELITY_FLAGS + ('person_visible',)}
     properties['issues'] = {'type': 'array', 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}, 'minItems': 0, 'maxItems': 5}
     properties['note'] = {'type': 'string', 'minLength': 1, 'maxLength': 300}
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product):
-    """Compare the generated product with the renders.
+def check(reference_paths, generated_path, product, people=None):
+    """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
+    ``people`` is what was asked for (True, False, or None for no requirement);
+    a picture that shows the opposite fails like one that changed the product.
     Without a vision model, or when it does not answer, the picture is kept and
     marked unchecked: the person looking at it is then the check.
     """
@@ -380,14 +415,24 @@ def check(reference_paths, generated_path, product):
         ai._check_schema(answer, schema)
     except Exception:                # the picture exists; a check that could not run must not lose it
         return {'status': 'unchecked', 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
-    flags = {name: answer[name] for name in schema['properties'] if name not in ('issues', 'note')}
-    passed = all(flags.values())
-    issues = [] if passed else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
-    return {'status': 'passed' if passed else 'failed', 'flags': flags, 'issues': issues, 'note': re.sub(r'\s+', ' ', answer['note']).strip()[:300]}
+    flags = {name: answer[name] for name in FIDELITY_FLAGS}
+    faithful = all(flags.values()); visible = answer['person_visible']
+    issues = [] if faithful else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
+    note = re.sub(r'\s+', ' ', answer['note']).strip()[:300]
+    wrong_people = people in PEOPLE_FIXES and visible != people
+    if wrong_people:
+        issues = [PEOPLE_FIXES[people]] + issues[:5]
+        note = (PEOPLE_NOTES[people] + ('' if faithful else note))[:300]
+    return {'status': 'passed' if faithful and not wrong_people else 'failed', 'flags': flags, 'issues': issues, 'note': note,
+            'product_consistent': faithful, 'people': {'expected': people, 'visible': visible, 'ok': not wrong_people}}
 
 
-def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None):
-    """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``."""
+def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None):
+    """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``.
+
+    ``people`` is True when a person must be in the picture and False when
+    nobody may be; None leaves it to the scene description.
+    """
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
     value = config()
     if not value:
@@ -397,27 +442,38 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     paths = [row['path'] for row in rows]
     aspect = plan.get('aspect', '1:1'); size = size_for(aspect, value['model'])
     folder.mkdir(parents=True, exist_ok=True)
-    attempts = []; corrections = None; usage = {}
+    attempts = []; corrections = None; usage = {}; retry = ''; lowered = None
     for number in range(1, MAX_ATTEMPTS + 1):
         if stop(): raise InterruptedError()
-        say('图像模型正在生成场景' if number == 1 else '产品与参考图不一致，正在重新生成')
-        text = prompt(product, size_mm, len(paths), scene, aspect, corrections)
-        result = edit(value, text, paths, size, stop, say)
+        say('图像模型正在生成场景' if number == 1 else retry)
+        text = prompt(product, size_mm, len(paths), scene, aspect, corrections, people)
+        try:
+            result = edit(value, text, paths, size, stop, say)
+        except GatewayError:
+            # A gateway that cuts slow requests off still lets a quick, low-quality picture through.
+            if value.get('quality', 'medium') == 'low':
+                raise
+            if stop(): raise InterruptedError()
+            say('图像服务未能在「%s」质量下完成，改用 low 质量重试' % value.get('quality', 'medium'))
+            lowered = value.get('quality', 'medium'); value = {**value, 'quality': 'low'}
+            result = edit(value, text, paths, size, stop, say)
         target = folder / ('attempt%d.png' % number)
         target.write_bytes(result['png'])
         for key, amount in result['usage'].items():
             usage[key] = usage.get(key, 0) + amount
         if stop(): raise InterruptedError()
-        say('核对产品是否与参考图一致')
-        verdict = check(paths, target, product)
+        say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的人物')
+        verdict = check(paths, target, product, people)
         attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text})
         if verdict['status'] != 'failed':
             break
         corrections = verdict['issues']
-    # A passing picture wins; otherwise the one with the fewest differences, the later on a tie.
+        wrong_people = verdict.get('people', {}).get('ok') is False
+        retry = ('画面里没有人物，正在重新生成' if people else '画面里出现了人物，正在重新生成') if wrong_people else '产品与参考图不一致，正在重新生成'
+    # A passing picture wins; otherwise one that got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
     if chosen is None:
-        chosen = min(reversed(attempts), key=lambda item: len(item['check']['issues']))
+        chosen = min(reversed(attempts), key=lambda item: (item['check'].get('people', {}).get('ok') is False, len(item['check']['issues'])))
     stem = folder.name
     png = folder / (stem + '.png'); jpg = folder / (stem + '.jpg')
     png.write_bytes(chosen['file'].read_bytes())       # untouched: the model's own provenance metadata stays in the file
@@ -426,7 +482,10 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     width, height = chosen['size']
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
-              'check': chosen['check'], 'prompt': chosen['prompt'][:6000], 'usage': usage, 'seconds': round(time.time() - started, 1),
+              'check': chosen['check'], 'people': people, 'prompt': chosen['prompt'][:6000], 'usage': usage,
+              'seconds': round(time.time() - started, 1),
               'references': [{'url': url(row['path']), 'azimuth': row['azimuth'], 'elevation': row['elevation']} for row in rows],
+              # The quality that was asked for, when the service only completed the picture at a lower one.
+              **({'quality_lowered_from': lowered} if lowered else {}),
               'discarded': [{'url': url(item['file']), 'issues': item['check']['issues']} for item in attempts if item is not chosen]}
     return {'png': png, 'jpg': jpg, 'width': width, 'height': height, 'record': record}

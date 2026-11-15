@@ -162,11 +162,16 @@ def frame_for_shape(plan, features):
     """Choose the first full-shot heights from measured proportions (Z is up).
 
     Only the untouched default plan of a new upload is adjusted. The reason is
-    stored with the plan, and every angle stays editable afterwards.
+    stored with the plan, and every angle stays editable afterwards. The
+    proportions are those of the model as the plan poses it, so a model that
+    was stood upright is framed as it stands.
     """
     dims=features.get('dimensions') if isinstance(features,dict) else None
     if (not isinstance(dims,(list,tuple)) or len(dims)!=3
             or any(type(v) not in (int,float) or not math.isfinite(v) or v<=0 for v in dims)): return None
+    if any(plan.get('rotation',[0,0,0])):
+        from orientation import oriented_dimensions
+        dims=oriented_dimensions(dims,plan['rotation'])
     footprint=max(dims[0],dims[1]);height=dims[2]
     shape='flat' if height<=footprint*.4 else 'tall' if height>=footprint*2.2 else None
     if shape is None: return None

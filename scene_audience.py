@@ -24,50 +24,60 @@ PACK = ROOT / 'references' / PACK_ID
 PACK_TITLE = '欧洲工具电商视觉参考'
 PACK_ACCESSED = '2026-11-13'
 METHODS = ('render', 'generate')
+PEOPLE = ('auto', 'include', 'exclude')     # whether the picture shows a person: decided by the planner, required, or ruled out
 SOURCES = ('ai', 'rules', 'user')
 MAX_TEXT = 400
 
 # The pack's strategy matrix (its README), in the order of its index. ``words``
 # are product words that point at the segment when no model is there to judge;
-# ``scene`` is the picture to ask for when no model has written a better one.
+# ``scene`` is the picture to ask for when no model has written a better one,
+# and ``place`` the same picture with nobody in it.
 SEGMENTS = (
     {'id': 'home_starter', 'scene': 'A bright, tidy room at home. A person in casual clothes uses the product for a simple household fix; its accessories lie neatly within reach.',
+     'place': 'A bright, tidy room at home, set up for a simple household fix: the product on a table next to the job, its accessories lying neatly within reach.',
      'label': '家庭轻维修与入门用户', 'question': '会不会用、买到什么',
      'priority': '套装全貌、手持尺度、家庭任务、步骤', 'focus': '明亮、简单、配件完整',
      'words': ('螺丝刀', '批头', '家用', '入门', '挂画', '手电钻', '电钻', '工具套装', '套装', 'screwdriver', 'bit set',
                'cordless drill', 'starter', 'household', 'home kit')},
     {'id': 'diy_project', 'scene': 'A home improvement project under way in a garage: timber boards on trestles, a homeowner in work gloves using the product, the half-finished piece visible behind.',
+     'place': 'A home improvement project under way in a garage: timber boards on trestles, the product resting by the workpiece mid-job, the half-finished piece visible behind.',
      'label': '项目型 DIY 屋主', 'question': '能完成什么项目、是否兼容',
      'priority': '项目操作、成果、材料、附件', 'focus': '任务过程、应用范围',
      'words': ('曲线锯', '喷涂', '喷枪', '搁架', '层板', '装修', '翻新', 'diy', 'jigsaw', 'spray gun', 'paint sprayer',
                'shelf', 'renovation')},
     {'id': 'workshop_hobbyist', 'scene': 'A well-kept private workshop with a solid wooden workbench and hand tools on the wall. An enthusiast works carefully with the product; measuring tools on the bench.',
+     'place': 'A well-kept private workshop: the product on a solid wooden workbench, hand tools on the wall behind, measuring tools laid out beside it.',
      'label': '进阶爱好者与个人工坊用户', 'question': '精度和结构是否适合我',
      'priority': '金属细节、刻度、工作台操作', 'focus': '加工质量、可控性、尺寸',
      'words': ('砂磨', '砂带', '打磨机', '工作台', '台钳', '木工', '工坊', '车床', '雕刻', 'sander', 'workbench', 'vise',
                'woodwork', 'lathe', 'router', 'bench')},
     {'id': 'mobile_tradesperson', 'scene': 'A tradesperson on a house call: the open rear of a plain work van on a residential street, the product within reach as they set up for the job.',
+     'place': 'A house call: the open rear of a plain work van on a residential street, the product set out on the van floor ready for the job, a few tools beside it.',
      'label': '自雇技工与上门维修者', 'question': '是否便携、能否适应工况',
      'priority': '现场操作、手握、腰包、装车', 'focus': '真实尺度、使用姿势、可靠性',
      'words': ('工具包', '工具箱', '腰包', '便携', '上门', '维修', '锯片', '钻头', '开孔器', '凿', 'tool bag', 'toolbox',
                'tool box', 'portable', 'blade', 'hole saw', 'chisel', 'drill bit')},
     {'id': 'site_team', 'scene': 'A small renovation jobsite: a bare plastered room with a stepladder and dust sheets. Two installers work with the product between them, one taking a tool from it.',
+     'place': 'A small renovation jobsite: a bare plastered room with a stepladder and dust sheets, the product standing ready in the middle of the work with tools laid out on it.',
      'label': '小型施工与安装团队', 'question': '如何运输、配置和管理',
      'priority': '堆叠、抽屉、车载、整套布局', 'focus': '系统兼容、取用、协作',
      'words': ('工具车', '工具柜', '抽屉柜', '堆叠', '收纳箱', '车载', '电锤', '角磨', '圆锯', '斜切锯', '激光', 'tool cart',
                'tool cabinet', 'tool chest', 'trolley', 'stackable', 'storage system', 'hammer drill', 'grinder',
                'miter saw', 'laser level')},
     {'id': 'industrial_maintenance', 'scene': 'A clean industrial plant room with pipework and control cabinets. A maintenance technician in a plain work jacket uses the product during an inspection.',
+     'place': 'A clean industrial plant room with pipework and control cabinets: the product set down beside an open inspection panel, ready for use.',
      'label': '专业维修与工业维护采购', 'question': '型号是否适配、如何选型',
      'priority': '套筒排列、接口、规格、技术细节', 'focus': '明确尺寸与边界、可核查信息',
      'words': ('万用表', '测试仪', '仪表', '套筒', '扭力', '探头', '钳形表', '规格', 'multimeter', 'tester', 'socket set',
                'torque', 'probe', 'clamp meter', 'gauge')},
     {'id': 'home_garden', 'scene': 'A small private garden on a mild day: a trimmed lawn, a hedge and a wooden shed. A homeowner uses the product at an easy pace.',
+     'place': 'A small private garden on a mild day: a trimmed lawn, a hedge and a wooden shed, the product resting on the grass next to the work it is for.',
      'label': '家庭园艺与庭院维护者', 'question': '是否适合空间、是否好操作',
      'priority': '修剪动作、庭院尺度、收纳', 'focus': '任务清晰、轻松、实际比例',
      'words': ('割草机', '绿篱', '修枝', '灌木剪', '园艺', '花园', '庭院', '草坪', '浇水', 'mower', 'hedge', 'trimmer',
                'garden', 'lawn', 'pruner', 'shears', 'watering')},
     {'id': 'pro_landscape', 'scene': 'A public park in the morning: wide lawns and mature trees. A groundskeeper in plain protective workwear operates the product, a service vehicle parked far behind.',
+     'place': 'A public park in the morning: wide lawns and mature trees, the product set down on a path beside the work area, a service vehicle parked far behind.',
      'label': '专业园林与绿地维护者', 'question': '大面积作业如何安排',
      'priority': '工作现场、设备组合、操作细节', 'focus': '工作流程、防护、补能与维护',
      'words': ('割灌机', '电锯', '链锯', '高枝锯', '吹风机', '园林', '绿地', '绿化', 'brushcutter', 'chainsaw', 'pole saw',
@@ -119,7 +129,7 @@ def library():
                 text = ' '.join((item['title'], item['locator'], item['note']))
                 references.append({'id': '%02d-%02d' % (number, index), **item, 'in_use': bool(IN_USE.search(text))})
             if references:
-                segments.append({**{key: base[key] for key in ('id', 'label', 'question', 'priority', 'focus', 'scene')},
+                segments.append({**{key: base[key] for key in ('id', 'label', 'question', 'priority', 'focus', 'scene', 'place')},
                                  'number': number, 'references': references})
         _CACHE.update(stamp=stamp, segments=segments)
         return segments
@@ -200,6 +210,15 @@ def propose_rules(text, strong='', required=None, recipe_segment=None):
     return chosen['id'], pick_reference(chosen['id'], False), '按产品名称和部件判断，购买者最接近「%s」：他们关心%s。' % (chosen['label'], chosen['question'])
 
 
+def fixed_scene(segment_id, people):
+    """The picture to ask for when no model wrote one: the segment's scene, with or without a person in it."""
+    chosen = segment(segment_id)
+    if not chosen:
+        return ('A believable place where this product is used, with a person using it.' if people else
+                'A believable place where this product is used, the product standing ready for use.')
+    return chosen['scene'] if people else chosen['place']
+
+
 def brief_text(segment_id, reference_id=None):
     """What a scene agent is told about the chosen audience, in plain fields."""
     chosen = segment(segment_id)
@@ -216,7 +235,8 @@ def brief_text(segment_id, reference_id=None):
 
 def validate_brief(value, plan):
     """Raise ValueError unless ``value`` is a well-formed plan['scene_brief']."""
-    allowed = {'version', 'shot_id', 'segment_id', 'reference_id', 'source', 'method', 'reason', 'summary', 'people', 'complex'}
+    allowed = {'version', 'shot_id', 'segment_id', 'reference_id', 'source', 'method', 'reason', 'summary', 'people', 'complex',
+               'people_choice'}
     if not isinstance(value, dict) or set(value) - allowed or value.get('version') != 1:
         raise ValueError('场景人群记录无效')
     if value.get('shot_id') not in {shot['id'] for shot in plan.get('shots', [])}:
@@ -234,6 +254,8 @@ def validate_brief(value, plan):
     for key in ('people', 'complex'):
         if type(value.get(key, False)) is not bool:
             raise ValueError('场景人群记录的标记无效')
+    if value.get('people_choice', 'auto') not in PEOPLE:
+        raise ValueError('场景人群记录的人物选项无效')
     return value
 
 

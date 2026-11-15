@@ -1,5 +1,57 @@
 # 本地接口与可复现性
 
+## v26 画面人物选项与模型摆正
+
+**画面人物。** `POST /api/projects/{id}/scene/recommend` 与 `POST /api/projects/{id}/scene` 的请求体新增 `"people"?: "auto" | "include" | "exclude"`，省略时为 `auto`。`include` 要求画面中有人在使用产品，`exclude` 要求画面中没有人。
+
+- 方案（`scene_proposal`）新增 `people_choice`，即请求中的值；`people` 是最终是否有人：`include`/`exclude` 时由它决定，`auto` 时是策划的判断。按规则推荐（`source: "rules"`）且为 `auto` 时，`people` 随生成方式：图像模型生成为真，3D 道具为假，`scene` 相应换成带人或不带人的固定画面。
+- 不能成立的组合返回 400，不会改写后继续：`people: "include"` 与 `method: "render"`（“3D 道具场景里没有人物…”），以及 `people: "include"` 而图像模型不可用（“…无法生成含人物的场景图…”）。提交生成时在排队之前检查。
+- 任务只在保存的 `scene_proposal` 的 `people_choice` 与请求一致时复用它。
+- `plan.scene_brief` 新增可选的 `people_choice`；`people` 在 `method` 为 `render` 时恒为 `false`。
+- AI 生成的输出，`generated.people` 为 `true`、`false` 或 `null`（没有要求）。`generated.check` 新增：
+
+```json
+{"status":"failed","flags":{…五项产品核对…},"product_consistent":true,
+ "people":{"expected":true,"visible":false,"ok":false},
+ "issues":["no person is visible: show a person clearly using or handling the product, …"],"note":"画面里没有出现人物，与「包含人物」的要求不符。"}
+```
+
+  `people.ok` 为 `false` 时 `status` 为 `failed`，即使产品一致；这时再生成一次，请求文字末尾的 `CORRECTIONS` 段带上人物这一条。两张都不通过时，保留 `people.ok` 不为 `false` 的那张，其次是差异少的那张。没有要求时 `expected` 为 `null`，`visible` 只作记录。
+- `generated.quality_lowered_from`：图像服务以 HTTP 502 或 504 放弃请求后，应用以 `low` 质量重试成功时出现，值为原来的质量（如 `"medium"`），此时 `generated.quality` 为 `"low"`。
+- `GET /api/scene/audiences` 的每个人群新增 `place`：与 `scene` 对应的无人画面。
+
+**摆放朝向。** 方案的 `rotation`（XYZ 欧拉角，度）仍是唯一决定姿态的字段；下面的接口负责判断和修改它。
+
+`GET /api/projects/{id}/orientation` 返回 `{orientation, task, rotation, available}`。`available` 即 `GET /api/system` 的 `runtime.capabilities.orientation`（`blender/worker.py`、`blender/orient.py`、`orientation.py` 齐全且找到 Blender）。`orientation` 是最近一次检查的记录，没有检查过时为 `null`；项目详情 `GET /api/projects/{id}` 中也有同样的 `orientation` 和 `orient_task`：
+
+```json
+{"version":1,"status":"ready","checked_at":1794762713.0,"source":"vision","reason":"电池包在底部作为支撑…",
+ "product":"cordless drill","chosen":"flip","changed":true,"rotation":[180.0,0.0,0.0],
+ "candidates":[{"id":"file","label":"原始朝向","rotation":[0.0,0.0,0.0],
+                "image_url":"/files/<项目>/orientation/<任务>/up/pose_file.png",
+                "dimensions":[1.98,0.57,2.0],"support_ratio":0.068,"tip_angle":3.73}, …],
+ "front":{"turn":180,"reason":"…","sheet_url":"/files/…/front/sheet.png"}}
+```
+
+`source` 为 `vision`（视觉模型）、`names`（部件名称）或 `file`（没有依据，未改动）；`status` 为 `failed` 时 `reason` 是原因、`candidates` 为空。候选的 `id` 为 `file`、`flip`、`forward`、`backward`、`right`、`left`。`front` 只在摆正后又转了朝向时出现。`support_ratio` 与 `tip_angle` 是测量记录，不参与判断。
+
+新上传的项目在分析任务中自动检查（阶段“检查模型摆放朝向”“由视觉模型判断哪一面朝上”“判断产品正面”），结果在建立首个方案之前写入 `rotation`；检查失败不影响分析完成。
+
+`POST /api/projects/{id}/orientation`，请求体 `{"expected_version"?, "shot_id"?}`，返回 202 和任务 `{id, project_id, status, stage, error, base_version, created_at}`：重新渲染候选并判断。完成时 `status` 为 `completed`，带 `changed` 与 `applied_version`；`changed` 为真时方案新增一个版本（历史原因“自动摆正模型”）并提交 `shot_id`（默认白底主图）的预览。没有依据（`source: "file"`），或当前姿态已经是同一面朝上，则不改方案。`POST /api/projects/{id}/orientation/{task_id}/cancel` 取消。
+
+`POST /api/projects/{id}/orientation/apply` 立即改姿态，返回项目详情。请求体含 `expected_version`?、`shot_id`? 和下列之一：
+
+| 字段 | 作用 |
+| --- | --- |
+| `"candidate": "<id>"` | 改用该候选姿态（没有检查记录时可用六个标准 id） |
+| `"flip": true` | 在当前姿态上上下翻转 |
+| `"turn": 90 \| -90 \| 180` | 绕竖直方向转动 |
+| `"rotation": [x, y, z]` | 直接给出角度，每项 -360 到 360 |
+
+姿态确实变化时：方案新增一个版本；移除 `scene_checkpoints`，以及各镜头的 `camera_distance`、`ortho_scale`、`target_offset`；提交 `shot_id` 的预览（该镜头由图像模型生成时改为白底主图）。姿态与当前相同时原样返回，不新增版本。
+
+两个 `POST` 在方案版本不符、项目有渲染任务或场景、朝向任务在进行时返回 409；请求格式错误返回 400。
+
 ## v24 图文图层的风格、主色与文字角色
 
 `layers[shot_id]` 新增两个可选字段，`PUT /api/projects/{id}/layers/{shot_id}` 与 `/suggest` 的返回都带它们：
