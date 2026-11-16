@@ -3248,6 +3248,8 @@ test('the PSD button builds the file from the composition through ag-psd, and an
   // a layer saved before compositions has no drawing to build from
   h.run("layerState.layout=null;layerState.canvas=null;renderLayerPanel()");
   assert.equal(h.node('layerExportPsd').disabled,true);assert.match(h.node('layerExportPsd').title,/重新智能排版/);
+});
+
 // Which way up the product stands: candidate poses, the automatic choice and one-click corrections.
 function orientRecord(changes={}) {
   const pose=(id,label,rotation)=>({id,label,rotation,image_url:`/files/a/orientation/job/up/pose_${id}.png`,dimensions:[1,1,2],support_ratio:.2,tip_angle:10});
