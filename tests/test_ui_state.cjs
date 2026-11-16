@@ -2456,7 +2456,7 @@ test('a usage scene is requested once with the plan version, then its shot is sh
   const pending=h.run('generateScene()');await h.run('generateScene()');await pending;
   const requests=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
   assert.equal(requests.length,1,'a second click while submitting does not start another scene');
-  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜',audience:'auto',method:'auto',people:'auto'});
+  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜',audience:'auto',method:'auto',people:'auto',pose:'auto'});
   assert.equal(h.node('sceneButton').disabled,true);assert.equal(h.node('sceneButton').getAttribute('aria-busy'),'true');assert.match(h.node('sceneStatus').textContent,/等待布置场景/);
   await h.run('generateScene()');assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST').length,1,'a running task is not submitted again');
   finishScene(h);await h.run('poll()');await tick();
@@ -2532,7 +2532,7 @@ test('the audience pack is read once, a proposal is shown for what is on screen,
   choose(h,'sceneReferenceSelect','07-02');choose(h,'sceneMethodSelect','generate');
   await h.run('generateScene()');
   const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
-  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'home_garden',reference:'07-02',method:'generate',people:'auto'});
+  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'home_garden',reference:'07-02',method:'generate',people:'auto',pose:'auto'});
   assert.equal(h.node('sceneAudienceSelect').disabled,true,'choices are fixed while the scene is being made');
   assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1);
 });
@@ -2561,8 +2561,41 @@ test('the user decides whether a person is in the picture, and the choice is sen
   choose(h,'scenePeopleSelect','include');
   await h.run('generateScene()');
   const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
-  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'auto',method:'generate',people:'include'});
+  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'auto',method:'generate',people:'include',pose:'auto'});
   assert.equal(people.disabled,true,'choices are fixed while the scene is being made');
+});
+
+test('the product pose can be designed for the scene or kept, and is only offered where the image model makes the picture',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  const pose=h.node('scenePoseSelect');
+  assert.deepEqual([...pose.options].map(option=>option.value),['auto','keep']);assert.equal(pose.value,'auto');
+  assert.match(pose.options[0].textContent,/按使用场景设计/);assert.match(h.node('scenePoseHelp').textContent,/外形仍被锁定/);
+  assert.equal(h.node('scenePoseRow').hidden,false);
+  choose(h,'sceneMethodSelect','render');assert.equal(h.node('scenePoseRow').hidden,true,'3D prop scenes show the product as the plan stands it');
+  choose(h,'sceneMethodSelect','generate');assert.equal(h.node('scenePoseRow').hidden,false);
+  choose(h,'scenePoseSelect','keep');
+  await h.run('generateScene()');
+  const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
+  assert.equal(made[0].body.pose,'keep');assert.equal(pose.disabled,true,'choices are fixed while the scene is being made');
+});
+
+test('a generated scene says how the product was posed and links the candidate poses',async t=>{
+  const p=previewProject();
+  p.plan.shots.push({id:'scene',label:'使用场景',kind:'full',style:'soft',projection:'perspective',azimuth:30,elevation:20,focal_length:55});
+  p.plan.scene_brief={version:1,shot_id:'scene',segment_id:'site_team',reference_id:null,source:'ai',method:'generate',reason:'理由',summary:'画面',people:true,complex:true,people_choice:'hands',framing:'hands'};
+  p.outputs.push({job_id:'task',shot_id:'scene',version:1,quality:'generated',width:2048,height:2048,png_url:'/files/a/scene_ai/task/scene/scene.png',jpg_url:'/files/a/scene_ai/task/scene/scene.jpg',blend_url:null,
+    generated:{model:'gpt-image-2',attempts:1,people:true,framing:'hands',check:{status:'passed',note:'一致。',issues:[]},anchor:{version:1,box:[.2,.2,.8,.7],mask:true},
+      references:[{url:'/files/a/stage/k/picture.png'}],
+      pose:{mode:'auto',source:'ai',changed:true,reason:'角磨机打磨时机身水平，磨片朝下压在钢板上。',sheets:['/files/a/scene_ai/poses/k1/sheet.png','https://elsewhere.example/x.png','/files/a/scene_ai/poses/k2/sheet.png']}}});
+  const h=await setup(t,{projects:[p]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  h.node('shotList').querySelector('[data-shot="scene"]').click();
+  const made=h.node('sceneGenerated');
+  assert.match(made.querySelector('.scene-pose').textContent,/产品姿态：按使用场景调整：角磨机打磨时机身水平/);
+  assert.deepEqual([...made.querySelectorAll('.field-help a')].map(link=>[link.textContent,link.getAttribute('href')]),
+    [['第一轮','/files/a/scene_ai/poses/k1/sheet.png'],['微调','/files/a/scene_ai/poses/k2/sheet.png']]);
+  assert.match(made.textContent,/锁定在画面里的产品渲染（Blender，图像模型不能改动）/);
+  h.records.get('a').outputs[1].generated.pose={mode:'keep',source:'user',changed:false,reason:'按你的选择保持默认姿态。',sheets:[]};await h.run('poll()');await tick();
+  assert.match(made.querySelector('.scene-pose').textContent,/产品姿态：保持主图姿态（你指定）/);
 });
 
 test('a generated scene says whether the person that was asked for is in the picture',async t=>{
@@ -2617,7 +2650,7 @@ test('without the audience pack the scene control works as before and the pack i
   assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1,'a failed load is not retried on every redraw');
   assert.equal(h.node('sceneAudience').hidden,true);assert.equal(h.node('sceneButton').disabled,false);
   await h.run('generateScene()');
-  assert.deepEqual(h.calls.find(call=>call.url==='/api/projects/a/scene' && call.method==='POST').body,{expected_version:1,hint:'',audience:'auto',method:'auto',people:'auto'});
+  assert.deepEqual(h.calls.find(call=>call.url==='/api/projects/a/scene' && call.method==='POST').body,{expected_version:1,hint:'',audience:'auto',method:'auto',people:'auto',pose:'auto'});
 });
 
 test('an unavailable image model is said before a picture with people is asked for',async t=>{

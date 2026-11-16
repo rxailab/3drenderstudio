@@ -135,6 +135,19 @@ def then(rotation, extra):
     return euler(_product(matrix(extra), matrix(rotation)))
 
 
+def about(axis, degrees):
+    """The rotation by ``degrees`` about ``axis`` (a direction in the scene's fixed frame, right-handed), as XYZ Euler angles."""
+    x, y, z = (float(value) for value in axis)
+    length = math.sqrt(x * x + y * y + z * z)
+    if length < 1e-12:
+        return [0.0, 0.0, 0.0]
+    x, y, z = x / length, y / length, z / length
+    angle = math.radians(float(degrees)); c, s = math.cos(angle), math.sin(angle); t = 1 - c
+    return euler([[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+                  [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+                  [t * x * z - s * y, t * y * z + s * x, t * z * z + c]])
+
+
 def turned(rotation, degrees):
     """The pose turned about the vertical: which side faces the camera changes, what is up does not."""
     return then(rotation, [0, 0, degrees])
@@ -198,20 +211,29 @@ def _blender(request, folder, cancelled=None):
     return result
 
 
-def picture(project, plan, poses, folder, cancelled=None):
-    """Measure and render the given poses [(id, label, rotation)]: rows of {'id','label','rotation','path',...}."""
+def picture(project, plan, poses, folder, cancelled=None, view=None, floor=True, size=SIZE, samples=16, render=True):
+    """Measure and render the given poses [(id, label, rotation)]: rows of {'id','label','rotation','path',...}.
+
+    ``view`` is the camera's (azimuth, elevation), the standard three-quarter view when None; ``floor`` False shows the
+    product on a plain background, as it would be held rather than set down. With ``render`` False the poses are only
+    measured and rows have no 'path'.
+    """
     import engine
-    request = {'model_path': project['model_path'], 'plan': plan, 'size': SIZE, 'samples': 16,
-               'candidates': [{'id': ident, 'rotation': rotation} for ident, _, rotation in poses]}
+    request = {'model_path': project['model_path'], 'plan': plan, 'size': size, 'samples': samples, 'floor': bool(floor),
+               'render': bool(render), 'candidates': [{'id': ident, 'rotation': rotation} for ident, _, rotation in poses]}
+    if view:
+        request.update(azimuth=float(view[0]), elevation=float(view[1]))
     result = _blender(request, folder, cancelled)
     found = {row.get('id'): row for row in result.get('candidates', []) if isinstance(row, dict)}
     rows = []
     for ident, label, rotation in poses:
         row = found.get(ident)
-        if not row or not isinstance(row.get('image'), str):
+        if not row or (render and not isinstance(row.get('image'), str)):
             raise ValueError('朝向检查没有返回全部候选姿态。')
-        path = folder / row['image']
-        engine.verify_image(path, 'PNG')
+        path = None
+        if render:
+            path = folder / row['image']
+            engine.verify_image(path, 'PNG')
         rows.append({'id': ident, 'label': label, 'rotation': [float(value) for value in rotation], 'path': path,
                      'dimensions': row.get('dimensions'), 'support_ratio': row.get('support_ratio'),
                      'weight_height': row.get('weight_height'), 'tip_angle': row.get('tip_angle'),
@@ -219,10 +241,10 @@ def picture(project, plan, poses, folder, cancelled=None):
     return rows
 
 
-def sheet(rows, target, columns=3):
+def sheet(rows, target, columns=3, cell=SIZE):
     """One picture of all candidates, each cell lettered, for the vision model."""
     from PIL import Image, ImageDraw, ImageFont
-    gap = 10; cell = SIZE
+    gap = 10
     lines = math.ceil(len(rows) / columns)
     canvas = Image.new('RGB', (columns * cell + (columns + 1) * gap, lines * cell + (lines + 1) * gap), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)

@@ -29,6 +29,7 @@ import planner
 import scene_audience
 import scene_imagegen
 import scene_lock
+import scene_pose
 import scene_props
 import scene_stylist
 import studio_store as store
@@ -296,8 +297,10 @@ class ImageClientTests(unittest.TestCase):
         hands = scene_imagegen.prompt('pliers', 180, 'An electrician in a hallway strips a cable.', '1:1', people=True, framing='hands')
         for phrase in ('close-up of the product at work', 'hold and operate the product where a user grips it', 'at the point of contact',
                        'never change its shape',
-                       'no face, no head and no whole figure', 'overrides any wider view', 'bare or in plain work gloves'):
+                       'no face, no head and no whole figure', 'overrides any wider view', 'bare or in plain work gloves',
+                       'The frame of image 1 is final: do not zoom in, crop'):
             self.assertIn(phrase, hands)
+        self.assertNotIn('Crop tight', hands)                 # the anchored canvas already sets the frame; a tighter crop moves the product
         self.assertNotIn('arms and upper body in the frame', hands); self.assertNotIn('People are ordinary adults', hands)
         self.assertIn('arms and upper body in the frame', scene_imagegen.prompt('pliers', 180, '', '1:1', people=True, framing='person'))
         self.assertNotIn('close-up of the product at work', scene_imagegen.prompt('pliers', 180, '', '1:1', people=False, framing='hands'))
@@ -391,9 +394,9 @@ class CreateTests(unittest.TestCase):
         # The product render: a red block on transparent film, as blender/stage.py leaves it.
         self.cutout = self.data / 'fixture' / 'stage' / 'x' / 'picture.png'; self.cutout.parent.mkdir(parents=True, exist_ok=True)
         film = Image.new('RGBA', (400, 400), (0, 0, 0, 0)); film.paste((200, 30, 30, 255), (100, 120, 300, 280)); film.save(self.cutout)
-        self.rendered = []
+        self.rendered = []; self.render_plans = []
         def product_render(project, plan, azimuth, elevation, size_mm, canvas, cancelled=None, progress=None):
-            self.rendered.append((azimuth, elevation, tuple(canvas)))
+            self.rendered.append((azimuth, elevation, tuple(canvas))); self.render_plans.append(copy.deepcopy(plan))
             return {'path': self.cutout, 'azimuth': azimuth, 'elevation': elevation, 'product_rect': [.25, .3, .75, .7]}
         self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []; self.closeups = []; self.images = []; self.masks = []
         self.locks = []                                        # what the measurement says of each picture; 'kept' when not set
@@ -404,7 +407,13 @@ class CreateTests(unittest.TestCase):
             status = self.locks.pop(0) if self.locks else 'kept'
             return {'version': 1, 'status': status, 'score': .6 if status != 'moved' else .3, 'scale': 1.0, 'shift': [0, 0], 'covered': .1,
                     'changed': .2 if status == 'changed' else 0.0, 'regions': [[.6, .3, .7, .4]] if status == 'changed' else []}
+        # The pose step asks a vision model about Blender renders: here it keeps the plan's pose unless a test says otherwise.
+        self.posed = None; self.pose_calls = []
+        def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=None, progress=None, mode='auto', hint=''):
+            self.pose_calls.append({'hold': hold, 'mode': mode, 'hint': hint, 'scene': scene, 'view': (azimuth, elevation)})
+            return self.posed or scene_pose.kept(plan.get('rotation', [0, 0, 0]), mode, 'default', '保持默认姿态。')
         for target, name, effect in ((scene_imagegen, 'config', lambda: IMAGE), (scene_imagegen, 'product_render', product_render),
+                                     (scene_pose, 'decide', decide),
                                      (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', check), (scene_lock, 'inspect', inspect)):
             mocked = patch.object(target, name, side_effect=effect); mocked.start(); self.addCleanup(mocked.stop)
 
@@ -439,6 +448,30 @@ class CreateTests(unittest.TestCase):
         self.assertTrue(record['anchor']['closeup_url'].endswith('/closeup1.jpg'))
         self.assertEqual(Path(self.closeups[0]).name, 'closeup1.jpg')                 # the vision model compares the product side by side
         self.assertEqual(record['check']['lock']['status'], 'kept')
+
+    def test_the_product_is_rendered_in_the_pose_chosen_for_the_scene_and_the_prompt_says_how_it_is_held(self):
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        self.posed = {**scene_pose.kept([0, 0, 0], 'auto', 'ai', '手持角磨机时机身水平。'), 'rotation': [0.0, 90.0, 35.0], 'changed': True,
+                      'description': 'held level in both hands, its disc tilted down onto the steel plate', 'contact': 'the disc, at the lower left',
+                      'work_side': 'below'}
+        made = self.create(people=True, framing='hands', hint='grinding a weld')
+        self.assertEqual(self.pose_calls, [{'hold': 'hands', 'mode': 'auto', 'hint': 'grinding a weld', 'scene': 'A jobsite.', 'view': (35, 18)}])
+        self.assertEqual(self.render_plans[0]['rotation'], [0.0, 90.0, 35.0])          # the render, and so the locked product, take the new pose
+        text = self.prompts[0]
+        self.assertIn('THE POSE. The product in image 1 is already posed for this moment: held level in both hands', text)
+        self.assertIn('It meets the work at the disc, at the lower left.', text); self.assertIn('the hands grip the product', text)
+        self.assertLess(text.index('THE POSE.'), text.index('PAINT EVERYTHING ELSE.')); self.assertLess(text.index('PEOPLE.'), text.index('RULES.'))
+        self.assertEqual(made['record']['pose']['rotation'], [0.0, 90.0, 35.0])
+        # The work lies below the product: it moves up, leaving room under it for the workpiece.
+        self.assertLess(made['record']['anchor']['box'][1], .3)
+        self.assertIsNotNone(self.masks[0])                                             # still locked by the mask
+
+    def test_a_product_kept_in_its_pose_is_placed_and_described_as_before(self):
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        made = self.create(people=False, pose='keep')
+        self.assertEqual(self.pose_calls[0]['mode'], 'keep'); self.assertEqual(self.pose_calls[0]['hold'], 'nobody')
+        self.assertNotIn('THE POSE.', self.prompts[0]); self.assertEqual(made['record']['pose']['changed'], False)
+        self.assertEqual(self.render_plans[0]['rotation'], [0, 0, 0])
 
     def test_a_changed_product_is_made_once_more_with_the_differences_named(self):
         self.verdicts = [{'status': 'failed', 'issues': ['top surface is black'], 'note': '不一致。'}, {'status': 'passed', 'issues': [], 'note': '一致。'}]
@@ -690,9 +723,10 @@ class SceneFlowTests(unittest.TestCase):
         self.asked += 1
         return {**self.reply, **({'segment_id': facts['required_segment']} if 'required_segment' in facts else {})}
 
-    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None):
+    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None,
+               pose='auto', hint=''):
         self.created.append({'azimuth': azimuth, 'elevation': elevation, 'scene': scene, 'product': product, 'size_mm': size_mm, 'plan': copy.deepcopy(plan),
-                             'people': people, 'framing': framing})
+                             'people': people, 'framing': framing, 'pose': pose, 'hint': hint})
         folder.mkdir(parents=True, exist_ok=True)
         picture = folder / 'scene.png'; picture.write_bytes(png((2048, 2048))); (folder / 'scene.jpg').write_bytes(b'jpeg')
         return {'png': picture, 'jpg': folder / 'scene.jpg', 'width': 2048, 'height': 2048,
@@ -789,6 +823,15 @@ class SceneFlowTests(unittest.TestCase):
         self.assertEqual((self.created[1]['people'], brief['people'], brief['people_choice']), (False, False, 'exclude'))
         self.run_task()                                                  # nothing chosen: the planner's own answer
         self.assertIs(self.created[2]['people'], False)
+
+    def test_the_choice_about_the_pose_reaches_the_image_model_and_a_bad_one_is_refused(self):
+        task = self.run_task(method='generate', people='hands', hint='cutting a steel pipe')
+        self.assertEqual(task['status'], 'completed', task.get('error'))
+        self.assertEqual((self.created[0]['pose'], self.created[0]['hint']), ('auto', 'cutting a steel pipe'))     # posed for its use unless told otherwise
+        self.run_task(method='generate', pose='keep')
+        self.assertEqual(self.created[1]['pose'], 'keep')
+        with self.assertRaisesRegex(ValueError, '产品姿态选项无效'):
+            scene_stylist.submit('fixture', {'expected_version': store.get('project', 'fixture')['version'], 'pose': 'upside down'})
 
     def test_a_proposal_made_for_another_choice_about_people_is_not_reused(self):
         shown = scene_stylist.recommend('fixture', {'hint': ''})

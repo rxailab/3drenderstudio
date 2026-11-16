@@ -1,5 +1,40 @@
 # 本地接口与可复现性
 
+## v31 场景图的产品姿态
+
+**请求。** `POST /api/projects/{id}/scene` 新增 `pose`：
+
+- `auto`（默认）：AI 生成时按使用场景设计产品姿态；
+- `keep`：保持方案里的姿态。
+
+其他取值返回 400。3D 道具场景不使用这个字段。`POST /api/projects/{id}/scene/recommend` 不看这个字段。
+
+**记录。** `generated.pose` 记录产品在画面中的姿态：
+
+- `mode`：`auto` 或 `keep`。
+- `source`：`ai`（由视觉模型选出）、`user`（你选择保持）或 `default`（没有视觉模型或出错，保持原姿态）。
+- `rotation`、`base_rotation`：选出的姿态与方案原来的姿态，均为 XYZ 欧拉角（度）。
+- `changed`：两者是否不同。
+- `candidate`、`label`：选中的候选及其名称。
+- `description`：写进提示词「THE POSE」一段的英文姿态说明。
+- `contact`：干活的部件在画面中的位置。
+- `work_side`：工件相对产品的方向，取 `below`、`above`、`left`、`right`、`front`、`behind`、`around` 或 `none`。
+- `working_part`、`use`、`reason`：视觉模型对产品用法的判断与理由。
+- `consistent`：所选候选是否就是模型自己判为合适的那一个。
+- `model`：所用的视觉模型。
+- `sheets`：候选姿态图的地址。
+- `seconds`：这一步的用时。
+- `error`：只在出错时出现。
+
+场景任务结果 `result.pose` 是其中的摘要。场景任务新增阶段：「渲染候选使用姿态」「选择产品的使用姿态」「渲染姿态微调」「微调产品的使用姿态」。
+
+**画面。**
+
+- **锚定：** `work_side` 为 `below`、`above`、`left`、`right` 时，`generated.anchor.box` 向反方向偏移画面的 7%，给工件和手留出位置。
+- **候选姿态图：** 渲染结果按候选内容缓存在 `data/{id}/scene_ai/poses/`。
+
+**视觉模型。** 与摆正检查使用同一个视觉模型；设置了 `AI_POSE_MODEL` 时也使用它。
+
 ## v30 产品锁定的场景图、倒影、随项目上传的组件
 
 **新建项目时上传组件。** `POST /api/projects` 新增两个可选字段：

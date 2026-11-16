@@ -93,9 +93,11 @@ PEOPLE_NOTES = {True: '画面里没有出现人物，与「包含人物」的要
 FRAMINGS = ('hands', 'person')
 HANDS_RULE = ('PEOPLE. A close-up of the product at work. One or two hands of an adult come in from the edge of the frame, hold and operate the '
               'product where a user grips it, and the thing it '
-              'is working on is in the frame at the point of contact. Crop tight around the product, the hands and the work: forearms '
-              'may enter from the edge of the frame, but no face, no head and no whole figure appears. This framing overrides any '
-              'wider view in the scene description. The product is the largest thing in the picture, sharp, and not hidden by the hands: fingers may wrap round it and cover small parts of it, never change its shape.')
+              'is working on is in the frame at the point of contact. The frame of image 1 is final: do not zoom in, crop, widen or '
+              'reframe it, so the product keeps its place and size; forearms may enter from the edge of the frame, but no face, no head '
+              'and no whole figure appears. This overrides any wider view in the scene description. The product stays sharp and in '
+              'full view: fingers may wrap round it where a hand grips it and cover small parts of it, and never change its shape; '
+              'every part of it still in view stays exactly as it is in image 1.')
 HANDS_FIXES = {'missing': 'no hand is visible: show one or two hands holding and operating the product, close up, with what it works on',
                'face': 'a face, a head or a whole figure is visible: crop to a close-up of the hands on the product and the work, with no '
                        'head or torso in the frame'}
@@ -252,12 +254,18 @@ def product_render(project, plan, azimuth, elevation, size_mm, canvas, cancelled
         raise ImageError('产品渲染失败，当前方案未修改：%s' % str(exc)[:160]) from None
 
 
-def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None):
+POSE_LINES = {'held': 'Build the scene around this exact pose: the hands grip the product where a hand naturally holds it in this pose, '
+                      'and the thing it works on meets it there, at the right scale.',
+              'rest': 'Build the scene around this exact pose: the product rests on its surface just as it is, with its shadow under it.'}
+
+
+def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None):
     """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
     may be, and None when the scene description alone decides. With a person,
-    ``framing`` 'hands' asks for a close-up of the hands at work and no face.
+    ``framing`` 'hands' asks for a close-up of the hands at work and no face. ``pose`` is scene_pose's record when the
+    product was posed for the scene: its words say how it is held and where it meets the work.
     """
     hands = people is True and framing == 'hands'
     scene = scene_audience.scrub(re.sub(r'\s+', ' ', str(scene or '')).strip())[:1500]
@@ -284,10 +292,15 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
             (', people and surroundings', ' People are ordinary adults in plain clothes suited to the work, shown naturally.'))
            + ({'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),)),
     ]
+    if pose and pose.get('description'):
+        text = re.sub(r'\s+', ' ', str(pose['description'])).strip()[:400].rstrip('.')
+        contact = re.sub(r'\s+', ' ', str(pose.get('contact') or '')).strip()[:120].rstrip('.')
+        lines.insert(2, 'THE POSE. The product in image 1 is already posed for this moment: %s.%s %s' % (
+            text, (' It meets the work at %s.' % contact) if contact else '', POSE_LINES['rest' if people is False else 'held']))
     if hands:
-        lines.insert(3, HANDS_RULE)
+        lines.insert(3 if not (pose and pose.get('description')) else 4, HANDS_RULE)
     elif people in PEOPLE_RULES:
-        lines.insert(3, PEOPLE_RULES[people])
+        lines.insert(3 if not (pose and pose.get('description')) else 4, PEOPLE_RULES[people])
     if corrections:
         fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:6] if str(item).strip())
         if fixes:
@@ -521,14 +534,18 @@ def _lock_verdict(lock, box):
     return {'status': 'failed', 'issues': [issue], 'note': LOCK_NOTES[status], 'product_consistent': False}
 
 
-def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None):
+def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None,
+           pose='auto', hint=''):
     """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``.
 
     ``people`` is True when a person must be in the picture and False when
     nobody may be; None leaves it to the scene description. ``framing``
     'hands' shows that person as hands at work, close up, with no face.
+    ``pose`` 'auto' poses the product the way it is used in the scene
+    (scene_pose); 'keep' shows it in the plan's own pose.
     """
     import scene_lock
+    import scene_pose
     hands = people is True and framing == 'hands'
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
     value = config()
@@ -537,11 +554,17 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     started = time.time()
     aspect = plan.get('aspect', '1:1'); size = size_for(aspect, value['model'])
     folder.mkdir(parents=True, exist_ok=True)
-    staged = product_render(project, plan, azimuth, elevation, size_mm, size, stop, say)
+    # The pose it has in this moment of its use, worked out from renders of real poses; then rendered and locked like any other.
+    hold = 'hands' if hands else 'person' if people else 'nobody' if people is False else 'scene'
+    posed = scene_pose.decide(project, _reference_plan(plan), azimuth, elevation, scene, product, hold, stop, say,
+                              pose if pose in scene_pose.MODES else 'auto', hint)
+    if stop(): raise InterruptedError()
+    staged = product_render(project, {**plan, 'rotation': posed['rotation']}, azimuth, elevation, size_mm, size, stop, say)
     if stop(): raise InterruptedError()
     # The anchor: the product's own render in its final place; the mask keeps it, the model paints the rest.
     with Image.open(staged['path']) as cutout:
-        canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'none')
+        canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'none',
+                                               posed.get('work_side') if posed.get('changed') or posed.get('description') else None)
     canvas_path = folder / 'canvas.png'; canvas.save(canvas_path)
     reference = Image.new('RGB', size, (255, 255, 255)); reference.paste(layer, mask=layer.getchannel('A'))
     reference_path = folder / 'reference.png'; reference.save(reference_path)
@@ -551,7 +574,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     for number in range(1, MAX_ATTEMPTS + 1):
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
-        text = prompt(product, size_mm, scene, aspect, corrections, people, framing)
+        text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed)
 
         def call(value):
             nonlocal masked
@@ -618,6 +641,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),
               'references': [{'url': url(staged['path']), 'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation)}],
+              'pose': posed,
               'anchor': {'version': scene_lock.VERSION, 'box': box_share, 'mask': bool(masked), 'canvas_url': url(canvas_path),
                          **({'closeup_url': url(chosen['closeup'])} if chosen.get('closeup') else {})},
               # The quality that was asked for, when the service only completed the picture at a lower one.

@@ -25,6 +25,8 @@ VERSION = 1
 GROUND = (198, 200, 203)          # the plain ground the anchor stands on; nothing of it may remain in the picture
 # The product's longer side as a share of the canvas's shorter side, and how far down its centre sits.
 PLACING = {'hands': (.56, .53), 'person': (.36, .58), 'none': (.5, .55)}
+ROOM = .07                        # of the canvas: the product moves this far away from the side its work lies on
+ROOM_SIDES = {'below': (0, -1), 'above': (0, 1), 'left': (1, 0), 'right': (-1, 0)}
 WORK = 384                        # longer side, in pixels, at which the product is looked for
 MIN_SCORE = .45                   # edge agreement below this: the product is not where the anchor put it (moved .38; kept .53 to .60)
 MAX_HIDDEN = .55                  # more of the product covered than this: it is no longer shown
@@ -40,8 +42,12 @@ SEARCH_SHIFT = .06                # of the canvas, either way
 STATUSES = ('kept', 'moved', 'changed', 'hidden')
 
 
-def anchor(cutout, size, framing=None):
-    """The product placed on the canvas. Returns (canvas RGB, layer RGBA the size of the canvas, box in pixels)."""
+def anchor(cutout, size, framing=None, room=None):
+    """The product placed on the canvas. Returns (canvas RGB, layer RGBA the size of the canvas, box in pixels).
+
+    ``room`` is the side of the product its work lies on ('below', 'above', 'left', 'right'): the product
+    moves a little the other way, so the workpiece and the hands have space in the frame.
+    """
     width, height = size
     cut = cutout.convert('RGBA'); bounds = cut.getchannel('A').point(lambda value: 255 if value > 8 else 0).getbbox()
     if bounds is None:
@@ -52,7 +58,8 @@ def anchor(cutout, size, framing=None):
     w = max(1, round(cut.width * scale)); h = max(1, round(cut.height * scale))
     placed = cut.resize((w, h), Image.Resampling.LANCZOS)
     margin = round(min(width, height) * .04)
-    x = round((width - w) / 2); y = round(height * down - h / 2)
+    shift = ROOM_SIDES.get(room, (0, 0))
+    x = round((width - w) / 2 + shift[0] * ROOM * width); y = round(height * down - h / 2 + shift[1] * ROOM * height)
     x = max(margin, min(width - w - margin, x)); y = max(margin, min(height - h - margin, y))
     layer = Image.new('RGBA', (width, height), (0, 0, 0, 0)); layer.alpha_composite(placed, (x, y))
     canvas = Image.new('RGB', (width, height), GROUND); canvas.paste(layer, mask=layer.getchannel('A'))
