@@ -839,7 +839,7 @@ def render(req,objects,meshes):
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},
-                reflection=reflection or ({'method':'glossy floor'} if plan.get('reflection',True) else None),
+                reflection=reflection or ({'method':'glossy floor'} if plan.get('reflection',True) and settings.get('style')=='dark' else None),
                 render_settings=dict(engine='CYCLES',samples=scene.cycles.samples,noise_threshold=scene.cycles.adaptive_threshold,
                                      time_limit=scene.cycles.time_limit,denoising=True),blender_version=bpy.app.version_string)
 

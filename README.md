@@ -2,6 +2,26 @@
 
 在本机用 Blender Cycles 拍摄商品模型。中文浏览器界面，原始资源、任务、渲染结果均存储在本地 `data/`；不需要 Blender 操作经验。
 
+## 产品不变形的 AI 场景图、地面倒影、组件随项目上传 v30
+
+**AI 场景图里的产品不再变形。** 以前图像模型拿着参考图把产品重新画一遍，零件常常弯了、少了，有手握着时更明显。现在按场景相机渲染出真实的产品，先放进画面并用遮罩保护，图像模型只画周围的场景、手和影子。生成后程序测量产品是否被移动、改画或挡住，视觉模型再把渲染图和生成图并排比对；不合格就带着具体问题重画。实测手部特写一次通过，用时 88 秒。
+
+![放好产品的画布、图像模型画出的场景、用来比对的并排特写](validation/v30-scene-lock.jpg)
+
+**所有渲染图都有地面倒影。** 白底、灰底、深色底都有，套图里的抠图也有；白底仍是纯白。
+
+![白底、灰底、深色底的倒影](validation/v30-reflection.jpg)
+
+**组件在新建项目时一起上传。** 电池、充电器、工具箱等在上传窗口里和主模型一起选好；套图主图把产品和组件放进同一个 Blender 场景一起渲染，光影一致。
+
+**「图文」换成「套图」。** 逐镜头的图文编辑器已删除，右侧面板的这个标签现在显示套图的概况和入口。
+
+**套图更接近示例。** 逐张看了用户上传的角磨机套图，改了四处：明显竖长的工具在套图里放平展示；页眉没有品牌信息时显示产品名称；特写页改为整件产品加放大镜；副标题不再被「…」截断。
+
+![角磨机、两块电池、充电器和工具箱一起上传后生成的套图](validation/v30-listing-grinder-kit.jpg)
+
+为什么之前的结果不像示例、哪些地方还需要用户提供信息、做不到和未验证的部分，见 [LISTING_V30_UPDATE.md](LISTING_V30_UPDATE.md)。
+
 ## 套图：组件、品牌风格与使用场景标注图 v29
 
 **一个产品，一组图。** 顶栏的「套图」把产品、随箱组件和品牌风格排成一组电商图片：主图、套装清单、功能标注、使用场景标注、特写、标题横幅、卖点列表、尺寸规格。依据是对 82 张亚马逊工具类商品图的逐张研究（[LISTING_IMAGE_STUDY.md](LISTING_IMAGE_STUDY.md)）：那些图片大多不是一张产品照片，而是由多张图片、产品信息和一套品牌规范拼成的页面。
@@ -329,12 +349,13 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 - `engine.py`：单任务队列、真实 Blender 子进程、日志、取消、重试、恢复、结果校验。
 - `lookdev.py`：按名称为占位材质推断质感；`blender/worker.py` 中的 `showcase_rig`、`soften_edges`：展示级布光与棱边高光；`engine.schedule_polish`、`engine.yield_to_user`：可随时让路的后台高清图。
 - `instruction_agents.py`：核对、定位与质感智能体及其调用预算；`semantic_planner.repair_material_scope`：修改范围的数据修正。
-- `info_layer.py`、`blender/layer_probe.py`、`static/layer.js`：图文图层的数据约定与存储、关键信息提取、按保存场景探测产品与部件位置；浏览器端负责绘制、编辑与导出 SVG / PNG。
-- `layer_compose.py`：六种图文版式（画布、照片的位置与裁切、文字与数字），以及可读的配色。
-- `layer_icons.py`、`scripts/vendor_icons.py`、`static/vendor/icons/`：图标 agent（随附图标库查找、在线查找、视觉模型挑选、AI 绘制与核对），以及随附图标库的下载与校验。
-- `scripts/vendor_psd_writer.py`、`static/vendor/ag-psd/`：浏览器端写 Photoshop 文件的 ag-psd（MIT），以及它的下载与校验。
+- `info_layer.py`、`blender/layer_probe.py`：套图用到的文案起草（关键信息提取、数字只取你写下的内容），以及按保存场景探测产品与部件在画面中的位置。
+- `layer_compose.py`：文案里数字的出处核对。
+- `layer_icons.py`、`scripts/vendor_icons.py`、`static/vendor/icons/`：套图卖点的图标查找（随附图标库、在线查找、AI 绘制与核对），以及随附图标库的下载与校验。
+- `scene_imagegen.py`、`scene_lock.py`：AI 场景图：按场景相机渲染产品、放进画布并用遮罩保护，交给图像模型画场景；生成后测量产品是否被移动、改画或挡住，并请视觉模型并排比对。
 - `scene_stylist.py`、`scene_props.py`、`scene_set.py`、`blender/scene_layout.py`、`blender/scene_dress.py`：使用场景的导演与采购、Poly Haven 目录检索与下载校验、场景数据约定、无界面布置求解，以及渲染时按记录重建道具、地面、背景墙与景深。
-- `components.py`、`blender/stage.py`、`blender/stage_geometry.py`：套图组件的上传与处理（分析、摆正、渲染抠图、图片抠底），以及透明背景的摆拍渲染：可带工件，返回部件轮廓、可见性网格和尺寸线端点；按请求缓存。
+- `components.py`、`blender/stage.py`、`blender/stage_geometry.py`：随项目上传的组件的处理（分析、摆正、渲染抠图、图片抠底），以及透明背景的摆拍渲染：可带工件或整套组件，返回部件轮廓、可见性网格和尺寸线端点；按请求缓存。
+- `blender/reflection.py`：地面倒影：深色底的光滑清漆，白底与灰底的逐列镜像合成。
 - `brand_kit.py`、`listing_draw.py`、`listing_elements.py`、`listing_pages.py`、`listing.py`、`static/listing.js`：品牌风格预设与配色、用 Pillow 绘制页面的渲染器、元素库、八种图片的版式、产品信息与套图的规划和生成，以及套图窗口。
 - `orientation.py`、`blender/orient.py`：候选姿态的渲染与测量、由视觉模型或部件名称判断哪一面朝上、把姿态写入方案，以及点选、翻转、转向。
 - `ecommerce.py`、`ecommerce_platforms.py`、`blender/render_matte.py`：平台主图规则、真实图片的合规检查、产品蒙版、纯白底／透明底合成与平台套图导出。
