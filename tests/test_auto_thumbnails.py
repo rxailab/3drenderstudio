@@ -56,4 +56,31 @@ class AutomaticThumbnailTests(unittest.TestCase):
         job=engine.schedule_thumbnails('fixture',3)
         self.assertIn('campaign',job['shot_ids'])
 
+    def test_scene_only_change_reuses_earlier_thumbnail_without_rewriting_version(self):
+        previous=copy.deepcopy(self.project['plan'])
+        self.project['outputs'][1].update(version=2,quality='thumbnail',effective_plan=engine.effective_plan(previous,'campaign'))
+        self.project['plan']['scene_brief']={'shot_id':'scene','description':'new scene'}
+        self.project['plan']['shots'].append({'id':'scene','label':'使用场景','kind':'full'})
+        job=engine.schedule_thumbnails('fixture',3)
+        self.assertNotIn('campaign',job['shot_ids'])
+        self.assertEqual(self.project['outputs'][1]['version'],2)
+
+    def test_render_affecting_change_or_missing_snapshot_requires_new_thumbnail(self):
+        previous=copy.deepcopy(self.project['plan'])
+        output=self.project['outputs'][1]
+        output.update(version=2,quality='thumbnail',effective_plan=engine.effective_plan(previous,'campaign'))
+        self.project['plan']['lighting']['key_power']=1.5
+        job=engine.schedule_thumbnails('fixture',3)
+        self.assertIn('campaign',job['shot_ids'])
+        self.jobs.clear();self.project['plan']=previous;output.pop('effective_plan')
+        job=engine.schedule_thumbnails('fixture',3)
+        self.assertIn('campaign',job['shot_ids'])
+
+    def test_other_camera_change_does_not_invalidate_unrelated_shot(self):
+        previous=copy.deepcopy(self.project['plan'])
+        self.project['outputs'][1].update(version=2,quality='thumbnail',effective_plan=engine.effective_plan(previous,'campaign'))
+        self.project['plan']['shots'][0]['azimuth']+=10
+        job=engine.schedule_thumbnails('fixture',3)
+        self.assertNotIn('campaign',job['shot_ids'])
+
 if __name__=='__main__':unittest.main()

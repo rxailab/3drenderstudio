@@ -12,7 +12,7 @@ agent 的选择与测量矛盾（它认为产品靠平整底面承托，而贴�
 
 **进度。**
 
-- 任务的 `sample_progress`（0 到 100）在 Blender 5 上恢复更新：渲染脚本输出 `PROGRESS: Sample n/m` 行，引擎按原有规则解析。
+- 任务的 `sample_progress`（0 到 100）不再依赖 Blender 的输出格式：渲染脚本输出 `PROGRESS: Sample n/m` 行，n/m 是整张图的采样计数（分块渲染时已跨全部分块）。引擎优先采用这一行；没有它时仍按 Cycles 日志中的采样批次计算。`tile_completed`、`tile_total`、`tile_progress` 照旧。
 - 分析任务的 `progress` 按步骤更新：开始 10，分析完成 40，朝向检查的三个阶段为 40、62、78，完成 100。
 - 场景任务（`scene_task`）和朝向任务（`orient_task`）新增 `progress`：进入各阶段时的大致百分比；不认识的阶段保持上一个值。
 

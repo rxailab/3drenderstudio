@@ -9,6 +9,7 @@ import copy
 import json
 import queue
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -365,12 +366,28 @@ class ShowcaseSceneRuntimeTests(unittest.TestCase):
         analysis = engine.execute(job, {'action': 'analyze', 'model_path': str(obj), 'plan': plan}, data / 'p' / 'analysis')
         project = store.get('project', 'p'); project['analysis'] = analysis; store.put('project', project)
         plan = planner.validate(lookdev.apply(planner.enrich(plan, analysis), analysis, str(obj))[0])
-        cls.plan = plan; cls.results = {}
+        cls.plan = plan; cls.results = {}; cls.saved_lights = {}
+        inspect = root / 'inspect_lighting.py'
+        inspect.write_text('''
+import bpy, json
+scene = bpy.context.scene
+lights = {}
+for ob in scene.objects:
+    if ob.type != 'LIGHT': continue
+    receivers = ob.light_linking.receiver_collection
+    lights[ob.name] = {'casts_shadow': ob.data.use_shadow, 'hidden': ob.hide_render,
+                       'receivers': sorted(o.name for o in receivers.all_objects) if receivers else None}
+print('LIGHTING_REPORT' + json.dumps({'lights': lights, 'products': json.loads(scene['studio_product_objects'])}, ensure_ascii=False))
+''', encoding='utf-8')
         for shot_id in ('hero', 'campaign'):
             shot = next(shot for shot in plan['shots'] if shot['id'] == shot_id)
             out = data / 'p' / 'runs' / shot_id
             cls.results[shot_id] = engine.execute(job, {'action': 'render', 'model_path': str(obj), 'plan': plan, 'shot': shot, 'quality': 'preview'}, out)
             cls.results[shot_id]['png'] = next(out.glob('*.png'))
+            ran = subprocess.run([shutil.which('blender'), '-b', str(next(out.glob('*.blend'))), '--disable-autoexec',
+                                  '--python-exit-code', '1', '--python', str(inspect)], capture_output=True, text=True, timeout=180)
+            if ran.returncode: raise AssertionError(ran.stdout[-3000:] + ran.stderr[-2000:])
+            cls.saved_lights[shot_id] = json.loads(next(line for line in ran.stdout.splitlines() if line.startswith('LIGHTING_REPORT'))[15:])
 
     def test_placeholder_material_was_developed_from_its_name(self):
         self.assertEqual(self.plan['material_overrides'][0]['lookdev_finish'], 'gloss_plastic')
@@ -384,11 +401,24 @@ class ShowcaseSceneRuntimeTests(unittest.TestCase):
         key = next(lamp for lamp in studio['lights'] if lamp['name'] == 'Key softbox')
         fill = next(lamp for lamp in studio['lights'] if lamp['name'] == 'Fill softbox')
         self.assertGreater(key['energy'], 5 * fill['energy'])
-        self.assertTrue(key['casts_shadow']); self.assertFalse(fill['casts_shadow'])
+        self.assertTrue(key['casts_shadow']); self.assertTrue(fill['casts_shadow'])
         with Image.open(self.results['hero']['png']) as image:
             self.assertEqual(image.convert('RGB').getpixel((2, 2)), (255, 255, 255))
         operations = json.dumps(self.results['hero'].get('operations', []), ensure_ascii=False)
         self.assertIn('edge_highlight', operations)
+
+    def test_saved_shaping_lamps_occlude_geometry_without_lighting_the_floor(self):
+        product_only = ('Fill softbox', 'Edge softbox', 'Edge strip left', 'Back reflection card', 'Front sweep card')
+        for shot_id, report in self.saved_lights.items():
+            with self.subTest(shot=shot_id):
+                lights = report['lights']
+                for name in ('Key softbox', 'Top reflection', *product_only):
+                    self.assertTrue(lights[name]['casts_shadow'], name)
+                    self.assertFalse(lights[name]['hidden'], name)
+                for name in product_only:
+                    self.assertEqual(set(lights[name]['receivers']), set(report['products']), name)
+                    self.assertNotIn('Studio floor', lights[name]['receivers'])
+                self.assertIsNone(lights['Key softbox']['receivers'])
 
     def test_the_product_is_lit_with_contrast_and_keeps_its_colour(self):
         with Image.open(self.results['hero']['png']) as image:

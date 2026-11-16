@@ -4,3 +4,4 @@ __pycache__/
 .env.env.tmp
 *.log
 .venv/
+node_modules/

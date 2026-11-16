@@ -154,7 +154,8 @@ class DownloadSafetyTests(unittest.TestCase):
 
     def test_unsafe_listed_file_names_are_refused(self):
         payload = {'url': 'https://dl.polyhaven.org/file/ph-assets/Models/x', 'size': 1, 'md5': '0' * 32}
-        for name in ('../escape.bin', '/abs/file.bin', 'script.py', 'a\\b.bin'):
+        for name in ('../escape.bin', '/abs/file.bin', '//server/share/file.bin', 'C:/abs/file.bin',
+                     'C:relative.bin', 'script.py', 'a\\b.bin'):
             with self.subTest(name=name), self.fetch(self.listing(extra={name: payload})), self.assertRaises(scene_props.PropError):
                 scene_props.fetch_model('pliers', self.root / 'unsafe')
 
@@ -590,14 +591,28 @@ for name, size in (('tool', (.03, .03, .2)), ('can', (.06, .06, .16)), ('crate',
 import bpy, json, sys
 scene = bpy.context.scene
 registered = json.loads(scene['studio_product_objects'])
+room = scene.objects['Room light']
+wash = scene.objects['Backdrop wash']
+shaping = {name: scene.objects[name] for name in ('Fill softbox', 'Edge softbox', 'Edge strip left', 'Back reflection card', 'Front sweep card')}
 print('REPORT' + json.dumps({'registered': registered, 'props': sorted(o.name for o in scene.objects if o.name.startswith('Studio prop ') and o.type == 'MESH'),
-      'wall': 'Studio scene wall' in scene.objects}, ensure_ascii=False))
+      'wall': 'Studio scene wall' in scene.objects,
+      'room_shadow': room.data.use_shadow, 'room_receivers': sorted(o.name for o in room.light_linking.receiver_collection.all_objects),
+      'wash_hidden': wash.hide_render, 'floor_catcher': scene.objects['Studio floor'].is_shadow_catcher,
+      'shaping': {name: {'shadow': ob.data.use_shadow, 'receivers': sorted(o.name for o in ob.light_linking.receiver_collection.all_objects)} for name, ob in shaping.items()}}, ensure_ascii=False))
 ''', encoding='utf-8')
-        ran = subprocess.run([shutil.which('blender'), '-b', str(next(out.glob('*.blend'))), '--python', str(inspect)], capture_output=True, text=True, timeout=180)
+        ran = subprocess.run([shutil.which('blender'), '-b', str(next(out.glob('*.blend'))), '--disable-autoexec', '--python-exit-code', '1', '--python', str(inspect)], capture_output=True, text=True, timeout=180)
+        if ran.returncode: raise AssertionError(ran.stdout[-3000:] + ran.stderr[-2000:])
         report = json.loads(next(line for line in ran.stdout.splitlines() if line.startswith('REPORT'))[6:])
         self.assertEqual(len(report['props']), 3); self.assertTrue(report['wall'])
         self.assertFalse(any(name.startswith('Studio prop') for name in report['registered']))
         self.assertIn('抽屉_1', report['registered'])
+        self.assertTrue(report['room_shadow'])
+        self.assertEqual(report['room_receivers'], ['Studio floor', 'Studio scene wall'])
+        self.assertTrue(report['wash_hidden'])
+        self.assertFalse(report['floor_catcher'])
+        for name, light in report['shaping'].items():
+            self.assertTrue(light['shadow'], name)
+            self.assertEqual(set(light['receivers']), set(report['registered'] + report['props']), name)
 
     def test_other_shots_are_untouched_and_a_turned_model_drops_the_stale_layout(self):
         plan, shot = self.scene_plan()

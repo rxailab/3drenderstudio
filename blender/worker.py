@@ -496,39 +496,40 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
     def place(relative,elevation,distance):
         a=azimuth+math.radians(relative);e=math.radians(elevation)
         return target+Vector((math.sin(a)*math.cos(e),-math.cos(a)*math.cos(e),math.sin(e)))*distance
-    def lamp(name,relative,elevation,distance,power,width,height,color,shadow=True):
+    def lamp(name,relative,elevation,distance,power,width,height,color,product_only=False):
         entry=area(name,place(relative,elevation,distance),power,width,color,target)
         light=bpy.data.lights[entry['name']];light.shape='RECTANGLE';light.size=width;light.size_y=height
-        light.use_shadow=shadow;light.spread=math.radians(150)
+        light.use_shadow=True;light.spread=math.radians(150)
         bpy.data.objects[entry['name']].visible_camera=False
-        entry.update(shape='RECTANGLE',size=width,size_y=height,relative_azimuth=relative,elevation=elevation,casts_shadow=shadow)
+        entry.update(shape='RECTANGLE',size=width,size_y=height,relative_azimuth=relative,elevation=elevation,casts_shadow=True,product_only=product_only)
         return entry
     # The key faces the camera-left side, the fill only opens the other side:
     # roughly two stops apart, which is what gives a box its volume.
     level=.12 if white else .11 if not dark else .1
     lights=[lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93)),
-            lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),shadow=False),
-            lamp('Edge softbox',140,32,6,1200*level,.75*soft,4*soft,(1,1,1),shadow=False),
-            lamp('Edge strip left',-130,24,6,1000*level,.6*soft,4*soft,(1,1,1),shadow=False),
+            lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),product_only=True),
+            lamp('Edge softbox',140,32,6,1200*level,.75*soft,4*soft,(1,1,1),product_only=True),
+            lamp('Edge strip left',-130,24,6,1000*level,.6*soft,4*soft,(1,1,1),product_only=True),
             lamp('Top reflection',0,82,5.4,420*level,4.2*soft,4.2*soft,(1,1,1))]
     # Horizontal metal seen from the front mirrors what stands low behind the set.
     # A wide card there is what makes a steel top read as steel.
-    card=lamp('Back reflection card',180,14,7.5,900*level,7*soft,3*soft,(1,1,1),shadow=False)
+    card=lamp('Back reflection card',180,14,7.5,900*level,7*soft,3*soft,(1,1,1),product_only=True)
     bpy.data.lights[card['name']].diffuse_factor=.15
     # A vertical glossy panel mirrors the low area on the far side of its normal.
     # A reflection-only card there, placed for the box face nearest the camera,
     # sweeps a soft sheen over the upper part of the panel and leaves the rest deep.
     degrees=shot.get('azimuth',35);facing=round(degrees/90)*90
-    sweep=lamp('Front sweep card',2*(facing-degrees),0,3,90*level,3.6*soft,1.1*soft,(1,1,1),shadow=False)
+    sweep=lamp('Front sweep card',2*(facing-degrees),0,3,90*level,3.6*soft,1.1*soft,(1,1,1),product_only=True)
     holder=bpy.data.objects[sweep['name']];holder.location.z=.45;aim(holder,(0,0,.7));holder.data.diffuse_factor=0
     sweep['position']=list(holder.location)
     lights+=[card,sweep]
     if meshes and 'light_linking' in bpy.types.Object.bl_rna.properties:
-        # Shaping lamps light the product only; the floor shadow comes from key and top.
+        # Receiver linking is separate from occlusion: shaping lamps must still
+        # respect product/prop geometry, including interiors and recessed parts.
         receivers=bpy.data.collections.new('Studio product receivers')
         for ob in meshes: receivers.objects.link(ob)
         for entry in lights:
-            if not entry['casts_shadow']: bpy.data.objects[entry['name']].light_linking.receiver_collection=receivers
+            if entry['product_only']: bpy.data.objects[entry['name']].light_linking.receiver_collection=receivers
         floor=bpy.data.objects.get('Studio floor')
         if floor and not white and not dark:
             # Softboxes fall off within a few units and would leave a dark band where
@@ -739,8 +740,10 @@ def render(req,objects,meshes):
     scene['studio_operations']=json.dumps(operations,ensure_ascii=False)
     event('正在打包可复现工程')
     bpy.ops.file.pack_all();bpy.ops.wm.save_as_mainfile(filepath=str(blend))
-    event('Cycles 正在渲染',device=dev,shot=shot.get('id'))
-    # Blender 5 no longer prints the sample count while it renders; the job's percentage is read from it.
+    event('Cycles 正在渲染',device=dev,shot=shot.get('id'),sample_target=scene.cycles.samples,
+          render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+    # Blender 5 no longer prints the sample count while it renders; report it so the percentage does not
+    # depend on what a given version logs.
     from blender.render_progress import report as report_render_progress
     report_render_progress()
     started=time.time();bpy.ops.render.render(write_still=True)
@@ -775,7 +778,9 @@ def render(req,objects,meshes):
         if safe or attempt>=limit: break
         target=Vector(cam['target']);scene.camera.location=target+(scene.camera.location-target)*1.18
         bpy.context.view_layer.update();cam['position']=list(scene.camera.location)
-        event('取景检查未通过，自动增加拍摄距离',correction=attempt+1)
+        event('取景检查未通过，自动增加拍摄距离',correction=attempt+1,sample_target=scene.cycles.samples,
+              render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+        report_render_progress()            # a new render: its count starts from nothing again
         bpy.ops.render.render(write_still=True)
     checks['attempts']=attempts
     checks['automatic_check_status']='passed' if safe else 'manual_review'
@@ -810,7 +815,7 @@ def render(req,objects,meshes):
             if pair not in visible_materials:
                 visible_materials[pair]={'object_name':pair[0],'material_name':pair[1],
                     'material_info':hit['material_info']}
-    return dict(success=True,render_pipeline_version=2,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name),
+    return dict(success=True,render_pipeline_version=3,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name),
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},

@@ -19,6 +19,19 @@ const instructionPreflightDraftKey='wuying-instruction-preflight-drafts-v1', ins
 let instructionPreflightPending=null;
 const unfinishedInstructionPhases=new Set(['requesting','unknown','saved','preview_submitted']);
 let instructionSubmitting = false, instructionProjectId = '', pendingInstructionPreview = null, reviewErrorKey = '', reviewRevision = 0;
+let instructionProgress=null, instructionProgressTimer=null, instructionProgressGeneration=0;
+function stopInstructionProgress(){instructionProgressGeneration++;clearTimeout(instructionProgressTimer);instructionProgressTimer=null;instructionProgress=null;}
+function startInstructionProgress(projectId){
+  stopInstructionProgress();const generation=instructionProgressGeneration;
+  async function refresh(){
+    if(generation!==instructionProgressGeneration || !instructionSubmitting || current?.id!==projectId)return;
+    try{const result=await api(`/api/projects/${encodeURIComponent(projectId)}/instruction-progress`);if(generation!==instructionProgressGeneration || !instructionSubmitting || current?.id!==projectId)return;instructionProgress=result.activity || null;}
+    catch(_){if(generation!==instructionProgressGeneration)return;instructionProgress=null;}
+    if(current?.id===projectId)renderRenderActivity();
+    if(generation===instructionProgressGeneration && instructionSubmitting && current?.id===projectId)instructionProgressTimer=setTimeout(refresh,1000);
+  }
+  refresh();
+}
 const heroOptimizationAttempts=new Map(),heroOptimizationErrors=new Map();
 const heroOptimizationJournalKey='wuying-hero-optimization-attempts-v1';
 let heroOptimizationSubmitting=false;
@@ -519,6 +532,19 @@ function sceneReference(id) { for(const segment of sceneLibrary?.segments || [])
 function sceneHttps(url) { return typeof url==='string' && /^https:\/\/[^\s<>"']+$/.test(url)?url:''; }
 function sceneFile(url) { return typeof url==='string' && /^\/files\/[^\s<>"']+$/.test(url)?url:''; }
 function sceneGeneratedOutput() { return [...(current?.outputs || [])].filter(o=>o.shot_id==='scene' && o.quality==='generated').sort((a,b)=>b.version-a.version || (b.created_at || 0)-(a.created_at || 0))[0] || null; }
+function sceneHistoryHTML(project) {
+  const prefix='/files/'+project.id+'/';
+  const safe=url=>typeof url==='string' && url.startsWith(prefix) && !url.includes('..') ? url : '';
+  const records=(project.outputs || []).filter(o=>o.shot_id==='scene' && o.quality!=='thumbnail' && safe(o.png_url))
+    .slice().sort((a,b)=>(b.created_at || 0)-(a.created_at || 0) || b.version-a.version);
+  const html=records.map((o,i)=>{
+    const png=safe(o.png_url),jpg=safe(o.jpg_url),blend=safe(o.blend_url),label=sceneOutputLabel(o),source=o.quality==='generated'?'AI 生成':'Blender 渲染';
+    const canPreview=project.plan?.shots?.some(shot=>shot.id==='scene');
+    const image=canPreview?`<button type="button" class="scene-history-preview" data-scene-history="${esc(sceneOutputKey(o))}" aria-label="在预览中查看${esc(label)}"><img src="${esc(png)}" alt="${esc(label)}" loading="lazy"></button>`:`<a href="${esc(png)}" target="_blank" rel="noopener" aria-label="查看${esc(label)}"><img src="${esc(png)}" alt="${esc(label)}" loading="lazy"></a>`;
+    return `<article class="scene-history-item">${image}<div><strong>${esc(source)}${i===0?' · 最新':''}</strong><small>${esc(label)}</small><span><a href="${esc(png)}" download>下载 PNG</a>${jpg?` · <a href="${esc(jpg)}" download>下载 JPG</a>`:''}${blend?` · <a href="${esc(blend)}" download>Blender 工程</a>`:''}</span></div></article>`;
+  }).join('');
+  return {count:records.length,html};
+}
 async function loadSceneLibrary() {
   if(sceneLibrary || sceneLibraryLoading)return;
   sceneLibraryLoading=true;
@@ -604,6 +630,9 @@ function renderSceneSet() {
   }
   if(!sceneLibrary)loadSceneLibrary();
   const task=current.scene_task,set=current.plan?.scene_set,brief=current.plan?.scene_brief,made=brief?.method==='generate',has=!!set || made;
+  const history=sceneHistoryHTML(current);$('sceneHistory').hidden=!history.count;
+  $('sceneHistoryTitle').textContent=`历史使用场景图（${history.count}）`;
+  stableHTML($('sceneHistoryList'),history.html);
   const active=sceneTaskActive(),job=activeJob();
   // A render in progress does not hold a scene back: it is built meanwhile and saved in its turn.
   const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || sceneSubmitting || sceneRecommending;
@@ -680,7 +709,7 @@ async function recommendScene() {
 }
 async function generateScene() {
   if(!current || sceneSubmitting || sceneRecommending || sceneTaskActive() || !sceneAvailable() || serviceDisconnected || !current.analysis || (activeJob() && dirty))return;
-  const id=current.id;sceneErrors.delete(id);sceneSubmitting=true;renderSceneSet();
+  const id=current.id;sceneErrors.delete(id);sceneSubmitting=true;renderSceneSet();renderRenderActivity();
   try{
     if(dirty)await savePlan(true);
     if(current?.id!==id)return;
@@ -768,7 +797,7 @@ function renderActionState() {
   renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();renderLayerPanel();
 }
 
-let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
+let comparePrevious=false, viewerLatestKey='', styleFocusNotice='', sceneHistorySelection='';
 let realtime={key:'',context:'',mode:'live',status:'idle',epoch:0,instance:null,changed:false,record:null,error:'',timer:null,abort:null,preservedView:null};
 let inspectorTab='review', materialAgentSubmitting=false, materialAgentProjectId='', materialAgentRenderedKey='';
 const inspectorScrollPositions={review:0,material:0,plan:0};
@@ -805,17 +834,25 @@ function jobQueueLabel(job) {
   return `预览 · ${first}${ids.length>1?` 等 ${ids.length} 个镜头`:''}`;
 }
 function polishJob() { return current?.jobs?.find(j => ['running','queued'].includes(j.status) && j.origin==='auto_polish'); }
+function tileProgress(job) {
+  const {tile_progress:percent,tile_completed:completed,tile_total:total}=job || {};
+  if(!Number.isInteger(completed) || !Number.isInteger(total) || total<=1 || completed<1 || completed>total || typeof percent!=='number' || !Number.isFinite(percent) || percent<0 || percent>100 || Math.abs(percent-completed/total*100)>.11)return null;
+  return {percent,completed,total};
+}
 function renderActivityState() {
   if(!current)return null;
-  const job=activeJob(),task=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
+  const task=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
   const automatic=current.auto_material,materialActive=automaticMaterialBusy();
+  const sceneActive=sceneTaskActive() || sceneSubmitting;
+  const instructionActive=instructionSubmitting && instructionProjectId===current.id;
+  const job=activeJob() || (!sceneActive && !instructionActive && !materialActive && (polishJob() || current.jobs?.find(j=>['running','queued'].includes(j.status) && j.origin==='auto_thumbnails')));
   const stopped=['failed','cancelled','interrupted'].includes(current.status);
   const latestJob=[...(current.jobs || [])].sort((a,b)=>(b.created_at || 0)-(a.created_at || 0))[0];
   const preparingHero=!job && !materialActive && !stopped && !!current.analysis && current.initial_preview?.status==='pending'
     && (!latestJob || latestJob.kind==='analyze' && latestJob.status==='completed');
   const analyzing=!job && !materialActive && !current.analysis && current.status==='analyzing';
-  if(!job && !materialActive && !preparingHero && !analyzing)return null;
-  const rawStage=String(job?.stage || task?.stage || automatic?.stage || '');
+  if(!job && !materialActive && !preparingHero && !analyzing && !sceneActive && !instructionActive)return null;
+  const rawStage=String(job?.stage || task?.stage || automatic?.stage || (sceneActive?current.scene_task?.stage:'') || (instructionActive?instructionProgress?.stage:'') || '');
   const shotIds=job?.shot_ids || task?.render_shot_ids || (task?.source?.shot_id?[task.source.shot_id]:preparingHero?['hero']:[]);
   const activeDone=Array.isArray(job?.completed) && job.completed.includes(activeShot);
   const renderingElsewhere=job?.status==='running' && job.kind!=='analyze' && !!job.current_shot && job.current_shot!==sceneShotLabel(activeShot);
@@ -823,44 +860,63 @@ function renderActivityState() {
   const scope=scoped && !comparePrevious?'current':'background';
   const shotLabel=job?.current_shot || (shotIds.length===1?sceneShotLabel(shotIds[0]):'');
   const outputVisible=!!currentOutput && !$('renderImage').hidden;
-  let state,title,metric='等待实际进度',progress=null;
+  let state,title,actor='任务处理',metric='等待实际进度',progress=null;
   if(job?.status==='queued'){
-    state='queued';title=job.kind==='hero_optimize'?'主图优化已排队':job.kind==='analyze'?'模型分析已排队':job.origin==='initial_preview'?'白底主图已排队':job.kind==='render'?'4K 渲染已排队':'预览已排队';
+    actor='任务队列';
+    state='queued';title=job.kind==='hero_optimize'?'主图优化已排队':job.kind==='analyze'?'模型分析已排队':job.origin==='auto_thumbnails'?'镜头缩略图已排队':job.origin==='auto_polish'?'高清图已排队':job.origin==='initial_preview'?'白底主图已排队':job.kind==='render'?'4K 渲染已排队':'预览已排队';
     metric='等待开始，进度将自动更新';
   }else if(job?.kind==='hero_optimize'){
+    actor='主图优化';
     const phase=job.workflow_phase;
     const stages={inspecting:['analyzing','正在读取真实场景','核对相机、灯光、材质和产品结构'],planning:['preparing','正在规划主图优化','结合画面选择构图、布光与材质调整'],preview:['rendering','正在试渲染主图','试渲染完成后自动比较效果'],evaluating:['reviewing','正在比较优化效果','检查产品完整性与画面变化'],finalizing:['rendering','正在生成高清主图','生成图片与可编辑场景文件']};
     [state,title,metric]=stages[phase] || ['preparing','正在优化主图','等待任务阶段更新'];
-    if(['preview','finalizing'].includes(phase) && typeof job.sample_progress==='number' && Number.isFinite(job.sample_progress) && job.sample_progress>=0 && job.sample_progress<=100 && !/准备|启动/.test(rawStage)){
-      progress=job.sample_progress;metric=`当前镜头采样 ${progress}%`;
+    const tiles=tileProgress(job);
+    if(['preview','finalizing'].includes(phase) && tiles && !/准备|启动/.test(rawStage)){
+      metric=tiles.completed===tiles.total?`当前镜头分块 ${tiles.completed}/${tiles.total} · 任务仍在进行`:`当前镜头分块 ${tiles.completed}/${tiles.total} · ${tiles.percent}%`;
+      if(tiles.completed<tiles.total)progress=tiles.percent;
+    }else if(['preview','finalizing'].includes(phase) && typeof job.sample_progress==='number' && Number.isFinite(job.sample_progress) && job.sample_progress>0 && job.sample_progress<=100 && !/准备|启动/.test(rawStage)){
+      if(job.sample_progress===100)metric='采样已达 100% · 任务仍在进行';
+      else{progress=job.sample_progress;metric=`当前镜头采样 ${progress}%`;}
     }
   }else if(job?.kind==='analyze' || analyzing){
-    state='analyzing';title='正在分析模型';metric='正在读取几何、部件与贴图';
+    actor='模型检查';state='analyzing';title='正在分析模型';metric='正在读取几何、部件与贴图';
   }else if(preparingHero){
     state='preparing';title='正在准备白底主图';metric='准备完成后自动开始渲染';
   }else if(!job && materialActive){
+    actor='材质代理';
     const status=task?.status || automatic?.status;
     state=status==='rendering'?'rendering':'material';title=status==='rendering'?'正在生成材质预览':status==='queued'?'材质优化已排队':'正在处理材质';
     metric=status==='rendering'?'等待实际渲染进度':'找到并应用材质后继续预览';
+  }else if(!job && sceneActive){
+    actor='场景生成';state='preparing';title=current.scene_task?.status==='queued'?'使用场景已排队':'正在生成使用场景';metric='等待任务阶段更新';
+  }else if(!job && instructionActive){
+    actor=instructionProgress?.agent || '调整请求';state='preparing';title='正在处理调整要求';metric='等待处理结果';
   }else{
     const reviewing=/检查|诊断|评估|比较|比对|分析画面|分析预览/.test(rawStage) && !/重新|重渲染/.test(rawStage);
     state=reviewing?'reviewing':'rendering';
-    title=reviewing?'正在检查渲染效果':job.origin==='initial_preview'?'正在生成白底主图':job.kind==='render'?'正在渲染 4K 成品':'正在生成预览';
+    actor=reviewing?'画面检查':'Blender 渲染';
+    title=reviewing?'正在检查渲染效果':job.origin==='auto_thumbnails'?'正在生成镜头缩略图':job.origin==='auto_polish'?'正在生成高清图':job.origin==='initial_preview'?'正在生成白底主图':job.kind==='render'?'正在渲染 4K 成品':'正在生成预览';
     const numeric=value=>typeof value==='number' && Number.isFinite(value) && value>=0 && value<=100;
-    const sample=job.sample_progress,group=job.progress,total=Array.isArray(job.shot_ids)?job.shot_ids.length:0;
+    const sample=job.sample_progress,group=job.progress,total=Array.isArray(job.shot_ids)?job.shot_ids.length:0,tiles=tileProgress(job);
     const preparing=/准备|启动|回退|重新/.test(rawStage);
-    if(!reviewing && !preparing && numeric(sample)){
+    if(!reviewing && !preparing && tiles){
+      metric=tiles.completed===tiles.total?`当前镜头分块 ${tiles.completed}/${tiles.total} · 任务仍在进行`:`当前镜头分块 ${tiles.completed}/${tiles.total} · ${tiles.percent}%`;
+      if(tiles.completed<tiles.total)progress=tiles.percent;
+    }else if(!reviewing && !preparing && sample===100){
+      metric='采样已达 100% · 任务仍在进行';
+    }else if(!reviewing && !preparing && numeric(sample) && sample>0){
       progress=sample;metric=`当前镜头采样 ${sample}%`;
     }else if(!reviewing && numeric(group) && group>0 && total>1){
       progress=group;metric=`图组进度 ${group}% · 已完成 ${job.completed?.length || 0}/${total} 张`;
     }else if(reviewing)metric='采样结束后继续检查，任务尚未结束';
     else if(total>1)metric=`图组已完成 ${job.completed?.length || 0}/${total} 张`;
+    else if(!reviewing && sample===0)metric='渲染进行中，等待采样进度';
   }
   const stage=[shotLabel,rawStage].filter(Boolean).join(' · ') || (preparingHero?'模型分析已完成':'正在获取任务状态');
   let note=outputVisible?'当前真实图片保留，任务完成后自动更新。':'任务完成后自动显示图片，可退出项目让任务继续。';
   if(scope==='background')note=comparePrevious?'正在查看历史图片，后台任务继续执行。':`当前查看「${sceneShotLabel(activeShot)}」，后台正在处理其他镜头。`;
   if(serviceDisconnected)return {state:'disconnected',title:'连接中断，等待恢复',stage:'暂时无法获取任务状态',metric:'进度暂不可用',note:'请确认本机应用仍在运行；连接恢复后自动核对进度。',progress:null,scope,motion:'still',outputVisible};
-  return {state,title,stage,metric,note,progress,scope,motion:'active',outputVisible};
+  return {state,title,actor,stage,metric,note,progress,scope,motion:'active',outputVisible};
 }
 function renderRenderActivity() {
   const panel=$('renderActivity'),viewer=$('viewer');if(!panel || !viewer)return;
@@ -877,9 +933,9 @@ function renderRenderActivity() {
   track.hidden=panel.dataset.progress==='none';
   if(determinate){track.setAttribute('aria-valuenow',String(activity.progress));bar.style.width=activity.progress+'%';}
   else{track.removeAttribute('aria-valuenow');bar.style.removeProperty('width');}
-  track.setAttribute('aria-label',activity?.metric?.startsWith('当前镜头采样')?'当前镜头采样进度':activity?.metric?.startsWith('图组进度')?'已完成镜头进度':'任务进行中，进度暂不可用');
+  track.setAttribute('aria-label',activity?.metric?.startsWith('当前镜头采样')?'当前镜头采样进度':activity?.metric?.startsWith('当前镜头分块')?'当前镜头分块进度':activity?.metric?.startsWith('图组进度')?'已完成镜头进度':'任务进行中，进度暂不可用');
   if(activity)track.setAttribute('aria-valuetext',activity.metric);else track.removeAttribute('aria-valuetext');
-  for(const [id,key] of [['renderActivityTitle','title'],['renderActivityStage','stage'],['renderActivityMetric','metric'],['renderActivityNote','note']])putText(id,activity?.[key] || '');
+  for(const [id,key] of [['renderActivityTitle','title'],['renderActivityActor','actor'],['renderActivityStage','stage'],['renderActivityMetric','metric'],['renderActivityNote','note']])putText(id,activity?.[key] || '');
   // This live region sits outside aria-busy so phase changes are announced
   // immediately, without reading every sampled percentage on every poll.
   putText('renderActivityAnnouncement',activity?.title || '');
@@ -913,6 +969,7 @@ function focusStyleShot(style,previousStyle) {
   return true;
 }
 function outputNotice(output,latest) {
+  if(comparePrevious && sceneHistorySelection && output)return `正在查看历史场景图（方案 v${output.version}）；返回最新后可调整当前方案。`;
   if(comparePrevious && output)return output.version===latest.version?`正在查看优化前的真实预览（方案 v${output.version}）；返回最新可查看本轮结果。`:`正在对比上一版 v${output.version}；返回最新可查看 v${latest.version}。`;
   const running=activeJob();
   if(!running && automaticMaterialBusy())return '正在自动寻找或应用材质；当前真实图片保留，新预览完成后自动更新。';
@@ -1214,8 +1271,9 @@ function renderViewer() {
   const latest=latestOutput(activeShot),displayed=displayedShotOutput(activeShot),latestKey=displayed?current.id+':'+sceneOutputKey(displayed):current.id+':'+activeShot;
   if(viewerLatestKey!==latestKey){comparePrevious=false;viewerLatestKey=latestKey;}
   const previous=displayed?.quality==='thumbnail'?null:previousOutput(latest);
-  currentOutput = displayed?.quality==='thumbnail'?null:(comparePrevious && previous?previous:latest);$('shotTitle').textContent = shot.label;
-  $('comparePreview').hidden=!previous;$('comparePreview').setAttribute('aria-pressed',comparePrevious);
+  const historical=comparePrevious && sceneHistorySelection && activeShot==='scene' ? (current.outputs || []).find(o=>sceneOutputKey(o)===sceneHistorySelection && o.shot_id==='scene') : null;
+  currentOutput = historical || (displayed?.quality==='thumbnail'?null:(comparePrevious && previous?previous:latest));$('shotTitle').textContent = shot.label;
+  $('comparePreview').hidden=!previous && !historical;$('comparePreview').setAttribute('aria-pressed',comparePrevious);
   const sameVersion=previous && previous.version===latest.version;
   $('comparePreview').textContent=comparePrevious?'返回最新 v'+latest.version:sameVersion?'对比优化前':'对比上一版 v'+(previous?.version || '');
   $('previewNotice').textContent=outputNotice(currentOutput,latest);$('previewNotice').hidden=!$('previewNotice').textContent;
@@ -1762,12 +1820,13 @@ function renderShots() {
 }
 // How far a running job is, as one number: finished shots plus the share of the shot being rendered.
 // An analysis reports its own steps. null when nothing can be said yet.
-function jobPercent(job,completed,total,sample) {
+function jobPercent(job,completed,total,sample,tiles=null) {
   const valid=value=>typeof value==='number' && Number.isFinite(value) && value>=0 && value<=100;
   if(job.status==='queued')return null;
   if(job.kind==='analyze')return valid(job.progress) && job.progress>0?Math.round(job.progress):null;
-  const within=valid(sample) && completed<total?sample/100:0;
-  if(!valid(sample) && !completed)return null;
+  // Within the shot being rendered: its samples when they are known (they span every tile), else its finished tiles.
+  const within=completed>=total?0:valid(sample)?sample/100:tiles?tiles.percent/100:0;
+  if(!valid(sample) && !tiles && !completed)return null;
   // The last per cent is the saving and checking after the samples are done.
   return Math.min(99,Math.round((Math.min(completed,total)+within)/total*100));
 }
@@ -1779,14 +1838,16 @@ function renderJob() {
   const running=['running','queued'].includes(job.status),autoRunning=!running && automaticMaterialBusy();const done=job.status==='completed' && !autoRunning;const cancelled=['cancelled','interrupted'].includes(job.status);
   const total=job.shot_ids?.length || 1;const completed=job.completed?.length || 0;
   const hero=job.kind==='hero_optimize',sample=hero && !['preview','finalizing'].includes(job.workflow_phase)?null:job.sample_progress;
-  const percent=running?jobPercent(job,completed,total,sample):null;
+  const tiles=tileProgress(job),tileText=tiles?(tiles.completed===tiles.total?` · 当前镜头分块 ${tiles.completed}/${tiles.total}，任务仍在进行`:` · 当前镜头分块 ${tiles.completed}/${tiles.total}（${tiles.percent}%）`):'';
+  const sampleAvailable=typeof sample==='number' && Number.isFinite(sample) && sample>0 && sample<100;
+  const percent=running?jobPercent(job,completed,total,sample,tiles):null;
   const automaticTask=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
   let stage=autoRunning?(automaticTask?.stage || current.auto_material?.stage || '正在自动优化材质'):job.stage || statusNames[job.status];if(job.kind==='analyze')stage='模型分析 · '+stage;else if(job.origin==='initial_preview')stage='白底主图 · '+stage;else if(job.origin==='auto_polish')stage=running?'后台生成高清图':job.status==='failed'?'高清图未生成':stage;
   $('jobPanel').className='job-panel'+(job.status==='failed'?' failed':'')+(done?' is-complete':'');
   const summary=hero?job.optimization_summary || (done && job.optimization_decision==='kept_original'?'试渲染未达到采用条件，已保留原图。':done && job.optimization_decision==='adopted'?'已采用优化后的高清主图。':''):'';
   const candidates=hero && Array.isArray(job.hero_candidates || job.candidates)?(job.hero_candidates || job.candidates).slice(0,12):[];
   const candidatesHTML=candidates.length?`<details class="hero-optimization-candidates"><summary>查看试渲染记录</summary><div class="review-attempts">${candidates.map((candidate,index)=>{const url=typeof candidate.png_url==='string' && candidate.png_url.startsWith('/files/'+current.id+'/') && /\.(png|jpg)$/i.test(candidate.png_url)?candidate.png_url:'';return `<div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}" loading="lazy"></a>`:''}<span>${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}</span>${candidate.reason?`<small>${esc(candidate.reason)}</small>`:''}</div>`;}).join('')}</div></details>`:'';
-  const progressText=job.origin==='auto_polish'?(running?`可继续操作，新的要求会立即接管${typeof sample==='number'?' · 采样 '+sample+'%':''}`:'当前预览保留'):hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
+  const progressText=job.origin==='auto_polish'?(running?`可继续操作，新的要求会立即接管${tiles?tileText:sampleAvailable?' · 采样 '+sample+'%':sample===100?' · 采样已达 100%，任务仍在进行':''}`:'当前预览保留'):hero?(running?'自动优化进行中，完成后显示结果'+tileText:done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && tiles?tileText:running && sampleAvailable ? ' · 当前镜头采样 '+sample+'%' : running && sample===100?' · 采样已达 100%，任务仍在进行':''}`;
   $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}${percent===null?'':` <b class="job-percent" aria-label="总进度">${percent}%</b>`}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="任务总进度" aria-valuenow="${percent ?? (Number(job.progress)||0)}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,percent ?? (Number(job.progress)||0)))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
   const waiting=activeJobs().filter(item=>item.id!==job.id),scene=current.scene_task,sceneWaiting=['queued','running'].includes(scene?.status) && Number(scene.queued_behind)>0;
   if(waiting.length || sceneWaiting){
@@ -1887,7 +1948,7 @@ async function openProject(id) {
   try{
     const project=await api('/api/projects/'+encodeURIComponent(id));
     if(requestId!==projectRequest)return false;
-    current=project;const savedShot=recalled('wuying-shot-'+id);
+    current=project;thumbnailAttempts.delete(id+':'+project.version);const savedShot=recalled('wuying-shot-'+id);
     activeShot=current.plan.shots.some(s=>s.id===savedShot)?savedShot:current.initial_preview && current.plan.shots.some(s=>s.id==='hero')?'hero':current.plan.style==='dark' && current.plan.shots.some(s=>s.id==='campaign')?'campaign':current.plan.shots[0]?.id;
     styleFocusNotice='';comparePrevious=false;viewerLatestKey='';selectedShots=new Set(activeShot?[activeShot]:[]);selectedMaterial=null;cameraShot=null;syncSignature='';
     clearFeedback(true);syncSettings();renderProject();setInspectorTab('review');renderLibrary();remember('wuying-project',id);await refreshMaterialTasks(id);return true;
@@ -1896,6 +1957,12 @@ async function openProject(id) {
 }
 const thumbnailAttempts=new Map();
 let thumbnailSubmitting=false;
+function thumbnailStateSignature(project) {
+  return JSON.stringify([project.version,project.status,
+    (project.outputs || []).map(o=>[o.job_id,o.shot_id,o.version,o.quality,o.png_url]),
+    (project.jobs || []).map(j=>[j.id,j.status,j.origin,j.yielded]),
+    project.auto_material?.status,project.scene_task?.status]);
+}
 function scheduleThumbnails() {
   if(!current?.analysis || !system?.runtime?.capabilities?.thumbnails || thumbnailSubmitting || busy || projectLoading || planSavePromise || dirty || activeJob() || polishJob() || automaticMaterialBusy() || serviceDisconnected)return;
   if(!latestOutput('hero'))return;
@@ -1903,12 +1970,16 @@ function scheduleThumbnails() {
   const projectId=current.id,version=current.version,key=projectId+':'+version;
   const jobs=(current.jobs || []).filter(job=>job.origin==='auto_thumbnails' && job.version===version).sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));
   const last=jobs[0],state=thumbnailAttempts.get(key) || {count:0,lastAt:0,lastYield:null};
+  const signature=thumbnailStateSignature(current);
+  if(state.noopSignature===signature)return;
+  if(state.noopSignature){state.noopSignature=null;state.count=0;state.lastAt=0;}
   if(jobs.some(job=>['queued','running'].includes(job.status)))return;
   if(last && !(last.status==='cancelled' && last.yielded===true))return;
   if(last && state.lastYield===last.id)return;
   if(state.blocked || state.count>=5 || Date.now()-state.lastAt<5000)return;
   state.count++;state.lastAt=Date.now();if(last)state.lastYield=last.id;thumbnailAttempts.set(key,state);thumbnailSubmitting=true;
   api(`/api/projects/${encodeURIComponent(projectId)}/thumbnails`,{method:'POST',body:{expected_version:version}})
+    .then(result=>{if(result && Object.hasOwn(result,'job') && result.job===null && thumbnailAttempts.get(key)===state)state.noopSignature=signature;})
     .catch(error=>{if(error.uncertain || !error.status || error.status===409 || error.status>=500)state.lastYield=null;else state.blocked=true;})
     .finally(()=>{thumbnailSubmitting=false;});
 }
@@ -2018,7 +2089,7 @@ async function applyInstructionAndPreview(event) {
   if(!attempt && !confirm && realtimeActive() && realtime.changed){try{applyRealtimeView(false);}catch(error){return toast(error.message,true);}}
   if(guidance?.kind==='response_error')instructionGuidance.delete(projectId);
   instructionDrafts.set(projectId,$('instructionInput').value);
-  busy=true;instructionSubmitting=true;$('instructionError').textContent='';$('instructionError').hidden=true;renderProject();
+  busy=true;instructionSubmitting=true;instructionProjectId=projectId;$('instructionError').textContent='';$('instructionError').hidden=true;renderProject();
   try{
     if(!attempt){
       if([...instructionAttempts.values()].filter(item=>unfinishedInstructionPhases.has(item.phase)).length>=instructionJournalLimit)throw new Error('待核对的调整已达到上限，请先核对已有请求，再提交新调整。');
@@ -2042,8 +2113,10 @@ async function applyInstructionAndPreview(event) {
       instructionAttempts.set(attempt.instructionKey,attempt);pendingInstructionPreview=attempt;persistInstructionJournal();
     }
     if(!attempt.confirmed){
+      startInstructionProgress(projectId);
       attempt.phase='requesting';
       const updated=await api(`/api/projects/${projectId}/instruct${attempt.kind==='confirm'?'/confirm':''}`,{method:'POST',headers:{'Idempotency-Key':attempt.instructionKey},body:clone(attempt.body)});
+      stopInstructionProgress();
       const receipt=updated.instruction_result;
       if(updated.id===projectId && Number.isInteger(updated.version) && instructionProposalIsValid(receipt,attempt)){
         attempt.phase='proposed';pendingInstructionPreview=null;
@@ -2100,7 +2173,7 @@ async function applyInstructionAndPreview(event) {
     if(error.status===409 && (attempt?.confirmed || stale)){
       try{const refreshed=await api('/api/projects/'+projectId);if(current?.id===projectId)current=refreshed;}catch(_){}
     }
-  }finally{busy=false;instructionSubmitting=false;persistInstructionJournal();renderProject();}
+  }finally{busy=false;instructionSubmitting=false;stopInstructionProgress();persistInstructionJournal();renderProject();}
 }
 function uploadValidation() {
   if(!uploadFiles.length)return '';
@@ -2357,7 +2430,16 @@ function installEvents() {
   // Validate after revealing the affected advanced panel, including folded inputs.
   $('settingsForm').noValidate=true;
   document.querySelectorAll('[data-inspector]').forEach(button=>{button.onclick=()=>setInspectorTab(button.dataset.inspector);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),index=tabs.indexOf(inspectorTab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs[tabs.length-1]:tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];setInspectorTab(next);document.querySelector('[data-inspector="'+next+'"]').focus();};});
-  $('comparePreview').onclick=()=>{realtime.mode='image';comparePrevious=!comparePrevious;feedbackMode=false;renderViewer();renderInspection();renderInstruction();};
+  $('comparePreview').onclick=()=>{realtime.mode='image';comparePrevious=!comparePrevious;sceneHistorySelection='';feedbackMode=false;renderViewer();renderInspection();renderInstruction();};
+  $('sceneHistoryList').onclick=event=>{
+    const button=event.target.closest('[data-scene-history]');if(!button || !current || !shots().some(shot=>shot.id==='scene'))return;
+    const output=(current.outputs || []).find(o=>o.shot_id==='scene' && sceneOutputKey(o)===button.dataset.sceneHistory);
+    if(!output)return;
+    stashCamera();activeShot='scene';cameraShot='scene';syncCamera();
+    const displayed=displayedShotOutput('scene');viewerLatestKey=displayed?current.id+':'+sceneOutputKey(displayed):current.id+':scene';
+    sceneHistorySelection=sceneOutputKey(output);comparePrevious=true;realtime.mode='image';feedbackMode=false;instructionTargetSelection=null;
+    renderViewer();renderShots();renderInspection();renderActionState();
+  };
   $('materialAgentForm').onsubmit=submitMaterialAgent;
   $('materialAgentTasks').addEventListener('toggle',event=>{const target=event.target;if(target.tagName==='DETAILS' && target.dataset.materialDetail)materialAgentDisclosures.set(target.dataset.materialProject+':'+target.dataset.materialDetail,target.open);},true);
   $('materialAgentTasks').onclick=async event=>{const button=event.target.closest('[data-cancel-material]');if(!button || !current)return;button.disabled=true;try{const projectId=current.id,task=await api(`/api/projects/${projectId}/material-agent/tasks/${button.dataset.cancelMaterial}/cancel`,{method:'POST'});storeMaterialTask(projectId,task);if(current?.id===projectId)renderMaterialAgent();}catch(error){$('materialAgentError').textContent=error.message;button.disabled=false;}};

@@ -367,6 +367,11 @@ def instruction(ident):
         return instruction_error_response(exc)
     return jsonify(result)
 
+@app.get('/api/projects/<ident>/instruction-progress')
+def instruction_progress_status(ident):
+    from instruction_service import instruction_progress_view
+    return jsonify(activity=instruction_progress_view(ident))
+
 
 _INSTRUCTION_RESPONSE_REASONS={
     'generic':'修改结果未通过校验',

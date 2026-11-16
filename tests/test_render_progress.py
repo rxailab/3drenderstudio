@@ -11,8 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 for folder in (ROOT, ROOT / 'tests'):
     if str(folder) not in sys.path: sys.path.insert(0, str(folder))
 
+import engine
 import orientation
 import scene_stylist
+from blender import render_progress
 
 # What engine.execute and hero_optimizer look for in a render script's output.
 PATTERN = r'(?:Sample|Rendered)\s+(\d+)\s*/\s*(\d+)'
@@ -26,12 +28,36 @@ class StepTests(unittest.TestCase):
         found = re.search(PATTERN, 'PROGRESS: Sample 12/64')
         self.assertEqual((found[1], found[2]), ('12', '64'))
         source = (ROOT / 'blender' / 'render_progress.py').read_text(encoding='utf-8')
-        self.assertIn("'PROGRESS: Sample %s/%s'", source)
+        self.assertIn("'PROGRESS: Sample %d/%d'", source)
         # Every script that renders a picture the user waits for reports its samples.
         for name in ('worker.py', 'hero_scene.py'):
             with self.subTest(script=name):
                 script = (ROOT / 'blender' / name).read_text(encoding='utf-8')
                 self.assertLess(script.index('report_render_progress()'), script.index('bpy.ops.render.render(write_still=True)'))
+
+    def test_a_picture_rendered_in_tiles_is_counted_as_one(self):
+        # What Blender reports for a 4096 px picture split into four tiles of three samples each (recorded from Blender 5.0.1).
+        messages = ['Mem: 0M | Updating Shaders', 'Rendered 0/4 Tiles, Sample 0/3', 'Rendered 0/4 Tiles, Sample 1/3', 'Rendered 0/4 Tiles, Sample 3/3',
+                    'Rendered 1/4 Tiles, Sample 3/3', 'Rendered 1/4 Tiles, Sample 1/3', 'Rendered 1/4 Tiles, Sample 3/3',
+                    'Rendered 2/4 Tiles, Sample 3/3', 'Rendered 2/4 Tiles, Sample 1/3', 'Rendered 2/4 Tiles, Sample 3/3',
+                    'Rendered 3/4 Tiles, Sample 3/3', 'Rendered 3/4 Tiles, Sample 1/3', 'Rendered 3/4 Tiles, Sample 3/3', 'Rendered 3/4 Tiles, Sample 0/3']
+        state = render_progress.new_state()
+        seen = [render_progress.overall(message, state) for message in messages]
+        self.assertIsNone(seen[0])
+        self.assertEqual([done for done, _ in seen[1:]], [0, 1, 3, 3, 4, 6, 6, 7, 9, 9, 10, 12, 12])
+        self.assertEqual({total for _, total in seen[1:]}, {12})          # twelve samples in all, never "3 of 3" four times
+        # One tile: the count is Blender's own. Remaining time and memory in front of it do not matter.
+        state = render_progress.new_state()
+        self.assertEqual(render_progress.overall('Remaining: 00:03.53 | Mem: 16M | Sample 12/128', state), (12, 128))
+        self.assertEqual(render_progress.overall('Mem: 16M | Sample 11/128', state), (12, 128))           # it never goes backwards
+        self.assertIsNone(render_progress.overall('Sample 3/0', state)); self.assertIsNone(render_progress.overall('Time: 00:04.38 (Saving: 00:00.14)', state))
+
+    def test_the_engine_takes_the_scripts_own_count_before_anything_blender_logs(self):
+        source = (ROOT / 'engine.py').read_text(encoding='utf-8')
+        self.assertIn("explicit=bool(match) and line.startswith('PROGRESS:')", source)
+        # The script's line is not one of the Cycles log lines the engine counts or skips.
+        self.assertIsNone(engine.cycles_sample_batch('PROGRESS: Sample 12/64'))
+        self.assertIsNone(engine.CyclesTileProgress().consume('PROGRESS: Sample 12/64'))
 
     def test_a_scene_task_knows_how_far_each_stage_is(self):
         generated = ['识别产品与使用场景', '推荐目标人群与场景', '渲染产品参考角度 1 / 3', '渲染产品参考角度 2 / 3', '渲染产品参考角度 3 / 3',
@@ -80,6 +106,30 @@ print('HANDLERS', sum(1 for handler in bpy.app.handlers.render_stats if handler.
         self.assertEqual(counts[-1], (48, 48))                                   # the last sample is always reported
         self.assertEqual([done for done, _ in counts], sorted({done for done, _ in counts}))      # it only moves forward, no line twice
         self.assertIn('HANDLERS 1', ran.stdout)
+
+    def test_a_tiled_render_reports_one_rising_count_over_all_its_tiles(self):
+        script = '''
+import sys
+sys.path.insert(0, %r)
+import bpy
+from blender.render_progress import report
+report()
+scene = bpy.context.scene; scene.render.engine = 'CYCLES'; scene.cycles.device = 'CPU'
+scene.cycles.samples = 2; scene.cycles.use_adaptive_sampling = False; scene.cycles.use_denoising = False
+scene.cycles.use_auto_tile = True; scene.cycles.tile_size = 128
+scene.render.resolution_x = scene.render.resolution_y = 256; scene.render.filepath = sys.argv[-1]
+bpy.ops.render.render(write_still=True)
+''' % str(ROOT)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'tiles.py'; path.write_text(script, encoding='utf-8')
+            ran = subprocess.run([shutil.which('blender'), '-b', '--factory-startup', '--python-exit-code', '1', '--python', str(path), '--',
+                                  str(Path(temp) / 'out.png')], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=600)
+            self.assertEqual(ran.returncode, 0, ran.stdout[-1500:] + ran.stderr[-500:])
+        counts = [tuple(int(value) for value in re.search(PATTERN, line).groups()) for line in ran.stdout.splitlines() if line.startswith('PROGRESS: ')]
+        self.assertTrue(counts, ran.stdout[-800:])
+        self.assertEqual({total for _, total in counts}, {8})                    # four tiles of two samples: eight in all
+        self.assertEqual(counts[-1], (8, 8))
+        self.assertEqual([done for done, _ in counts], sorted(done for done, _ in counts))
 
 
 if __name__ == '__main__':
