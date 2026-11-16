@@ -311,7 +311,7 @@ def _run_task(task_id):
         with LOCK:
             task=get(KIND,task_id)
             if task['status']!='cancelled':
-                task.update(status='failed',stage='材质任务未完成',error=str(exc)[:1000]);put(KIND,task);_publish_auto(task)
+                task.update(status='failed',stage='自动材质优化未应用，已保留现有材质' if task.get('origin')=='automatic' else '材质任务未完成',error=str(exc)[:1000]);put(KIND,task);_publish_auto(task)
 
 
 def _sync(task):

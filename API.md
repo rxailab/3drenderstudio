@@ -1,5 +1,42 @@
 # 本地接口与可复现性
 
+## v29 套图
+
+**组件。** 项目的 `components` 是组件列表。
+
+- `GET /api/projects/{id}/components`：`{components, roles, limit}`。
+- `POST /api/projects/{id}/components`：`multipart/form-data`，`files`（一个 OBJ / GLB / ZIP，或一张 PNG / JPG / WebP）、可选 `paths`、`name`、`role`、`sku`、`caption`、`quantity`、`size_mm`。返回 201 和组件，随后在后台处理。
+- `PUT /api/projects/{id}/components/{component_id}`：修改 `name`、`role`、`sku`、`caption`、`quantity`（1 到 99）、`size_mm`、`included`；`turn` 为 `flip`、`left`、`right`、`forward`、`backward` 之一时改变模型组件的朝向并重新渲染。
+- `POST /api/projects/{id}/components/{component_id}/refresh`：重新处理。`DELETE` 同一地址去掉组件。
+
+组件字段：`id`、`kind`（`model` 或 `image`）、`status`（`queued`、`processing`、`ready`、`failed`）、`stage`（`queued`、`analyse`、`pose`、`render`、`cutout`、`ready`）、`progress`、`error`、`size_mm` 与 `size_source`（`user` 或 `model`，后者是按文件单位的估计）、`rotation`、`pose`、`cutout`（`{url, width, height, product_rect}`）、`notes`。`role` 取 `battery`、`charger`、`case`、`bag`、`blade`、`bit`、`attachment`、`manual`、`other`。一个项目最多 24 个组件。
+
+**套图状态。** `GET /api/projects/{id}/listing` 返回：
+
+- `product`：`title`、`model`、`headline`、`subline`、`language`（`en` 或 `zh`）、`size_mm`、`features`（最多 8 条，`{title, detail, parts, icon}`，`parts` 只保留模型里存在的部件名）、`specs`（最多 10 条，`{label, value}`）、`figures`（最多 3 个，`{value, unit, label}`）、`pages`（`null` 为自动，或图片类型的列表）、`usecase`、`drafted`。
+- `usecase`：`enabled`、`kind`（`pipe`、`rod`、`board`、`sheet`、`block`）、`material`、`mode`（`through`、`under`、`front`、`manual`）、`side`、`diameter_mm`、`width_mm`、`thickness_mm`、`length_mm`（留空为自动）、`offset_mm`、`rotate`、`headline`。
+- `brand`：`preset`（`frame`、`flat`、`tech`、`clean`、`promo`）、`name`、`accent` 与 `dark`（`null` 为自动）、`badges`（最多 3 个）、`legal`、`unit`（`mm` 或 `in`）、`logo`，以及实际采用的 `accent_used`、`accent_source`（`user`、`product`、`default`）、`dark_used`、`ground`。
+- `plan`：将生成的图片 `[{kind, index}]`，做不出的带 `skipped` 原因；`order` 是图片类型的顺序，`kinds` 是名称。
+- `pages`：已生成的图片 `[{id, kind, index, file, url, width, height, notes}]`；`built_at`、`notes`。
+- `task`：最近一次生成 `{id, status, stage, progress, detail, error, pages}`，`status` 取 `queued`、`running`、`completed`、`failed`、`cancelled`。
+- `size`：`{mm, known}`，`known` 为 `false` 时是按模型文件单位的估计，图片上不画产品尺寸线。
+- 另有 `presets`、`components`、`roles`、`parts`、`options`、`elements`、`ready`、`available`。
+
+**修改与生成。**
+
+- `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。
+- `POST /api/projects/{id}/listing/logo`（`multipart/form-data` 的 `file`，PNG / JPG / WebP，不超过 8 MB）与 `DELETE` 同一地址。
+- `POST /api/projects/{id}/listing/draft`：`{hint, language, replace}`。按模型部件名称和 `hint` 起草标题、卖点、规格；配置了 AI 时由文案模型撰写。`replace` 不为 `true` 时只填空着的内容。模型给出而 `hint` 里没有的数字会被去掉。
+- `POST /api/projects/{id}/listing/build`：开始生成，返回 202 和任务；同一项目已有生成在进行时返回 409。
+- `POST /api/projects/{id}/listing/{task_id}/cancel`。
+- `GET /api/projects/{id}/listing/download`：全部图片的 ZIP。
+
+图片是 2000×2000 的 PNG，保存在 `data/{id}/listing/build-…/`，新的一次生成会替换上一次的文件。摆拍素材按请求内容缓存在 `data/{id}/stage/`。
+
+**场景图的人物取景。** `people` 新增取值 `hands`。提案与 `scene_brief` 新增 `framing`：`hands` 或 `person`，画面没有人时为 `null`；`people` 仍是布尔值。未指定而策划认为需要有人时，`framing` 为 `hands`。生成记录的 `check.people` 在手部特写时多出 `framing` 和 `face_visible`；要手部特写而出现人脸，`ok` 为 `false`。
+
+**状态。** 自动材质任务未应用时，`auto_material.stage` 为「自动材质优化未应用，已保留现有材质」。
+
 ## v28 姿态 agent 与进度
 
 **朝向记录。** `orientation`（见 v27）的 `version` 为 2，新增：
