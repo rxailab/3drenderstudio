@@ -131,9 +131,9 @@ Decide which segment this product's usage scene should address and plan one pict
 - product: what the product is, two to five plain English words.
 - max_dimension_mm: the real size of the product's largest dimension, your best estimate from what it is. model_dimensions are in unknown units; use them only for proportions.
 - summary: one sentence in the user's language describing the planned picture.
-- people: true when the picture shows a person, or a person's hands, using the product. Things that are held or operated by hand while they work (hand tools, power tools, garden machines, instruments) are best shown in use by a person; things that stand on their own (cabinets, storage, furniture) often need nobody. When required_people is given it decides: true means a person is clearly visible using or handling the product, false means nobody is in the picture, not even a hand, and the product is shown at rest in the place where it is used.
+- people: true when the picture shows a person, or a person's hands, using the product. Things that are held or operated by hand while they work (hand tools, power tools, garden machines, instruments) are best shown in use by a person; things that stand on their own (cabinets, storage, furniture) often need nobody. When required_people is given it decides: true means a person is clearly visible using or handling the product, false means nobody is in the picture, not even a hand, and the product is shown at rest in the place where it is used. people_framing says how a person appears: 'hands' (the usual case) means a close-up of the hands operating the product and the thing it is working on, cropped tight, with no face, head or whole figure; 'person' means the person is visible from about the waist up.
 - complex: true when it needs a place that a floor, one back wall and a few loose objects around the product cannot give: a jobsite, a vehicle, a lawn, a furnished room, the outdoors.
-- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture.
+- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. With people_framing 'hands', describe the hands on the product and what the product is working on at the point of contact (the pipe being cut, the nut being turned, the board being drilled), and keep faces and whole figures out of it. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture.
 - setting: the closest of supported_settings, used when the scene is built from 3D props instead.
 - azimuth, elevation: the camera angle on the product that suits the picture, in degrees, in the convention of hero_view: azimuth 0 faces the product's front and elevation is the height above level. Stay within 70 degrees of the front.
 Plan a picture a shop could really use: the product is the subject, complete and prominent. hint, when present, is what the user asked for in their own words and takes priority over the references.'''
@@ -261,14 +261,14 @@ def with_method(proposal, requested=None):
     """
     import scene_imagegen
     available = scene_imagegen.config() is not None
-    choice = proposal.get('people_choice') or 'auto'
-    if choice == 'include' and requested == 'render':
-        raise ValueError('3D 道具场景里没有人物；要画面包含人物，请把生成方式改为「自动」或「AI 图像生成」。')
-    if choice == 'include' and not available:
+    choice = proposal.get('people_choice') or 'auto'; asked = choice in ('include', 'hands')
+    if asked and requested == 'render':
+        raise ValueError('3D 道具场景里没有人物；要画面包含人物或手部，请把生成方式改为「自动」或「AI 图像生成」。')
+    if asked and not available:
         raise ValueError('图像模型未配置或已关闭，无法生成含人物的场景图；可把人物改为「不含人物」，用 3D 道具场景。')
     # Fixed recipes cannot judge whether a person helps: their picture has one when the image model makes it.
     undecided = choice == 'auto' and proposal.get('source') == 'rules'
-    people = choice == 'include' or (choice == 'auto' and not undecided and bool(proposal.get('people')))
+    people = asked or (choice == 'auto' and not undecided and bool(proposal.get('people')))
     wanted = 'generate' if people or proposal.get('complex') else 'render'
     note = None
     if requested == 'generate' and not available:
@@ -284,6 +284,8 @@ def with_method(proposal, requested=None):
         result['people'] = method == 'generate'
     elif 'people' in proposal or choice != 'auto':
         result['people'] = people
+    # A person appears as hands at work unless the user asked to see the person.
+    result['framing'] = ('person' if choice == 'include' else 'hands') if result.get('people') else None
     if proposal.get('source') == 'rules' and 'scene' in proposal:
         result['scene'] = scene_audience.fixed_scene(proposal.get('segment_id'), result['people']) if proposal.get('segment_id') else proposal['scene']
     return result
@@ -325,7 +327,8 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
         if hint: facts['hint'] = hint
         if required: facts['required_segment'] = required
         if reference: facts['required_reference'] = reference
-        if people != 'auto': facts['required_people'] = people == 'include'
+        if people != 'auto': facts['required_people'] = people in ('include', 'hands')
+        facts['people_framing'] = 'person' if people == 'include' else 'hands'
         try:
             answer = _ask(config, STRATEGIST_PROMPT, facts, strategist_schema(segments), image_path)
             segment_id = required or answer['segment_id'] or None
@@ -334,7 +337,7 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
             return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'ai',
                                 'reason': _line(answer['reason'], 300), 'product': _line(answer['product'], 60),
                                 'max_dimension_mm': answer['max_dimension_mm'], 'summary': _line(answer['summary'], 300),
-                                'people': answer['people'] if people == 'auto' else people == 'include', 'complex': answer['complex'],
+                                'people': answer['people'] if people == 'auto' else people in ('include', 'hands'), 'complex': answer['complex'],
                                 'scene': scene_audience.scrub(_line(answer['scene'], 1200)), 'setting': answer['setting'],
                                 'azimuth': azimuth, 'elevation': elevation})
         except Exception:      # no answer is not a reason to have no proposal
@@ -349,7 +352,7 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
     return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'rules', 'reason': reason,
                         'product': _line(project.get('name') or recipe['label'], 60), 'max_dimension_mm': None,
                         'summary': '面向「%s」：%s。' % (chosen['label'], chosen['priority']) if chosen else '%s的通用使用场景。' % recipe['label'],
-                        'people': people == 'include', 'complex': False, 'scene': chosen['scene'] if chosen else '',
+                        'people': people in ('include', 'hands'), 'complex': False, 'scene': chosen['scene'] if chosen else '',
                         'setting': recipe['setting'],
                         'azimuth': azimuth, 'elevation': elevation})
 
@@ -361,7 +364,9 @@ def _brief(proposal, method):
             'reason': _line(proposal.get('reason'), scene_audience.MAX_TEXT), 'summary': _line(proposal.get('summary'), scene_audience.MAX_TEXT),
             # Props never include a person, whatever the plan hoped for.
             'people': bool(proposal.get('people')) and method == 'generate', 'complex': bool(proposal.get('complex')),
-            'people_choice': proposal.get('people_choice') if proposal.get('people_choice') in scene_audience.PEOPLE else 'auto'}
+            'people_choice': proposal.get('people_choice') if proposal.get('people_choice') in scene_audience.PEOPLE else 'auto',
+            'framing': (proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else 'hands')
+                       if proposal.get('people') and method == 'generate' else None}
 
 
 def direct(project, hint, image_path, models, proposal=None):
@@ -638,7 +643,8 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     # A size guessed from the category alone is not worth telling the image model.
     picture = scene_imagegen.create(project, plan, azimuth, elevation, scene, proposal.get('product') or project.get('name'),
                                     size_mm if basis != 'category' else None, folder, cancelled, progress,
-                                    people=proposal['people'] if type(proposal.get('people')) is bool else None)
+                                    people=proposal['people'] if type(proposal.get('people')) is bool else None,
+                                    framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None)
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')
@@ -646,7 +652,7 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     made = picture['record']
     record = {'summary': _line(proposal.get('summary'), 400) or '由图像模型生成的使用场景', 'source': proposal.get('source', 'rules'),
               'method': 'generate', 'model': made['model'], 'attempts': made['attempts'], 'check': made['check'],
-              'people': made.get('people'),
+              'people': made.get('people'), 'framing': made.get('framing'),
               'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height']}
     return plan, record, picture
 

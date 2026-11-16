@@ -571,7 +571,7 @@ function sceneChoices() {
 function scenePeopleChoice() {
   // A scene built from 3D props never has a person in it, so asking for one there is not offered.
   const value=$('scenePeopleSelect').value;
-  return ['include','exclude'].includes(value) && !(value==='include' && $('sceneMethodSelect').value==='render')?value:'auto';
+  return ['include','hands','exclude'].includes(value) && !(['include','hands'].includes(value) && $('sceneMethodSelect').value==='render')?value:'auto';
 }
 function sceneProposal() {
   // A proposal is shown only while it answers what is on screen: this plan, this hint, this audience.
@@ -591,8 +591,9 @@ function sceneProposalHTML(proposal) {
   const segment=sceneSegment(proposal.segment_id),method=proposal.method;
   const chosen=choice=>choice==='generate' || choice==='render'?choice:method,final=chosen($('sceneMethodSelect').value);
   const why=proposal.people?'画面含人物':proposal.complex?'画面需要真实环境':'用道具即可搭出';
-  const asked=proposal.people_choice==='include' || proposal.people_choice==='exclude';
-  const people=final==='render'?'不含人物（3D 道具场景里没有人物）':proposal.people?`包含人物${asked?'（你指定）':'（场景策划认为需要有人使用产品）'}`:`不含人物${asked?'（你指定）':'（场景策划认为不需要；想要人物可在上方选「包含人物」）'}`;
+  const asked=['include','hands','exclude'].includes(proposal.people_choice),hands=proposal.framing!=='person';
+  const shown=hands?'手部特写（手在操作产品，不露脸）':'包含人物';
+  const people=final==='render'?'不含人物（3D 道具场景里没有人物）':proposal.people?`${shown}${asked?'（你指定）':hands?'（场景策划认为需要有人使用产品；要看到使用者可在上方选「包含人物」）':'（场景策划认为需要有人使用产品）'}`:`不含人物${asked?'（你指定）':'（场景策划认为不需要；想要人物可在上方选「手部特写」或「包含人物」）'}`;
   const index=typeof sceneLibrary?.pack?.index_url==='string' && sceneLibrary.pack.index_url.startsWith('/references/')?sceneLibrary.pack.index_url:'';
   return `<strong>${segment?(proposal.audience==='auto'?'推荐人群：':'所选人群：')+esc(segment.label):'没有对应的人群，按通用场景处理'}</strong>`
     +`<p>${esc(proposal.reason || '')}</p>`
@@ -607,14 +608,16 @@ function sceneBriefHTML(brief) {
   const segment=sceneSegment(brief.segment_id);
   return `<strong>${segment?'面向：'+esc(segment.label):'通用使用场景'}</strong>`
     +`<p>${esc(sceneSourceLabels[brief.source] || '')}${brief.reason?'：'+esc(brief.reason):''}</p>`+sceneReferenceHTML(brief.reference_id)
-    +(brief.method==='generate'?`<p>画面人物：${brief.people?'包含人物':'不含人物'}${['include','exclude'].includes(brief.people_choice)?'（你指定）':''}</p>`:'');
+    +(brief.method==='generate'?`<p>画面人物：${brief.people?(brief.framing==='hands'?'手部特写（不露脸）':'包含人物'):'不含人物'}${['include','hands','exclude'].includes(brief.people_choice)?'（你指定）':''}</p>`:'');
 }
 function sceneGeneratedHTML(output) {
   const made=output.generated || {},check=made.check || {},status=check.status;
   const seen=check.people && typeof check.people==='object'?check.people:null,asked=typeof seen?.expected==='boolean';
   const label=status==='passed'?'产品与参考图一致':status==='failed'?(check.product_consistent===true && seen?.ok===false?'画面人物与要求不符':'产品与参考图有差异'):'未自动核对';
-  const people=asked && typeof seen.visible==='boolean'?`<p class="scene-check-people is-${seen.ok===false?'failed':'passed'}">画面人物：要求${seen.expected?'包含':'不含'}人物，核对结果为${seen.visible?'有人物':'没有人物'}${seen.ok===false?'；已按要求重新生成过，仍未做到，可再生成一次或调整场景说明':''}。</p>`
-    :typeof made.people==='boolean' && status!=='passed' && status!=='failed'?`<p class="scene-check-people">画面人物：要求${made.people?'包含':'不含'}人物，未能自动核对，请自行查看。</p>`:'';
+  const hands=seen?.framing==='hands' || made.framing==='hands',wanted=expected=>expected?(hands?'手部特写（不露脸）':'包含人物'):'不含人物';
+  const found=seen?(hands && seen.expected?(seen.visible?(seen.face_visible?'出现了人脸或整个人':'只有手部'):'没有手'):seen.visible?'有人物':'没有人物'):'';
+  const people=asked && typeof seen.visible==='boolean'?`<p class="scene-check-people is-${seen.ok===false?'failed':'passed'}">画面人物：要求${hands && seen.expected?wanted(true):(seen.expected?'包含':'不含')+'人物'}，核对结果为${found}${seen.ok===false?'；已按要求重新生成过，仍未做到，可再生成一次或调整场景说明':''}。</p>`
+    :typeof made.people==='boolean' && status!=='passed' && status!=='failed'?`<p class="scene-check-people">画面人物：要求${hands && made.people?wanted(true):(made.people?'包含':'不含')+'人物'}，未能自动核对，请自行查看。</p>`:'';
   const issues=Array.isArray(check.issues)?check.issues.filter(item=>typeof item==='string').slice(0,6):[];
   const references=(Array.isArray(made.references)?made.references:[]).map(row=>sceneFile(row?.url)).filter(Boolean).slice(0,8);
   return `<p class="scene-check is-${esc(status || 'unchecked')}"><strong>${esc(label)}</strong>${check.note?' '+esc(check.note):''}</p>`+people
@@ -655,9 +658,9 @@ function renderSceneSet() {
     if(sceneRecommending)$('sceneRecommend').setAttribute('aria-busy','true');else $('sceneRecommend').removeAttribute('aria-busy');
     const image=sceneLibrary.image || {},wantsImage=$('sceneMethodSelect').value!=='render';
     // A person can only be asked for where the image model makes the picture.
-    const people=$('scenePeopleSelect'),include=people.querySelector('option[value="include"]'),canInclude=wantsImage && !!image.available;
-    include.disabled=!canInclude;
-    if(!canInclude && people.value==='include')people.value=wantsImage?'auto':'exclude';
+    const people=$('scenePeopleSelect'),include=people.querySelector('option[value="include"]'),handsOnly=people.querySelector('option[value="hands"]'),canInclude=wantsImage && !!image.available;
+    include.disabled=!canInclude;if(handsOnly)handsOnly.disabled=!canInclude;
+    if(!canInclude && ['include','hands'].includes(people.value))people.value=wantsImage?'auto':'exclude';
     const help=!image.available && wantsImage?`图像模型不可用（${image.message || '未配置'}）；含人物的场景会改为 3D 道具场景。`
       :!wantsImage?'3D 道具场景由现成模型布置，画面里没有人物；要有人使用产品，请选「自动」或「AI 图像生成」。':'';
     $('sceneMethodHelp').textContent=help;$('sceneMethodHelp').hidden=!help;
@@ -852,7 +855,7 @@ function renderActivityState() {
     && (!latestJob || latestJob.kind==='analyze' && latestJob.status==='completed');
   const analyzing=!job && !materialActive && !current.analysis && current.status==='analyzing';
   if(!job && !materialActive && !preparingHero && !analyzing && !sceneActive && !instructionActive)return null;
-  const rawStage=String(job?.stage || task?.stage || automatic?.stage || (sceneActive?current.scene_task?.stage:'') || (instructionActive?instructionProgress?.stage:'') || '');
+  const rawStage=String(job?.stage || task?.stage || (materialActive?automatic?.stage:'') || (sceneActive?current.scene_task?.stage:'') || (instructionActive?instructionProgress?.stage:'') || '');
   const shotIds=job?.shot_ids || task?.render_shot_ids || (task?.source?.shot_id?[task.source.shot_id]:preparingHero?['hero']:[]);
   const activeDone=Array.isArray(job?.completed) && job.completed.includes(activeShot);
   const renderingElsewhere=job?.status==='running' && job.kind!=='analyze' && !!job.current_shot && job.current_shot!==sceneShotLabel(activeShot);
@@ -888,7 +891,10 @@ function renderActivityState() {
     state=status==='rendering'?'rendering':'material';title=status==='rendering'?'正在生成材质预览':status==='queued'?'材质优化已排队':'正在处理材质';
     metric=status==='rendering'?'等待实际渲染进度':'找到并应用材质后继续预览';
   }else if(!job && sceneActive){
-    actor='场景生成';state='preparing';title=current.scene_task?.status==='queued'?'使用场景已排队':'正在生成使用场景';metric='等待任务阶段更新';
+    actor='场景生成';state='preparing';title=current.scene_task?.status==='queued'?'使用场景已排队':'正在生成使用场景';
+    const sceneProgress=current.scene_task?.progress;
+    if(typeof sceneProgress==='number' && Number.isFinite(sceneProgress) && sceneProgress>0 && sceneProgress<100){progress=Math.round(sceneProgress);metric=`场景生成进度 ${progress}%`;}
+    else metric=current.scene_task?.status==='queued'?'等待开始，进度将自动更新':'正在准备，进度将自动更新';
   }else if(!job && instructionActive){
     actor=instructionProgress?.agent || '调整请求';state='preparing';title='正在处理调整要求';metric='等待处理结果';
   }else{
@@ -933,7 +939,7 @@ function renderRenderActivity() {
   track.hidden=panel.dataset.progress==='none';
   if(determinate){track.setAttribute('aria-valuenow',String(activity.progress));bar.style.width=activity.progress+'%';}
   else{track.removeAttribute('aria-valuenow');bar.style.removeProperty('width');}
-  track.setAttribute('aria-label',activity?.metric?.startsWith('当前镜头采样')?'当前镜头采样进度':activity?.metric?.startsWith('当前镜头分块')?'当前镜头分块进度':activity?.metric?.startsWith('图组进度')?'已完成镜头进度':'任务进行中，进度暂不可用');
+  track.setAttribute('aria-label',activity?.metric?.startsWith('当前镜头采样')?'当前镜头采样进度':activity?.metric?.startsWith('当前镜头分块')?'当前镜头分块进度':activity?.metric?.startsWith('图组进度')?'已完成镜头进度':activity?.metric?.startsWith('场景生成进度')?'场景生成进度':'任务进行中，进度暂不可用');
   if(activity)track.setAttribute('aria-valuetext',activity.metric);else track.removeAttribute('aria-valuetext');
   for(const [id,key] of [['renderActivityTitle','title'],['renderActivityActor','actor'],['renderActivityStage','stage'],['renderActivityMetric','metric'],['renderActivityNote','note']])putText(id,activity?.[key] || '');
   // This live region sits outside aria-busy so phase changes are announced

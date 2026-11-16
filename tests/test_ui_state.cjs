@@ -2521,6 +2521,7 @@ function audienceServer(h,library=audienceLibrary(),proposal={}) {
       p.scene_proposal={id:'proposal-'+h.calls.length,version:p.version,hint:call.body.hint,audience:chosen?call.body.audience:'auto',reference:call.body.reference || null,
         segment_id:chosen?call.body.audience:'site_team',reference_id:call.body.reference || '05-01',source:'ai',reason:'带脚轮的工具柜 <script>alert(1)</script>',
         summary:'安装工人从抽屉取工具',people:call.body.people?call.body.people!=='exclude':true,people_choice:call.body.people || 'auto',complex:false,
+        framing:call.body.people==='exclude'?null:call.body.people==='include'?'person':'hands',
         method:'generate',method_note:null,image_available:true,...proposal};
       return h.response(p.scene_proposal);
     }
@@ -2561,18 +2562,22 @@ test('the audience pack is read once, a proposal is shown for what is on screen,
 test('the user decides whether a person is in the picture, and the choice is sent, shown and kept consistent with the method',async t=>{
   const h=await setup(t,{projects:[previewProject()]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
   const people=h.node('scenePeopleSelect'),include=people.querySelector('option[value="include"]');
-  assert.deepEqual([...people.options].map(option=>option.value),['auto','include','exclude']);assert.equal(people.value,'auto');assert.equal(include.disabled,false);
+  assert.deepEqual([...people.options].map(option=>option.value),['auto','hands','include','exclude']);assert.equal(people.value,'auto');assert.equal(include.disabled,false);
   assert.match([...h.node('sceneMethodSelect').options].find(option=>option.value==='generate').textContent,/可含人物/);
   await h.run('recommendScene()');
-  const card=h.node('sceneProposal');assert.match(card.querySelector('.scene-people').textContent,/画面人物：包含人物（场景策划认为需要有人使用产品）/);
+  // A person the planner wants appears as hands at work, close up; the whole person only when the user asks.
+  const card=h.node('sceneProposal');assert.match(card.querySelector('.scene-people').textContent,/画面人物：手部特写（手在操作产品，不露脸）（场景策划认为需要有人使用产品；要看到使用者可在上方选「包含人物」）/);
+  choose(h,'scenePeopleSelect','hands');await h.run('recommendScene()');
+  assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend')[1].body.people,'hands');
+  assert.match(card.querySelector('.scene-people').textContent,/画面人物：手部特写（手在操作产品，不露脸）（你指定）/);
   choose(h,'scenePeopleSelect','include');
   assert.equal(card.hidden,true,'a proposal made for another choice about people is not shown as the plan');
   await h.run('recommendScene()');
-  const asked=h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend');assert.equal(asked[1].body.people,'include');
+  const asked=h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend');assert.equal(asked[2].body.people,'include');
   assert.equal(card.hidden,false);assert.match(card.querySelector('.scene-people').textContent,/画面人物：包含人物（你指定）/);
   // Props never include a person: asking for one is not offered there, and the request says so.
   choose(h,'sceneMethodSelect','render');
-  assert.equal(include.disabled,true);assert.equal(people.value,'exclude');assert.match(h.node('sceneMethodHelp').textContent,/没有人物/);
+  assert.equal(include.disabled,true);assert.equal(people.querySelector('option[value="hands"]').disabled,true);assert.equal(people.value,'exclude');assert.match(h.node('sceneMethodHelp').textContent,/没有人物/);
   choose(h,'sceneMethodSelect','generate');assert.equal(include.disabled,false);assert.equal(people.value,'exclude','the choice is not switched back behind the user');
   await h.run('recommendScene()');assert.match(card.querySelector('.scene-people').textContent,/画面人物：不含人物（你指定）/);
   choose(h,'scenePeopleSelect','include');
@@ -3375,6 +3380,27 @@ test('a running job shows how far it is as one percentage, and says nothing when
   assert.equal((await show({kind:'analyze',shot_ids:[],sample_progress:null,progress:0,stage:'启动 Blender'})).percent,null);
   h.records.get('a').jobs=[{...job({}),status:'completed',stage:'已完成',progress:100}];await h.run('poll()');await tick();
   assert.equal(h.node('jobPanel').querySelector('.job-percent'),null,'a finished job has no percentage');
+});
+
+test('a scene being generated reports its own stage and percentage, not an earlier material task',async t=>{
+  const a=previewProject();
+  // The automatic material step ended earlier (here: not applied). Its record stays on the project.
+  a.auto_material={status:'failed',stage:'自动材质优化未应用，已保留现有材质',error:'AI 选材不可用，自动流程已保留现有材质'};
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  const record=h.records.get('a');
+  record.scene_task={id:'s1',project_id:'a',status:'running',stage:'图像模型正在生成场景',progress:54,base_version:1};await h.run('poll()');await tick();
+  const activity=h.run('renderActivityState()');
+  assert.equal(activity.actor,'场景生成');assert.equal(activity.title,'正在生成使用场景');
+  assert.equal(activity.stage,'图像模型正在生成场景','the scene task speaks for itself');
+  assert.doesNotMatch(activity.stage,/材质/);
+  assert.equal(activity.metric,'场景生成进度 54%');assert.equal(activity.progress,54);
+  assert.equal(h.node('renderActivityStage').textContent,'图像模型正在生成场景');
+  assert.equal(h.node('renderActivityProgress').getAttribute('aria-label'),'场景生成进度');
+  record.scene_task={...record.scene_task,status:'queued',stage:'等待渲染队列',progress:null};await h.run('poll()');await tick();
+  assert.equal(h.run('renderActivityState()').metric,'等待开始，进度将自动更新');
+  // A material task that really is running still shows while nothing else does.
+  record.scene_task={...record.scene_task,status:'completed',stage:'场景图已生成'};record.auto_material={status:'running',stage:'搜索 Poly Haven CC0 材质'};await h.run('poll()');await tick();
+  const material=h.run('renderActivityState()');assert.equal(material.actor,'材质代理');assert.equal(material.stage,'搜索 Poly Haven CC0 材质');
 });
 
 test('scene and pose tasks show the stage they are in with its percentage',async t=>{

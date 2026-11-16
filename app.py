@@ -545,6 +545,40 @@ def orientation_cancel(ident,task_id):
     import orientation
     return jsonify(orientation.cancel(ident,task_id))
 
+@app.route('/api/projects/<ident>/components',methods=['GET','POST'])
+def component_list(ident):
+    """The other things in the box: each a model or a picture, processed into a cut-out."""
+    import components
+    if request.method=='GET':
+        return jsonify(components=[components.public(row) for row in components.components(get('project',ident))],
+                       roles={key:{'zh':zh,'en':en} for key,(zh,en) in components.ROLES.items()},limit=components.MAX_COMPONENTS)
+    files=request.files.getlist('files')
+    if not files: raise ValueError('请选择组件的模型或图片文件')
+    if any(Path(f.filename or '').suffix.lower() in components.MODEL_SUFFIXES+('.zip',) for f in files): engine.require_runtime('render')
+    component_id,base=components.reserve(ident)
+    try:
+        paths=json.loads(request.form.get('paths','[]'))
+        for i,f in enumerate(files):
+            name=paths[i] if i<len(paths) and isinstance(paths[i],str) else f.filename
+            if Path(name).suffix.lower()=='.zip': extract_archive(f.stream,base)
+            else: f.save(safe_path(base,name))
+    except Exception:
+        components.discard(ident,component_id);raise
+    body={key:request.form.get(key) for key in ('name','role','sku','caption','quantity','size_mm') if request.form.get(key) not in (None,'')}
+    return jsonify(components.register(ident,component_id,body,check_resources)),201
+
+@app.route('/api/projects/<ident>/components/<component_id>',methods=['PUT','DELETE'])
+def component_item(ident,component_id):
+    import components
+    if request.method=='DELETE': return jsonify(components.remove(ident,component_id))
+    return jsonify(components.update(ident,component_id,request.get_json(force=True)))
+
+@app.post('/api/projects/<ident>/components/<component_id>/refresh')
+def component_refresh(ident,component_id):
+    import components
+    engine.require_runtime('render')
+    return jsonify(components.refresh(ident,component_id)),202
+
 @app.post('/api/projects/<ident>/scene/<task_id>/cancel')
 def scene_cancel(ident,task_id):
     import scene_stylist
@@ -898,6 +932,8 @@ if __name__=='__main__':
     scene_stylist.recover_interrupted()
     import orientation
     orientation.recover_interrupted()
+    import components
+    components.start();components.recover_interrupted()
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

@@ -24,7 +24,9 @@ PACK = ROOT / 'references' / PACK_ID
 PACK_TITLE = '欧洲工具电商视觉参考'
 PACK_ACCESSED = '2026-11-13'
 METHODS = ('render', 'generate')
-PEOPLE = ('auto', 'include', 'exclude')     # whether the picture shows a person: decided by the planner, required, or ruled out
+# Whether the picture shows a person: decided by the planner, hands at work only, a visible person, or nobody.
+PEOPLE = ('auto', 'hands', 'include', 'exclude')
+FRAMINGS = ('hands', 'person')              # how a person appears: hands on the tool in close-up (the default), or the person
 SOURCES = ('ai', 'rules', 'user')
 MAX_TEXT = 400
 
@@ -236,7 +238,7 @@ def brief_text(segment_id, reference_id=None):
 def validate_brief(value, plan):
     """Raise ValueError unless ``value`` is a well-formed plan['scene_brief']."""
     allowed = {'version', 'shot_id', 'segment_id', 'reference_id', 'source', 'method', 'reason', 'summary', 'people', 'complex',
-               'people_choice'}
+               'people_choice', 'framing'}
     if not isinstance(value, dict) or set(value) - allowed or value.get('version') != 1:
         raise ValueError('场景人群记录无效')
     if value.get('shot_id') not in {shot['id'] for shot in plan.get('shots', [])}:
@@ -256,6 +258,8 @@ def validate_brief(value, plan):
             raise ValueError('场景人群记录的标记无效')
     if value.get('people_choice', 'auto') not in PEOPLE:
         raise ValueError('场景人群记录的人物选项无效')
+    if value.get('framing') is not None and value['framing'] not in FRAMINGS:
+        raise ValueError('场景人群记录的人物取景无效')
     return value
 
 

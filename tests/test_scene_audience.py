@@ -310,18 +310,18 @@ class FidelityTests(unittest.TestCase):
 
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
-                 'person_visible': False, 'issues': [], 'note': '一致。'}
+                 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
-    def check(self, reply, people=None):
+    def check(self, reply, people=None, framing=None):
         sent = {}
         def post(config, body):
             sent['body'] = body
             if isinstance(reply, Exception): raise reply
             return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch', 'input': reply}]}
         with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
-            return scene_imagegen.check(self.references, self.generated, 'rolling tool cabinet', people), sent.get('body')
+            return scene_imagegen.check(self.references, self.generated, 'rolling tool cabinet', people, framing), sent.get('body')
 
     def test_the_picture_is_shown_to_the_vision_model_next_to_every_render(self):
         result, body = self.check(self.verdict())
@@ -348,6 +348,15 @@ class FidelityTests(unittest.TestCase):
             free, _ = self.check(self.verdict(person_visible=visible))
             self.assertEqual((free['status'], free['people']), ('passed', {'expected': None, 'visible': visible, 'ok': True}))
         # Both wrong: the person comes first, the product's differences follow.
+        # Hands were asked for: hands alone pass; a face, or nobody at all, does not.
+        hands, _ = self.check(self.verdict(person_visible=True), people=True, framing='hands')
+        self.assertEqual((hands['status'], hands['people']), ('passed', {'expected': True, 'visible': True, 'ok': True, 'framing': 'hands', 'face_visible': False}))
+        face, _ = self.check(self.verdict(person_visible=True, face_visible=True), people=True, framing='hands')
+        self.assertEqual((face['status'], face['people']['ok'], face['product_consistent']), ('failed', False, True))
+        self.assertIn('crop to a close-up of the hands', face['issues'][0]); self.assertIn('手部特写', face['note'])
+        nobody, _ = self.check(self.verdict(person_visible=False), people=True, framing='hands')
+        self.assertEqual(nobody['status'], 'failed'); self.assertIn('no hand is visible', nobody['issues'][0])
+        self.assertEqual(self.check(self.verdict(person_visible=True, face_visible=True), people=True, framing='person')[0]['status'], 'passed')
         both, _ = self.check(self.verdict(person_visible=False, parts_consistent=False, issues=['one handle is missing']), people=True)
         self.assertEqual((both['status'], both['product_consistent'], len(both['issues']), both['issues'][1]), ('failed', False, 2, 'one handle is missing'))
 
@@ -369,9 +378,9 @@ class CreateTests(unittest.TestCase):
         for index, (azimuth, elevation) in enumerate(scene_imagegen.angles(35, 18)):
             path = self.data / 'fixture' / 'refs' / ('ref%d.png' % index); path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(png())
             self.rows.append({'path': path, 'azimuth': azimuth, 'elevation': elevation, 'cached': False})
-        self.prompts = []; self.verdicts = []; self.checked = []
-        def check(references, generated, product, people=None):
-            self.checked.append(people)
+        self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []
+        def check(references, generated, product, people=None, framing=None):
+            self.checked.append(people); self.framings.append(framing)
             return self.verdicts.pop(0)
         for target, name, effect in ((scene_imagegen, 'config', lambda: IMAGE), (scene_imagegen, 'references', lambda *a, **k: self.rows),
                                      (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', check)):
@@ -615,9 +624,9 @@ class SceneFlowTests(unittest.TestCase):
         self.asked += 1
         return {**self.reply, **({'segment_id': facts['required_segment']} if 'required_segment' in facts else {})}
 
-    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None):
+    def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None):
         self.created.append({'azimuth': azimuth, 'elevation': elevation, 'scene': scene, 'product': product, 'size_mm': size_mm, 'plan': copy.deepcopy(plan),
-                             'people': people})
+                             'people': people, 'framing': framing})
         folder.mkdir(parents=True, exist_ok=True)
         picture = folder / 'scene.png'; picture.write_bytes(png((2048, 2048))); (folder / 'scene.jpg').write_bytes(b'jpeg')
         return {'png': picture, 'jpg': folder / 'scene.jpg', 'width': 2048, 'height': 2048,
@@ -677,6 +686,23 @@ class SceneFlowTests(unittest.TestCase):
         mixed = engine.submit('fixture', 'preview', 'preview', ['hero', 'scene'], request_key='k1', expected_version=2)
         self.assertEqual(mixed['shot_ids'], ['hero'])
         self.assertEqual(engine.submit('fixture', 'preview', 'preview', ['hero', 'scene'], request_key='k1', expected_version=2)['id'], mixed['id'])
+
+    def test_a_person_appears_as_hands_at_work_unless_the_user_asks_to_see_the_person(self):
+        self.reply = answer(people=True, complex=True)
+        self.run_task(method='generate')                                 # nothing chosen: the planner wants a person, shown as hands
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[0]['people'], self.created[0]['framing'], brief['framing'], brief['people_choice']), (True, 'hands', 'hands', 'auto'))
+        self.run_task(method='generate', people='hands')
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[1]['people'], self.created[1]['framing'], brief['people'], brief['people_choice']), (True, 'hands', True, 'hands'))
+        self.run_task(method='generate', people='include')               # the user wants to see who is using it
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[2]['people'], self.created[2]['framing'], brief['framing']), (True, 'person', 'person'))
+        self.run_task(method='generate', people='exclude')
+        brief = store.get('project', 'fixture')['plan']['scene_brief']
+        self.assertEqual((self.created[3]['people'], self.created[3]['framing'], brief['framing']), (False, None, None))
+        with self.assertRaisesRegex(ValueError, '3D 道具场景里没有人物'):
+            scene_stylist.submit('fixture', {'method': 'render', 'people': 'hands'})
 
     def test_the_proposal_the_user_saw_is_the_one_that_is_made(self):
         shown = scene_stylist.recommend('fixture', {'hint': '工地'})
