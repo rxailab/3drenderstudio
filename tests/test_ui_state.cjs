@@ -14,8 +14,7 @@ const vm = require('node:vm');
 const { JSDOM } = require(process.env.UI_TEST_JSDOM_PATH || 'jsdom');
 const root = path.resolve(__dirname,'..');
 const html = fs.readFileSync(path.join(root,'static/index.html'),'utf8');
-// The page loads layer.js before app.js; both share one global scope.
-const script = fs.readFileSync(path.join(root,'static/layer.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'static/app.js'),'utf8').replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/, '');
+const script = fs.readFileSync(path.join(root,'static/app.js'),'utf8').replace(/start\(\)\.catch\(e=>toast\(e.message,true\)\);\s*$/, '');
 const copy = value => JSON.parse(JSON.stringify(value));
 function project(id='a') {
   return {id,name:'测试项目 '+id,status:'ready',version:1,created_at:1,metadata:{},history:[],outputs:[],jobs:[],exports:[],
@@ -2235,27 +2234,6 @@ function rendered(id='a',size=4096) {
 }
 const ecommerceCalls=h=>h.calls.filter(call=>/ecommerce/.test(call.url));
 
-test('电商出图 is the last inspector tab and asks the server only once it is opened',async t=>{
-  const h=await setup(t,{projects:[rendered('a',512)]});await h.run("openProject('a')");
-  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','overlay','ecommerce']);
-  assert.deepEqual(ecommerceCalls(h),[],'opening a project does not load marketplace data');
-  h.node('inspectorEcommerceTab').click();await tick();await tick();
-  assert.equal(h.node('inspectorEcommerce').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
-  assert.deepEqual(ecommerceCalls(h).map(call=>call.method+' '+call.url),['GET /api/ecommerce/platforms','GET /api/projects/a/ecommerce']);
-  assert.equal(h.node('ecommercePlatform').value,'general');
-  assert.deepEqual([...h.node('ecommercePlatform').querySelectorAll('optgroup')].map(group=>group.label),['通用','跨境','国内']);
-  assert.match(h.node('ecommercePlatformSummary').textContent,/导出 2000 px · 建议纯白底/);
-  assert.equal(h.node('ecommerceCheckShot').textContent,'白底主图');
-  const checks=[...h.node('ecommerceChecks').children];
-  assert.deepEqual(checks.map(item=>item.dataset.status),['action','auto']);
-  assert.equal(checks[0].querySelector('.value').textContent,'512 px，需渲染 4K');assert.ok(checks[0].querySelector('.detail'),'a rule that needs the user shows its sentence');
-  assert.equal(checks[1].querySelector('.value').textContent,'导出时处理');assert.equal(checks[1].querySelector('.detail'),null,'a passing or automatic rule stays on one line');
-  assert.match(checks[1].title,/自动处理为纯白/);
-  assert.equal(h.node('ecommerceExport').disabled,false,'a preview can still be exported');
-  assert.equal(h.node('ecommerceExportHint').dataset.tone,'warn');assert.match(h.node('ecommerceExportHint').textContent,/只有预览尺寸/);
-  await h.run('poll()');assert.equal(ecommerceCalls(h).length,2,'an unchanged project is not measured again');
-});
-
 test('the last inspector tab is reachable from the keyboard',async t=>{
   const h=await setup(t);await h.run("openProject('a')");const first=h.node('inspectorReviewTab');first.focus();
   first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'End',bubbles:true}));await tick();
@@ -2689,602 +2667,13 @@ test('a render in progress does not hold a scene back, and unsaved edits are sav
   assert.equal(h.calls.find(call=>call.url==='/api/projects/b/scene').body.expected_version,2);
 });
 
-test('a preview or 4K render asked for while another job runs joins the queue and can be taken out of it',async t=>{
-  const a=previewProject();a.jobs=[{id:'run',kind:'render',status:'running',quality:'standard',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
-  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
-  assert.equal(h.node('previewButton').disabled,false,'a running job no longer locks the next request');
-  assert.equal(h.node('previewButton').textContent,'排队预览');assert.match(h.node('renderButton').textContent,/^排队渲染/);
-  const project=h.records.get('a');
-  h.intercept=call=>{
-    if(call.url==='/api/projects/a' && call.method==='GET')return h.response({...project,queue:project.jobs.filter(job=>['running','queued'].includes(job.status)).sort((x,y)=>Number(x.status!=='running')-Number(y.status!=='running') || x.created_at-y.created_at).map((job,position)=>({type:'job',id:job.id,status:job.status,position}))});
-    if(/^\/api\/jobs\/[^/]+\/cancel$/.test(call.url)){const job=project.jobs.find(item=>call.url.includes(item.id));job.status='cancelled';return h.response(job);}
-    return undefined;
-  };
-  await h.run("run('preview')");
-  const request=h.calls.find(call=>call.url==='/api/projects/a/jobs');
-  assert.deepEqual(request.body,{kind:'preview',quality:'preview',shot_ids:['hero'],expected_version:1,queue:true});
-  assert.match(h.node('toast').textContent,/已加入渲染队列，前面还有 1 项/);
-  const queued=project.jobs.find(job=>job.id!=='run');
-  assert.equal(h.run('activeJob().id'),'run','the running job stays the one shown');
-  const list=h.node('jobPanel').querySelector('.job-queue');assert.ok(list);assert.match(list.textContent,/之后还有 1 项/);
-  list.querySelector(`[data-cancel="${queued.id}"]`).click();await tick();await tick();
-  assert.equal(queued.status,'cancelled');assert.equal(h.node('jobPanel').querySelector('.job-queue'),null,'taken out of the queue');
-  h.run("draft.exposure=.3;dirty=true;renderProject()");
-  assert.equal(h.node('previewButton').disabled,true,'an unsaved edit waits for the running job: the plan cannot be saved under it');
-});
-
-// ---- text and icon layer -------------------------------------------------
-function layerItems() {
-  return [{id:'headline',type:'text',x:.6,y:.05,w:.35,text:'红色工具柜',size:.056,weight:700,align:'right',color:'#141414',plate:null},
-    {id:'point1',type:'callout',x:.05,y:.4,w:.2,title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',anchor:[.45,.43],size:.026,color:'#ffffff',plate:{color:'#111111',opacity:.62}},
-    {id:'i1',type:'icon',icon:'shield',x:.5,y:.9,size:.06,color:'#d92d20'}];
-}
-// The server's layer routes: a revision per save, a refusal when the client's copy is behind.
-function layerServer(h,proposal=null) {
-  h.intercept=call=>{
-    const match=call.url.match(/^\/api\/projects\/([^/]+)\/layers\/([^/]+)(\/suggest)?$/);if(!match)return undefined;
-    const p=h.records.get(match[1]),shot=match[2];
-    if(match[3])return proposal?h.response(proposal):h.response({error:'请先生成这个镜头的预览，再排版图文。'},400);
-    const stored=p.layers?.[shot];
-    if(call.body.expected_revision!==(stored?.revision || 0))return h.response({error:'图文图层已在别处修改，请重新载入后再编辑。'},409);
-    p.layers={...(p.layers || {}),[shot]:{...copy(call.body.layer),revision:(stored?.revision || 0)+1,updated_at:1}};return h.response(p.layers[shot]);
-  };
-}
-// jsdom lays nothing out: give the picture a place on screen so the stage is drawn (2 screen px per picture px here).
-async function layerSetup(t,p=previewProject()) {
-  const h=await setup(t,{projects:[p,previewProject('b')]});await h.run("openProject('"+p.id+"')");
-  h.run('imageContentRect=()=>({left:100,top:50,width:256,height:256})');
-  h.node('inspectorOverlayTab').click();await tick();
-  return h;
-}
-const layerWrites=h=>h.calls.filter(call=>/\/layers\//.test(call.url) && call.method!=='GET');
-// Values built inside the page belong to its realm; compare them as plain data.
-const inPage=(h,code)=>JSON.parse(h.run('JSON.stringify('+code+')'));
-
-test('图文 sits before 导出, edits the rendered picture instead of the live view, and waits for a preview',async t=>{
-  const h=await setup(t,{projects:[project('a'),previewProject('b')]});await h.run("openProject('a')");
-  h.node('inspectorOverlayTab').click();await tick();
-  assert.equal(h.node('inspectorOverlay').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
-  assert.match(h.node('layerStatus').textContent,/先生成这个镜头的预览/);
-  for(const id of ['layerSuggest','layerAddTitle','layerAddCallout','layerExportPng','layerExportSvg'])assert.equal(h.node(id).disabled,true,id);
-  assert.equal(h.node('layerStage').hasAttribute('hidden'),true);
-  await h.run("openProject('b')");h.run('imageContentRect=()=>({left:100,top:50,width:256,height:256})');
-  h.node('inspectorOverlayTab').click();await tick();
-  assert.equal(h.run('realtimeActive()'),false,'with a rendered picture the layer tab never shows the live 3D view');
-  assert.equal(h.node('layerSuggest').disabled,false);assert.equal(h.node('layerAddTitle').disabled,false);assert.equal(h.node('layerEmpty').hidden,false);
-  assert.equal(h.node('viewer').classList.contains('layer-editing'),true);
-  h.node('inspectorReviewTab').click();await tick();assert.equal(h.node('viewer').classList.contains('layer-editing'),false);
-  assert.equal(layerWrites(h).length,0);
-});
-
-test('a suggested layout becomes real, editable SVG text over the picture and is saved once',async t=>{
-  const h=await layerSetup(t);
-  layerServer(h,{layer:{version:1,items:layerItems(),basis:{azimuth:35,elevation:18,focal_length:70,aspect:'1:1'},source:'rules'},report:{source:'rules',probe:'scene',anchored:1,notes:[],output:{job_id:'render-a',version:1,quality:'preview'}}});
-  h.node('layerHint').value=' 抽屉：分层收纳 ';
-  const pending=h.run('layerSuggest()');await h.run('layerSuggest()');await pending;
-  const requests=h.calls.filter(call=>call.url==='/api/projects/a/layers/hero/suggest');
-  assert.equal(requests.length,1,'a second click while it works does not ask again');
-  assert.deepEqual(requests[0].body,{hint:'抽屉：分层收纳',output:{job_id:'render-a',version:1,quality:'preview'},language:'en'});
-  const stage=h.node('layerStage');assert.equal(stage.hasAttribute('hidden'),false);assert.equal(stage.getAttribute('viewBox'),'0 0 512 512');
-  assert.equal(stage.style.left,'100px');assert.equal(stage.style.width,'256px');
-  const headline=stage.querySelector('[data-item="headline"] text');
-  assert.equal(headline.textContent,'红色工具柜');assert.equal(headline.getAttribute('font-weight'),'700');assert.equal(headline.getAttribute('text-anchor'),'end');
-  assert.equal(Number(headline.getAttribute('font-size')),28.67,'5.6% of the 512 px picture');
-  const callout=stage.querySelector('[data-item="point1"]');
-  assert.deepEqual([...callout.querySelectorAll('text')].map(node=>node.textContent),['抽屉收纳','物品分层放置']);
-  assert.equal(callout.querySelector('circle').getAttribute('cx'),'230.4','the line ends where the part is: 45% across');
-  assert.ok(callout.querySelector('rect[fill="#111111"]'),'its plate');assert.ok(callout.querySelectorAll('path').length>=3,'a line with its halo, and the icon');
-  assert.ok(stage.querySelector('[data-item="i1"] path'));
-  assert.match(h.node('layerStatus').textContent,/按部件名称提取要点，1 处指向了画面中的部件。.*草稿/);
-  assert.deepEqual([...h.node('layerItems').querySelectorAll('.layer-name')].map(node=>node.textContent),['红色工具柜','抽屉收纳','图标']);
-  assert.equal(h.node('layerSaved').textContent,'保存中…');assert.equal(layerWrites(h).length,1,'only the suggestion so far');
-  await h.run('layerFlush()');await h.run('layerFlush()');
-  const saves=layerWrites(h).filter(call=>call.method==='PUT');assert.equal(saves.length,1);
-  assert.equal(saves[0].url,'/api/projects/a/layers/hero');assert.equal(saves[0].body.expected_revision,0);
-  assert.deepEqual(saves[0].body.layer.items.map(item=>item.id),['headline','point1','i1']);assert.equal(saves[0].body.layer.source,'rules');
-  assert.equal(h.node('layerSaved').textContent,'已保存');assert.equal(h.run('current.layers.hero.revision'),1);
-  assert.equal(h.run('current.version'),1,'the plan and its renders are untouched');
-});
-
-test('items are added, changed and removed with undo, and typing is one undo step',async t=>{
-  const h=await layerSetup(t);layerServer(h);
-  h.node('layerAddTitle').click();h.node('layerAddCallout').click();h.node('layerAddIcon').click();
-  assert.deepEqual(inPage(h,'layerState.items.map(item=>item.type)'),['text','callout','icon']);assert.equal(h.run('layerState.selected'),'e3');
-  assert.equal(h.node('layerProperties').hidden,false);assert.equal(h.node('layerTextField').hidden,true,'an icon has no text');assert.equal(h.node('layerIconField').hidden,false);
-  h.node('layerIcons').querySelector('[data-layer-icon="lock"]').click();assert.equal(h.run('layerSelected().icon'),'lock');
-  h.node('layerItems').querySelector('[data-layer-item="e1"]').click();
-  assert.equal(h.node('layerText').value,'标题文字');assert.equal(h.node('layerStyleRow').hidden,false);assert.equal(h.node('layerDetailField').hidden,true);
-  const steps=h.run('layerState.undo.length');
-  for(const value of ['工','工具','工具柜']){h.node('layerText').value=value;h.node('layerText').dispatchEvent(new h.w.Event('input'));}
-  assert.equal(h.run('layerSelected().text'),'工具柜');assert.equal(h.run('layerState.undo.length'),steps+1,'three keystrokes, one step back');
-  h.node('layerAlignCenter').click();h.node('layerColors').querySelector('[data-layer-color="#d92d20"]').click();h.node('layerPlate').click();
-  assert.deepEqual(inPage(h,'[layerSelected().align,layerSelected().color,layerSelected().plate.color]'),['center','#d92d20','#ffffff']);
-  assert.equal(h.node('layerStage').querySelector('[data-item="e1"] text').getAttribute('text-anchor'),'middle');
-  h.node('layerSize').value='0.1';h.node('layerSize').dispatchEvent(new h.w.Event('input'));
-  assert.equal(h.run('layerSelected().size'),.1);assert.ok(Math.abs(h.run('layerSelected().w')-.56*.1/.08)<1e-9,'the box grows with its type');
-  h.node('layerItems').querySelector('[data-layer-item="e2"]').click();
-  assert.equal(h.node('layerDetailField').hidden,false);assert.equal(h.node('layerPointer').checked,true);
-  assert.equal(h.node('layerStage').querySelectorAll('[data-item="e2"] circle').length,3,'the ringed dot at the end of the line, and the icon badge');
-  h.node('layerPointer').click();assert.equal(h.run('layerSelected().anchor'),null);assert.equal(h.node('layerStage').querySelectorAll('[data-item="e2"] circle').length,1,'only the badge is left');
-  h.node('layerItems').querySelector('[data-layer-remove="e3"]').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2']);
-  h.node('layerUndo').click();assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['e1','e2','e3']);
-  h.node('layerUndo').click();assert.notEqual(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null);
-  h.node('layerRedo').click();assert.equal(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null);
-  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
-  assert.notEqual(h.run("layerState.items.find(item=>item.id==='e2').anchor"),null,'Ctrl+Z works on the layer while its tab is open');
-  h.node('layerClear').click();assert.equal(h.run('layerState.items.length'),0);assert.equal(h.node('layerProperties').hidden,true);
-  h.node('layerUndo').click();assert.equal(h.run('layerState.items.length'),3);
-});
-
-test('dragging moves, resizes and re-aims an item in picture coordinates; a second press edits the text in place',async t=>{
-  const h=await layerSetup(t);layerServer(h);h.run('layerState.items='+JSON.stringify(layerItems())+';renderLayerStage()');
-  const press=(x,y,selector,extra={})=>h.run(`layerPointerDown({button:0,clientX:${x},clientY:${y},timeStamp:${extra.at || 0},target:document.querySelector(${JSON.stringify(selector)}),preventDefault(){}})`);
-  const move=(x,y,alt=false)=>h.run(`layerPointerMove({clientX:${x},clientY:${y},altKey:${alt}})`);
-  // the callout's box starts at 5% / 40% of a 256 px picture shown at (100, 50)
-  press(120,160,'.layer-hit[data-item="point1"]');assert.equal(h.run('layerState.selected'),'point1');
-  move(121,160);assert.equal(h.run('layerState.drag.moved'),false,'a press that barely moves is a click, not a drag');
-  move(120+25.6,160+51.2,true);h.run('layerPointerUp()');
-  const moved=inPage(h,"layerState.items.find(item=>item.id==='point1')");
-  assert.ok(Math.abs(moved.x-.15)<1e-9 && Math.abs(moved.y-.6)<1e-9,'10% right and 20% down');assert.deepEqual(moved.anchor,[.45,.43],'the line still ends on the part');
-  assert.equal(h.run('layerState.undo.length'),1);assert.equal(h.run('layerState.dirty'),true);
-  // near the left margin the box lines up with it and a guide is shown; Alt switches that off
-  press(140,210,'.layer-hit[data-item="point1"]',{at:5000});move(140-25.6+1,210);
-  assert.ok(Math.abs(h.run("layerState.items.find(item=>item.id==='point1').x")-.05)<1e-9);assert.ok(h.node('layerStage').querySelector('.layer-guide'));
-  h.run('layerPointerUp()');assert.equal(h.node('layerStage').querySelector('.layer-guide'),null);
-  // the round handle on the line's end moves the anchor only
-  press(215,160,'[data-handle="anchor"]');move(100+128,50+64);h.run('layerPointerUp()');
-  assert.deepEqual(inPage(h,"layerState.items.find(item=>item.id==='point1').anchor"),[.5,.25]);
-  // the corner handle scales type and box together
-  const before=inPage(h,"layerState.items.find(item=>item.id==='point1')");
-  press(0,0,'[data-handle="size"]');const drag=inPage(h,'layerState.drag.box');
-  move(100+(drag.x+drag.w*2)*256,50+(drag.y+drag.h*2)*256);h.run('layerPointerUp()');
-  const scaled=inPage(h,"layerState.items.find(item=>item.id==='point1')");
-  assert.ok(Math.abs(scaled.size/before.size-2)<1e-6);assert.ok(Math.abs(scaled.w/before.w-2)<1e-6);
-  // two presses on the same item open a field on the picture
-  press(260,70,'.layer-hit[data-item="headline"]',{at:9000});h.run('layerPointerUp()');assert.equal(h.node('layerInline').hidden,true);
-  press(260,70,'.layer-hit[data-item="headline"]',{at:9200});
-  assert.equal(h.node('layerInline').hidden,false);assert.equal(h.node('layerInline').value,'红色工具柜');
-  h.node('layerInline').value='车间工具柜';h.node('layerInline').dispatchEvent(new h.w.Event('input'));
-  h.node('layerInline').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-  assert.equal(h.node('layerInline').hidden,true);assert.equal(h.node('layerStage').querySelector('[data-item="headline"] text').textContent,'车间工具柜');
-  // keyboard: nudge, then delete
-  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',shiftKey:true,bubbles:true}));
-  assert.ok(Math.abs(h.run("layerState.items.find(item=>item.id==='headline').x")-.62)<1e-9);
-  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Delete',bubbles:true}));
-  assert.deepEqual(inPage(h,'layerState.items.map(item=>item.id)'),['point1','i1']);
-  h.node('layerText')?.focus();
-});
-
-test('the exported SVG is a complete file with live text, and typed text can never become markup',async t=>{
-  const h=await layerSetup(t);
-  const items=layerItems();Object.assign(items[0],{text:'<script>alert(1)</script> & "引号"\n第二行',size:.02,w:.9,x:.05,align:'left'});items[1].title='<b>x</b>';
-  h.run('exported=layerSvgDocument('+JSON.stringify(items)+',2048,2048,"data:image/png;base64,AAAA")');
-  const text=h.run('exported');assert.match(text,/^<\?xml version="1.0" encoding="UTF-8"\?>\n<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
-  const parsed=new h.w.DOMParser().parseFromString(text,'image/svg+xml');
-  assert.equal(parsed.querySelector('parsererror'),null,'well-formed XML');
-  const svg=parsed.documentElement;assert.equal(svg.getAttribute('viewBox'),'0 0 2048 2048');assert.equal(svg.getAttribute('width'),'2048');
-  assert.equal(svg.querySelector('image').getAttribute('href'),'data:image/png;base64,AAAA');
-  assert.equal(svg.querySelector('script'),null);assert.equal(svg.querySelector('b'),null);
-  const spans=[...svg.querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent);
-  assert.deepEqual(spans,['<script>alert(1)</script> & "引号"','第二行'],'text stays text, line by line');
-  assert.equal(Number(svg.querySelector('[data-item="headline"] text').getAttribute('font-size')),40.96,'2% of 2048 px: the same layer, sharp at any size');
-  assert.equal(svg.querySelector('.layer-outline, .layer-handle, .layer-hit'),null,'editing handles are never exported');
-  const layerOnly=new h.w.DOMParser().parseFromString(h.run('layerSvgDocument('+JSON.stringify(layerItems())+',800,1000)'),'image/svg+xml').documentElement;
-  assert.equal(layerOnly.querySelector('image'),null);
-  assert.equal(Number(layerOnly.querySelector('[data-item="headline"] text').getAttribute('font-size')),44.8,'sizes follow the shorter side');
-  assert.equal(layerOnly.querySelector('[data-item="point1"] circle').getAttribute('cy'),'430');
-});
-
-test('each shot keeps its own layer, pending edits are saved on leaving, and a conflict is reported not overwritten',async t=>{
-  const p=previewProject();p.outputs.push({job_id:'render-c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});
-  p.layers={campaign:{version:1,revision:3,items:[layerItems()[2]]}};
-  const h=await layerSetup(t,p);layerServer(h);
-  assert.equal(h.run('layerState.items.length'),0);
-  h.node('layerAddTitle').click();assert.equal(h.run('layerState.dirty'),true);
-  h.run("activeShot='campaign';cameraShot='campaign';renderProject()");await tick();await tick();
-  assert.deepEqual(layerWrites(h).map(call=>call.method+' '+call.url),['PUT /api/projects/a/layers/hero'],'the edit to the first shot was saved before showing the second');
-  assert.deepEqual(inPage(h,'[layerState.key,layerState.revision,layerState.items.map(item=>item.id)]'),['a:campaign',3,['i1']]);
-  assert.equal(h.run('layerState.undo.length'),0,'undo never crosses shots');
-  assert.ok(h.node('layerStage').querySelector('[data-item="i1"]'));
-  // someone else saved this shot's layer in the meantime
-  h.records.get('a').layers.campaign.revision=4;
-  h.node('layerAddText').click();await h.run('layerFlush()');
-  assert.match(h.node('layerStatus').textContent,/已在别处修改/);assert.equal(h.node('layerSaved').textContent,'未保存');
-  assert.equal(h.records.get('a').layers.campaign.items.length,1,'the newer copy on the server is intact');
-  // a layer shows on the picture outside its tab, without handles, and can be hidden
-  h.run("activeShot='hero';cameraShot='hero';renderProject()");await tick();h.node('inspectorReviewTab').click();await tick();
-  h.run('renderLayerStage()');
-  assert.equal(h.node('layerStage').hasAttribute('hidden'),false);assert.ok(h.node('layerStage').querySelector('[data-item="e1"]'));
-  assert.equal(h.node('layerStage').querySelector('.layer-hit'),null);
-  h.node('layerVisible').click();assert.equal(h.node('layerStage').hasAttribute('hidden'),true);
-});
-
-test('callouts are flagged when the camera changed after they were placed',async t=>{
-  const p=previewProject();const shot=p.plan.shots[0];
-  p.layers={hero:{version:1,revision:1,items:layerItems(),basis:{azimuth:shot.azimuth,elevation:shot.elevation,focal_length:shot.focal_length,aspect:'1:1'}}};
-  const h=await layerSetup(t,p);
-  assert.equal(h.run('layerStale()'),false);assert.equal(h.node('layerStatus').hidden,true);
-  h.run("draft.shots.find(item=>item.id==='hero').azimuth=80;dirty=true;renderProject()");
-  assert.equal(h.run('layerStale()'),true);assert.match(h.node('layerStatus').textContent,/镜头在排版后变过/);
-  assert.equal(layerWrites(h).length,0);
-});
-
-test('coming back to a shot before its save has landed shows what was saved',async t=>{
-  const p=previewProject();p.outputs.push({job_id:'render-c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});
-  const h=await layerSetup(t,p);const gate=deferred();
-  h.intercept=async call=>{
-    if(!/\/layers\/hero$/.test(call.url))return undefined;
-    await gate.promise;const record=h.records.get('a');record.layers={hero:{...copy(call.body.layer),revision:1,updated_at:1}};return h.response(record.layers.hero);
-  };
-  h.node('layerAddTitle').click();
-  h.run("activeShot='campaign';cameraShot='campaign';renderProject()");await tick();
-  h.run("activeShot='hero';cameraShot='hero';renderProject()");await tick();
-  assert.equal(h.run('layerState.items.length'),0,'the save is still on its way: the stored copy is the old, empty one');
-  assert.equal(h.node('layerSaved').textContent,'保存中…');
-  gate.resolve();await h.run('layerState.saving');await tick();
-  assert.deepEqual(inPage(h,'[layerState.items.map(item=>item.text),layerState.revision,layerState.dirty]'),[['标题文字'],1,false]);
-  assert.ok(h.node('layerStage').querySelector('[data-item="e1"]'));assert.equal(h.node('layerSaved').textContent,'已保存');
-  assert.equal(layerWrites(h).length,1);
-});
-
-// ---- the layer's styles ---------------------------------------------------
-function styledLayer(theme='bold') {
-  return {version:1,revision:2,theme,accent:'#e62a29',items:[
-    {id:'kicker',type:'text',role:'kicker',x:.08,y:.05,w:.4,text:'车间收纳',size:.022,weight:700,align:'left',color:'#141414',plate:null},
-    {id:'headline',type:'text',role:'headline',x:.08,y:.12,w:.5,text:'红色工具柜',mark:'工具柜',size:.074,weight:700,align:'left',color:'#141414',plate:null},
-    {id:'point1',type:'callout',x:.05,y:.4,w:.26,title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',anchor:[.45,.43],size:.032,color:'#141414',plate:null}]};
-}
-
-test('a styled layer is drawn with display type, an accent word, a tag pill and badges; an unstyled one stays plain',async t=>{
-  const p=previewProject();p.layers={hero:styledLayer()};
-  const h=await layerSetup(t,p);const stage=h.node('layerStage');
-  assert.ok(stage.querySelector('defs filter#layer-shadow') && stage.querySelector('defs filter#layer-lift'),'soft shadows are defined once for the picture');
-  const headline=stage.querySelector('[data-item="headline"]'),text=headline.querySelector('text');
-  assert.match(text.getAttribute('font-family'),/^'Noto Sans SC'/);assert.equal(text.getAttribute('font-weight'),'900');
-  assert.equal(Number(text.getAttribute('font-size')),37.89,'7.4% of the 512 px picture');
-  const spans=[...text.querySelectorAll('tspan')];assert.deepEqual(spans.map(node=>node.textContent),['红色','工具柜']);
-  assert.equal(spans[1].getAttribute('fill'),'#e62a29','the emphasised word takes the accent');assert.equal(spans[0].getAttribute('fill'),null);
-  const bar=headline.querySelector('rect');assert.equal(bar.getAttribute('fill'),'#e62a29');assert.ok(Number(bar.getAttribute('x'))<.08*512,'the accent bar stands left of a left-set headline');
-  const pill=stage.querySelector('[data-item="kicker"] rect'),tag=stage.querySelector('[data-item="kicker"] text');
-  assert.equal(pill.getAttribute('fill'),'#e62a29');assert.equal(tag.getAttribute('fill'),'#ffffff');assert.equal(tag.getAttribute('text-anchor'),'middle');
-  assert.ok(Number(pill.getAttribute('width'))<.4*512*.6,'the pill hugs its words');assert.ok(Math.abs(Number(pill.getAttribute('rx'))-Number(pill.getAttribute('height'))/2)<.02,'fully rounded ends');
-  const callout=stage.querySelector('[data-item="point1"]'),circles=[...callout.querySelectorAll('circle')];
-  assert.equal(circles.length,3,'a ringed dot where the line ends, and the badge');assert.equal(circles[2].getAttribute('fill'),'#e62a29');
-  assert.equal(callout.querySelector('g[stroke="#ffffff"]')!==null,true,'the icon is white on its badge');
-  assert.match(callout.querySelector('text').getAttribute('font-family'),/^'Noto Sans SC'/);assert.equal(callout.querySelector('rect'),null,'no card in this style where none is needed');
-  // every style keeps the same measures: only the dress changes
-  const boxes={};
-  for(const theme of ['clean','bold','card','dark','tag']){
-    h.run(`layerState.theme='${theme}';renderLayerStage()`);
-    boxes[theme]=inPage(h,"(()=>{const b=layerBox(layerState.items[2],512,512);return [b.x,b.y,b.w,b.h].map(v=>Math.round(v*100)/100)})()");
-  }
-  for(const theme of ['bold','card','dark','tag'])assert.deepEqual(boxes[theme],boxes.card,theme);
-  h.run("layerState.theme='card';renderLayerStage()");
-  let card=stage.querySelector('[data-item="point1"] rect');assert.equal(card.getAttribute('fill'),'#ffffff');assert.equal(card.getAttribute('filter'),'url(#layer-lift)');
-  h.run("layerState.theme='tag';renderLayerStage()");
-  card=stage.querySelector('[data-item="point1"] rect');assert.equal(card.getAttribute('fill'),'#e62a29');
-  assert.equal([...stage.querySelectorAll('[data-item="point1"] circle')][2].getAttribute('fill'),'#ffffff','on an accent card the badge turns white');
-  assert.equal(stage.querySelector('[data-item="point1"] text').getAttribute('fill'),'#ffffff');
-  h.run("layerState.theme='clean';renderLayerStage()");
-  assert.equal(stage.querySelector('[data-item="headline"] rect'),null,'the plain-spoken style has no accent bar');
-  assert.equal([...stage.querySelectorAll('[data-item="point1"] circle')][2].getAttribute('fill'),'none');
-  // a layer saved before styles existed is drawn exactly as it was
-  h.run("layerState.theme=null;renderLayerStage()");
-  assert.equal(stage.querySelector('defs'),null);assert.equal(stage.querySelector('[data-item="headline"] text').getAttribute('font-weight'),'700');
-  assert.equal(stage.querySelector('[data-item="kicker"] rect'),null);assert.equal(stage.querySelector('[data-item="headline"] tspan').textContent,'红色工具柜');
-});
-
-test('style, accent, role and emphasis are chosen in the panel, saved with the layer and undone like any edit',async t=>{
-  const p=previewProject();p.layers={hero:styledLayer()};
-  const h=await layerSetup(t,p);layerServer(h);
-  assert.equal(h.node('layerLook').hidden,false);
-  assert.deepEqual([...h.node('layerThemes').querySelectorAll('button')].map(node=>[node.textContent,node.getAttribute('aria-pressed')]),[['简洁','false'],['醒目','true'],['卡片','false'],['深色','false'],['色块','false']]);
-  assert.equal(h.node('layerAccent').value,'#e62a29');
-  h.node('layerThemes').querySelector('[data-layer-theme="dark"]').click();
-  assert.equal(h.run('layerState.theme'),'dark');assert.equal(h.node('layerStage').querySelector('[data-item="point1"] rect').getAttribute('fill'),'#16171a');
-  h.node('layerAccents').querySelector('[data-layer-accent="#ffc53d"]').click();
-  assert.equal(h.node('layerStage').querySelector('[data-item="kicker"] rect').getAttribute('fill'),'#ffc53d');
-  assert.equal(h.node('layerStage').querySelector('[data-item="kicker"] text').getAttribute('fill'),'#141414','dark words on a light accent');
-  for(const value of ['#12b76a','#12b76b']){h.node('layerAccent').value=value;h.node('layerAccent').dispatchEvent(new h.w.Event('input'));}
-  assert.equal(h.run('layerState.undo.length'),3,'dragging through the colour picker is one step');
-  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
-  assert.equal(h.node('layerRoleRow').hidden,false);assert.equal(h.node('layerRole').value,'headline');assert.equal(h.node('layerMark').value,'工具柜');assert.equal(h.node('layerBold').disabled,true,'a headline is always set in the display weight');
-  h.node('layerMark').value='红色';h.node('layerMark').dispatchEvent(new h.w.Event('input'));
-  assert.deepEqual([...h.node('layerStage').querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent),['','红色','工具柜']);
-  h.node('layerRole').value='body';h.node('layerRole').dispatchEvent(new h.w.Event('change'));
-  assert.equal(h.node('layerMarkField').hidden,true);assert.equal(h.node('layerStage').querySelector('[data-item="headline"] text').getAttribute('font-weight'),'700');
-  await h.run('layerFlush()');
-  const saved=layerWrites(h).at(-1).body.layer;assert.deepEqual([saved.theme,saved.accent,saved.items[1].role,saved.items[1].mark],['dark','#12b76b','body','红色']);
-  for(let step=0;step<5;step++)h.node('layerUndo').click();
-  assert.deepEqual(inPage(h,'[layerState.theme,layerState.accent,layerState.items[1].role,layerState.items[1].mark]'),['bold','#e62a29','headline','工具柜']);
-  // a layer started by hand is dressed from the first item; one without a style is left alone until a style is picked
-  h.run("activeShot='campaign';cameraShot='campaign';current.outputs.push({job_id:'c',shot_id:'campaign',version:1,quality:'preview',width:512,height:512,png_url:'/qa/c.png'});renderProject()");await tick();
-  assert.equal(h.node('layerLook').hidden,true);h.node('layerAddTitle').click();
-  assert.deepEqual(inPage(h,'[layerState.theme,layerState.items[0].role,layerState.items[0].size]'),['bold','headline',.08]);
-});
-
-test('an exported file carries its own headline type and the same styled drawing',async t=>{
-  const h=await layerSetup(t);
-  const layer=styledLayer('card');
-  h.run('exported=layerSvgDocument('+JSON.stringify(layer.items)+',2048,2048,"",layerLookOf('+JSON.stringify(layer)+'),"@font-face{font-family:\'Noto Sans SC\';font-weight:900;src:url(data:font/woff2;base64,AAAA) format(\'woff2\');}")');
-  const svg=new h.w.DOMParser().parseFromString(h.run('exported'),'image/svg+xml').documentElement;
-  assert.equal(svg.querySelector('parsererror'),null);
-  assert.match(svg.querySelector('style').textContent,/@font-face\{font-family:'Noto Sans SC';font-weight:900;src:url\(data:font\/woff2;base64,AAAA\)/);
-  assert.ok(svg.querySelector('defs filter#layer-lift feDropShadow'));
-  assert.equal(Number(svg.querySelector('[data-item="headline"] text').getAttribute('font-size')),151.55);
-  assert.equal(svg.querySelector('[data-item="point1"] rect').getAttribute('fill'),'#ffffff');
-  assert.equal(svg.querySelector('[data-item="headline"] tspan[fill="#e62a29"]').textContent,'工具柜');
-  // without a style nothing is embedded: the plain drawing uses only system type
-  const plain=h.run('layerSvgDocument('+JSON.stringify(layer.items)+',512,512,"",layerLookOf({}))');
-  assert.doesNotMatch(plain,/<style>|<defs>|Noto Sans SC/);
-});
-
-// ------------------------------------------------------------------ compositions (v25): the twelve-reference layouts
-const WRENCH={source:'lucide',name:'wrench',license:'ISC',stroke:2,grid:24,ops:[['s','M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z']]};
-function composedLayer(layout='split') {
-  return {version:1,layout,source:'ai',basis:{azimuth:35,elevation:18,focal_length:70,aspect:'1:1'},
-    glyphs:{g1:WRENCH,g2:{source:'drawn',name:'承重',license:'own',stroke:2,grid:24,ops:[['s','M4 20h16'],['f','M12 6a2 2 0 1 0 0.01 0z']],check:{status:'passed',note:'能认出'}}},
-    canvas:{color:'#f2f2f0',photo:{x:.41,y:0,w:.59,h:1,crop:[.12,0,.82,1],feather:true}},
-    content:{kicker:'车间收纳',headline:'红色工具柜',subline:'',free_area:'none',
-      points:[{title:'抽屉收纳',detail:'物品分层放置',icon:'drawer',parts:['抽屉_1'],anchor:null,glyph:'g1'},{title:'带轮移动',detail:'',icon:'caster wheel',parts:['脚轮_1'],anchor:[.6,.85]}],
-      figures:[{value:'120',unit:'kg',label:'台面承重',icon:'weight',glyph:'g2'}],
-      specs:[{value:'8–24',unit:'mm',label:'扳手尺寸',icon:'wrench',values:['8','10','12','24']}]},
-    items:[{id:'kicker',type:'text',role:'kicker',x:.075,y:.08,w:.3,text:'车间收纳',size:.021,weight:600,align:'left',color:'#6e6e73',plate:null,leading:1.2,slot:'kicker'},
-      {id:'headline',type:'text',role:'headline',x:.075,y:.12,w:.3,text:'红色工具柜',size:.064,weight:700,align:'left',color:'#1d1d1f',plate:null,leading:1.16,slot:'headline'},
-      {id:'figrule',type:'rule',x:.075,y:.58,x2:.17,y2:.58,color:'#1d1d1f',width:.0016,opacity:.3,size:.02},
-      {id:'fig1',type:'figure',x:.075,y:.62,w:.3,value:'120',unit:'kg',label:'台面承重',size:.074,color:'#e62a29',soft:'#6e6e73',align:'left',glyph:'g2',slot:'figures.0'},
-      {id:'point1',type:'callout',style:'row',x:.075,y:.4,w:.3,title:'抽屉收纳',detail:'物品分层放置',icon:null,anchor:null,size:.023,color:'#1d1d1f',soft:'#6e6e73',plate:null,glyph:'g1',slot:'points.0'},
-      {id:'point2',type:'callout',style:'line',x:.7,y:.8,w:.25,title:'带轮移动',detail:'',icon:null,anchor:[.6,.85],elbow:.65,size:.024,color:'#1d1d1f',soft:'#6e6e73',plate:null,slot:'points.1'},
-      {id:'ladder',type:'chips',x:.075,y:.86,w:.85,values:['8','10','12','24'],unit:'mm',label:'扳手尺寸',size:.03,color:'#1d1d1f',fill:'#ffffff',slot:'specs.0'}]};
-}
-function composedReport(layout='split') {
-  return {source:'ai',probe:'scene',anchored:1,layout,suitable:['split','callouts','cards','spotlight','specs','scene'],notes:[],
-    icons:{g1:{source:'lucide',name:'wrench',license:'ISC'},g2:{source:'drawn',name:'承重',license:'own'}},output:{job_id:'render-a',version:1,quality:'preview'}};
-}
-// The layer routes, plus another layout of the same words and the icon routes.
-function composeServer(h,{compose=null,icons=null,drawn=null}={}) {
-  layerServer(h,{layer:composedLayer(),report:composedReport()});
-  const layers=h.intercept;
-  h.intercept=call=>{
-    if(/\/layers\/hero\/compose$/.test(call.url))return compose?h.response(compose(call.body)):h.response({error:'请选择一个版式'},400);
-    if(call.url.startsWith('/api/icons?'))return h.response(icons || {icons:[],online:[],online_allowed:true});
-    if(call.url==='/api/icons/draw')return drawn?h.response({glyph:drawn}):h.response({error:'未配置 AI，无法绘制图标；可从图标库中选择。'},400);
-    return layers(call);
-  };
-}
-
-test('a suggested composition is drawn on its own canvas: the photo in its frame, the words, figures and icons around it',async t=>{
-  const h=await layerSetup(t);composeServer(h);
-  await h.run('layerSuggest()');
-  const stage=h.node('layerStage');
-  assert.equal(stage.querySelector('rect').getAttribute('fill'),'#f2f2f0','the canvas lies under everything');
-  const frame=stage.querySelector('clipPath rect');assert.deepEqual(['x','width','height'].map(name=>Number(frame.getAttribute(name))),[209.92,302.08,512]);
-  const photo=stage.querySelector('svg[viewBox]');assert.equal(photo.getAttribute('viewBox'),'61.44 0 358.4 512','the crop of the render shown in the frame');
-  assert.equal(photo.querySelector('image').getAttribute('href'),'/qa/synthetic-preview-a.png');
-  assert.ok(photo.querySelector('linearGradient#feather-x'),'a studio sweep fades into the canvas');
-  assert.equal(stage.querySelector('[data-item="headline"] text').textContent,'红色工具柜');
-  const figure=[...stage.querySelectorAll('[data-item="fig1"] text')];
-  assert.deepEqual([...figure[0].querySelectorAll('tspan')].map(node=>node.textContent),['120','kg'],'the unit is set small beside the value');
-  assert.equal(figure[1].textContent,'台面承重');
-  assert.ok(stage.querySelector('[data-item="fig1"] path[d^="M4 20h16"]'),'the drawn icon is part of the figure');
-  assert.ok(stage.querySelector('[data-item="point1"] path[d^="M14.7 6.3"]'),'the wrench beside its point');
-  assert.ok(stage.querySelector('[data-item="point2"] circle'),'a note ends in a dot on its part');
-  assert.deepEqual([...stage.querySelectorAll('[data-item="ladder"] text')].map(node=>node.textContent).filter(text=>/^\d+$/.test(text)),['8','10','12','24']);
-  // the panel: six layouts, this one chosen; the overlay styles are not offered for a composition
-  const layouts=[...h.node('layerLayouts').querySelectorAll('button')];
-  assert.deepEqual(layouts.map(node=>node.dataset.layerLayout),['split','callouts','scene','cards','spotlight','specs']);
-  assert.deepEqual(layouts.map(node=>node.getAttribute('aria-pressed')),['true','false','false','false','false','false']);
-  assert.match(layouts[0].title,/左右分区/);assert.equal(h.node('layerLook').hidden,true);
-  assert.match(h.node('layerStatus').textContent,/版式「左右分区」.*图标：Lucide 1、AI 绘制 1.*数字只来自你写下的规格/);
-  assert.deepEqual([...h.node('layerItems').querySelectorAll('[data-layer-item]')].map(node=>node.dataset.layerItem),['kicker','headline','fig1','point1','point2','ladder'],'hairlines and panels are not listed');
-  await h.run('layerFlush()');
-  const saved=layerWrites(h).at(-1).body.layer;
-  assert.deepEqual([saved.layout,saved.canvas.color,Object.keys(saved.glyphs),saved.content.headline],['split','#f2f2f0',['g1','g2'],'红色工具柜']);
-});
-
-test('another layout keeps the words as edited, is laid out by the server and is one undo step',async t=>{
-  const h=await layerSetup(t);
-  composeServer(h,{compose:body=>{const layer=composedLayer(body.layout);layer.items[1].text=body.content.headline;layer.content=body.content;layer.canvas={color:'#ffffff',photo:{x:.05,y:.05,w:.55,h:.9,crop:[0,0,1,1],feather:true,radius:.024}};return {layer,report:{source:'manual',layout:body.layout,anchored:0,notes:[]}};}});
-  await h.run('layerSuggest()');
-  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
-  input(h,'layerText','新的\n标题');
-  assert.equal(h.run('layerState.content.headline'),'新的标题','an edit of the words is kept in the content');
-  h.node('layerLayouts').querySelector('[data-layer-layout="cards"]').click();await tick();await tick();
-  const request=h.calls.filter(call=>call.url==='/api/projects/a/layers/hero/compose').at(-1).body;
-  assert.equal(request.layout,'cards');assert.equal(request.content.headline,'新的标题');assert.deepEqual(Object.keys(request.glyphs),['g1','g2']);
-  assert.deepEqual(request.output,{job_id:'render-a',version:1,quality:'preview'});
-  assert.deepEqual(inPage(h,'[layerState.layout,layerState.canvas.photo.radius,layerState.items[1].text]'),['cards',.024,'新的标题']);
-  assert.equal(h.node('layerLayouts').querySelector('[aria-pressed="true"]').dataset.layerLayout,'cards');
-  h.node('layerUndo').click();
-  assert.deepEqual(inPage(h,'[layerState.layout,layerState.content.headline]'),['split','新的标题']);
-  h.node('layerUndo').click();assert.equal(h.run('layerState.content.headline'),'红色工具柜');
-});
-
-test('an icon is searched in the open sets and online, drawn by AI on request, or left out, and saved with its source',async t=>{
-  const ruler={id:'lucide:ruler',source:'lucide',name:'ruler',license:'ISC',stroke:2,grid:24,ops:[['s','M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6']]};
-  const online={id:'mdi:wrench',source:'iconify:mdi',name:'wrench',license:'Apache-2.0',stroke:2,grid:24,ops:[['f','M22.7 19l-9.1-9.1z']]};
-  const drawn={source:'drawn',name:'扳手',license:'own',concept:'扳手',model:'m',stroke:2,grid:24,ops:[['s','M6 18L18 6']],check:{status:'failed',note:'看不太出'}};
-  const h=await layerSetup(t);composeServer(h,{icons:{icons:[ruler],online:[online],online_allowed:true},drawn});
-  await h.run('layerSuggest()');
-  h.node('layerItems').querySelector('[data-layer-item="headline"]').click();
-  assert.equal(h.node('layerGlyphField').hidden,true,'words have no icon of their own');
-  h.node('layerItems').querySelector('[data-layer-item="point2"]').click();
-  assert.equal(h.node('layerGlyphField').hidden,true,'nor has a note with a line to its part');
-  h.node('layerItems').querySelector('[data-layer-item="point1"]').click();
-  assert.equal(h.node('layerGlyphField').hidden,false);assert.match(h.node('layerGlyphCurrent').textContent,/Lucide · wrench · ISC/);
-  assert.match(h.node('layerGlyphQuery').placeholder,/抽屉收纳/);
-  h.node('layerGlyphQuery').value='扳手';h.node('layerGlyphSearch').click();await tick();await tick();
-  assert.equal(h.calls.at(-1).url,'/api/icons?q='+encodeURIComponent('扳手')+'&online=1');
-  const found=[...h.node('layerGlyphResults').querySelectorAll('[data-layer-glyph]')];
-  assert.equal(found.length,2);assert.match(found[1].title,/在线 · mdi · wrench · Apache-2.0/);
-  found[1].click();
-  assert.deepEqual(inPage(h,'[layerSelected().glyph,layerState.glyphs[layerSelected().glyph].source,layerState.content.points[0].glyph]'),['g3','iconify:mdi','g3']);
-  h.node('layerGlyphOnline').checked=false;h.node('layerGlyphSearch').click();await tick();await tick();
-  assert.equal(h.calls.at(-1).url,'/api/icons?q='+encodeURIComponent('扳手'),'online only when asked');
-  h.node('layerGlyphResults').querySelector('[data-layer-glyph="0"]').click();
-  assert.equal(h.run('layerState.glyphs[layerSelected().glyph].name'),'ruler');
-  h.node('layerGlyphDraw').click();await tick();await tick();
-  assert.deepEqual(h.calls.filter(call=>call.url==='/api/icons/draw').at(-1).body,{concept:'扳手'});
-  assert.match(h.node('layerGlyphCurrent').textContent,/AI 绘制 · 扳手 · 未通过核对/,'a drawing that failed its check says so');
-  h.node('layerGlyphNone').click();
-  assert.deepEqual(inPage(h,'[layerSelected().glyph,"glyph" in layerState.content.points[0]]'),[null,false]);
-  assert.equal(h.node('layerStage').querySelector('[data-item="point1"] path[d^="M6 18"]'),null);
-  await h.run('layerFlush()');
-  const saved=layerWrites(h).at(-1).body.layer;
-  assert.equal(saved.items.find(item=>item.id==='point1').glyph,null);
-  assert.deepEqual(Object.values(saved.glyphs).map(glyph=>glyph.source).sort(),['drawn','drawn','iconify:mdi','lucide','lucide'],'icons stay with the layer, with where they came from');
-  // a search that finds nothing offers a drawing; an icon on its own cannot be left without its picture
-  composeServer(h,{icons:{icons:[],online:[],online_allowed:true}});
-  h.node('layerGlyphSearch').click();await tick();await tick();
-  assert.match(h.node('layerGlyphStatus').textContent,/可以让 AI 画一个/);
-  h.run("layerState.items.push({id:'i9',type:'icon',icon:'dot',glyph:'g1',x:.5,y:.5,size:.05,color:'#1d1d1f'});layerSelect('i9')");
-  assert.equal(h.node('layerGlyphNone').hidden,true);
-});
-
-test('a figure and a row of sizes are edited in their own fields, and the words follow',async t=>{
-  const h=await layerSetup(t);composeServer(h);
-  await h.run('layerSuggest()');
-  h.node('layerItems').querySelector('[data-layer-item="fig1"]').click();
-  assert.equal(h.node('layerFigureFields').hidden,false);assert.equal(h.node('layerTextField').hidden,true);
-  assert.deepEqual(['layerFigureValue','layerFigureUnit','layerFigureLabel'].map(id=>h.node(id).value),['120','kg','台面承重']);
-  input(h,'layerFigureValue','150');input(h,'layerFigureLabel','承重');
-  assert.deepEqual(inPage(h,'[layerSelected().value,layerSelected().label,layerState.content.figures[0].value,layerState.content.figures[0].label]'),['150','承重','150','承重']);
-  assert.equal(h.node('layerStage').querySelector('[data-item="fig1"] text').firstChild.textContent,'150');
-  h.node('layerItems').querySelector('[data-layer-item="ladder"]').click();
-  assert.equal(h.node('layerChipsField').hidden,false);assert.equal(h.node('layerChipsValues').value,'8 10 12 24');
-  input(h,'layerChipsValues','8、10，13 19');
-  assert.deepEqual(inPage(h,'[layerSelected().values,layerState.content.specs[0].values]'),[['8','10','13','19'],['8','10','13','19']]);
-  input(h,'layerChipsValues','  ');assert.deepEqual(inPage(h,'layerSelected().values'),['8','10','13','19'],'an empty field keeps the last sizes');
-});
-
-test('an exported composition is one complete file, and a layout without a canvas carries the full picture',async t=>{
-  const h=await layerSetup(t);
-  const layer=composedLayer();layer.items[1].text='<script>x</script> & 标题';
-  const svg=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify(layer)+',2048,2048,"data:image/png;base64,AAAA","")'),'image/svg+xml').documentElement;
-  assert.equal(svg.querySelector('parsererror'),null);assert.equal(svg.querySelector('script'),null);
-  assert.equal(svg.querySelector('rect').getAttribute('fill'),'#f2f2f0');
-  assert.equal(svg.querySelector('svg[viewBox] image').getAttribute('href'),'data:image/png;base64,AAAA');
-  assert.equal([...svg.querySelectorAll('[data-item="headline"] tspan')].map(node=>node.textContent).join(''),'<script>x</script>& 标题','text stays text, line by line');
-  assert.ok(svg.querySelector('[data-item="fig1"] path'));assert.equal(svg.querySelector('.layer-hit, .layer-handle'),null);
-  const bare=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify({...layer,canvas:null})+',2048,2048,"data:image/png;base64,AAAA","")'),'image/svg+xml').documentElement;
-  const picture=bare.querySelector('image');
-  assert.deepEqual(['href','x','y','width','height'].map(name=>picture.getAttribute(name)),['data:image/png;base64,AAAA','0','0','2048','2048'],'the words lie on the full picture');
-  const only=new h.w.DOMParser().parseFromString(h.run('compSvgDocument('+JSON.stringify(layer)+',2048,2048,"","",false)'),'image/svg+xml').documentElement;
-  assert.equal(only.querySelector('image'),null);assert.equal(only.querySelector('[data-item="headline"]')!==null,true);
-  // on screen a layout without a canvas lies over the render the viewer already shows
-  composeServer(h);h.intercept=(original=>call=>/\/suggest$/.test(call.url)?h.response({layer:{...composedLayer('scene'),canvas:null},report:composedReport('scene')}):original(call))(h.intercept);
-  await h.run('layerSuggest()');
-  assert.equal(h.node('layerStage').querySelector('image'),null);
-});
-
-test('the words are written in English unless Chinese is picked, and the choice is kept with the layer and for the next one',async t=>{
-  const h=await layerSetup(t);composeServer(h);
-  assert.equal(h.node('layerLanguage').value,'en','English by default');
-  await h.run('layerSuggest()');
-  assert.equal(h.calls.filter(call=>/\/suggest$/.test(call.url)).at(-1).body.language,'en');
-  h.node('layerLanguage').value='zh';h.node('layerLanguage').dispatchEvent(new h.w.Event('change'));
-  h.run('renderLayerPanel()');assert.equal(h.node('layerLanguage').value,'zh','a choice just made is not undone by a redraw');
-  assert.equal(h.w.localStorage.getItem('studio.layerLanguage'),'zh');
-  await h.run('layerSuggest()');
-  assert.equal(h.calls.filter(call=>/\/suggest$/.test(call.url)).at(-1).body.language,'zh');
-  // the words the layer holds say which language they are in; words added by hand follow it
-  h.run("layerState.content.language='en';layerState.languageChoice=null;renderLayerPanel()");
-  assert.equal(h.node('layerLanguage').value,'en');
-  h.node('layerAddTitle').click();
-  assert.equal(h.run('layerSelected().text'),'Headline');
-  h.run("layerState.content.language='zh';renderLayerPanel()");h.node('layerAddCallout').click();
-  assert.deepEqual(inPage(h,'[layerSelected().title,layerSelected().detail]'),['要点','补充说明']);
-  // a row of sizes takes brackets of its own script
-  const chips=(label)=>{h.run("layerState.items.find(item=>item.id==='ladder').label="+JSON.stringify(label)+";renderLayerStage()");return [...h.node('layerStage').querySelectorAll('[data-item="ladder"] text')].map(node=>node.textContent).find(text=>text.includes('mm'));};
-  assert.equal(chips('Wrench sizes'),'Wrench sizes (mm)');assert.equal(chips('扳手尺寸'),'扳手尺寸（mm）');
-});
-
-// ------------------------------------------------------------------ Photoshop export
-test('SVG paths become Photoshop knots: lines, arcs, smooth and quadratic curves, relative commands and packed arc flags',async t=>{
-  const h=await layerSetup(t);
-  const cubics=d=>inPage(h,'compPathCubics('+JSON.stringify(d)+')');
-  const square=cubics('M2 2h4v4H2z');
-  assert.equal(square.length,1);assert.equal(square[0].closed,true);assert.deepEqual(square[0].start,[2,2]);
-  assert.deepEqual(square[0].segments.map(s=>s.slice(4)),[[6,2],[6,6],[2,6],[2,2]]);
-  const circle=cubics('M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0');
-  assert.equal(circle[0].segments.length,4,'two half circles, two quarter curves each');
-  for(const segment of circle[0].segments){const [x,y]=segment.slice(4);assert.ok(Math.abs(Math.hypot(x-12,y-12)-4)<1e-6);}
-  const mid=circle[0].segments[0];const [mx,my]=[(mid[0]+mid[2])/2,(mid[1]+mid[3])/2];assert.ok(Math.hypot(mx-12,my-12)>3.5,'control points bow outwards');
-  assert.deepEqual(cubics('M0 0a1 1 0 011 1').at(-1).segments.at(-1).slice(4),[1,1],'arc flags written without separators');
-  const smooth=cubics('M0 0C1 1 2 1 3 0S5 -1 6 0Q7 1 8 0T10 0');
-  assert.deepEqual(smooth[0].segments[1].slice(0,2),[4,-1],'S reflects the previous control point');
-  assert.deepEqual(smooth[0].segments.at(-1).slice(4),[10,0]);
-  assert.throws(()=>h.run('compPathCubics("M0 0 L1")'));
-  const knots=inPage(h,'compKnots(compPathCubics("M0 0L10 0L10 10Z")[0],p=>[p[0]*2,p[1]*2])');
-  assert.deepEqual(knots.map(k=>k.points.slice(2,4)),[[0,0],[20,0],[20,20]],'a closed path does not repeat its first point; points are in document pixels');
-  const open=inPage(h,'compKnots(compPathCubics("M0 0C0 5 5 10 10 10")[0],p=>p)');
-  assert.deepEqual(open.map(k=>k.points),[[0,0,0,0,0,5],[5,10,10,10,10,10]],'an open curve: no control before its start or after its end');
-});
-
-test('a composition becomes Photoshop layers: words as editable text, icons and lines as vector shapes, one named group per item',async t=>{
-  const h=await layerSetup(t);
-  const model=inPage(h,'compPsdModel('+JSON.stringify(composedLayer())+',1000,1000)');
-  const names=model.map(node=>node.name);
-  assert.deepEqual(names.slice(0,3),['标签 · 车间收纳','标题 · 红色工具柜','细线']);
-  const headline=model[1];
-  assert.deepEqual([headline.kind,headline.text.replace(/\n/g,''),headline.font,headline.anchor],['text','红色工具柜','SourceHanSansSC-Bold','start']);
-  assert.equal(headline.lines,headline.text.split('\n').length,'the lines of the drawing stay lines of one text layer');
-  assert.equal(headline.size,64);assert.ok(Math.abs(headline.x-75)<.01);
-  const kicker=model[0];assert.equal(kicker.tracking,140,'the tag keeps its letter spacing');
-  const rule=model[2];assert.deepEqual([rule.kind,rule.stroke,rule.open===undefined],['shape','#1d1d1f',true]);
-  assert.deepEqual(rule.paths[0].knots.map(k=>k.points.slice(2,4)),[[75,580],[170,580]],'a hairline is an open path between its ends, in pixels');
-  assert.equal(rule.paths[0].open,true);
-  const figure=model.find(node=>node.name.startsWith('数据'));
-  assert.equal(figure.kind,'group');assert.equal(figure.name,'数据 · 120 kg 台面承重');
-  assert.deepEqual(figure.children.map(node=>node.kind==='text'?node.text:node.name),['图标 · 承重（AI 绘制）','120','kg','台面承重']);
-  const [value,unit]=figure.children.filter(node=>node.kind==='text');
-  assert.deepEqual([value.font,unit.font],['Inter-SemiBold','Inter-Medium']);assert.ok(unit.size<value.size/2);
-  const point=model.find(node=>node.name==='要点 · 抽屉收纳');
-  const wrench=point.children.find(node=>node.kind==='shape');
-  assert.equal(wrench.name,'图标 · wrench（Lucide · ISC）');assert.equal(wrench.stroke,'#1d1d1f');assert.ok(wrench.strokeWidth>1);
-  for(const knot of wrench.paths.flatMap(path=>path.knots))for(const v of knot.points)assert.ok(v>=0&&v<=1000,'icon knots are placed where the icon is drawn');
-  const note=model.find(node=>node.name==='要点 · 带轮移动');
-  assert.deepEqual(note.children.map(node=>node.name.split(' · ')[0]),['引线','圆点','文字']);
-  assert.equal(note.children[0].paths[0].knots.length,3,'one bend: three knots');
-  const chips=model.find(node=>node.name.startsWith('规格'));
-  assert.equal(chips.children.filter(node=>node.name==='尺寸底').length,4);
-  assert.deepEqual(chips.children.filter(node=>node.kind==='text').map(node=>node.text),['扳手尺寸（mm）','8','10','12','24']);
-  // a band that fades is a pixel layer; the text it carries stays text
-  const scrim=inPage(h,'compPsdModel({...'+JSON.stringify(composedLayer())+',items:[{id:"scrim",type:"panel",x:0,y:0,w:.6,h:1,color:"#000000",opacity:.5,radius:0,fade:"right",size:.02}]},400,400)');
-  assert.deepEqual([scrim[0].kind,scrim[0].name],['pixel','渐变遮罩']);assert.match(scrim[0].markup,/linearGradient/);
-});
-
-test('the PSD button builds the file from the composition through ag-psd, and an overlay layer must be laid out again first',async t=>{
-  const h=await layerSetup(t);composeServer(h);
-  await h.run('layerSuggest()');
-  assert.equal(h.node('layerExportPsd').disabled,false);
-  // no canvas in this test window: draw nothing, keep what the writer is handed
-  h.run(`URL.createObjectURL=()=>'blob:psd';URL.revokeObjectURL=()=>{};
-    HTMLCanvasElement.prototype.getContext=function(){return {fillRect(){},drawImage(){},getImageData:(x,y,w,h)=>({data:new Uint8ClampedArray(w*h*4)}),set fillStyle(v){}};};
-    compPsdRaster=async()=>null;layerDataUrl=async()=>'data:image/png;base64,AAAA';compFontCss=async()=>'';layerLoadImage=async()=>({});
-    window.agPsd={writePsd:(psd,options)=>{window.written={psd,options};return new ArrayBuffer(8);}};layerDownload=(blob,ext)=>{window.saved={type:blob.type,ext};};`);
-  h.node('layerExportPsd').click();
-  for(let i=0;i<20 && !h.run('window.saved');i++)await tick();
-  assert.deepEqual(inPage(h,'window.saved'),{type:'image/vnd.adobe.photoshop',ext:'psd'});
-  const written=inPage(h,'({width:written.psd.width,height:written.psd.height,options:written.options,names:written.psd.children.map(c=>c.name),text:written.psd.children.find(c=>c.text)?.text,shape:written.psd.children.find(c=>c.vectorMask)})');
-  assert.deepEqual([written.width,written.height],[512,512]);
-  assert.deepEqual(written.options,{invalidateTextLayers:true,generateThumbnail:true},'Photoshop redraws the words with its own type engine');
-  assert.equal(written.names[0],'画布');assert.ok(written.names.includes('标题 · 红色工具柜'));
-  assert.deepEqual([written.text.text,written.text.style.font.name,written.text.paragraphStyle.justification,written.text.style.tracking],['车间收纳','SourceHanSansSC-Bold','left',140]);
-  assert.equal(written.shape.vectorStroke.strokeEnabled,true);assert.equal(written.shape.vectorStroke.lineWidth.units,'Pixels');
-  assert.match(h.node('layerExportPsd').textContent,/PSD/);
-  // a layer saved before compositions has no drawing to build from
-  h.run("layerState.layout=null;layerState.canvas=null;renderLayerPanel()");
-  assert.equal(h.node('layerExportPsd').disabled,true);assert.match(h.node('layerExportPsd').title,/重新智能排版/);
-});
-
-// Which way up the product stands: candidate poses, the automatic choice and one-click corrections.
 function orientRecord(changes={}) {
   const pose=(id,label,rotation)=>({id,label,rotation,image_url:`/files/a/orientation/job/up/pose_${id}.png`,dimensions:[1,1,2],support_ratio:.2,tip_angle:10});
   return {version:1,status:'ready',checked_at:1,source:'vision',reason:'电池底座在下、夹头朝前。',product:'cordless drill',chosen:'flip',changed:true,rotation:[180,0,0],
     candidates:[pose('file','原始朝向',[0,0,0]),pose('flip','上下翻转',[180,0,0]),pose('forward','向前倒 90°',[90,0,0]),
                 {...pose('left','向左倒 90°',[0,-90,0]),image_url:'javascript:alert(1)'},{...pose('right','<b>右</b>',[0,90,0])}],...changes};
 }
+
 function orientServer(h) {
   const before=h.intercept;
   h.intercept=call=>{
@@ -3414,4 +2803,92 @@ test('scene and pose tasks show the stage they are in with its percentage',async
   record.scene_task={...record.scene_task,status:'completed',stage:'场景图已生成',progress:88};
   record.orient_task={id:'o1',project_id:'a',status:'running',stage:'由视觉模型判断产品应如何摆放',progress:41,base_version:1};await h.run('poll()');await tick();
   assert.equal(h.node('orientStatus').textContent,'由视觉模型判断产品应如何摆放 · 41%');
+});
+
+test('电商出图 is the last inspector tab and asks the server only once it is opened',async t=>{
+  const h=await setup(t,{projects:[rendered('a',512)]});await h.run("openProject('a')");
+  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','listing','ecommerce']);
+  assert.deepEqual(ecommerceCalls(h),[],'opening a project does not load marketplace data');
+  h.node('inspectorEcommerceTab').click();await tick();await tick();
+  assert.equal(h.node('inspectorEcommerce').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
+  assert.deepEqual(ecommerceCalls(h).map(call=>call.method+' '+call.url),['GET /api/ecommerce/platforms','GET /api/projects/a/ecommerce']);
+  assert.equal(h.node('ecommercePlatform').value,'general');
+  assert.deepEqual([...h.node('ecommercePlatform').querySelectorAll('optgroup')].map(group=>group.label),['通用','跨境','国内']);
+  assert.match(h.node('ecommercePlatformSummary').textContent,/导出 2000 px · 建议纯白底/);
+  assert.equal(h.node('ecommerceCheckShot').textContent,'白底主图');
+  const checks=[...h.node('ecommerceChecks').children];
+  assert.deepEqual(checks.map(item=>item.dataset.status),['action','auto']);
+  assert.equal(checks[0].querySelector('.value').textContent,'512 px，需渲染 4K');assert.ok(checks[0].querySelector('.detail'),'a rule that needs the user shows its sentence');
+  assert.equal(checks[1].querySelector('.value').textContent,'导出时处理');assert.equal(checks[1].querySelector('.detail'),null,'a passing or automatic rule stays on one line');
+  assert.match(checks[1].title,/自动处理为纯白/);
+  assert.equal(h.node('ecommerceExport').disabled,false,'a preview can still be exported');
+  assert.equal(h.node('ecommerceExportHint').dataset.tone,'warn');assert.match(h.node('ecommerceExportHint').textContent,/只有预览尺寸/);
+  await h.run('poll()');assert.equal(ecommerceCalls(h).length,2,'an unchanged project is not measured again');
+});
+
+test('a preview or 4K render asked for while another job runs joins the queue and can be taken out of it',async t=>{
+  const a=previewProject();a.jobs=[{id:'run',kind:'render',status:'running',quality:'standard',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  assert.equal(h.node('previewButton').disabled,false,'a running job no longer locks the next request');
+  assert.equal(h.node('previewButton').textContent,'排队预览');assert.match(h.node('renderButton').textContent,/^排队渲染/);
+  const project=h.records.get('a');
+  h.intercept=call=>{
+    if(call.url==='/api/projects/a' && call.method==='GET')return h.response({...project,queue:project.jobs.filter(job=>['running','queued'].includes(job.status)).sort((x,y)=>Number(x.status!=='running')-Number(y.status!=='running') || x.created_at-y.created_at).map((job,position)=>({type:'job',id:job.id,status:job.status,position}))});
+    if(/^\/api\/jobs\/[^/]+\/cancel$/.test(call.url)){const job=project.jobs.find(item=>call.url.includes(item.id));job.status='cancelled';return h.response(job);}
+    return undefined;
+  };
+  await h.run("run('preview')");
+  const request=h.calls.find(call=>call.url==='/api/projects/a/jobs');
+  assert.deepEqual(request.body,{kind:'preview',quality:'preview',shot_ids:['hero'],expected_version:1,queue:true});
+  assert.match(h.node('toast').textContent,/已加入渲染队列，前面还有 1 项/);
+  const queued=project.jobs.find(job=>job.id!=='run');
+  assert.equal(h.run('activeJob().id'),'run','the running job stays the one shown');
+  const list=h.node('jobPanel').querySelector('.job-queue');assert.ok(list);assert.match(list.textContent,/之后还有 1 项/);
+  list.querySelector(`[data-cancel="${queued.id}"]`).click();await tick();await tick();
+  assert.equal(queued.status,'cancelled');assert.equal(h.node('jobPanel').querySelector('.job-queue'),null,'taken out of the queue');
+  h.run("draft.exposure=.3;dirty=true;renderProject()");
+  assert.equal(h.node('previewButton').disabled,true,'an unsaved edit waits for the running job: the plan cannot be saved under it');
+});
+
+
+
+
+test('components chosen with a new project are sent with it, each with its name, type and quantity',async t=>{
+  const h=await setup(t,{projects:[]}),uploaded=project('uploaded');uploaded.status='analyzing';uploaded.analysis=null;uploaded.initial_preview={status:'pending'};
+  let sent=null;
+  h.intercept=call=>{if(call.url==='/api/projects' && call.method==='POST'){sent=call.body;h.records.set(uploaded.id,copy(uploaded));
+    return h.response({...uploaded,components:[{id:'c1'}],component_errors:[{file:'manual.pdf',error:'不支持'}]},201);}};
+  await h.run('showUpload()');h.w.modelUpload=[new h.w.File(['m'],'grinder.glb')];h.run('addFiles(modelUpload)');
+  h.w.parts=[new h.w.File(['b'],'20V_battery-pack.glb'),new h.w.File(['c'],'Fast charger.zip'),new h.w.File(['p'],'bag.png')];h.run('addComponentFiles(parts)');
+  const rows=[...h.node('chosenComponents').querySelectorAll('.chosen-component')];
+  assert.equal(rows.length,3);
+  assert.deepEqual(rows.map(row=>row.querySelector('[data-component-field="role"]').value),['battery','charger','bag']);       // guessed from the file names
+  assert.equal(rows[0].querySelector('[data-component-field="name"]').value,'20V battery pack');
+  const quantity=rows[0].querySelector('[data-component-field="quantity"]');quantity.value='2';quantity.dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  const name=rows[2].querySelector('[data-component-field="name"]');name.value='Canvas tool bag';name.dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  // A file that cannot be a component, or a quantity that is not a whole number, holds the upload with the reason.
+  h.w.extra=[new h.w.File(['x'],'manual.pdf')];h.run('addComponentFiles(extra)');
+  assert.match(h.node('uploadError').textContent,/manual\.pdf 的格式不受支持/);assert.equal(h.node('uploadSubmit').disabled,true);
+  h.node('chosenComponents').querySelector('[data-remove-component="3"]').click();
+  const first=()=>h.node('chosenComponents').querySelector('[data-component-index="0"] [data-component-field="quantity"]');
+  assert.equal(first().value,'2','what was typed survives the list being drawn again');
+  first().value='1.5';first().dispatchEvent(new h.w.Event('input',{bubbles:true}));assert.match(h.node('uploadError').textContent,/整数/);
+  first().value='2';first().dispatchEvent(new h.w.Event('input',{bubbles:true}));assert.equal(h.node('uploadSubmit').disabled,false);
+  h.run("window.shownToasts=[];window.originalToast=toast;toast=function(message,error){shownToasts.push(message);return originalToast(message,error);}");
+  await h.node('uploadForm').onsubmit({preventDefault(){}});
+  assert.deepEqual(sent.getAll('component_files').map(file=>file.name),['20V_battery-pack.glb','Fast charger.zip','bag.png']);
+  assert.deepEqual(JSON.parse(sent.get('components')),[{name:'20V battery pack',role:'battery',quantity:2},{name:'Fast charger',role:'charger',quantity:1},{name:'Canvas tool bag',role:'bag',quantity:1}]);
+  assert.deepEqual(sent.getAll('files').map(file=>file.name),['grinder.glb']);
+  assert.ok(h.run('shownToasts').some(message=>/有 1 个组件未能添加：manual\.pdf/.test(message)),'a component the server refused is reported');
+  assert.equal(h.node('chosenComponents').children.length,0,'the list is cleared for the next project');
+});
+
+test('the 套图 tab replaces 图文: it summarises what was built and opens the workspace',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");
+  assert.equal(h.node('inspectorOverlayTab'),null);assert.equal(h.node('layerStage'),null);
+  assert.equal(h.node('inspectorListingTab').textContent,'套图');
+  assert.match(h.node('inspectorListing').textContent,/主图（产品与组件一起渲染）/);
+  assert.ok(h.node('listingOpenPanel'));
+  h.node('inspectorListingTab').click();await tick();
+  assert.equal(h.node('inspectorListing').hidden,false);assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');
 });

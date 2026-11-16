@@ -46,9 +46,9 @@ class Shot:
         self.width = result['width']; self.height = result['height']
         self.crop = [0.0, 0.0, 1.0, 1.0]; self.origin = (0.0, 0.0); self.scale = 1000 / self.width; self.box = [0, 0, 1000, 1000]
 
-    def place(self, box, pad=.015, anchor=(.5, .5), shadow=False, whole=False, reflection=None):
-        """The image item that shows the product part of the picture inside ``box`` [x0, y0, x1, y1]."""
-        rect = [0, 0, 1, 1] if whole else self.result.get('product_rect') or [0, 0, 1, 1]
+    def place(self, box, pad=.015, anchor=(.5, .5), shadow=False, whole=False, reflection=None, rect=None):
+        """The image item that shows the product part of the picture (or ``rect`` of it) inside ``box`` [x0, y0, x1, y1]."""
+        rect = [0, 0, 1, 1] if whole else rect or self.result.get('product_rect') or [0, 0, 1, 1]
         self.crop = [max(0.0, rect[0] - pad), max(0.0, rect[1] - pad), min(1.0, rect[2] + pad), min(1.0, rect[3] + pad)]
         width = (self.crop[2] - self.crop[0]) * self.width; height = (self.crop[3] - self.crop[1]) * self.height
         self.scale = min((box[2] - box[0]) / width, (box[3] - box[1]) / height)
@@ -156,6 +156,14 @@ def _dimension_fit(shot, p1, p2, centre, label, avoid=()):
 def page_main(ctx):
     """The first image: white, wordless, the product large in front of everything that comes with it."""
     hero = ctx['shots']['hero']; parts = ctx['components']; items = []
+    kit = ctx['shots'].get('kit')
+    if kit:
+        # The product and its components rendered together, in one light: the picture is the page.
+        items = [kit.place([50, 70, 950, 930], shadow=True, rect=kit.result.get('kit_rect'))]
+        drawn = [part for part in parts if not part.get('model_path')]
+        for index, part in enumerate(drawn[:3]):                    # a component given only as a photograph joins in the corner
+            items.append(el.cutout(part['path'], 40 + index * 200, 760, 200, 200, (.5, 1)))
+        return _page('main', items, '#ffffff')
     if not parts:
         return _page('main', [hero.place([75, 75, 925, 925], shadow=True)], '#ffffff')
     product_mm = ctx['product_mm']

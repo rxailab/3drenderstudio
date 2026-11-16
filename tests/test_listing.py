@@ -705,6 +705,61 @@ class BuildTests(StoreCase):
         self.assertEqual((failed['status'], failed['error']), ('failed', '渲染失败：显存不足'))
         self.assertEqual(store.get('project', 'fixture')['listing']['pages'], kept)
 
+    def test_components_sent_with_a_new_project_are_registered_and_a_bad_one_refuses_the_upload(self):
+        import app as application
+        for module in (application,):
+            mocked = patch.object(module, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)
+        client = application.app.test_client()
+        glb = (ROOT / 'samples' / 'matte-pump-bottle.glb').read_bytes()
+        picture = io.BytesIO(); Image.new('RGB', (120, 80), 'white').save(picture, 'PNG')
+        with patch.object(engine, 'submit') as submit:
+            made = client.post('/api/projects', content_type='multipart/form-data', data={
+                'files': (io.BytesIO(glb), 'grinder.glb'), 'name': 'Grinder kit',
+                'component_files': [(io.BytesIO(glb), 'battery.glb'), (io.BytesIO(picture.getvalue()), 'bag.png')],
+                'components': json.dumps([{'name': '20V battery', 'role': 'battery', 'quantity': 2}, {'name': 'Tool bag', 'role': 'bag'}])})
+        self.assertEqual(made.status_code, 201, made.get_json())
+        body = made.get_json(); ident = body['id']
+        self.assertEqual(submit.call_args.args[:2], (ident, 'analyze'))
+        self.assertEqual([(row['name'], row['role'], row['quantity'], row['kind'], row['status']) for row in body['components']],
+                         [('20V battery', 'battery', 2, 'model', 'queued'), ('Tool bag', 'bag', 1, 'image', 'queued')])
+        self.assertEqual(body['component_errors'], [])
+        stored = store.get('project', ident)
+        self.assertEqual(len(components.components(stored)), 2)
+        self.assertEqual(len(list((self.data / ident / 'originals').rglob('*.glb'))), 1)             # the project's own model stays alone
+        self.assertEqual(components.QUEUE.qsize(), 2)
+        # A component that cannot be one refuses the whole upload before anything is made.
+        before = {record['id'] for record in store.all_records('project')}
+        refused = client.post('/api/projects', content_type='multipart/form-data', data={
+            'files': (io.BytesIO(glb), 'grinder.glb'), 'component_files': [(io.BytesIO(b'%PDF'), 'manual.pdf')]})
+        self.assertEqual(refused.status_code, 400); self.assertIn('组件文件格式不受支持', refused.get_json()['error'])
+        bad_role = client.post('/api/projects', content_type='multipart/form-data', data={
+            'files': (io.BytesIO(glb), 'grinder.glb'), 'component_files': [(io.BytesIO(glb), 'x.glb')], 'components': json.dumps([{'role': 'rocket'}])})
+        self.assertEqual(bad_role.status_code, 400)
+        self.assertEqual({record['id'] for record in store.all_records('project')}, before)
+
+    def test_components_with_models_are_rendered_with_the_product_for_the_main_image(self):
+        record = store.get('project', 'fixture')
+        parts = [{'name': 'Battery', 'role': 'battery', 'quantity': 2, 'size_mm': 120, 'model_path': '/m/battery.glb', 'rotation': [180, 0, 0],
+                  'finishes': [{'name': 'Shell', 'preset': 'matte_plastic'}], 'path': 'x.png'},
+                 {'name': 'Bag', 'role': 'bag', 'quantity': 1, 'size_mm': None, 'path': 'bag.png'}]            # a photograph only: not in 3D
+        kit = listing.kit_request(record, record['plan'], 225, parts, 35)
+        self.assertEqual(kit['companions'], [{'name': 'Battery', 'role': 'battery', 'model_path': '/m/battery.glb', 'size_mm': 120, 'quantity': 2,
+                                              'rotation': [180, 0, 0], 'plan': {'material_overrides': [{'name': 'Shell', 'preset': 'matte_plastic'}]}}])
+        self.assertEqual((kit['model_path'], kit['size_mm'], kit['camera']['azimuth'], kit['ground']), (record['model_path'], 225.0, 35, 'none'))
+        self.assertIsNone(listing.kit_request(record, record['plan'], 225, parts[1:], 35))
+        requests = listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'main', 'index': 0}], parts)
+        self.assertIn('kit', requests)
+        self.assertNotIn('kit', listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'callouts', 'index': 0}], parts))
+        # The main image is the kit render itself, cropped to everything in it, with a photograph-only component beside.
+        ctx = self.context()
+        result = self.stage('fixture', kit); result['kit_rect'] = [.2, .3, .8, .8]
+        ctx['shots']['kit'] = listing_pages.Shot(result)
+        ctx['components'] = [{**parts[0], 'path': ctx['shots']['hero'].path}, {**parts[1], 'path': ctx['shots']['hero'].path}]
+        page = listing_pages.compose('main', ctx)
+        images = [item for item in page['items'] if item['type'] == 'image']
+        self.assertEqual(images[0]['src'], str(result['path'])); self.assertEqual([round(value, 4) for value in images[0]['crop']], [.185, .285, .815, .815])
+        self.assertTrue(images[0].get('reflection')); self.assertEqual(len(images), 2)
+
     def test_the_web_layer_serves_the_workspace(self):
         import app as application
         mocked = patch.object(application, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)       # the file route reads its own name for the folder
@@ -810,6 +865,21 @@ class RuntimeTests(unittest.TestCase):
         with Image.open(out / result['image']) as image:
             self.assertEqual((image.size, image.mode), ((96, 96), 'RGBA'))
             alpha = image.getchannel('A'); self.assertEqual(alpha.getpixel((1, 1)), 0); self.assertGreater(alpha.getextrema()[1], 200)
+
+    def test_components_are_staged_round_the_product_at_their_own_size(self):
+        box = '\n'.join(['o Box'] + ['v %g %g %g' % (x, y, z) for z in (0, 40) for x, y in ((0, 0), (60, 0), (60, 30), (0, 30))]
+                         + ['f 1 2 3 4', 'f 8 7 6 5', 'f 1 5 6 2', 'f 2 6 7 3', 'f 3 7 8 4', 'f 4 8 5 1']) + '\n'
+        (self.folder / 'box.obj').write_text(box, encoding='utf-8')
+        result, _ = self.run_stage('kit', companions=[{'name': 'Battery', 'role': 'battery', 'model_path': str(self.folder / 'box.obj'), 'size_mm': 60, 'quantity': 2},
+                                                      {'name': 'Case', 'role': 'case', 'model_path': str(self.folder / 'box.obj'), 'size_mm': 150, 'quantity': 1}])
+        self.assertEqual([row['name'] for row in result['companions']], ['Battery', 'Battery', 'Case'])
+        kit = result['kit_rect']; product = result['product_rect']
+        self.assertTrue(kit[0] <= product[0] and kit[2] >= product[2] and kit[3] >= product[3], (kit, product))
+        for row in result['companions']:
+            self.assertTrue(0 <= row['rect'][0] < row['rect'][2] <= 1 and 0 <= row['rect'][1] < row['rect'][3] <= 1, row)
+        width = lambda rect: rect[2] - rect[0]
+        self.assertGreater(width(result['companions'][2]['rect']), width(result['companions'][0]['rect']))      # the case is the larger thing
+        self.assertEqual(result['dimensions_mm'], [100.0, 30.0, 100.0])                                       # the product itself is measured alone
 
     def test_a_view_is_chosen_that_shows_the_part_asked_for(self):
         result, _ = self.run_stage('focus', camera={'azimuth': 35, 'elevation': 20, 'margin': .2, 'focus': ['Frame'], 'azimuths': [35, -35, 125]})

@@ -120,7 +120,7 @@ test('choosing which images to make is an explicit list that can be handed back 
   assert.deepEqual(plain(h.calls.find(call=>call.method==='PUT').body.pages),['main','callouts','specs']);
 });
 
-test('components are added, edited, turned and removed through the server, and their progress is shown',async t=>{
+test('components uploaded with the project are edited, turned and removed through the server, and their progress is shown',async t=>{
   const row={id:'c1',name:'Battery',role:'battery',sku:'BP-205',caption:'',quantity:2,kind:'model',status:'processing',stage:'render',progress:64,error:'',size_mm:117.5,size_source:'model',
     included:true,cutout:null,notes:['尺寸按模型文件的单位估计为最长边 117.5 mm；填写真实尺寸后，套装图里的大小比例才准确。']};
   const h=await setup(t,state({components:[row]}));await h.open();await h.tab('components');
@@ -140,13 +140,8 @@ test('components are added, edited, turned and removed through the server, and t
   const sent=h.calls.filter(call=>call.method!=='GET').map(call=>[call.method,call.path,call.body]);
   assert.deepEqual(plain(sent),[['PUT','/api/projects/a/components/c1',{quantity:3}],['PUT','/api/projects/a/components/c1',{included:false}],
     ['PUT','/api/projects/a/components/c1',{turn:'flip'}],['POST','/api/projects/a/components/c1/refresh',null],['DELETE','/api/projects/a/components/c1',null]]);
-  // A new component: the chosen files and the fields that were filled in.
-  const files=[new h.w.File(['x'],'charger.glb')];Object.defineProperty(h.node('listingComponentFiles'),'files',{value:files,configurable:true});
-  h.node('listingComponentSku').value='CH-118';
-  h.node('listingComponentForm').dispatchEvent(new h.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
-  const upload=h.calls.find(call=>call.method==='POST' && call.path==='/api/projects/a/components');
-  assert.ok(upload.body instanceof h.w.FormData);assert.equal(upload.body.get('sku'),'CH-118');assert.equal(upload.body.get('paths'),'["charger.glb"]');assert.equal(upload.body.has('name'),false);
-  assert.deepEqual(h.toasts.at(-1),['组件已添加，正在处理',false]);
+  assert.equal(h.node('listingPanel').querySelector('form'),null,'components come with the project, not from here');
+  assert.match(h.node('listingPanel').textContent,/在新建项目时与主模型一起上传/);
 });
 
 test('the brand follows the product colour until the user sets one, and a preset is one choice of five',async t=>{

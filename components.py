@@ -483,6 +483,16 @@ def process(project_id, component_id, token):
         record = next((row for row in components(project) if row['id'] == component_id), None)
         if record is None or record.get('token') != token:
             return
+        # A component uploaded with a new product waits until the product's own analysis and first image are under way:
+        # the first image comes first.
+        waited = time.time()
+        while time.time() - waited < 1800 and not cancelled():
+            state = get('project', project_id)
+            if state.get('status') != 'analyzing':
+                break
+            time.sleep(2)
+        if cancelled():
+            return
         folder = _folder(project_id, component_id); source = Path(record['source']); notes = []
         target = folder / ('cutout-%s.png' % uuid.uuid4().hex[:8])
         if record['kind'] == 'image':
@@ -519,7 +529,9 @@ def process(project_id, component_id, token):
             say('cutout')
             cutout = save_cutout(result, target)
             changes = {'cutout': cutout, 'rotation': rotation, 'pose': pose, 'size_mm': size_mm, 'size_source': size_source,
-                       'dimensions_mm': result.get('dimensions_mm'), 'parts': [row['name'] for row in result.get('parts', [])][:80]}
+                       'dimensions_mm': result.get('dimensions_mm'), 'parts': [row['name'] for row in result.get('parts', [])][:80],
+                       # The finishes it was rendered with, so a kit render with the product shows it the same way.
+                       'finishes': [row for row in plan.get('material_overrides') or [] if isinstance(row, dict)][:60]}
         if cancelled():
             target.unlink(missing_ok=True)
             return

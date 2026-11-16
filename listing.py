@@ -228,8 +228,12 @@ def ready_components(project):
     for row in components.components(project):
         path = components.path_of(project['id'], (row.get('cutout') or {}).get('url'))
         if row.get('status') == 'ready' and row.get('included', True) and path:
-            rows.append({'id': row['id'], 'name': row.get('name', ''), 'sku': row.get('sku', ''), 'caption': row.get('caption', ''), 'role': row.get('role', 'other'),
-                         'quantity': row.get('quantity', 1), 'size_mm': row.get('size_mm'), 'path': path})
+            entry = {'id': row['id'], 'name': row.get('name', ''), 'sku': row.get('sku', ''), 'caption': row.get('caption', ''), 'role': row.get('role', 'other'),
+                     'quantity': row.get('quantity', 1), 'size_mm': row.get('size_mm'), 'path': path, 'kind': row.get('kind', 'model')}
+            source = Path(row.get('source') or '')
+            if entry['kind'] == 'model' and source.is_file():
+                entry.update(model_path=str(source), rotation=row.get('rotation') or [0, 0, 0], finishes=row.get('finishes') or [])
+            rows.append(entry)
     return rows
 
 
@@ -435,11 +439,26 @@ def _hero_view(project):
     return azimuth, min(24.0, max(10.0, float(shot.get('elevation', 18))))
 
 
-def picture_requests(project, product, size_mm, rows):
+def kit_request(project, plan, size_mm, parts, azimuth):
+    """One render of the product with the components that have models, arranged as a kit, or None when there are none."""
+    rows = [{'name': part['name'], 'role': part['role'], 'model_path': part['model_path'], 'size_mm': part.get('size_mm') or size_mm * .4,
+             'quantity': part['quantity'], 'rotation': part['rotation'], 'plan': {'material_overrides': part.get('finishes') or []}}
+            for part in parts if part.get('model_path')]
+    if not rows:
+        return None
+    return {'action': 'render', 'model_path': str(project['model_path']), 'plan': plan, 'size_mm': float(size_mm), 'companions': rows,
+            'camera': {'azimuth': azimuth, 'elevation': 26, 'focal_length': 70, 'margin': .04}, 'ground': 'none', 'size': [1800, 1800], 'samples': 48}
+
+
+def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1500)}
+    if 'main' in kinds:
+        kit = kit_request(project, plan, size_mm, parts, azimuth)
+        if kit:
+            requests['kit'] = kit
     if 'specs' in kinds:
         import orientation
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
@@ -514,7 +533,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
     if not rows:
         raise ValueError('没有可以生成的图片。')
-    requests = picture_requests(project, product, size_mm, rows)
+    requests = picture_requests(project, product, size_mm, rows, parts)
     shots = {}; names = list(requests); notes = []
     waiting = [row.get('name') for row in components.components(project) if row.get('status') in ('queued', 'processing')]
     if waiting:

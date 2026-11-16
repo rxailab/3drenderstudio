@@ -804,70 +804,6 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .scene-refs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .scene-refs img { display: block; width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
 
-/* Text and icon layer: the vector annotations drawn over the picture, and their panel. */
-.layer-stage { position: absolute; overflow: visible; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.viewer.layer-editing .layer-stage { pointer-events: auto; touch-action: none; cursor: default; }
-.viewer.layer-editing .layer-stage [data-item] { cursor: move; }
-.layer-outline { stroke: var(--accent); pointer-events: none; }
-.layer-handle { fill: #fff; stroke: var(--accent); cursor: nwse-resize; }
-.layer-handle[data-handle="width"] { cursor: ew-resize; }
-.layer-handle.layer-anchor { fill: var(--accent); stroke: #fff; cursor: crosshair; }
-.layer-guide { stroke: #ff3d9a; pointer-events: none; }
-.layer-inline { position: absolute; z-index: 4; min-height: 0; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 2px; background: rgba(255,255,255,.97); color: #111; font-family: 'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',system-ui,sans-serif; line-height: 1.28; resize: none; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-.overlay-panel > .panel-section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
-.overlay-panel textarea { min-height: 0; line-height: 1.5; }
-.overlay-panel #layerHint { margin-bottom: 6px; }
-.layer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.layer-add, .layer-history, .layer-row { display: flex; align-items: center; gap: 2px; }
-.layer-add .button, .layer-row .button { padding: 3px 8px; }
-.layer-row { margin-top: 8px; flex-wrap: wrap; gap: 4px; }
-.layer-spacer { flex: 1; }
-.layer-saved { font-size: 11px; color: var(--subtle); margin-right: 4px; white-space: nowrap; }
-.layer-items { list-style: none; margin: 8px 0 0; padding: 0; max-height: 216px; overflow: auto; }
-.layer-items li { display: flex; align-items: center; gap: 2px; }
-.layer-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: var(--control); padding: 2px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font-size: 12px; text-align: left; }
-.layer-item:hover { background: var(--hover); }
-.layer-item.selected { background: var(--accent-soft); color: var(--ink-strong); }
-.layer-kind { flex-shrink: 0; font-size: 10px; color: var(--subtle); width: 26px; }
-.layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.layer-properties .field-label:first-child, .layer-properties > div:first-child .field-label { margin-top: 0; }
-.layer-properties input[type="range"] { width: 100%; }
-.layer-value { color: var(--subtle); font-weight: 400; }
-.layer-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 2px; max-height: 92px; overflow: auto; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--field); }
-.layer-icon { display: grid; place-items: center; height: 26px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 12px; }
-.layer-icon svg { width: 16px; height: 16px; }
-.layer-icon:hover { background: var(--hover); color: var(--ink); }
-.layer-icon.selected { background: var(--accent-soft); color: var(--accent-hover); }
-.layer-colors { display: flex; gap: 4px; }
-.layer-swatch { width: 20px; height: 20px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; }
-.layer-swatch.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
-.overlay-panel input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--field); }
-.overlay-panel .render-reason.is-summary { color: var(--muted); }
-/* The layer's display face: Noto Sans SC Black (SIL OFL 1.1), bundled for headlines and callout titles. */
-@font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 900; font-display: swap; src: url("/static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2") format('woff2'); }
-.layer-language { align-items: center; gap: 8px; margin: 6px 0; }
-.layer-language .field-label { margin: 0; }
-.layer-language select { flex: 1; min-width: 0; }
-.layer-layout-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; }
-.layer-layout-head .field-label { margin: 0; }
-.layer-layout-head .field-help { margin: 0; }
-.layer-layouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
-.layer-layout { display: grid; justify-items: center; gap: 2px; padding: 6px 2px 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--field); color: var(--muted); font-size: 11px; cursor: pointer; }
-.layer-layout svg { width: 34px; height: 34px; }
-.layer-layout:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink); }
-.layer-layout.selected { border-color: var(--accent-line); background: var(--accent-soft); color: var(--ink); }
-.layer-layout:disabled { opacity: .5; cursor: default; }
-.layer-figure-fields { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 4px 6px; margin-bottom: 6px; }
-.layer-figure-fields .field-label { margin: 0; }
-.layer-glyph-field .field-help { margin: 2px 0 4px; }
-.layer-glyph-search input { flex: 1; min-width: 0; }
-.layer-look { margin-top: 8px; }
-.layer-look .layer-row { margin-top: 4px; flex-wrap: nowrap; }
-.layer-label { flex-shrink: 0; width: 30px; font-size: 11px; color: var(--subtle); }
-.layer-themes { display: flex; gap: 2px; flex-wrap: wrap; }
-.layer-themes .button { padding: 2px 8px; }
-#layerRole { width: auto; min-width: 84px; }
-.layer-mark { flex: 1; min-width: 0; }
 
 /* Listing workspace (套图): product record, components, brand kit and the built set of images */
 .listing-dialog { width: min(1320px, calc(100vw - 32px)); height: calc(100dvh - 40px); max-height: calc(100dvh - 40px); padding: 16px 18px; display: none; flex-direction: column; overflow: hidden; }
@@ -936,3 +872,15 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
   .listing-side, .listing-main { min-height: auto; }
   .listing-panel, .listing-pages { overflow: visible; }
 }
+
+/* Components sent with a new project */
+.upload-components { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.upload-components-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.upload-components-head span { color: var(--subtle); font-weight: 400; margin-left: 4px; }
+.upload-components .field-help { margin: 4px 0 8px; }
+.chosen-components { display: flex; flex-direction: column; gap: 6px; }
+.chosen-component { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 52px auto; gap: 6px; align-items: center; }
+.chosen-component-file { grid-column: 1 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: -2px; }
+.chosen-component .icon-button { grid-row: 1; grid-column: 4; }
+.listing-summary-pages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 12px; }
+.listing-summary-pages img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--line); }

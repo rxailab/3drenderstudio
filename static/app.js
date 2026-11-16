@@ -7,6 +7,9 @@ const statusNames = {analyzing:'模型分析中',ready:'可开始拍摄',failed:
 const sourceNames = {rules:'规则推导',user:'用户指定',ai:'AI 分析',model:'模型自带',fallback:'占位材质',default:'默认材质'};
 let current = null, draft = null, allProjects = [], activeShot = null, selectedShots = new Set(), selectedMaterial = null, cameraShot = null;
 let dirty = false, busy = false, polling = false, system = null, uploadFiles = [], toastTimer, syncSignature = '', currentOutput = null;
+// Components sent with a new project: {file, name, role, quantity}, one file each.
+let uploadComponents = [];
+const componentRoles = [['battery','电池'],['charger','充电器'],['case','工具箱'],['bag','工具包'],['blade','刀片 / 磨片'],['bit','批头 / 钻头'],['attachment','附件'],['manual','说明书'],['other','其他']];
 let serviceDisconnected = false;
 let projectRequest = 0, projectLoading = false, planSavePromise = null, draftBaseVersion = null;
 let uploadSubmitting = false, decisionOpen = false, projectDeletionId = '', libraryRequest = 0;
@@ -797,7 +800,7 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();renderLayerPanel();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();if(typeof listingRenderSummary==='function')listingRenderSummary();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='', sceneHistorySelection='';
@@ -1157,7 +1160,7 @@ async function continueUpload(files) {
 }
 const deleteProjectIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
 function realtimeAvailable() { return !!window.WuyingViewport && !!current?.analysis && activeShot==='hero' && system?.viewport?.available!==false && system?.runtime?.capabilities?.viewport!==false; }
-function realtimeActive() { return realtimeAvailable() && realtime.mode==='live' && !comparePrevious && !feedbackMode && !instructionTargetSelection && !(inspectorTab==='overlay' && currentOutput); }
+function realtimeActive() { return realtimeAvailable() && realtime.mode==='live' && !comparePrevious && !feedbackMode && !instructionTargetSelection; }
 function disposeRealtime(clearContext=true) {
   realtime.epoch++;realtime.abort?.abort();clearTimeout(realtime.timer);realtime.instance?.dispose();
   realtime.instance=null;realtime.abort=null;realtime.timer=null;realtime.key='';realtime.record=null;realtime.changed=false;realtime.status='idle';realtime.error='';realtime.preservedView=null;
@@ -1301,7 +1304,7 @@ function renderViewer() {
     const initial=current.initial_preview,running=activeJob(),buildingHero=activeShot==='hero' && running?.origin==='initial_preview';
     $('renderEmpty').querySelector('h2').textContent=!current.analysis && !['failed','cancelled','interrupted'].includes(current.status)?initial?.status==='pending'?'正在分析模型，完成后自动生成白底主图':'正在分析模型':buildingHero?running.status==='queued'?'白底主图已排队':'正在生成白底主图':current.analysis && activeShot==='hero' && initial?.status==='pending'?'正在准备白底主图':'当前镜头还没有预览';
   }
-  renderFeedback();ensureRealtime();renderRealtimeStage();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderLayerStage();
+  renderFeedback();ensureRealtime();renderRealtimeStage();renderReview();renderRenderActivity();renderLatestSceneDownloads();
 }
 function sceneOutputKey(output) {
   return JSON.stringify([output.job_id || '',output.shot_id,output.version,output.quality,output.created_at || '',output.blend_url || '']);
@@ -2193,20 +2196,51 @@ function uploadValidation() {
   if(!modelCount && !uploadFiles.some(file=>extension(file)==='zip'))return '还缺少模型文件。请添加一个 GLB / OBJ，或包含模型的 ZIP。';
   return '';
 }
+function componentRoleFor(name) {
+  const lowered=name.toLowerCase();
+  for(const [role,words] of [['battery',['battery','pack','电池']],['charger',['charger','充电']],['case',['case','box','箱','盒']],['bag',['bag','包']],
+    ['blade',['blade','disc','wheel','刀片','磨片','锯片']],['bit',['bit','drill','批头','钻头']],['manual',['manual','说明书']]])if(words.some(word=>lowered.includes(word)))return role;
+  return 'other';
+}
+function componentUploadValidation() {
+  const allowed=new Set(['glb','obj','zip','png','jpg','jpeg','webp']);
+  const wrong=uploadComponents.find(row=>!allowed.has(row.file.name.split('.').pop().toLowerCase()));
+  if(wrong)return `组件 ${wrong.file.name} 的格式不受支持：每个组件请用一个 GLB / OBJ / ZIP，或一张 PNG / JPG / WebP 图片。`;
+  if(uploadComponents.length>24)return '一个项目最多 24 个组件。';
+  if(uploadComponents.some(row=>!(Number.isInteger(row.quantity) && row.quantity>=1 && row.quantity<=99)))return '组件数量需为 1 到 99 的整数。';
+  return '';
+}
+function renderUploadComponents() {
+  $('chosenComponents').innerHTML=uploadComponents.map((row,index)=>`<div class="chosen-component" data-component-index="${index}">
+    <input type="text" data-component-field="name" value="${esc(row.name)}" maxlength="60" aria-label="组件名称">
+    <select data-component-field="role" aria-label="组件类型">${componentRoles.map(([value,label])=>`<option value="${value}" ${row.role===value?'selected':''}>${label}</option>`).join('')}</select>
+    <input type="text" inputmode="numeric" data-component-field="quantity" value="${esc(row.quantity)}" aria-label="数量" title="数量">
+    <span class="chosen-component-file" title="${esc(row.file.name)}">${esc(row.file.name)} · ${filenameSize(row.file.size)}</span>
+    <button type="button" class="icon-button" data-remove-component="${index}" aria-label="移除组件${esc(row.name)}">×</button></div>`).join('');
+  addFiles([]);
+}
+function addComponentFiles(files) {
+  if(uploadSubmitting)return;
+  for(const file of files){
+    const name=file.name.replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').trim().slice(0,60) || '组件';
+    uploadComponents.push({file,name,role:componentRoleFor(file.name),quantity:1});
+  }
+  renderUploadComponents();
+}
 function addFiles(files) {
   if(uploadSubmitting)return;
   const pathOf=file=>file.webkitRelativePath || file._relativePath || file.name;
   for(const file of files){const index=uploadFiles.findIndex(item=>pathOf(item)===pathOf(file));if(index>=0)uploadFiles[index]=file;else uploadFiles.push(file);}
   $('chosenFiles').innerHTML=uploadFiles.map((file,index)=>`<div><span>${esc(pathOf(file))}</span><span>${filenameSize(file.size)} <button type="button" data-remove-file="${index}" aria-label="移除${esc(file.name)}">×</button></span></div>`).join('')+(uploadFiles.length?`<p class="field-help">已选 ${uploadFiles.length} 个文件 · 合计 ${filenameSize(uploadFiles.reduce((sum,file)=>sum+file.size,0))} · 上限 512 MB</p>`:'');
-  $('uploadError').textContent=uploadValidation() || (uploadFiles.length && !workerRenderReady()?runtimeReason():'');
-  $('uploadSubmit').disabled=!uploadFiles.length || !!uploadValidation() || !workerRenderReady();
+  $('uploadError').textContent=uploadValidation() || componentUploadValidation() || (uploadFiles.length && !workerRenderReady()?runtimeReason():'');
+  $('uploadSubmit').disabled=!uploadFiles.length || !!uploadValidation() || !!componentUploadValidation() || !workerRenderReady();
 }
 async function readEntry(entry,path='') {
   if (entry.isFile) return new Promise((resolve,reject)=>entry.file(f=>{f._relativePath=path+f.name;resolve([f]);},reject));
   if (entry.isDirectory) {const reader=entry.createReader();let entries=[],batch;do {batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));entries.push(...batch);}while(batch.length);return (await Promise.all(entries.map(e=>readEntry(e,path+entry.name+'/')))).flat();}return [];
 }
 async function showUpload() {if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');if(!(await resolveUnsavedChanges()))return;ensureEcommerceCatalog().catch(()=>{});$('uploadError').textContent=uploadValidation() || (!workerRenderReady()?runtimeReason():'');$('uploadDialog').showModal();renderActionState();}
-const inspectorTabs=['review','material','plan','overlay','ecommerce'];
+const inspectorTabs=['review','material','plan','listing','ecommerce'];
 function setInspectorTab(tab) {
   if(!inspectorTabs.includes(tab))return;
   if(tab!==inspectorTab){inspectorScrollPositions[inspectorTab]=$('inspectorBody').scrollTop || 0;$('inspectorBody').scrollTop=inspectorScrollPositions[tab] || 0;}
@@ -2218,9 +2252,7 @@ function setInspectorTab(tab) {
   }
   if(tab==='material' && currentOutput && !feedbackMode){feedbackMode=true;renderFeedback();}
   if(tab==='ecommerce'){renderEcommerce();refreshEcommerce(true);}
-  // The text and icon layer is edited on the rendered picture, so its tab shows the picture rather than the live 3D view.
-  if(previousTab==='overlay' && tab!=='overlay')layerLeave();
-  if((tab==='overlay')!==(previousTab==='overlay') && current){renderViewer();renderLayerPanel();}
+  if(tab==='listing' && typeof listingRenderSummary==='function')listingRenderSummary();
 }
 function storeMaterialTask(projectId,task) {
   materialAgentRecords.set(projectId,[task,...(materialAgentRecords.get(projectId) || []).filter(item=>item.id!==task.id)]);
@@ -2479,7 +2511,7 @@ function installEvents() {
   $('reviewRefreshButton').onclick=requestRealismReview;
   $('feedbackAddPoint').onclick=()=>addFeedbackPoint({x:readNumber('feedbackX')/100,y:readNumber('feedbackY')/100});
   $('renderImage').onclick=e=>{if(realtimeActive() || comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
-  $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);bindLayerControls();
+  $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);
   const removePoint=e=>{const button=e.target.closest('[data-remove-point]');if(button && !busy){feedbackPoints=feedbackPoints.filter(point=>point.id!==button.dataset.removePoint);renderFeedback();renderInstruction();}};
   $('feedbackSelection').onclick=removePoint;$('feedbackMarkers').onclick=removePoint;
   $('newProject').onclick=showUpload;$('uploadMain').onclick=()=>pickUploadFiles(false);$('homeBrowseFolder').onclick=()=>pickUploadFiles(true);
@@ -2508,16 +2540,25 @@ function installEvents() {
   $('homeDropzone').ondragleave=e=>{if(!$('homeDropzone').contains(e.relatedTarget))$('homeDropzone').classList.remove('dragging');};
   $('homeDropzone').ondrop=async e=>{e.preventDefault();$('homeDropzone').classList.remove('dragging');if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');try{await continueUpload(await droppedFiles(e));}catch(error){toast(error.message,true);}};
   $('chosenFiles').onclick=e=>{const b=e.target.closest('[data-remove-file]');if(b){uploadFiles.splice(Number(b.dataset.removeFile),1);addFiles([]);}};
+  $('addComponentFiles').onclick=()=>{if(!uploadSubmitting)$('componentFiles').click();};
+  $('componentFiles').onchange=e=>{addComponentFiles([...e.target.files]);e.target.value='';};
+  $('chosenComponents').onclick=e=>{const b=e.target.closest('[data-remove-component]');if(b && !uploadSubmitting){uploadComponents.splice(Number(b.dataset.removeComponent),1);renderUploadComponents();}};
+  $('chosenComponents').oninput=e=>{const node=e.target,row=uploadComponents[Number(node.closest('[data-component-index]')?.dataset.componentIndex)],field=node.dataset.componentField;
+    if(!row || !field)return;row[field]=field==='quantity'?(/^\d+$/.test(node.value.trim())?Number(node.value.trim()):NaN):node.value;addFiles([]);};
+  $('chosenComponents').onchange=$('chosenComponents').oninput;
   $('uploadForm').onsubmit=async event=>{
     event.preventDefault();if(uploadSubmitting || !uploadFiles.length)return;
-    const validation=uploadValidation();if(validation || !workerRenderReady()){$('uploadError').textContent=validation || runtimeReason();return;}
+    const validation=uploadValidation() || componentUploadValidation();if(validation || !workerRenderReady()){$('uploadError').textContent=validation || runtimeReason();return;}
     const form=new FormData($('uploadForm'));uploadFiles.forEach(file=>form.append('files',file));form.append('paths',JSON.stringify(uploadFiles.map(file=>file.webkitRelativePath || file._relativePath || file.name)));
+    uploadComponents.forEach(row=>form.append('component_files',row.file));
+    if(uploadComponents.length)form.append('components',JSON.stringify(uploadComponents.map(row=>({name:row.name.trim(),role:row.role,quantity:row.quantity}))));
     uploadSubmitting=true;$('uploadForm').inert=true;$('uploadSubmit').disabled=true;$('uploadSubmit').textContent='正在上传并创建项目…';$('uploadError').textContent='';
     let created;
     try{created=await api('/api/projects',{method:'POST',body:form});}
     catch(error){$('uploadError').textContent=error.message;}
     finally{uploadSubmitting=false;$('uploadForm').inert=false;$('uploadSubmit').textContent='上传并生成主图';renderActionState();}
-    if(created){if(form.get('platform'))remember('wuying-platform',form.get('platform'));else forget('wuying-platform');$('uploadDialog').close();uploadFiles=[];$('uploadForm').reset();$('uploadPlatform').value=recalled('wuying-platform') || '';addFiles([]);try{await refreshList();}catch(error){toast('项目已创建，但项目列表暂未刷新：'+error.message,true);}await openProject(created.id);toast('模型已上传，分析完成后会自动生成白底主图。');}
+    if(created?.component_errors?.length)toast('有 '+created.component_errors.length+' 个组件未能添加：'+created.component_errors.map(row=>row.file+'（'+row.error+'）').join('；'),true);
+    if(created){if(form.get('platform'))remember('wuying-platform',form.get('platform'));else forget('wuying-platform');$('uploadDialog').close();uploadFiles=[];uploadComponents=[];renderUploadComponents();$('uploadForm').reset();$('uploadPlatform').value=recalled('wuying-platform') || '';addFiles([]);try{await refreshList();}catch(error){toast('项目已创建，但项目列表暂未刷新：'+error.message,true);}await openProject(created.id);toast('模型已上传，分析完成后会自动生成白底主图。');}
   };
   $('projectList').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const b=e.target.closest('[data-project]');if(b)openProject(b.dataset.project);};
   $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};

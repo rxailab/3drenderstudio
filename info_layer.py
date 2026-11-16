@@ -1,22 +1,16 @@
-"""The text and icon layer of a shot: editable vector annotations over the picture.
+"""What a product's images say, and what each part of a rendered picture shows.
 
-A layer is plain data in picture coordinates (0..1 across the frame, sizes as
-shares of the picture's shorter side), so it stays sharp at any resolution and
-every item remains editable. It is stored per shot beside the plan, not in it:
-writing a headline never makes a render stale.
+This was the per-shot 图文 layer; that editor was replaced by the listing workspace (套图), which
+uses what remains here:
 
-    validate()      the data contract, for compositions and for the overlay
-                    layers saved before them (v23/v24), which still load
-    content_for()   what the image says: a vision model when one is configured,
+    content_for()   what the images say: a vision model when one is configured,
                     name rules and the user's own lines otherwise; a number is
                     only shown when the user gave it
-    probe()         what each part of the picture shows, from the saved scene
-    suggest()       content, icons (layer_icons) and a composition
-                    (layer_compose) as one proposal the user then edits
-    recompose()     the same words in another composition, without a model
+    probe()         what each part of a picture shows, from its saved scene
+    Picture         occupancy and brightness on a grid, and where a named part is visible
+    validate()      the data contract of the layers saved by earlier versions
 
-The browser draws and exports the layer (static/layer.js); this module never
-rasterises text.
+Listing pages are drawn on the server (listing_draw.py); this module never rasterises text.
 """
 import colorsys
 import copy
@@ -26,13 +20,12 @@ import math
 import re
 import shutil
 import subprocess
-import time
 import uuid
 from pathlib import Path
 
 from PIL import Image
 
-from studio_store import DATA, LOCK, atomic_json, get, put
+from studio_store import DATA, atomic_json, get
 
 ROOT = Path(__file__).resolve().parent
 PROBE_SCRIPT = ROOT / 'blender' / 'layer_probe.py'
@@ -304,51 +297,6 @@ def validate(value):
     if value.get('source') in ('rules', 'ai', 'manual'):
         layer['source'] = value['source']
     return layer
-
-
-def basis(plan, shot):
-    """What a suggested layout depends on: a changed camera means the callouts may point astray."""
-    return {**{key: copy.deepcopy(shot[key]) for key in BASIS_KEYS if key in shot}, 'aspect': plan.get('aspect', '1:1')}
-
-
-def _shot(project, shot_id):
-    shot = next((item for item in project['plan']['shots'] if item['id'] == shot_id), None)
-    if shot is None:
-        raise KeyError(shot_id)
-    return shot
-
-
-def layers(project):
-    stored = project.get('layers')
-    return stored if isinstance(stored, dict) else {}
-
-
-def save(project_id, shot_id, body):
-    if not isinstance(body, dict):
-        raise ValueError('图文图层请求格式无效')
-    layer = validate(body.get('layer'))
-    with LOCK:
-        project = get('project', project_id); _shot(project, shot_id)
-        stored = layers(project); previous = stored.get(shot_id) or {}
-        expected = body.get('expected_revision')
-        if expected is not None and expected != previous.get('revision', 0):
-            raise LayerConflict('图文图层已在别处修改，请重新载入后再编辑。')
-        layer.update(revision=previous.get('revision', 0) + 1, updated_at=time.time())
-        project['layers'] = {**stored, shot_id: layer}; put('project', project)
-        return layer
-
-
-def remove(project_id, shot_id):
-    with LOCK:
-        project = get('project', project_id)
-        stored = dict(layers(project))
-        if stored.pop(shot_id, None) is not None:
-            project['layers'] = stored; put('project', project)
-        return {'removed': True, 'shot_id': shot_id}
-
-
-class LayerConflict(ValueError):
-    pass
 
 
 # ------------------------------------------------------------------ what to say
@@ -937,99 +885,7 @@ def content_for(project, hint='', image_path=None, visible=None, language=DEFAUL
     return content, 'ai', notes, answer['layout']
 
 
-def _picture_for(project_id, shot_id, wanted=None):
-    """(project, shot, output, image path, picture, notes) for the newest picture of a shot."""
-    project = get('project', project_id); shot = _shot(project, shot_id)
-    if not project.get('analysis'):
-        raise ValueError('请先等待模型分析完成')
-    wanted = wanted if isinstance(wanted, dict) else {}
-    outputs = [o for o in project.get('outputs', []) if o.get('shot_id') == shot_id and o.get('quality') != 'thumbnail'
-               and (not wanted or all(o.get(key) == wanted.get(key) for key in ('job_id', 'version', 'quality')))]
-    if not outputs:
-        raise ValueError('请先生成这个镜头的预览，再排版图文。')
-    output = max(outputs, key=lambda o: (o.get('version', 0), o.get('created_at') or 0))
-    image = _project_file(project_id, output.get('png_url'), ('.png',))
-    if image is None:
-        raise ValueError('这张图片的文件不存在，请重新生成预览。')
-    scene = probe(project_id, output); notes = []
-    if scene is None:
-        width, height = output.get('width') or 1, output.get('height') or 1
-        scene = probe_from_image(image, max(8, round(GRID * width / max(width, height))), max(8, round(GRID * height / max(width, height))))
-        if output.get('quality') != 'generated':
-            notes.append('无法读取这张图片保存的场景，按画面颜色估计了产品位置，标注没有指向线。')
-    return project, shot, output, image, Picture(scene, image), notes
-
-
 def _point_anchors(content, picture, facing='right'):
+    """Each point that names parts gets the spot where those parts are visible in the picture (None when it is only estimated)."""
     for point in content['points']:
         point['anchor'] = picture.anchor(point.get('parts') or [], facing)[0] if point.get('parts') and not picture.estimated else None
-
-
-def _layer_from(project, shot, output, picture, content, glyphs, layout, source):
-    import layer_compose
-    aspect = '%d:%d' % (output.get('width') or 1, output.get('height') or 1)
-    canvas, items, report = layer_compose.compose(layout, content, picture, aspect, output.get('quality') == 'generated')
-    layer = validate({'version': 1, 'layout': layout, 'canvas': canvas, 'content': content, 'glyphs': glyphs, 'items': items,
-                      'basis': basis(project['plan'], shot), 'source': source})
-    return layer, report
-
-
-def suggest(project_id, shot_id, body):
-    """A proposed composition for this image: what to say, its icons and where everything goes. Nothing is saved."""
-    import layer_compose
-    import layer_icons
-    if not isinstance(body, dict):
-        raise ValueError('图文图层请求格式无效')
-    hint = body.get('hint', '')
-    if not isinstance(hint, str) or len(hint) > MAX_HINT:
-        raise ValueError('要点说明不能超过 %d 字' % MAX_HINT)
-    wanted_layout = body.get('layout')
-    if wanted_layout not in (None, 'auto') and wanted_layout not in layer_compose.LAYOUTS:
-        raise ValueError('未知的版式')
-    language = body.get('language') or DEFAULT_LANGUAGE
-    if language not in LANGUAGES:
-        raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
-    project, shot, output, image, picture, notes = _picture_for(project_id, shot_id, body.get('output'))
-    visible = None if picture.estimated else list(picture.objects)
-    content, source, copy_notes, proposed = content_for(project, hint.strip(), image, visible, language)
-    if picture.estimated and content.get('product_box'):
-        picture.set_product_box(content['product_box'])
-    _point_anchors(content, picture)
-    # One icon per point, figure and specification: from the open sets, online, or drawn.
-    wants = [(entry.get('title') or entry.get('label') or '', entry.get('icon') or '') for entry in content['points'] + content['figures'] + content['specs']]
-    glyphs, chosen, icon_notes = layer_icons.resolve(wants) if wants else ({}, [], [])
-    for entry, key in zip(content['points'] + content['figures'] + content['specs'], chosen):
-        if key:
-            entry['glyph'] = key
-    pal = layer_compose.palette(picture, output.get('quality') == 'generated')
-    order = layer_compose.suitable(content, pal, picture)
-    layout = wanted_layout if wanted_layout in layer_compose.LAYOUTS else proposed if proposed in order[:3] else order[0]
-    layer, report = _layer_from(project, shot, output, picture, content, glyphs, layout, source)
-    if report['dropped']:
-        notes.append('这个版式没有显示：%s%s；可换用其他版式，或删减文字。' % ('、'.join(report['dropped'][:4]), ' 等' if len(report['dropped']) > 4 else ''))
-    return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': copy_notes + icon_notes + notes,
-                                       'anchored': sum(1 for item in layer['items'] if item.get('anchor')), 'layout': layout, 'suitable': order,
-                                       'icons': {key: {'source': glyph['source'], 'name': glyph.get('name', ''), 'license': glyph.get('license', '')}
-                                                 for key, glyph in layer.get('glyphs', {}).items()},
-                                       'output': {key: output.get(key) for key in ('job_id', 'version', 'quality')}}}
-
-
-def recompose(project_id, shot_id, body):
-    """The same words in another composition, or laid out again after an edit. No model is asked."""
-    import layer_compose
-    if not isinstance(body, dict) or body.get('layout') not in layer_compose.LAYOUTS:
-        raise ValueError('请选择一个版式')
-    stored = validate({'version': 1, 'items': [], 'glyphs': body.get('glyphs') or {}, 'content': body.get('content') or {}})
-    project, shot, output, image, picture, notes = _picture_for(project_id, shot_id, body.get('output'))
-    content = stored.get('content') or {'kicker': '', 'headline': '', 'subline': '', 'points': [], 'figures': [], 'specs': []}
-    if picture.estimated and content.get('product_box'):
-        picture.set_product_box(content['product_box'])
-    if any(point.get('parts') and point.get('anchor') is None for point in content['points']):
-        _point_anchors(content, picture)
-    source = body.get('source') if body.get('source') in ('rules', 'ai', 'manual') else 'manual'
-    layer, report = _layer_from(project, shot, output, picture, content, stored.get('glyphs', {}), body['layout'], source)
-    if report['dropped']:
-        notes.append('这个版式没有显示：%s%s；可换用其他版式，或删减文字。' % ('、'.join(report['dropped'][:4]), ' 等' if len(report['dropped']) > 4 else ''))
-    return {'layer': layer, 'report': {'source': source, 'probe': 'image' if picture.estimated else 'scene', 'notes': notes, 'layout': body['layout'],
-                                       'anchored': sum(1 for item in layer['items'] if item.get('anchor')),
-                                       'output': {key: output.get(key) for key in ('job_id', 'version', 'quality')}}}
