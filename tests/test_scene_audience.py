@@ -645,6 +645,24 @@ class SceneFlowTests(unittest.TestCase):
         self.assertNotIn('scene', [shot['id'] for shot in made['plan']['shots']])        # the renders show the product alone
         self.assertEqual(store.all_records('job'), [])                                   # nothing is queued for Blender
 
+    def test_regeneration_preserves_previous_generated_files_and_output_records(self):
+        first = self.run_task()
+        self.assertEqual(first['status'], 'completed', first.get('error'))
+        previous = store.get('project', 'fixture')['outputs'][-1]
+        old_png = self.data / previous['png_url'][7:]
+        old_jpg = self.data / previous['jpg_url'][7:]
+        before = (old_png.read_bytes(), old_jpg.read_bytes())
+        second = self.run_task(hint='另一种场景')
+        self.assertEqual(second['status'], 'completed', second.get('error'))
+        outputs = [o for o in store.get('project', 'fixture')['outputs'] if o['shot_id'] == 'scene']
+        self.assertEqual(len(outputs), 2)
+        self.assertEqual([o['job_id'] for o in outputs], [first['id'], second['id']])
+        self.assertEqual([o['version'] for o in outputs], [2, 3])
+        self.assertNotEqual(outputs[0]['png_url'], outputs[1]['png_url'])
+        self.assertEqual((old_png.read_bytes(), old_jpg.read_bytes()), before)
+        self.assertTrue((self.data / outputs[1]['png_url'][7:]).is_file())
+        self.assertTrue((self.data / outputs[1]['jpg_url'][7:]).is_file())
+
     def test_blender_is_never_asked_to_render_a_generated_shot(self):
         self.run_task()
         with self.assertRaisesRegex(ValueError, '由图像模型生成'):

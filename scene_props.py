@@ -199,7 +199,9 @@ def search(concept, kind='models', limit=6, require=(), exclude=(), largest_mm=N
 
 def _safe_relative(name, suffixes):
     path = Path(name)
-    if (path.is_absolute() or '..' in path.parts or not re.fullmatch(r'[A-Za-z0-9_.\-/ ]{1,200}', name)
+    # On Windows, '/folder/file' has a root but no drive and is_absolute()
+    # returns False. Joining it would still escape the model's cache folder.
+    if (path.anchor or '..' in path.parts or not re.fullmatch(r'[A-Za-z0-9_.\-/ ]{1,200}', name)
             or path.suffix.lower() not in suffixes):
         raise PropError('道具文件名不安全')
     return path

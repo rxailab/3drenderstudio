@@ -306,22 +306,23 @@ body:not(.has-project) .workspace-notice { margin-bottom: 20px; border: 1px soli
 .feedback-marker { position: absolute; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 2px solid #fff; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 6px rgba(0,0,0,.5); color: #fff; font-size: 11px; font-weight: 600; transform: translate(-50%,-50%); pointer-events: auto; cursor: pointer; }
 .feedback-marker.pending { background: var(--amber); color: #1b1b1d; }
 .feedback-marker.miss { background: var(--danger); }
-/* Task progress is a small chip over the picture; it never covers it. */
+/* Keep the live task visible while leaving the main preview unobstructed. */
 .render-activity { position: absolute; left: 0; right: 0; bottom: 14px; z-index: 4; display: flex; justify-content: center; padding: 0 14px; pointer-events: none; }
 .render-activity[hidden] { display: none; }
-.render-activity-card { display: grid; grid-template-columns: 18px minmax(0,auto) auto; align-items: center; gap: 4px 10px; max-width: min(100%,520px); padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: rgba(36,36,39,.94); box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+.render-activity-card { display: grid; grid-template-columns: 18px minmax(0,1fr); align-items: start; gap: 4px 10px; width: min(100%,390px); padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: rgba(36,36,39,.96); box-shadow: 0 6px 24px rgba(0,0,0,.45); }
 .render-activity-symbol { display: grid; place-items: center; }
 .render-activity-copy { min-width: 0; }
 .render-activity-copy strong { display: block; font-size: 12px; font-weight: 600; color: var(--ink-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.render-activity-copy p, .render-activity-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
-.render-activity-progress-row { display: contents; }
+.render-activity-actor { display: block; color: #8faaff; font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+.render-activity-copy p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.render-activity-note { display: none; }
+.render-activity-progress-row { display: grid; grid-column: 2; gap: 5px; }
 #renderActivityMetric { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
-.render-activity-progress { grid-column: 1/-1; height: 2px; background: var(--active); border-radius: 1px; overflow: hidden; }
+.render-activity-progress { height: 4px; background: var(--active); border-radius: 2px; overflow: hidden; }
 .render-activity-progress > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease-out; }
 .render-activity[data-progress="indeterminate"] .render-activity-progress > span { width: 35%; animation: sweep 1.8s ease-in-out infinite; }
 .render-activity[data-motion="still"] .render-activity-orbit { animation: none; border-color: var(--line-strong); border-style: dashed; }
 .render-activity[data-state="disconnected"] .render-activity-copy strong { color: var(--muted); }
-.viewer:not(.is-rendering-empty) .render-activity { display: none; }
 .viewer.is-rendering-empty .render-activity { bottom: auto; top: 50%; transform: translateY(-50%); }
 .viewer.is-rendering-empty .render-empty { visibility: hidden; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -784,6 +785,16 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .scene-brief { margin: 6px 0; }
 .scene-generated { font-size: 11px; line-height: 1.6; color: var(--muted); }
 .scene-generated p { margin: 4px 0 0; }
+.scene-history { margin-top: 12px; font-size: 11px; color: var(--muted); }
+.scene-history summary { cursor: pointer; }
+.scene-history-list { display: grid; gap: 8px; margin-top: 8px; max-height: 300px; overflow: auto; }
+.scene-history-item { display: flex; gap: 8px; align-items: center; }
+.scene-history-item img { display: block; width: 56px; height: 56px; object-fit: cover; border-radius: 4px; }
+.scene-history-preview { border: 0; padding: 0; background: transparent; cursor: pointer; }
+.scene-history-preview:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scene-history-item strong, .scene-history-item small, .scene-history-item span { display: block; }
+.scene-history-item small { margin: 3px 0; }
+.scene-history-item a { color: inherit; }
 .scene-check.is-passed strong { color: var(--green); }
 .scene-check.is-failed strong { color: var(--amber); }
 .scene-check-people.is-failed { color: var(--amber); }

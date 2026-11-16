@@ -598,6 +598,8 @@ def request_plan(plan,text,analysis,config,image_path=None,selections=None,conte
     for attempt in range(2):
         output=None
         try:
+            import instruction_progress
+            instruction_progress.report('方案规划 Agent','正在分析要求并规划修改' if not attempt else '正在修正方案')
             response=ai._post(config,body)
             try:output=ai._response(response,config,ai.TOOL_NAME)
             except ValueError as exc:raise _failure('response_parse') from exc

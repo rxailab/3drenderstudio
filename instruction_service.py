@@ -16,6 +16,7 @@ import ai_client
 import ai_config
 import engine
 import instruction_agents
+import instruction_progress
 import planner
 import target_evidence
 import scene_parts
@@ -32,6 +33,22 @@ class InstructionError(ValueError):
 
 
 _INFLIGHT={}
+
+def instruction_progress_view(project_id):
+    """Expose only the live stage, never request text or idempotency data."""
+    with LOCK:
+        get('project', project_id)
+        entry = _INFLIGHT.get(project_id)
+        if not entry or 'activity' not in entry:
+            return None
+        return copy.deepcopy(entry['activity'])
+
+def _report_instruction_progress(project_id, token, agent, stage):
+    with LOCK:
+        entry = _INFLIGHT.get(project_id)
+        if entry and entry.get('token') == token:
+            entry['activity'] = {'agent': agent, 'stage': stage}
+
 SOURCE_FIELDS=('output_id','shot_id','quality','version')
 PROPOSALS_KEY='_instruction_proposals'
 MAX_PENDING_PROPOSALS=8
@@ -912,7 +929,9 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
                 raise InstructionError('这次调整仍在处理中，请稍后用同一请求核对结果。',409,
                                        error_code='instruction_in_progress',retryable=True)
             raise InstructionError('当前项目的调整仍在处理中，请稍后用同一请求重试。',409)
-        _INFLIGHT[project_id]={'token':token,'key_hash':key_hash,'digest':request_digest}
+        _INFLIGHT[project_id]={'token':token,'key_hash':key_hash,'digest':request_digest,
+                               'activity':{'agent':'场景检查','stage':'正在读取当前模型和预览'}}
+    instruction_progress.bind(lambda agent,stage: _report_instruction_progress(project_id,token,agent,stage))
     try:
         notes=[];image_path=None;output=None;source_path=None
         if source:
@@ -1027,6 +1046,7 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
         if source and not inspection and guard.get('evidence')!=_digest(target_samples):
             raise _stale_proposal()
         smart=semantic_mode or shot_id is not None or source is not None or expected is not None or reference_path is not None
+        instruction_progress.report('方案处理','正在理解调整要求')
         outcome=None;proposal=None
         try:
             if smart:
@@ -1048,6 +1068,7 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
                         if row.get('action')=='locate_part':
                             row['reason']='；'.join([row.get('reason','')]+notes)
                 raise
+        instruction_progress.report('执行校验','正在核对修改和保护条件')
         candidate=_scoped_plan(base,effective,planner.validate(candidate),shot_id)
         if validate_plan:
             original_candidate=copy.deepcopy(candidate)
@@ -1181,6 +1202,7 @@ def apply_instruction(project_id, body, request_key=None, validate_plan=None):
         if not getattr(exc,'diagnostic_id',None):_record_response_error(project,text,source,exc)
         raise
     finally:
+        instruction_progress.clear()
         with LOCK:
             if _INFLIGHT.get(project_id,{}).get('token')==token: _INFLIGHT.pop(project_id,None)
 

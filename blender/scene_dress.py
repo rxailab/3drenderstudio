@@ -486,22 +486,37 @@ def surface(scene_set, shot, products):
                             backdrop.get('color', (.62, .62, .6)))
         wall.data.materials.append(material)
         record['wall'] = backdrop.get('asset_id') or 'color'
-    # The product's shaping lamps skip the set. One broad, soft source from the
-    # camera side lights the floor and wall evenly, so the room reads as a room.
+    # Replace the seamless-backdrop wash with a room window. Receiver linking
+    # limits illumination to the room, but product/prop geometry still blocks it.
+    wash = bpy.data.objects.get('Backdrop wash')
+    if wash is not None:
+        wash.hide_render = True
+        record['disabled_backdrop_wash'] = True
     targets = [ob for ob in (floor, bpy.data.objects.get('Studio scene wall')) if ob is not None]
     if targets and 'light_linking' in bpy.types.Object.bl_rna.properties:
         lo, hi = world_box(products); span = max(hi - lo)
-        azimuth = math.radians(shot.get('azimuth', 35))
-        data = bpy.data.lights.new('Room light', 'AREA'); data.shape = 'RECTANGLE'; data.size = span * 5; data.size_y = span * 3
-        data.energy = 200 if scene_set.get('setting') == 'workshop' else 330; data.color = (1, .98, .95)
+        # Match the key's side, avoiding a second contradictory shadow direction.
+        azimuth = math.radians(shot.get('azimuth', 35) - 46)
+        data = bpy.data.lights.new('Room light', 'AREA'); data.shape = 'RECTANGLE'; data.size = span * 1.4; data.size_y = span * 2
+        data.energy = 110 if scene_set.get('setting') == 'workshop' else 160; data.color = (1, .98, .95)
         lamp = bpy.data.objects.new('Room light', data); scene.collection.objects.link(lamp)
-        lamp.location = Vector((math.sin(azimuth) * span * 1.6, -math.cos(azimuth) * span * 1.6, span * 3.2))
+        lamp.location = Vector((math.sin(azimuth) * span * 2, -math.cos(azimuth) * span * 2, span * 2.4))
         lamp.rotation_euler = (Vector((0, 0, span * .4)) - lamp.location).to_track_quat('-Z', 'Y').to_euler()
-        lamp.visible_camera = False; data.use_shadow = False
+        key = bpy.data.objects.get('Key softbox')
+        if key is not None:
+            # Follow the actual key, including the direction adapter's render_pre
+            # changes, so manual light rotations cannot split the shadow direction.
+            lamp.parent = key; lamp.location = (0, 0, 0); lamp.rotation_euler = (0, 0, 0)
+            data.energy = key.data.energy * (.9 if scene_set.get('setting') == 'workshop' else 1.2)
+        lamp.visible_camera = False; data.use_shadow = True
         room = bpy.data.collections.new('Studio room receivers')
         for ob in targets: room.objects.link(ob)
         lamp.light_linking.receiver_collection = room
         record['room_light'] = data.energy
+        _update()
+        record['room_light_settings'] = {'casts_shadow': True, 'size': data.size, 'size_y': data.size_y,
+                                         'position': list(lamp.matrix_world.translation), 'receiver_linked': True,
+                                         'follows_light': key.name if key is not None else None}
     _focus(shot, products)
     _update()
     return record

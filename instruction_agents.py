@@ -153,6 +153,13 @@ def _ask(session, system, facts, schema, image_path=None, evidence_images=None):
     if session['calls'] >= session['max_calls']:
         raise _Unavailable('budget')
     session['calls'] += 1
+    import instruction_progress
+    agent, stage = {
+        VERIFIER_PROMPT: ('部件核验 Agent', '正在核对目标部件'),
+        LOCATOR_PROMPT: ('部件定位 Agent', '正在查找要求中的部件'),
+        FINISHER_PROMPT: ('材质 Agent', '正在规划材质参数'),
+    }.get(system, ('专业 Agent', '正在处理调整要求'))
+    instruction_progress.report(agent, stage)
     try:
         body = ai._payload(session['config'], system, facts, schema, image_path=image_path, label_images=True,
                            evidence_images=evidence_images, max_tokens=4096)

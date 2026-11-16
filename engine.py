@@ -23,6 +23,45 @@ QUEUE=queue.Queue()
 PROCESSES={}
 RUNNING_JOBS=set()
 DEVICE={'status':'尚未执行设备探测'}
+RENDER_PIPELINE_VERSION=3
+
+def cycles_sample_batch(line):
+    """Read only Cycles' completed batches, not its duplicate final report."""
+    match=re.search(r'^\s*\S+\s+cycles\s+\|\s+Rendered\s+(\d+)\s+samples\s+in\s+.*\boccupancy:',line)
+    return int(match[1]) if match else None
+
+class CyclesTileProgress:
+    """Track completed image tiles only after Cycles confirms their write."""
+    def __init__(self):
+        self.width=self.height=None
+        self.total=None
+        self.tile_width=self.tile_height=None
+        self.pending=None
+        self.completed=set()
+
+    def begin(self, width, height):
+        self.width=width if type(width) is int and 0<width<=32768 else None
+        self.height=height if type(height) is int and 0<height<=32768 else None
+        self.total=None;self.tile_width=self.tile_height=None;self.pending=None;self.completed.clear()
+
+    def consume(self, line):
+        size=re.search(r'\bUsing tile size of \((\d+),\s*(\d+)\)',line)
+        if size and self.width and self.height:
+            w,h=map(int,size.groups())
+            if w>0 and h>0:
+                self.tile_width,self.tile_height=w,h
+                self.total=math.ceil(self.width/w)*math.ceil(self.height/h)
+        position=re.search(r'\bWrite tile at (\d+),\s*(\d+)',line)
+        if position:
+            x,y=map(int,position.groups())
+            self.pending=((x,y) if self.tile_width and self.tile_height and x<self.width and y<self.height
+                          and x%self.tile_width==0 and y%self.tile_height==0 else None)
+        if 'Tile written in ' in line and self.pending is not None and self.total and self.total>1:
+            self.completed.add(self.pending);self.pending=None
+            count=min(len(self.completed),self.total)
+            return {'tile_completed':count,'tile_total':self.total,'tile_progress':round(count/self.total*100,1),
+                    'sample_progress':None,'stage':('正在完成渲染与保存' if count==self.total else '正在渲染图像分块')}
+        return None
 
 def shutdown():
     for proc in list(PROCESSES.values()):
@@ -317,6 +356,40 @@ def _thumbnail_source_exists(project_id,output):
         return True
     except (OSError,ValueError,RuntimeError):return False
 
+def _thumbnail_shot_plan(plan, shot_id):
+    """Comparable render inputs; only discard scene and other-shot data.
+
+    Keep every other plan field, including materials, pose and light settings:
+    unknown future fields then conservatively force a new render.
+    """
+    if not isinstance(plan,dict) or shot_id=='scene':return None
+    result=copy.deepcopy(plan)
+    shots=result.get('shots')
+    if not isinstance(shots,list):return None
+    own=[shot for shot in shots if isinstance(shot,dict) and shot.get('id')==shot_id]
+    if len(own)!=1:return None
+    result['shots']=own
+    for key in ('scene_set','scene_brief'):
+        result.pop(key,None)
+    for key in ('scene_checkpoints','shot_adjustments'):
+        value=result.get(key)
+        if isinstance(value,dict):
+            result[key]={k:v for k,v in value.items() if k==shot_id}
+            if not result[key]:result.pop(key,None)
+    return result
+
+def _thumbnail_available(project,shot_id,version):
+    current=_thumbnail_shot_plan(effective_plan(project['plan'],shot_id),shot_id)
+    for output in project.get('outputs',[]):
+        if output.get('shot_id')!=shot_id or not _thumbnail_source_exists(project['id'],output):continue
+        if output.get('version')==version:return True
+        # Reuse the old image as an old image, without manufacturing a new
+        # version or changing its provenance. Missing snapshots are not proof.
+        if type(output.get('version')) is not int or output['version']>=version or not current:continue
+        prior=_thumbnail_shot_plan(output.get('effective_plan'),shot_id)
+        if prior is not None and prior==current:return True
+    return False
+
 def schedule_thumbnails(project_id,expected_version,polish_after_job_id=None):
     """Schedule missing shot thumbnails once per version, without AI or polish."""
     with LOCK:
@@ -332,8 +405,8 @@ def schedule_thumbnails(project_id,expected_version,polish_after_job_id=None):
         if any(task.get('project_id')==project_id and task.get('status') in ('queued','running','rendering') for task in all_records('material_task')):return None
         import scene_audience
         generated=scene_audience.image_shots(project['plan'])
-        missing=[s['id'] for s in project['plan']['shots'] if s['id']!='hero' and s['id'] not in generated and not any(
-            o.get('shot_id')==s['id'] and o.get('version')==expected_version and _thumbnail_source_exists(project_id,o) for o in outputs)]
+        missing=[s['id'] for s in project['plan']['shots'] if s['id']!='hero' and s['id'] not in generated
+                 and not _thumbnail_available(project,s['id'],expected_version)]
         if not missing:return None
         base=THUMBNAIL_KEY+project_id+':v'+str(expected_version)+':'
         prior=[j for j in jobs if (j.get('request_key') or '').startswith(base)]
@@ -443,23 +516,41 @@ def execute(job,request,out):
         else:request.pop('light_direction_contract',None)
     atomic_json(out/'request.json',request)
     entry='camera_entry.py' if camera_contract else 'worker.py'
-    command=[exe,'-b','--factory-startup','--disable-autoexec','-t','8','--python-exit-code','1','--python',str(ROOT/'blender'/entry),'--',str(out/'request.json')]
+    command=[exe,'-b','--factory-startup','--disable-autoexec','-t','8','--log','cycles','--log-level','2','--python-exit-code','1','--python',str(ROOT/'blender'/entry),'--',str(out/'request.json')]
     with (out/'blender.log').open('w',encoding='utf-8') as log:
         proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         with LOCK:
             PROCESSES[job['id']]=proc
             if get('job',job['id'])['status']=='cancelled': proc.terminate()
-        tail=[]
+        tail=[]; sample_target=None; sample_count=0; tiles=CyclesTileProgress()
         for line in proc.stdout:
+            # The debug-level GPU queue emits hundreds of thousands of lines;
+            # retain batch/tile information, warnings and errors without flooding disk.
+            if re.search(r'\bGPU queue\b',line) and not re.search(r'WARNING|ERROR',line,re.I):continue
             log.write(line);log.flush();tail=(tail+[line.strip()])[-15:]
+            batch=cycles_sample_batch(line)
+            tile_fields=tiles.consume(line)
+            # Verbose Cycles diagnostics remain in the log, without writing
+            # thousands of irrelevant SQLite updates during a render.
+            if re.match(r'^\s*\S+\s+cycles\s+\|',line) and not batch and not tile_fields and 'WARNING' not in line and 'ERROR' not in line:
+                continue
             fields={'log_tail':tail}
             if line.startswith('EVENT:'):
                 try:
                     event=json.loads(line[6:]);fields['stage']=event.get('stage',event.get('event','执行中'))
+                    if isinstance(event.get('sample_target'),int) and event['sample_target']>0:
+                        sample_target=event['sample_target'];sample_count=0;fields['sample_progress']=None
+                        tiles.begin(event.get('render_width'),event.get('render_height'))
+                        fields.update(tile_completed=None,tile_total=None,tile_progress=None)
+                    elif '镜头已就绪，正在渲染' in fields['stage']:
+                        sample_count=0;fields['sample_progress']=None
                     if 'device' in event: DEVICE.update(event['device'] if isinstance(event['device'],dict) else {'name':event['device']})
                 except (ValueError,TypeError): pass
             match=re.search(r'(?:Sample|Rendered)\s+(\d+)\s*/\s*(\d+)',line)
-            if match: fields['sample_progress']=round(int(match[1])/max(1,int(match[2]))*100,1)
+            if tile_fields: fields.update(tile_fields)
+            elif match and tiles.total==1: fields['sample_progress']=round(int(match[1])/max(1,int(match[2]))*100,1)
+            elif batch and sample_target and tiles.total==1:
+                sample_count+=batch;fields['sample_progress']=round(min(sample_count,sample_target)/sample_target*100,1)
             update_job(job['id'],**fields)
         code=proc.wait()
         PROCESSES.pop(job['id'],None)
@@ -1003,13 +1094,16 @@ def _run_job(ident):
                             existing=None
                             update_job(ident,stage='按当前镜头投影重新生成图片')
                     except (OSError,ValueError,TypeError,KeyError):existing=None
-                if existing and j['kind']=='preview':
+                # A new preset render must use the current lighting pipeline at
+                # every quality. Native checkpoints intentionally keep their own
+                # saved lights and must not be relabelled as a new preset scene.
+                if existing and shot['id'] not in j['plan'].get('scene_checkpoints',{}):
                     try:
                         result_url=existing.get('result_url','')
                         result_path=(DATA/result_url[7:]).resolve() if isinstance(result_url,str) and result_url.startswith('/files/') else None
-                        if not result_path or (DATA/p['id']).resolve() not in result_path.parents or json.loads(result_path.read_text(encoding='utf-8')).get('render_pipeline_version',0)<2:
+                        if not result_path or (DATA/p['id']).resolve() not in result_path.parents or json.loads(result_path.read_text(encoding='utf-8')).get('render_pipeline_version',0)<RENDER_PIPELINE_VERSION:
                             existing=None
-                            update_job(ident,stage='更新旧预览的真实灯光与反射')
+                            update_job(ident,stage='使用新版灯光与阴影重新生成图片')
                     except (OSError,ValueError,TypeError): existing=None
                 if existing and j['kind']=='preview' and j['plan'].get('visual_review',True) and existing.get('review',{}).get('material_check_version')!=1:
                     existing=None
@@ -1024,7 +1118,8 @@ def _run_job(ident):
                         if adjustment: adjustments[shot['id']]=adjustment
                         continue
                     except Exception: pass
-                update_job(ident,current_shot=shot['label'],progress=round(i/len(shots)*100),sample_progress=0,stage='准备镜头')
+                update_job(ident,current_shot=shot['label'],progress=round(i/len(shots)*100),sample_progress=None,
+                           tile_completed=None,tile_total=None,tile_progress=None,stage='准备镜头')
                 out=base/(p['slug']+'_'+shot['id']+'_v'+str(j['version']))
                 req={'action':'render','model_path':p['model_path'],'plan':j['plan'],'shot':shot,'quality':j['quality']}
                 try: r=execute(j,req,out)

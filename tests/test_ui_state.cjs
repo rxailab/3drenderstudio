@@ -590,6 +590,16 @@ test('thumbnail scheduling retries a temporary submission error without an unbou
   await h.run("openProject('a')");await tick();assert.equal(count,1);
   h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,2);
 });
+test('a no-op thumbnail response is not re-requested until project state changes or it is reopened',async t=>{
+  const h=await setup(t,{projects:[previewProject(),project('b')]});h.run('system.runtime.capabilities.thumbnails=true');let count=0;
+  h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return h.response({job:null},200);}};
+  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,1);
+  h.records.get('a').jobs.push({id:'external',status:'completed',kind:'preview',shot_ids:['hero'],version:1});
+  await h.run('poll()');await tick();assert.equal(count,2,'changed task state can need a fresh check');
+  await h.run("openProject('b')");await h.run("openProject('a')");await tick();assert.equal(count,3,'reopening retries a stale no-op');
+  h.records.get('a').version=2;await h.run('poll()');await tick();assert.equal(count,4,'new version is checked independently');
+});
 function failFirstPreview(h) {
   let failed=false;
   h.intercept=call=>{if(call.url.endsWith('/jobs')&&!failed){failed=true;return h.response({error:'测试预览启动失败'},503);}};
@@ -1904,12 +1914,12 @@ test('render activity follows queued, real sampling and review states without re
   assert.notEqual(panel.dataset.progress,'determinate');assert.equal(track.hasAttribute('aria-valuenow'),false,'queued jobs cannot reuse a previous sampling number');
   assert.equal(image.hidden,false);assert.equal(h.node('viewer').getAttribute('aria-busy'),'true');
   const job=h.records.get('a').jobs[0];job.status='running';job.stage='正在采样';job.sample_progress=0;
-  await h.run('poll()');assert.equal(panel.dataset.state,'rendering');assert.equal(panel.dataset.progress,'determinate');assert.equal(track.getAttribute('aria-valuenow'),'0');
+  await h.run('poll()');assert.equal(panel.dataset.state,'rendering');assert.equal(panel.dataset.progress,'indeterminate');assert.equal(track.hasAttribute('aria-valuenow'),false);assert.match(h.node('renderActivityMetric').textContent,/等待采样进度/);
   job.sample_progress=42.5;await h.run('poll()');
   assert.equal(track.getAttribute('aria-valuenow'),'42.5');assert.match(h.node('renderActivityMetric').textContent,/采样/);assert.match(h.node('renderActivityMetric').textContent,/42\.5/);
   assert.strictEqual(h.node('renderActivityBar'),bar,'polling must preserve the animation node');assert.equal(image.getAttribute('src'),src);
   job.sample_progress=100;await h.run('poll()');
-  assert.equal(panel.hidden,false);assert.equal(panel.dataset.state,'rendering');assert.equal(track.getAttribute('aria-valuenow'),'100');
+  assert.equal(panel.hidden,false);assert.equal(panel.dataset.state,'rendering');assert.equal(panel.dataset.progress,'indeterminate');assert.equal(track.hasAttribute('aria-valuenow'),false);assert.match(h.node('renderActivityMetric').textContent,/采样已达 100%.*任务仍在进行/);
   assert.doesNotMatch(h.node('renderActivityTitle').textContent,/已完成|渲染完成/,'100% sampling is not task completion');
   job.stage='检查预览曝光与逼真度';await h.run('poll()');
   assert.equal(panel.dataset.state,'reviewing');assert.notEqual(panel.dataset.progress,'determinate');assert.equal(track.hasAttribute('aria-valuenow'),false);
@@ -1924,6 +1934,19 @@ test('unknown sampling remains indeterminate and does not invent elapsed-time pr
   for(let repeat=0;repeat<3;repeat++)await h.run('poll()');
   assert.equal(h.node('renderActivity').dataset.progress,'indeterminate');assert.equal(h.node('renderActivityProgress').hasAttribute('aria-valuenow'),false);
   assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+});
+
+test('multi-tile rendering shows completed tiles rather than per-tile sampling and stays active at the end',async t=>{
+  const a=previewProject();a.jobs=[activityJob({kind:'render',quality:'standard',sample_progress:null,tile_completed:1,tile_total:8,tile_progress:12.5,stage:'正在渲染图像分块'})];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  const track=h.node('renderActivityProgress'),panel=h.node('renderActivity'),job=h.records.get('a').jobs[0];
+  assert.equal(track.getAttribute('aria-valuenow'),'12.5');assert.equal(track.getAttribute('aria-label'),'当前镜头分块进度');
+  assert.match(h.node('renderActivityMetric').textContent,/当前镜头分块 1\/8.*12\.5%/);assert.doesNotMatch(h.node('renderActivityMetric').textContent,/采样/);
+  assert.match(h.node('jobPanel').textContent,/当前镜头分块 1\/8/);
+  Object.assign(job,{tile_completed:8,tile_progress:100,stage:'正在完成渲染与保存'});await h.run('poll()');
+  assert.equal(panel.hidden,false);assert.equal(panel.dataset.progress,'indeterminate');assert.equal(track.hasAttribute('aria-valuenow'),false);
+  assert.match(h.node('renderActivityMetric').textContent,/分块 8\/8.*任务仍在进行/);assert.match(h.node('renderActivityStage').textContent,/正在完成渲染与保存/);
+  Object.assign(job,{tile_completed:null,tile_total:null,tile_progress:null,sample_progress:null,stage:'准备镜头'});await h.run('poll()');assert.doesNotMatch(h.node('renderActivityMetric').textContent,/分块/);
 });
 
 test('a disconnected polling cycle pauses render activity and reconnects using the latest backend state',async t=>{
@@ -2089,7 +2112,7 @@ test('hero workflow stages never reuse sampling during inspection or comparison 
   const p=heroOptimizationProject();p.jobs=[activityJob({id:'hero-work',kind:'hero_optimize',workflow_phase:'inspecting',stage:'核对场景',sample_progress:88})];
   const h=await setup(t,{projects:[p]});enableHeroOptimization(h);await h.run("openProject('a')");
   const image=h.node('renderImage').getAttribute('src'),job=h.records.get('a').jobs[0];
-  for(const [phase,title,determinate] of [['inspecting',/读取真实场景/,false],['planning',/规划主图/,false],['preview',/试渲染主图/,true],['evaluating',/比较优化效果/,false],['finalizing',/生成高清主图/,true]]){
+  for(const [phase,title,determinate] of [['inspecting',/读取真实场景/,false],['planning',/规划主图/,false],['preview',/试渲染主图/,false],['evaluating',/比较优化效果/,false],['finalizing',/生成高清主图/,true]]){
     Object.assign(job,{workflow_phase:phase,stage:'当前阶段工作',sample_progress:phase==='preview'?0:88});await h.run('poll()');
     assert.match(h.node('renderActivityTitle').textContent,title);assert.equal(h.node('renderActivity').dataset.progress,determinate?'determinate':'indeterminate');
     assert.equal(h.node('renderActivityProgress').hasAttribute('aria-valuenow'),determinate);assert.equal(h.node('renderImage').getAttribute('src'),image);
