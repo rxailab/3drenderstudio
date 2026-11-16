@@ -432,6 +432,75 @@ function currentHeroOptimizationAttempt() {
 // Usage scene: the product where it is used. A strategist proposes who the picture is for from the audience
 // reference pack; the picture is then built from CC0 props in Blender, or made by the image model from
 // renders of the product when it needs people or a real place.
+// ---- which way up the product stands (orientation.py) ----
+let orientSubmitting=false,orientSeenTask=null;
+const orientErrors=new Map();
+const orientSourceLabels={vision:'视觉模型判断',names:'按部件名称判断',file:'文件原始朝向',user:'你选择的姿态'};
+function orientAvailable() { return system?.runtime?.capabilities?.orientation!==false; }
+function orientTaskActive() { return ['queued','running'].includes(current?.orient_task?.status); }
+function orientRotation() { const value=current?.plan?.rotation;return Array.isArray(value) && value.length===3 && value.every(Number.isFinite)?value:[0,0,0]; }
+// The side of the model that a rotation (XYZ Euler angles, degrees) puts on top.
+function orientUp(rotation) { const [x,y]=rotation.map(value=>value*Math.PI/180);return [-Math.sin(y),Math.sin(x)*Math.cos(y),Math.cos(x)*Math.cos(y)]; }
+function orientSameUp(a,b) { const first=orientUp(a),second=orientUp(b);return first.every((value,index)=>Math.abs(value-second[index])<1e-4); }
+function orientFile(url) { return typeof url==='string' && /^\/files\/[A-Za-z0-9_\-./]+\.png$/.test(url) && !url.includes('..')?url:''; }
+function renderOrientation() {
+  const section=$('orientAuto').closest('.orient-section');section.hidden=!current;if(!current)return;
+  const record=current.orientation,task=current.orient_task,active=orientTaskActive(),job=activeJob(),rotation=orientRotation();
+  const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || !!job || automaticMaterialBusy() || orientSubmitting || sceneSubmitting || sceneTaskActive();
+  const ready=!!current.analysis && !serviceDisconnected;
+  const rows=(Array.isArray(record?.candidates)?record.candidates:[]).filter(row=>row && typeof row.id==='string' && Array.isArray(row.rotation) && row.rotation.length===3 && orientFile(row.image_url)).slice(0,12);
+  const upright=rows.find(row=>orientSameUp(row.rotation,rotation)),automatic=record && Array.isArray(record.rotation) && orientSameUp(record.rotation,rotation);
+  let message='',problem=true;
+  if(serviceDisconnected)message='连接恢复后可调整朝向。';
+  else if(!current.analysis)message='模型分析完成后可检查朝向。';
+  else if(active)message=task.stage || '正在检查模型朝向';
+  else if(orientErrors.get(current.id))message=orientErrors.get(current.id);
+  else if(task?.status==='failed' && task.base_version===current.version)message=task.error || '朝向未能检查，可重试。';
+  else if(record?.status==='failed')message=record.reason || '导入时未能检查朝向，可点「自动摆正」重试。';
+  else{
+    // Nothing is wrong: say how the pose on screen came about.
+    problem=false;
+    if(record && automatic)message=record.changed?`已自动摆正（${orientSourceLabels[record.source] || ''}）：${record.reason || ''}`:(record.source==='file'?record.reason || '':`朝向无需调整（${orientSourceLabels[record.source] || ''}）：${record.reason || ''}`);
+    else if(record)message='当前是你选择的姿态；点「自动摆正」可回到自动判断的结果。';
+    else message=orientAvailable()?'这个项目还没有检查过朝向。模型倒着或躺着时，点「自动摆正」，或直接用下面的按钮翻转。':'朝向检查组件未就绪；仍可用下面的按钮翻转或转向。';
+  }
+  const status=$('orientStatus');status.textContent=message;status.hidden=!message;status.classList.toggle('is-summary',!problem);
+  const badge=$('orientBadge'),changed=rotation.some(value=>Math.abs(value)>1e-6);
+  badge.textContent=changed?'已调整':'原始朝向';badge.hidden=!current.analysis;badge.classList.toggle('is-changed',changed);
+  const poses=$('orientPoses');poses.hidden=!rows.length;
+  stableHTML(poses,rows.map((row,index)=>{
+    const picked=upright===row;
+    return `<button type="button" class="orient-pose${picked?' is-current':''}" data-orient-pose="${esc(row.id)}" aria-pressed="${picked}" title="${esc((row.label || '')+(picked?'（当前）':'，点击改用'))}"${locked || active || !ready?' disabled':''}>`
+      +`<img src="${esc(orientFile(row.image_url))}" alt="${esc('候选姿态：'+(row.label || ''))}" loading="lazy"><span>${esc('ABCDEFGHIJKL'[index]+' '+(row.label || ''))}</span></button>`;
+  }).join(''));
+  const disabled=locked || active || !ready;
+  for(const id of ['orientFlip','orientTurnLeft','orientTurnRight'])$(id).disabled=disabled;
+  const auto=$('orientAuto');auto.disabled=disabled || !orientAvailable();
+  auto.textContent=orientSubmitting && !active?'正在提交…':active?'正在检查朝向…':(dirty?'保存并':'')+(record?'重新自动摆正':'自动摆正');
+  if(active || orientSubmitting)auto.setAttribute('aria-busy','true');else auto.removeAttribute('aria-busy');
+  auto.title=sceneLibrary?.image || system?.ai_mode==='ai'?'渲染六个候选姿态，由视觉模型判断哪一面朝上':'渲染六个候选姿态；未启用视觉模型时按部件名称判断，判断不了则保持原样，可手动改选';
+  // A check that just finished and turned the product is announced once.
+  if(task?.status==='completed' && task.id!==orientSeenTask && task.applied_version===current.version){
+    orientSeenTask=task.id;
+    if(task.changed)toast('已摆正模型，正在生成新预览；可用撤销恢复。');
+  }
+}
+async function orientRequest(path,body,done) {
+  if(!current || orientSubmitting || orientTaskActive() || sceneTaskActive() || activeJob() || serviceDisconnected || !current.analysis)return;
+  const id=current.id;orientErrors.delete(id);orientSubmitting=true;renderOrientation();
+  try{
+    if(dirty)await savePlan(true);
+    if(current?.id!==id)return;
+    const shot=activeShot && shots().some(item=>item.id===activeShot)?activeShot:'hero';
+    const result=await api(`/api/projects/${encodeURIComponent(id)}/${path}`,{method:'POST',body:{expected_version:current.version,shot_id:shot,...body}});
+    if(current?.id===id)done(result);
+  }catch(error){orientErrors.set(id,error.message || '朝向未能调整，请重试。');}
+  finally{orientSubmitting=false;if(current)renderProject();}
+}
+function orientCheck() { return orientRequest('orientation',{},task=>{current.orient_task=task;orientSeenTask=null;}); }
+function orientApply(change,message) {
+  return orientRequest('orientation/apply',change,project=>{const before=current.version;current=project;syncSettings();if(project.version!==before)toast(message+'，正在生成新预览；可用撤销恢复。');});
+}
 let sceneSubmitting=false,sceneSeenTask=null,sceneLibrary=null,sceneLibraryLoading=false,sceneRecommending=false,sceneChoiceProject=null;
 const sceneErrors=new Map();
 const sceneZoneLabels={on_top:'台面',inside:'抽屉内',beside:'旁边',behind:'后方'};
@@ -466,7 +535,12 @@ function fillSceneReferences() {
 }
 function sceneChoices() {
   const audience=$('sceneAudienceSelect').value || 'auto',reference=audience==='auto'?'':$('sceneReferenceSelect').value;
-  return {hint:$('sceneHint').value.trim().slice(0,300),audience,...(reference?{reference}:{}),method:$('sceneMethodSelect').value || 'auto'};
+  return {hint:$('sceneHint').value.trim().slice(0,300),audience,...(reference?{reference}:{}),method:$('sceneMethodSelect').value || 'auto',people:scenePeopleChoice()};
+}
+function scenePeopleChoice() {
+  // A scene built from 3D props never has a person in it, so asking for one there is not offered.
+  const value=$('scenePeopleSelect').value;
+  return ['include','exclude'].includes(value) && !(value==='include' && $('sceneMethodSelect').value==='render')?value:'auto';
 }
 function sceneProposal() {
   // A proposal is shown only while it answers what is on screen: this plan, this hint, this audience.
@@ -474,6 +548,7 @@ function sceneProposal() {
   if(!proposal || proposal.version!==current.version || proposal.hint!==choice.hint)return null;
   if(choice.audience==='auto'?proposal.audience!=='auto':choice.audience!==proposal.segment_id)return null;
   if(choice.reference && choice.reference!==proposal.reference_id)return null;
+  if((proposal.people_choice || 'auto')!==choice.people)return null;
   return proposal;
 }
 function sceneReferenceHTML(id) {
@@ -485,6 +560,8 @@ function sceneProposalHTML(proposal) {
   const segment=sceneSegment(proposal.segment_id),method=proposal.method;
   const chosen=choice=>choice==='generate' || choice==='render'?choice:method,final=chosen($('sceneMethodSelect').value);
   const why=proposal.people?'画面含人物':proposal.complex?'画面需要真实环境':'用道具即可搭出';
+  const asked=proposal.people_choice==='include' || proposal.people_choice==='exclude';
+  const people=final==='render'?'不含人物（3D 道具场景里没有人物）':proposal.people?`包含人物${asked?'（你指定）':'（场景策划认为需要有人使用产品）'}`:`不含人物${asked?'（你指定）':'（场景策划认为不需要；想要人物可在上方选「包含人物」）'}`;
   const index=typeof sceneLibrary?.pack?.index_url==='string' && sceneLibrary.pack.index_url.startsWith('/references/')?sceneLibrary.pack.index_url:'';
   return `<strong>${segment?(proposal.audience==='auto'?'推荐人群：':'所选人群：')+esc(segment.label):'没有对应的人群，按通用场景处理'}</strong>`
     +`<p>${esc(proposal.reason || '')}</p>`
@@ -492,19 +569,24 @@ function sceneProposalHTML(proposal) {
     +sceneReferenceHTML(proposal.reference_id)
     +(proposal.summary?`<p>计划画面：${esc(proposal.summary)}</p>`:'')
     +`<p class="scene-method">生成方式：${esc(sceneMethodLabels[final] || '')}${final===method?`（${esc(why)}）`:'（你指定）'}${proposal.method_note && final===method?' '+esc(proposal.method_note):''}</p>`
-    +`<p>${esc(sceneSourceLabels[proposal.source] || '')}；可在上方改选人群、参考或生成方式${index?`，或<a href="${esc(index)}" target="_blank" rel="noopener">浏览参考库</a>`:''}。</p>`;
+    +`<p class="scene-people">画面人物：${esc(people)}</p>`
+    +`<p>${esc(sceneSourceLabels[proposal.source] || '')}；可在上方改选人群、参考、生成方式或人物${index?`，或<a href="${esc(index)}" target="_blank" rel="noopener">浏览参考库</a>`:''}。</p>`;
 }
 function sceneBriefHTML(brief) {
   const segment=sceneSegment(brief.segment_id);
   return `<strong>${segment?'面向：'+esc(segment.label):'通用使用场景'}</strong>`
-    +`<p>${esc(sceneSourceLabels[brief.source] || '')}${brief.reason?'：'+esc(brief.reason):''}</p>`+sceneReferenceHTML(brief.reference_id);
+    +`<p>${esc(sceneSourceLabels[brief.source] || '')}${brief.reason?'：'+esc(brief.reason):''}</p>`+sceneReferenceHTML(brief.reference_id)
+    +(brief.method==='generate'?`<p>画面人物：${brief.people?'包含人物':'不含人物'}${['include','exclude'].includes(brief.people_choice)?'（你指定）':''}</p>`:'');
 }
 function sceneGeneratedHTML(output) {
   const made=output.generated || {},check=made.check || {},status=check.status;
-  const label=status==='passed'?'产品与参考图一致':status==='failed'?'产品与参考图有差异':'未自动核对';
-  const issues=Array.isArray(check.issues)?check.issues.filter(item=>typeof item==='string').slice(0,5):[];
+  const seen=check.people && typeof check.people==='object'?check.people:null,asked=typeof seen?.expected==='boolean';
+  const label=status==='passed'?'产品与参考图一致':status==='failed'?(check.product_consistent===true && seen?.ok===false?'画面人物与要求不符':'产品与参考图有差异'):'未自动核对';
+  const people=asked && typeof seen.visible==='boolean'?`<p class="scene-check-people is-${seen.ok===false?'failed':'passed'}">画面人物：要求${seen.expected?'包含':'不含'}人物，核对结果为${seen.visible?'有人物':'没有人物'}${seen.ok===false?'；已按要求重新生成过，仍未做到，可再生成一次或调整场景说明':''}。</p>`
+    :typeof made.people==='boolean' && status!=='passed' && status!=='failed'?`<p class="scene-check-people">画面人物：要求${made.people?'包含':'不含'}人物，未能自动核对，请自行查看。</p>`:'';
+  const issues=Array.isArray(check.issues)?check.issues.filter(item=>typeof item==='string').slice(0,6):[];
   const references=(Array.isArray(made.references)?made.references:[]).map(row=>sceneFile(row?.url)).filter(Boolean).slice(0,8);
-  return `<p class="scene-check is-${esc(status || 'unchecked')}"><strong>${esc(label)}</strong>${check.note?' '+esc(check.note):''}</p>`
+  return `<p class="scene-check is-${esc(status || 'unchecked')}"><strong>${esc(label)}</strong>${check.note?' '+esc(check.note):''}</p>`+people
     +(issues.length?`<ul class="scene-issues">${issues.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:'')
     +(references.length?`<p>发给图像模型的产品参考图（${references.length} 个角度，Blender 渲染）：</p><div class="scene-refs">${references.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="产品参考角度 ${index+1}" loading="lazy"></a>`).join('')}</div>`:'');
 }
@@ -512,7 +594,7 @@ function renderSceneSet() {
   const button=$('sceneButton'),status=$('sceneStatus'),details=$('sceneDetails');
   const section=button.closest('.scene-set');section.hidden=!current;if(!current)return;
   if(sceneChoiceProject!==current.id){
-    sceneChoiceProject=current.id;$('sceneAudienceSelect').value='auto';$('sceneMethodSelect').value='auto';fillSceneReferences();
+    sceneChoiceProject=current.id;$('sceneAudienceSelect').value='auto';$('sceneMethodSelect').value='auto';$('scenePeopleSelect').value='auto';fillSceneReferences();
     if(sceneLibrary?.failed && !sceneLibraryLoading)sceneLibrary=null;
   }
   if(!sceneLibrary)loadSceneLibrary();
@@ -533,11 +615,16 @@ function renderSceneSet() {
   audience.hidden=!segments.length;
   if(segments.length){
     const disabled=locked || active || !ready;
-    for(const id of ['sceneAudienceSelect','sceneReferenceSelect','sceneMethodSelect','sceneRecommend'])$(id).disabled=disabled;
+    for(const id of ['sceneAudienceSelect','sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect','sceneRecommend'])$(id).disabled=disabled;
     $('sceneRecommend').textContent=sceneRecommending?'正在推荐…':'推荐人群与场景';
     if(sceneRecommending)$('sceneRecommend').setAttribute('aria-busy','true');else $('sceneRecommend').removeAttribute('aria-busy');
     const image=sceneLibrary.image || {},wantsImage=$('sceneMethodSelect').value!=='render';
-    const help=!image.available && wantsImage?`图像模型不可用（${image.message || '未配置'}）；含人物的场景会改为 3D 道具场景。`:'';
+    // A person can only be asked for where the image model makes the picture.
+    const people=$('scenePeopleSelect'),include=people.querySelector('option[value="include"]'),canInclude=wantsImage && !!image.available;
+    include.disabled=!canInclude;
+    if(!canInclude && people.value==='include')people.value=wantsImage?'auto':'exclude';
+    const help=!image.available && wantsImage?`图像模型不可用（${image.message || '未配置'}）；含人物的场景会改为 3D 道具场景。`
+      :!wantsImage?'3D 道具场景由现成模型布置，画面里没有人物；要有人使用产品，请选「自动」或「AI 图像生成」。':'';
     $('sceneMethodHelp').textContent=help;$('sceneMethodHelp').hidden=!help;
     const proposal=active?null:sceneProposal(),picked=sceneSegment($('sceneAudienceSelect').value);
     // A choice the last proposal does not cover is planned when the scene is generated.
@@ -561,7 +648,7 @@ function renderSceneSet() {
     stableHTML($('sceneGenerated'),output?sceneGeneratedHTML(output):'');$('sceneGenerated').hidden=!output;
     if(made){
       const info=output?.generated || {},stale=output && output.version!==current.version;
-      $('sceneNote').textContent=output?`由图像模型 ${info.model || ''} 生成，不是 Blender 渲染，也没有可导出的 3D 工程；产品外形以上面的渲染参考图为准${info.attempts>1?'，已按核对结果重新生成过一次':''}。${stale?`这张图基于方案 v${output.version}，`:''}修改产品或镜头后请重新生成。其他镜头不变。`:'场景图尚未生成，或已被移除。';
+      $('sceneNote').textContent=output?`由图像模型 ${info.model || ''} 生成，不是 Blender 渲染，也没有可导出的 3D 工程；产品外形以上面的渲染参考图为准${info.attempts>1?'，已按核对结果重新生成过一次':''}。${typeof info.quality_lowered_from==='string'?`图像服务未能在「${info.quality_lowered_from}」质量下完成，这张图以 low 质量生成，可稍后重新生成。`:''}${stale?`这张图基于方案 v${output.version}，`:''}修改产品或镜头后请重新生成。其他镜头不变。`:'场景图尚未生成，或已被移除。';
     }else{
       const size=set.product?.max_dimension_mm,basis={user:'你填写的尺寸',ai:'模型估计',model_units:'按模型单位推断',category:'按品类常见尺寸'}[set.product?.size_basis] || '';
       $('sceneNote').textContent=`${set.source==='ai'?'由 AI 选择场景与道具':'按内置品类规则选择'}${size?`；产品最长边按 ${Math.round(size)} mm 计（${basis}）`:''}${set.open?'；已拉开抽屉':''}${skipped.length?`；未放入 ${skipped.length} 项（${[...new Set(skipped.map(row=>sceneSkipLabels[row.reason] || '未放入'))].join('、')}）`:''}。道具只出现在这个镜头里，产品本身与其他镜头不变。`;
@@ -671,7 +758,7 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderSceneSet();renderRealtimeControls();renderEcommerce();renderLayerPanel();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();renderLayerPanel();
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='';
@@ -2313,8 +2400,11 @@ function installEvents() {
   $('exampleList').onclick=async e=>{const b=e.target.closest('[data-example]');if(!b || !workerRenderReady() || navigationBlocked())return;if(!(await resolveUnsavedChanges()))return;b.disabled=true;try{const p=await api('/api/examples/'+b.dataset.example+'/import',{method:'POST'});await refreshList();await openProject(p.id);toast('验收模型已导入，正在进行真实分析。');}catch(error){toast(error.message,true);}finally{b.disabled=false;}};
   $('optimizeHeroButton').onclick=optimizeHero;
   $('sceneButton').onclick=generateScene;$('sceneRemove').onclick=removeScene;$('sceneRecommend').onclick=recommendScene;
+  $('orientAuto').onclick=orientCheck;$('orientFlip').onclick=()=>orientApply({flip:true},'已上下翻转');
+  $('orientTurnLeft').onclick=()=>orientApply({turn:90},'已转向');$('orientTurnRight').onclick=()=>orientApply({turn:-90},'已转向');
+  $('orientPoses').addEventListener('click',event=>{const button=event.target.closest('[data-orient-pose]');if(button && !button.disabled)orientApply({candidate:button.dataset.orientPose},'已改用所选姿态');});
   $('sceneAudienceSelect').onchange=()=>{fillSceneReferences();if(current)renderSceneSet();};
-  for(const id of ['sceneReferenceSelect','sceneMethodSelect'])$(id).onchange=()=>{if(current)renderSceneSet();};
+  for(const id of ['sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect'])$(id).onchange=()=>{if(current)renderSceneSet();};
   $('sceneHint').addEventListener('input',()=>{if(current)renderSceneSet();});
   $('previewButton').onclick=()=>run('preview');$('renderButton').onclick=()=>run('render');
   $('settingsForm').onsubmit=async e=>{e.preventDefault();try{await savePlan();}catch(error){toast(error.message,true);}};

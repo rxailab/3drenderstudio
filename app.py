@@ -516,6 +516,30 @@ def scene_reference_pack(pack,name):
     response.headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'";response.headers['X-Content-Type-Options']='nosniff'
     return response
 
+@app.route('/api/projects/<ident>/orientation',methods=['GET','POST'])
+def orientation_check(ident):
+    """Which way up the model stands: the candidate poses, and a new look at them."""
+    import orientation
+    if request.method=='GET':
+        project=get('project',ident)
+        return jsonify(orientation=orientation.public(project.get('orientation')),task=orientation.latest(ident),
+                       rotation=project['plan'].get('rotation',[0,0,0]),
+                       available=engine.runtime_status().get('capabilities',{}).get('orientation',False))
+    try:return jsonify(orientation.submit(ident,request.get_json(force=True))),202
+    except engine.JobConflictError as exc:abort(409,description=str(exc))
+
+@app.post('/api/projects/<ident>/orientation/apply')
+def orientation_apply(ident):
+    """Put the product in another pose: a candidate, a flip or a quarter turn."""
+    import orientation
+    try:return jsonify(orientation.apply(ident,request.get_json(force=True)))
+    except engine.JobConflictError as exc:abort(409,description=str(exc))
+
+@app.post('/api/projects/<ident>/orientation/<task_id>/cancel')
+def orientation_cancel(ident,task_id):
+    import orientation
+    return jsonify(orientation.cancel(ident,task_id))
+
 @app.post('/api/projects/<ident>/scene/<task_id>/cancel')
 def scene_cancel(ident,task_id):
     import scene_stylist
@@ -836,6 +860,8 @@ if __name__=='__main__':
     material_agent.recover_interrupted()
     import scene_stylist
     scene_stylist.recover_interrupted()
+    import orientation
+    orientation.recover_interrupted()
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

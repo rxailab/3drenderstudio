@@ -121,7 +121,7 @@ Return data only:
 - props: 3 to 9 things. concept is a short plain English noun phrase for ONE thing ("adjustable wrench", "potted plant"); prefer things from available_models, which lists every ready-made model that can actually be used, and do not ask for the product itself or another product of its kind. zone says where it goes: on_top (resting on the product's flat top), inside (in a drawer or compartment that will be opened to show it), beside (on the ground next to it), behind (taller things set back to give depth). pose is flat for things that lie down (hand tools, books lying), upright for things that stand, auto if unsure.
 - open_compartment: true only if the product visibly has drawers or a compartment and showing its contents helps.
 - summary: one sentence in the user's language describing the scene.
-Choose things a real user of this product would have at hand; a believable scene beats a full one. Small products sit on a table or counter: their props go beside and behind, never on_top. Never use zone inside unless open_compartment is true. audience, when present, says who the picture is for, the question they need answered and what to emphasise; planned_picture is the picture already agreed for them. Choose the setting and the props that serve it, as far as loose objects around the product can: this kind of scene has no people in it, so summary describes only the place and the objects that will be there. hint, when present, is what the user asked for in their own words and takes priority.'''
+Choose things a real user of this product would have at hand; a believable scene beats a full one. Small products sit on a table or counter: their props go beside and behind, never on_top. Never use zone inside unless open_compartment is true. audience, when present, says who the picture is for, the question they need answered and what to emphasise; planned_picture is the picture already agreed for them. Choose the setting and the props that serve it, as far as loose objects around the product can: this kind of scene has no people in it, so summary describes only the place and the objects that will be there, even when planned_picture mentions a person. hint, when present, is what the user asked for in their own words and takes priority.'''
 
 STRATEGIST_PROMPT = '''You plan product imagery for online shops. You are shown one product (a render of its 3D model, with facts about it) and a library of buyer segments. Each segment says who buys, the question they need answered before buying, the kinds of image that answer it and what to emphasise. Under each are numbered references: published images described in words (what the picture shows, and what it does well). They are study notes on composition, not content to copy.
 Decide which segment this product's usage scene should address and plan one picture for it. Return data only:
@@ -131,7 +131,7 @@ Decide which segment this product's usage scene should address and plan one pict
 - product: what the product is, two to five plain English words.
 - max_dimension_mm: the real size of the product's largest dimension, your best estimate from what it is. model_dimensions are in unknown units; use them only for proportions.
 - summary: one sentence in the user's language describing the planned picture.
-- people: true when the picture needs a person, or a person's hands, to make its point.
+- people: true when the picture shows a person, or a person's hands, using the product. Things that are held or operated by hand while they work (hand tools, power tools, garden machines, instruments) are best shown in use by a person; things that stand on their own (cabinets, storage, furniture) often need nobody. When required_people is given it decides: true means a person is clearly visible using or handling the product, false means nobody is in the picture, not even a hand, and the product is shown at rest in the place where it is used.
 - complex: true when it needs a place that a floor, one back wall and a few loose objects around the product cannot give: a jobsite, a vehicle, a lawn, a furnished room, the outdoors.
 - scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture.
 - setting: the closest of supported_settings, used when the scene is built from 3D props instead.
@@ -253,10 +253,23 @@ def _line(value, limit):
 
 
 def with_method(proposal, requested=None):
-    """How the proposed picture gets made. People or a real place need the image model; the rest is built in 3D."""
+    """How the proposed picture gets made. People or a real place need the image model; the rest is built in 3D.
+
+    The user's choice about people (proposal['people_choice']) is binding: a
+    person they asked for is never silently dropped, so a request that cannot
+    show one is refused with the reason.
+    """
     import scene_imagegen
     available = scene_imagegen.config() is not None
-    wanted = 'generate' if proposal.get('people') or proposal.get('complex') else 'render'
+    choice = proposal.get('people_choice') or 'auto'
+    if choice == 'include' and requested == 'render':
+        raise ValueError('3D 道具场景里没有人物；要画面包含人物，请把生成方式改为「自动」或「AI 图像生成」。')
+    if choice == 'include' and not available:
+        raise ValueError('图像模型未配置或已关闭，无法生成含人物的场景图；可把人物改为「不含人物」，用 3D 道具场景。')
+    # Fixed recipes cannot judge whether a person helps: their picture has one when the image model makes it.
+    undecided = choice == 'auto' and proposal.get('source') == 'rules'
+    people = choice == 'include' or (choice == 'auto' and not undecided and bool(proposal.get('people')))
+    wanted = 'generate' if people or proposal.get('complex') else 'render'
     note = None
     if requested == 'generate' and not available:
         raise ValueError('图像模型未配置或已关闭，无法用 AI 生成场景图；可改用「3D 道具场景」。')
@@ -266,16 +279,26 @@ def with_method(proposal, requested=None):
         method, note = 'render', '这个画面需要人物或真实环境，适合由图像模型生成；图像模型未配置，已改为 3D 道具场景（不含人物）。'
     else:
         method = wanted
-    return {**proposal, 'method': method, 'method_note': note, 'image_available': available}
+    result = {**proposal, 'people_choice': choice, 'method': method, 'method_note': note, 'image_available': available}
+    if undecided:
+        result['people'] = method == 'generate'
+    elif 'people' in proposal or choice != 'auto':
+        result['people'] = people
+    if proposal.get('source') == 'rules' and 'scene' in proposal:
+        result['scene'] = scene_audience.fixed_scene(proposal.get('segment_id'), result['people']) if proposal.get('segment_id') else proposal['scene']
+    return result
 
 
-def propose(project, hint='', audience=None, reference=None, image_path=None):
+def propose(project, hint='', audience=None, reference=None, image_path=None, people='auto'):
     """Strategist: who the scene is for and what it shows.
 
-    ``audience`` and ``reference`` are the user's own choices, when they made
-    any. Rules answer when no model does, so this returns a proposal whenever
-    its arguments are valid.
+    ``audience``, ``reference`` and ``people`` are the user's own choices, when
+    they made any; ``people`` is 'include' or 'exclude' when they decided
+    whether a person is in the picture. Rules answer when no model does, so
+    this returns a proposal whenever its arguments are valid.
     """
+    if people not in scene_audience.PEOPLE:
+        raise ValueError('人物选项无效')
     segments = scene_audience.library()
     required = audience if audience not in (None, '', 'auto') else None
     if required and not scene_audience.segment(required):
@@ -284,7 +307,7 @@ def propose(project, hint='', audience=None, reference=None, image_path=None):
         raise ValueError('所选参考不属于这个人群。')
     plan = project['plan']; hero = _hero(plan); recipe = recipe_for(project, hint)
     base = {'id': uuid.uuid4().hex, 'version': project['version'], 'hint': hint, 'audience': required or 'auto',
-            'reference': reference or None, 'at': time.time()}
+            'reference': reference or None, 'people_choice': people, 'at': time.time()}
     config = _config(image_path) if segments else None
     if config:
         analysis = project.get('analysis') or {}
@@ -302,6 +325,7 @@ def propose(project, hint='', audience=None, reference=None, image_path=None):
         if hint: facts['hint'] = hint
         if required: facts['required_segment'] = required
         if reference: facts['required_reference'] = reference
+        if people != 'auto': facts['required_people'] = people == 'include'
         try:
             answer = _ask(config, STRATEGIST_PROMPT, facts, strategist_schema(segments), image_path)
             segment_id = required or answer['segment_id'] or None
@@ -310,7 +334,7 @@ def propose(project, hint='', audience=None, reference=None, image_path=None):
             return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'ai',
                                 'reason': _line(answer['reason'], 300), 'product': _line(answer['product'], 60),
                                 'max_dimension_mm': answer['max_dimension_mm'], 'summary': _line(answer['summary'], 300),
-                                'people': answer['people'], 'complex': answer['complex'],
+                                'people': answer['people'] if people == 'auto' else people == 'include', 'complex': answer['complex'],
                                 'scene': scene_audience.scrub(_line(answer['scene'], 1200)), 'setting': answer['setting'],
                                 'azimuth': azimuth, 'elevation': elevation})
         except Exception:      # no answer is not a reason to have no proposal
@@ -325,7 +349,8 @@ def propose(project, hint='', audience=None, reference=None, image_path=None):
     return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'rules', 'reason': reason,
                         'product': _line(project.get('name') or recipe['label'], 60), 'max_dimension_mm': None,
                         'summary': '面向「%s」：%s。' % (chosen['label'], chosen['priority']) if chosen else '%s的通用使用场景。' % recipe['label'],
-                        'people': False, 'complex': False, 'scene': chosen['scene'] if chosen else '', 'setting': recipe['setting'],
+                        'people': people == 'include', 'complex': False, 'scene': chosen['scene'] if chosen else '',
+                        'setting': recipe['setting'],
                         'azimuth': azimuth, 'elevation': elevation})
 
 
@@ -334,7 +359,9 @@ def _brief(proposal, method):
     return {'version': 1, 'shot_id': SHOT_ID, 'segment_id': proposal.get('segment_id'), 'reference_id': proposal.get('reference_id'),
             'source': 'user' if proposal.get('audience') not in (None, 'auto') else proposal.get('source', 'rules'), 'method': method,
             'reason': _line(proposal.get('reason'), scene_audience.MAX_TEXT), 'summary': _line(proposal.get('summary'), scene_audience.MAX_TEXT),
-            'people': bool(proposal.get('people')), 'complex': bool(proposal.get('complex'))}
+            # Props never include a person, whatever the plan hoped for.
+            'people': bool(proposal.get('people')) and method == 'generate', 'complex': bool(proposal.get('complex')),
+            'people_choice': proposal.get('people_choice') if proposal.get('people_choice') in scene_audience.PEOPLE else 'auto'}
 
 
 def direct(project, hint, image_path, models, proposal=None):
@@ -597,7 +624,8 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     folder = folder or (DATA / project['id'] / 'scene_ai' / uuid.uuid4().hex / 'scene')
     # A size guessed from the category alone is not worth telling the image model.
     picture = scene_imagegen.create(project, plan, azimuth, elevation, scene, proposal.get('product') or project.get('name'),
-                                    size_mm if basis != 'category' else None, folder, cancelled, progress)
+                                    size_mm if basis != 'category' else None, folder, cancelled, progress,
+                                    people=proposal['people'] if type(proposal.get('people')) is bool else None)
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')
@@ -605,6 +633,7 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     made = picture['record']
     record = {'summary': _line(proposal.get('summary'), 400) or '由图像模型生成的使用场景', 'source': proposal.get('source', 'rules'),
               'method': 'generate', 'model': made['model'], 'attempts': made['attempts'], 'check': made['check'],
+              'people': made.get('people'),
               'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height']}
     return plan, record, picture
 
@@ -612,13 +641,14 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
 def _proposal(project, task, image, say):
     """The proposal the user last saw, if it still answers this request; a new one otherwise."""
     stored = project.get('scene_proposal'); hint = task.get('hint', '')
-    audience = task.get('audience') or 'auto'; reference = task.get('reference')
+    audience = task.get('audience') or 'auto'; reference = task.get('reference'); people = task.get('people') or 'auto'
     if (isinstance(stored, dict) and stored.get('version') == project['version'] and stored.get('hint') == hint
             and audience in (stored.get('audience'), stored.get('segment_id'))
-            and reference in (None, stored.get('reference'), stored.get('reference_id'))):
+            and reference in (None, stored.get('reference'), stored.get('reference_id'))
+            and (stored.get('people_choice') or 'auto') == people):
         return stored
     say('推荐目标人群与场景')
-    return propose(project, hint, audience, reference, image)
+    return propose(project, hint, audience, reference, image, people)
 
 
 def _audience_record(proposal):
@@ -701,7 +731,7 @@ def latest(project_id):
 
 
 def _choices(body):
-    """The user's own choices in a request: (hint, audience, reference, method), each validated."""
+    """The user's own choices in a request: (hint, audience, reference, method, people), each validated."""
     if not isinstance(body, dict): raise ValueError('场景请求格式无效')
     hint = body.get('hint', '')
     if not isinstance(hint, str) or len(hint) > MAX_HINT: raise ValueError('场景说明不能超过 %d 字' % MAX_HINT)
@@ -713,15 +743,18 @@ def _choices(body):
         raise ValueError('所选参考不属于这个人群。')
     method = body.get('method') or 'auto'
     if method not in ('auto',) + scene_audience.METHODS: raise ValueError('场景生成方式无效')
-    return hint.strip(), audience, reference, None if method == 'auto' else method
+    people = body.get('people') or 'auto'
+    if people not in scene_audience.PEOPLE: raise ValueError('人物选项无效')
+    return hint.strip(), audience, reference, None if method == 'auto' else method, people
 
 
 def recommend(project_id, body):
     """Ask the strategist now, and keep its answer with the project so the next scene request can use it."""
-    hint, audience, reference, method = _choices(body)
+    hint, audience, reference, method, people = _choices(body)
     project = get('project', project_id)
     if not project.get('analysis') or project.get('status') != 'ready': raise ValueError('请先等待模型分析完成')
-    proposal = with_method(propose(project, hint, audience, reference, _source_image(project)), method)
+    with_method({'people_choice': people}, method)         # a combination that cannot be made is refused before any model is asked
+    proposal = with_method(propose(project, hint, audience, reference, _source_image(project), people), method)
     with LOCK:
         current = get('project', project_id)
         current['scene_proposal'] = proposal; put('project', current)
@@ -729,7 +762,7 @@ def recommend(project_id, body):
 
 
 def submit(project_id, body):
-    hint, audience, reference, method = _choices(body)
+    hint, audience, reference, method, people = _choices(body)
     expected = body.get('expected_version')
     if expected is not None and (type(expected) is not int or expected < 1): raise ValueError('方案版本无效')
     seed = body.get('seed')
@@ -739,14 +772,14 @@ def submit(project_id, body):
         if not project.get('analysis') or project.get('status') != 'ready': raise ValueError('请先等待模型分析完成')
         if expected is not None and project['version'] != expected: raise engine.JobConflictError('方案已更新，请重新载入后生成场景。')
         if not engine.blender_path(): raise ValueError('未找到 Blender，无法布置场景。')
-        if method == 'generate': with_method({}, method)       # refuse now, not after the queue, when no image model can be called
+        with_method({'people_choice': people}, method)         # refuse now, not after the queue, what cannot be made
         engine.yield_to_user(project_id)
         if any(job['project_id'] == project_id and job['status'] in ('queued', 'running') for job in all_records('job')):
             raise engine.JobConflictError('当前项目已有渲染任务，请等待完成或取消后再生成场景。')
         if any(task['project_id'] == project_id and task['status'] in ACTIVE for task in all_records(KIND)):
             raise engine.JobConflictError('场景正在生成，请稍候。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': '等待开始', 'error': None,
-                'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'seed': seed,
+                'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'people': people, 'seed': seed,
                 'base_version': project['version'], 'created_at': time.time()}
         put(KIND, task)
         threading.Thread(target=_run, args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()

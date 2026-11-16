@@ -2455,7 +2455,7 @@ test('a usage scene is requested once with the plan version, then its shot is sh
   const pending=h.run('generateScene()');await h.run('generateScene()');await pending;
   const requests=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
   assert.equal(requests.length,1,'a second click while submitting does not start another scene');
-  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜',audience:'auto',method:'auto'});
+  assert.deepEqual(requests[0].body,{expected_version:1,hint:'车间里的工具柜',audience:'auto',method:'auto',people:'auto'});
   assert.equal(h.node('sceneButton').disabled,true);assert.equal(h.node('sceneButton').getAttribute('aria-busy'),'true');assert.match(h.node('sceneStatus').textContent,/等待布置场景/);
   await h.run('generateScene()');assert.equal(h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST').length,1,'a running task is not submitted again');
   finishScene(h);await h.run('poll()');await tick();
@@ -2497,7 +2497,8 @@ function audienceServer(h,library=audienceLibrary(),proposal={}) {
       const p=h.records.get(match[1]),chosen=call.body.audience && call.body.audience!=='auto';
       p.scene_proposal={id:'proposal-'+h.calls.length,version:p.version,hint:call.body.hint,audience:chosen?call.body.audience:'auto',reference:call.body.reference || null,
         segment_id:chosen?call.body.audience:'site_team',reference_id:call.body.reference || '05-01',source:'ai',reason:'带脚轮的工具柜 <script>alert(1)</script>',
-        summary:'安装工人从抽屉取工具',people:true,complex:false,method:'generate',method_note:null,image_available:true,...proposal};
+        summary:'安装工人从抽屉取工具',people:call.body.people?call.body.people!=='exclude':true,people_choice:call.body.people || 'auto',complex:false,
+        method:'generate',method_note:null,image_available:true,...proposal};
       return h.response(p.scene_proposal);
     }
     return scenes?scenes(call):undefined;
@@ -2512,7 +2513,7 @@ test('the audience pack is read once, a proposal is shown for what is on screen,
   assert.equal(h.node('sceneReferenceRow').hidden,true,'a reference is chosen within a segment');
   await h.run('recommendScene()');
   const asked=h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend');assert.equal(asked.length,1);
-  assert.deepEqual(asked[0].body,{hint:'',audience:'auto',method:'auto'});
+  assert.deepEqual(asked[0].body,{hint:'',audience:'auto',method:'auto',people:'auto'});
   const card=h.node('sceneProposal');assert.equal(card.hidden,false);
   assert.match(card.textContent,/推荐人群：小型施工与安装团队/);assert.match(card.textContent,/如何运输、配置和管理/);assert.match(card.textContent,/AI 图像生成（画面含人物）/);
   assert.equal(card.querySelector('script'),null,'model text is text');assert.equal(card.querySelector('b'),null,'reference titles are text');
@@ -2529,9 +2530,53 @@ test('the audience pack is read once, a proposal is shown for what is on screen,
   choose(h,'sceneReferenceSelect','07-02');choose(h,'sceneMethodSelect','generate');
   await h.run('generateScene()');
   const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
-  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'home_garden',reference:'07-02',method:'generate'});
+  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'home_garden',reference:'07-02',method:'generate',people:'auto'});
   assert.equal(h.node('sceneAudienceSelect').disabled,true,'choices are fixed while the scene is being made');
   assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1);
+});
+
+test('the user decides whether a person is in the picture, and the choice is sent, shown and kept consistent with the method',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  const people=h.node('scenePeopleSelect'),include=people.querySelector('option[value="include"]');
+  assert.deepEqual([...people.options].map(option=>option.value),['auto','include','exclude']);assert.equal(people.value,'auto');assert.equal(include.disabled,false);
+  assert.match([...h.node('sceneMethodSelect').options].find(option=>option.value==='generate').textContent,/可含人物/);
+  await h.run('recommendScene()');
+  const card=h.node('sceneProposal');assert.match(card.querySelector('.scene-people').textContent,/画面人物：包含人物（场景策划认为需要有人使用产品）/);
+  choose(h,'scenePeopleSelect','include');
+  assert.equal(card.hidden,true,'a proposal made for another choice about people is not shown as the plan');
+  await h.run('recommendScene()');
+  const asked=h.calls.filter(call=>call.url==='/api/projects/a/scene/recommend');assert.equal(asked[1].body.people,'include');
+  assert.equal(card.hidden,false);assert.match(card.querySelector('.scene-people').textContent,/画面人物：包含人物（你指定）/);
+  // Props never include a person: asking for one is not offered there, and the request says so.
+  choose(h,'sceneMethodSelect','render');
+  assert.equal(include.disabled,true);assert.equal(people.value,'exclude');assert.match(h.node('sceneMethodHelp').textContent,/没有人物/);
+  choose(h,'sceneMethodSelect','generate');assert.equal(include.disabled,false);assert.equal(people.value,'exclude','the choice is not switched back behind the user');
+  await h.run('recommendScene()');assert.match(card.querySelector('.scene-people').textContent,/画面人物：不含人物（你指定）/);
+  choose(h,'scenePeopleSelect','include');
+  await h.run('generateScene()');
+  const made=h.calls.filter(call=>call.url==='/api/projects/a/scene' && call.method==='POST');
+  assert.deepEqual(made[0].body,{expected_version:1,hint:'',audience:'auto',method:'generate',people:'include'});
+  assert.equal(people.disabled,true,'choices are fixed while the scene is being made');
+});
+
+test('a generated scene says whether the person that was asked for is in the picture',async t=>{
+  const p=previewProject();
+  p.plan.shots.push({id:'scene',label:'使用场景',kind:'full',style:'soft',projection:'perspective',azimuth:30,elevation:20,focal_length:55});
+  p.plan.scene_brief={version:1,shot_id:'scene',segment_id:'site_team',reference_id:null,source:'ai',method:'generate',reason:'理由',summary:'画面',people:true,complex:true,people_choice:'include'};
+  const output=check=>({job_id:'task',shot_id:'scene',version:1,quality:'generated',width:2048,height:2048,png_url:'/files/a/scene_ai/task/scene/scene.png',jpg_url:'/files/a/scene_ai/task/scene/scene.jpg',blend_url:null,
+    generated:{model:'gpt-image-2',attempts:2,people:true,check,references:[]}});
+  p.outputs.push(output({status:'failed',note:'画面里没有出现人物，与「包含人物」的要求不符。',issues:['no person is visible'],product_consistent:true,people:{expected:true,visible:false,ok:false}}));
+  const h=await setup(t,{projects:[p]});sceneServer(h);audienceServer(h);await h.run("openProject('a')");await tick();
+  h.node('shotList').querySelector('[data-shot="scene"]').click();
+  const made=h.node('sceneGenerated');
+  assert.match(made.querySelector('.scene-check.is-failed').textContent,/画面人物与要求不符/);
+  assert.match(made.querySelector('.scene-check-people.is-failed').textContent,/要求包含人物，核对结果为没有人物/);
+  assert.match(h.node('sceneBrief').textContent,/画面人物：包含人物（你指定）/);
+  h.records.get('a').outputs[1]=output({status:'passed',note:'一致。',issues:[],product_consistent:true,people:{expected:true,visible:true,ok:true}});await h.run('poll()');await tick();
+  assert.match(made.querySelector('.scene-check.is-passed').textContent,/产品与参考图一致/);
+  assert.match(made.querySelector('.scene-check-people.is-passed').textContent,/要求包含人物，核对结果为有人物/);
+  h.records.get('a').outputs[1]=output({status:'unchecked',note:'未配置视觉模型。',issues:[]});await h.run('poll()');await tick();
+  assert.match(made.querySelector('.scene-check-people').textContent,/要求包含人物，未能自动核对/);
 });
 
 test('a generated scene is labelled as made by the image model and shows what it was checked against',async t=>{
@@ -2566,7 +2611,7 @@ test('without the audience pack the scene control works as before and the pack i
   assert.equal(h.calls.filter(call=>call.url==='/api/scene/audiences').length,1,'a failed load is not retried on every redraw');
   assert.equal(h.node('sceneAudience').hidden,true);assert.equal(h.node('sceneButton').disabled,false);
   await h.run('generateScene()');
-  assert.deepEqual(h.calls.find(call=>call.url==='/api/projects/a/scene' && call.method==='POST').body,{expected_version:1,hint:'',audience:'auto',method:'auto'});
+  assert.deepEqual(h.calls.find(call=>call.url==='/api/projects/a/scene' && call.method==='POST').body,{expected_version:1,hint:'',audience:'auto',method:'auto',people:'auto'});
 });
 
 test('an unavailable image model is said before a picture with people is asked for',async t=>{
@@ -2574,7 +2619,8 @@ test('an unavailable image model is said before a picture with people is asked f
   audienceServer(h,audienceLibrary({available:false,message:'图像接口缺少 API Key'}),{method:'render',method_note:'图像模型未配置，已改为 3D 道具场景（不含人物）。',image_available:false});
   await h.run("openProject('a')");await tick();
   assert.match(h.node('sceneMethodHelp').textContent,/图像模型不可用（图像接口缺少 API Key）/);
-  choose(h,'sceneMethodSelect','render');assert.equal(h.node('sceneMethodHelp').hidden,true);
+  assert.equal(h.node('scenePeopleSelect').querySelector('option[value="include"]').disabled,true,'a person cannot be asked for without an image model');
+  choose(h,'sceneMethodSelect','render');assert.match(h.node('sceneMethodHelp').textContent,/3D 道具场景.*没有人物/);assert.doesNotMatch(h.node('sceneMethodHelp').textContent,/图像模型不可用/);
   choose(h,'sceneMethodSelect','auto');await h.run('recommendScene()');
   assert.match(h.node('sceneProposal').textContent,/3D 道具场景（Blender 渲染）（画面含人物） 图像模型未配置，已改为 3D 道具场景/);
 });
@@ -2911,4 +2957,82 @@ test('an exported file carries its own headline type and the same styled drawing
   // without a style nothing is embedded: the plain drawing uses only system type
   const plain=h.run('layerSvgDocument('+JSON.stringify(layer.items)+',512,512,"",layerLookOf({}))');
   assert.doesNotMatch(plain,/<style>|<defs>|Noto Sans SC/);
+});
+
+// Which way up the product stands: candidate poses, the automatic choice and one-click corrections.
+function orientRecord(changes={}) {
+  const pose=(id,label,rotation)=>({id,label,rotation,image_url:`/files/a/orientation/job/up/pose_${id}.png`,dimensions:[1,1,2],support_ratio:.2,tip_angle:10});
+  return {version:1,status:'ready',checked_at:1,source:'vision',reason:'电池底座在下、夹头朝前。',product:'cordless drill',chosen:'flip',changed:true,rotation:[180,0,0],
+    candidates:[pose('file','原始朝向',[0,0,0]),pose('flip','上下翻转',[180,0,0]),pose('forward','向前倒 90°',[90,0,0]),
+                {...pose('left','向左倒 90°',[0,-90,0]),image_url:'javascript:alert(1)'},{...pose('right','<b>右</b>',[0,90,0])}],...changes};
+}
+function orientServer(h) {
+  const before=h.intercept;
+  h.intercept=call=>{
+    const match=call.url.match(/^\/api\/projects\/([^/]+)\/orientation(\/apply)?$/);
+    if(!match || call.method!=='POST')return before?before(call):undefined;
+    const p=h.records.get(match[1]);
+    if(!match[2]){p.orient_task={id:'orient-'+h.calls.length,project_id:p.id,status:'queued',stage:'检查模型摆放朝向',base_version:p.version};return h.response(p.orient_task,202);}
+    const rotation=call.body.candidate?p.orientation.candidates.find(row=>row.id===call.body.candidate).rotation:call.body.flip?[180,0,0]:[0,0,call.body.turn];
+    p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'调整朝向'});p.plan.rotation=rotation;p.version++;return h.response(p);
+  };
+}
+
+test('an upload that was stood upright says so, shows the candidate poses and marks the one in use',async t=>{
+  const p=previewProject();p.orientation=orientRecord();p.plan.rotation=[180,0,0];
+  const h=await setup(t,{projects:[p]});orientServer(h);await h.run("openProject('a')");
+  assert.match(h.node('orientStatus').textContent,/已自动摆正（视觉模型判断）：电池底座在下/);
+  assert.equal(h.node('orientBadge').textContent,'已调整');assert.match(h.node('orientAuto').textContent,/重新自动摆正/);
+  const poses=[...h.node('orientPoses').querySelectorAll('.orient-pose')];
+  assert.deepEqual(poses.map(button=>button.dataset.orientPose),['file','flip','forward','right'],'a candidate without a local picture is not offered');
+  assert.deepEqual(poses.map(button=>button.getAttribute('aria-pressed')),['false','true','false','false']);
+  assert.equal(h.node('orientPoses').querySelector('b'),null,'labels are text');assert.equal(poses[0].querySelector('img').getAttribute('src'),'/files/a/orientation/job/up/pose_file.png');
+  // The same side up, turned to face another way, is still that pose.
+  h.records.get('a').plan.rotation=[180,0,90];h.records.get('a').version=2;await h.run('poll()');await tick();
+  assert.equal(h.node('orientPoses').querySelector('.is-current').dataset.orientPose,'flip');
+});
+
+test('another pose, a flip or a quarter turn is one request with the plan version and the shot on screen',async t=>{
+  const p=previewProject();p.orientation=orientRecord({changed:false,chosen:'file',rotation:[0,0,0],source:'file',reason:'未能调用视觉模型，朝向未自动调整。'});
+  const h=await setup(t,{projects:[p]});orientServer(h);await h.run("openProject('a')");
+  assert.equal(h.node('orientBadge').textContent,'原始朝向');assert.match(h.node('orientStatus').textContent,/未能调用视觉模型/);
+  h.node('orientPoses').querySelector('[data-orient-pose="flip"]').click();await tick();await tick();
+  const applied=()=>h.calls.filter(call=>call.url==='/api/projects/a/orientation/apply');
+  assert.deepEqual(applied()[0].body,{expected_version:1,shot_id:'hero',candidate:'flip'});
+  assert.equal(h.run('current.version'),2);assert.deepEqual(h.run('JSON.stringify(current.plan.rotation)'),'[180,0,0]');
+  assert.equal(h.node('orientPoses').querySelector('.is-current').dataset.orientPose,'flip');assert.match(h.node('orientStatus').textContent,/你选择的姿态/);
+  assert.equal(h.node('undoButton').disabled,false,'the pose can be taken back with undo');
+  h.node('orientFlip').click();await tick();await tick();assert.deepEqual(applied()[1].body,{expected_version:2,shot_id:'hero',flip:true});
+  h.node('orientTurnLeft').click();await tick();await tick();assert.deepEqual(applied()[2].body,{expected_version:3,shot_id:'hero',turn:90});
+  h.node('orientTurnRight').click();await tick();await tick();assert.deepEqual(applied()[3].body,{expected_version:4,shot_id:'hero',turn:-90});
+});
+
+test('a project that was never checked can be checked, and the controls wait while it is looked at',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});orientServer(h);await h.run("openProject('a')");
+  assert.equal(h.node('orientPoses').hidden,true);assert.match(h.node('orientStatus').textContent,/还没有检查过朝向/);assert.match(h.node('orientAuto').textContent,/^自动摆正$/);
+  assert.equal(h.node('orientFlip').disabled,false,'a flip needs no check');
+  const pending=h.run('orientCheck()');await h.run('orientCheck()');await pending;
+  const asked=h.calls.filter(call=>call.url==='/api/projects/a/orientation' && call.method==='POST');
+  assert.equal(asked.length,1);assert.deepEqual(asked[0].body,{expected_version:1,shot_id:'hero'});
+  assert.equal(h.node('orientAuto').disabled,true);assert.equal(h.node('orientAuto').getAttribute('aria-busy'),'true');assert.equal(h.node('orientFlip').disabled,true);
+  assert.match(h.node('orientStatus').textContent,/检查模型摆放朝向/);
+  assert.equal(h.node('sceneButton').disabled,false);
+  const record=h.records.get('a');record.orientation=orientRecord();record.plan.rotation=[180,0,0];record.version=2;
+  record.orient_task={...record.orient_task,status:'completed',stage:'已摆正模型',changed:true,applied_version:2};await h.run('poll()');await tick();
+  assert.equal(h.node('orientAuto').disabled,false);assert.equal(h.node('orientPoses').hidden,false);assert.match(h.node('toast').textContent,/已摆正模型/);
+  record.orient_task={id:'orient-x',project_id:'a',status:'failed',stage:'朝向未检查',error:'朝向检查超时，模型保持当前朝向。',base_version:2};await h.run('poll()');await tick();
+  assert.match(h.node('orientStatus').textContent,/朝向检查超时/);
+});
+
+test('the pose controls wait for a render and report a refused change',async t=>{
+  const a=previewProject();a.orientation=orientRecord({changed:false,chosen:'file',rotation:[0,0,0]});
+  a.jobs=[{id:'run',kind:'render',status:'running',quality:'final',shot_ids:['hero'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:20}];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  for(const id of ['orientAuto','orientFlip','orientTurnLeft','orientTurnRight'])assert.equal(h.node(id).disabled,true,id);
+  assert.equal(h.node('orientPoses').querySelector('.orient-pose').disabled,true);
+  await h.run("orientApply({flip:true},'已上下翻转')");assert.equal(h.calls.some(call=>/orientation/.test(call.url)),false);
+  h.records.get('a').jobs=[];await h.run('poll()');await tick();assert.equal(h.node('orientFlip').disabled,false);
+  h.intercept=call=>/orientation\/apply$/.test(call.url)?h.response({error:'当前项目已有渲染任务，请等待完成或取消后再调整朝向。'},409):undefined;
+  await h.run("orientApply({flip:true},'已上下翻转')");
+  assert.match(h.node('orientStatus').textContent,/已有渲染任务/);assert.equal(h.run('current.version'),1);assert.equal(h.node('orientFlip').disabled,false,'the change can be tried again');
 });
