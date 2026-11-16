@@ -2093,7 +2093,7 @@ test('hero workflow stages never reuse sampling during inspection or comparison 
     Object.assign(job,{workflow_phase:phase,stage:'当前阶段工作',sample_progress:phase==='preview'?0:88});await h.run('poll()');
     assert.match(h.node('renderActivityTitle').textContent,title);assert.equal(h.node('renderActivity').dataset.progress,determinate?'determinate':'indeterminate');
     assert.equal(h.node('renderActivityProgress').hasAttribute('aria-valuenow'),determinate);assert.equal(h.node('renderImage').getAttribute('src'),image);
-    assert.equal(h.node('jobPanel').querySelector('[aria-label="已完成镜头进度"]'),null,'a single optimization does not invent image-group progress');
+    assert.equal(h.node('jobPanel').querySelector('[aria-label="任务总进度"]'),null,'a single optimization does not invent image-group progress');
   }
   job.sample_progress=100;await h.run('poll()');assert.equal(h.node('renderActivity').hidden,false,'100% sampling still requires saving and validation');
   h.run('serviceDisconnected=true;renderActionState()');assert.equal(h.node('renderActivity').dataset.motion,'still');assert.equal(h.node('renderActivity').dataset.progress,'none');
@@ -3326,4 +3326,39 @@ test('the pose controls wait for a render and report a refused change',async t=>
   h.intercept=call=>/orientation\/apply$/.test(call.url)?h.response({error:'当前项目已有渲染任务，请等待完成或取消后再调整朝向。'},409):undefined;
   await h.run("orientApply({flip:true},'已上下翻转')");
   assert.match(h.node('orientStatus').textContent,/已有渲染任务/);assert.equal(h.run('current.version'),1);assert.equal(h.node('orientFlip').disabled,false,'the change can be tried again');
+});
+
+// One percentage for whatever is running: finished shots plus the share of the shot being rendered.
+test('a running job shows how far it is as one percentage, and says nothing when nothing is known',async t=>{
+  const job=changes=>({id:'run',kind:'preview',status:'running',quality:'preview',shot_ids:['hero','campaign'],completed:[],version:1,created_at:5,stage:'Cycles 正在渲染',progress:0,sample_progress:0,...changes});
+  const a=previewProject();a.jobs=[job({})];
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  const show=async changes=>{h.records.get('a').jobs=[job(changes)];await h.run('poll()');await tick();
+    return {percent:h.node('jobPanel').querySelector('.job-percent')?.textContent ?? null,bar:h.node('jobPanel').querySelector('.progress-track')?.getAttribute('aria-valuenow') ?? null};};
+  assert.deepEqual(await show({sample_progress:50}),{percent:'25%',bar:'25'},'half of the first of two shots');
+  assert.deepEqual(await show({completed:['hero'],progress:50,sample_progress:50}),{percent:'75%',bar:'75'});
+  assert.deepEqual(await show({shot_ids:['hero'],sample_progress:42.5}),{percent:'43%',bar:'43'});
+  assert.equal((await show({shot_ids:['hero'],sample_progress:100,stage:'视觉模型正在诊断真实预览的逼真度'})).percent,'99%','the samples are done but the job is not');
+  assert.equal(h.node('jobPanel').querySelector('.progress-track').getAttribute('aria-label'),'任务总进度');
+  // Nothing measured yet, or still waiting: no number is invented.
+  assert.equal((await show({sample_progress:null})).percent,null);
+  assert.equal((await show({status:'queued',stage:'等待执行',sample_progress:60})).percent,null);
+  // An analysis reports its own steps.
+  assert.equal((await show({kind:'analyze',shot_ids:[],sample_progress:null,progress:62,stage:'由视觉模型判断产品应如何摆放'})).percent,'62%');
+  assert.equal((await show({kind:'analyze',shot_ids:[],sample_progress:null,progress:0,stage:'启动 Blender'})).percent,null);
+  h.records.get('a').jobs=[{...job({}),status:'completed',stage:'已完成',progress:100}];await h.run('poll()');await tick();
+  assert.equal(h.node('jobPanel').querySelector('.job-percent'),null,'a finished job has no percentage');
+});
+
+test('scene and pose tasks show the stage they are in with its percentage',async t=>{
+  const a=previewProject();a.orientation=orientRecord({changed:false,chosen:'file',rotation:[0,0,0]});
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");
+  const record=h.records.get('a');
+  record.scene_task={id:'s1',project_id:'a',status:'running',stage:'渲染产品参考角度 2 / 3',progress:28,base_version:1};await h.run('poll()');await tick();
+  assert.equal(h.node('sceneStatus').textContent,'渲染产品参考角度 2 / 3 · 28%');
+  record.scene_task={...record.scene_task,stage:'等待渲染队列',progress:null};await h.run('poll()');await tick();
+  assert.equal(h.node('sceneStatus').textContent,'等待渲染队列','a stage without a known share shows no number');
+  record.scene_task={...record.scene_task,status:'completed',stage:'场景图已生成',progress:88};
+  record.orient_task={id:'o1',project_id:'a',status:'running',stage:'由视觉模型判断产品应如何摆放',progress:41,base_version:1};await h.run('poll()');await tick();
+  assert.equal(h.node('orientStatus').textContent,'由视觉模型判断产品应如何摆放 · 41%');
 });

@@ -436,6 +436,11 @@ function currentHeroOptimizationAttempt() {
 let orientSubmitting=false,orientSeenTask=null;
 const orientErrors=new Map();
 const orientSourceLabels={vision:'视觉模型判断',names:'按部件名称判断',file:'文件原始朝向',user:'你选择的姿态'};
+// A background task's stage, with how far it is when the task says so.
+function taskStageText(task,fallback) {
+  const stage=task?.stage || fallback,progress=task?.progress;
+  return typeof progress==='number' && Number.isFinite(progress) && progress>0 && progress<100?`${stage} · ${Math.round(progress)}%`:stage;
+}
 function orientAvailable() { return system?.runtime?.capabilities?.orientation!==false; }
 function orientTaskActive() { return ['queued','running'].includes(current?.orient_task?.status); }
 function orientRotation() { const value=current?.plan?.rotation;return Array.isArray(value) && value.length===3 && value.every(Number.isFinite)?value:[0,0,0]; }
@@ -453,7 +458,7 @@ function renderOrientation() {
   let message='',problem=true;
   if(serviceDisconnected)message='连接恢复后可调整朝向。';
   else if(!current.analysis)message='模型分析完成后可检查朝向。';
-  else if(active)message=task.stage || '正在检查模型朝向';
+  else if(active)message=taskStageText(task,'正在检查模型朝向');
   else if(orientErrors.get(current.id))message=orientErrors.get(current.id);
   else if(task?.status==='failed' && task.base_version===current.version)message=task.error || '朝向未能检查，可重试。';
   else if(record?.status==='failed')message=record.reason || '导入时未能检查朝向，可点「自动摆正」重试。';
@@ -607,7 +612,7 @@ function renderSceneSet() {
   if(serviceDisconnected)message='连接恢复后可生成场景。';
   else if(!sceneAvailable())message='场景组件未就绪，请查看运行环境。';
   else if(!current.analysis)message='模型分析完成后即可生成场景。';
-  else if(active)message=task.stage || '正在生成场景';
+  else if(active)message=taskStageText(task,'正在生成场景');
   else if(sceneErrors.get(current.id))message=sceneErrors.get(current.id);
   else if(task?.status==='failed' && task.base_version===current.version)message=task.error || '场景未生成，可重试。';
   else if(has)message=(set?.summary || brief?.summary || '');
@@ -1755,6 +1760,17 @@ function renderShots() {
   }).join(''));
   $('selectAllShots').checked=!!shots().length && selectedShots.size===shots().length;$('selectAllShots').indeterminate=selectedShots.size>0 && selectedShots.size<shots().length;
 }
+// How far a running job is, as one number: finished shots plus the share of the shot being rendered.
+// An analysis reports its own steps. null when nothing can be said yet.
+function jobPercent(job,completed,total,sample) {
+  const valid=value=>typeof value==='number' && Number.isFinite(value) && value>=0 && value<=100;
+  if(job.status==='queued')return null;
+  if(job.kind==='analyze')return valid(job.progress) && job.progress>0?Math.round(job.progress):null;
+  const within=valid(sample) && completed<total?sample/100:0;
+  if(!valid(sample) && !completed)return null;
+  // The last per cent is the saving and checking after the samples are done.
+  return Math.min(99,Math.round((Math.min(completed,total)+within)/total*100));
+}
 function renderJob() {
   const logWasOpen = !!$('jobPanel').querySelector('.job-log[open]');
   const candidatesWereOpen=!!$('jobPanel').querySelector('.hero-optimization-candidates[open]');
@@ -1763,6 +1779,7 @@ function renderJob() {
   const running=['running','queued'].includes(job.status),autoRunning=!running && automaticMaterialBusy();const done=job.status==='completed' && !autoRunning;const cancelled=['cancelled','interrupted'].includes(job.status);
   const total=job.shot_ids?.length || 1;const completed=job.completed?.length || 0;
   const hero=job.kind==='hero_optimize',sample=hero && !['preview','finalizing'].includes(job.workflow_phase)?null:job.sample_progress;
+  const percent=running?jobPercent(job,completed,total,sample):null;
   const automaticTask=(materialAgentRecords.get(current.id) || []).find(materialTaskIsActive);
   let stage=autoRunning?(automaticTask?.stage || current.auto_material?.stage || '正在自动优化材质'):job.stage || statusNames[job.status];if(job.kind==='analyze')stage='模型分析 · '+stage;else if(job.origin==='initial_preview')stage='白底主图 · '+stage;else if(job.origin==='auto_polish')stage=running?'后台生成高清图':job.status==='failed'?'高清图未生成':stage;
   $('jobPanel').className='job-panel'+(job.status==='failed'?' failed':'')+(done?' is-complete':'');
@@ -1770,7 +1787,7 @@ function renderJob() {
   const candidates=hero && Array.isArray(job.hero_candidates || job.candidates)?(job.hero_candidates || job.candidates).slice(0,12):[];
   const candidatesHTML=candidates.length?`<details class="hero-optimization-candidates"><summary>查看试渲染记录</summary><div class="review-attempts">${candidates.map((candidate,index)=>{const url=typeof candidate.png_url==='string' && candidate.png_url.startsWith('/files/'+current.id+'/') && /\.(png|jpg)$/i.test(candidate.png_url)?candidate.png_url:'';return `<div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}" loading="lazy"></a>`:''}<span>${esc(candidate.label || '第 '+(index+1)+' 轮试渲染')}</span>${candidate.reason?`<small>${esc(candidate.reason)}</small>`:''}</div>`;}).join('')}</div></details>`:'';
   const progressText=job.origin==='auto_polish'?(running?`可继续操作，新的要求会立即接管${typeof sample==='number'?' · 采样 '+sample+'%':''}`:'当前预览保留'):hero?(running?'自动优化进行中，完成后显示结果':done?'主图优化已结束':'已完成图片保留'):`图组进度 ${completed}/${total} 张${running && typeof sample==='number' ? ' · 当前镜头采样 '+sample+'%' : ''}`;
-  $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="已完成镜头进度" aria-valuenow="${Number(job.progress)||0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,Number(job.progress)||0))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
+  $('jobPanel').innerHTML=`<div class="job-top"><div><strong>${esc(stage)}${percent===null?'':` <b class="job-percent" aria-label="总进度">${percent}%</b>`}</strong><small>${autoRunning?'当前图片暂时保留，自动应用并重渲染后更新':`${job.current_shot?esc(job.current_shot)+' · ':''}${job.kind==='analyze'?'读取几何、部件与贴图':progressText}${done && !hero?' · 执行完成':''}${cancelled && !hero?' · 已完成图片保留':''}`}</small></div>${running?`<button type="button" class="button subtle" data-cancel="${esc(job.id)}">取消任务</button>`:autoRunning && (automaticTask?.id || current.auto_material?.task_id)?`<button type="button" class="button subtle" data-cancel-auto-material="${esc(automaticTask?.id || current.auto_material.task_id)}">取消优化</button>`:!done && !autoRunning?`<button type="button" class="button secondary" data-retry="${esc(job.id)}">继续 / 重试</button>`:''}</div>${running && !hero?`<div class="progress-track" role="progressbar" aria-label="任务总进度" aria-valuenow="${percent ?? (Number(job.progress)||0)}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.min(100,Math.max(0,percent ?? (Number(job.progress)||0)))}%"></span></div>`:''}${summary?`<p class="hero-optimization-summary" role="status">${esc(summary)}</p>`:''}${candidatesHTML}${job.error?`<p class="job-error">${esc(job.error)}</p>`:''}<details class="job-log"><summary>日志</summary><pre>${esc((job.log_tail || []).join('\n'))}</pre></details>`;
   const waiting=activeJobs().filter(item=>item.id!==job.id),scene=current.scene_task,sceneWaiting=['queued','running'].includes(scene?.status) && Number(scene.queued_behind)>0;
   if(waiting.length || sceneWaiting){
     $('jobPanel').insertAdjacentHTML('beforeend',`<div class="job-queue"><span class="job-queue-title">渲染队列 · 之后还有 ${waiting.length+(sceneWaiting?1:0)} 项</span><ol>${waiting.map(item=>`<li><span>${esc(jobQueueLabel(item))}</span><button type="button" class="button subtle" data-cancel="${esc(item.id)}" aria-label="把${esc(jobQueueLabel(item))}移出队列">移出</button></li>`).join('')}${sceneWaiting?`<li><span>使用场景 · 已生成，等前面的预览结束后保存</span></li>`:''}</ol></div>`);

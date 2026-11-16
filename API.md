@@ -1,5 +1,23 @@
 # 本地接口与可复现性
 
+## v28 姿态 agent 与进度
+
+**朝向记录。** `orientation`（见 v27）的 `version` 为 2，新增：
+
+- `rests_on`：姿态 agent 写的「这类产品应该怎么放」；`model`：判断所用的模型；`cells`：每个候选 `{id, on_ground, fits}`，即 agent 对每一格着地部位的描述和是否符合。只有调用了视觉模型时才有。
+- `rejected`：`{id, reason}`，第二次查看否定了所选姿态时出现。此时 `source` 为 `file`、`changed` 为 `false`，`reason` 说明原因。
+- 每个候选新增 `flat_contact`：占地面积中贴地平面的比例（0 到 1）。
+
+agent 的选择与测量矛盾（它认为产品靠平整底面承托，而贴地的平面在所选姿态的上下颠倒版本上）时同样不改姿态，`reason` 中写明。`.env` 的 `AI_POSE_MODEL` 只为这个 agent 指定模型，接口地址与 Key 沿用视觉模型。
+
+**进度。**
+
+- 任务的 `sample_progress`（0 到 100）在 Blender 5 上恢复更新：渲染脚本输出 `PROGRESS: Sample n/m` 行，引擎按原有规则解析。
+- 分析任务的 `progress` 按步骤更新：开始 10，分析完成 40，朝向检查的三个阶段为 40、62、78，完成 100。
+- 场景任务（`scene_task`）和朝向任务（`orient_task`）新增 `progress`：进入各阶段时的大致百分比；不认识的阶段保持上一个值。
+
+**参考图角度。** AI 生成场景的三张参考图，方位角取整到 15°、俯仰角取整到 10°（最小 10°），`generated.references` 中记录的是取整后的角度。镜头本身的角度不变。
+
 ## v26 渲染队列
 
 **排队提交。** `POST /api/projects/{id}/jobs` 的请求体新增可选的 `queue`（布尔值，其他类型返回 `400`）。不带或为 `false` 时行为不变：已有任务在运行时返回 `409`。为 `true` 时，新任务排在已有任务之后，返回 `202` 和 `status:"queued"` 的任务记录；同一项目里已有一个相同的排队任务（相同的 `kind`、`quality`、`shot_ids` 与方案版本）时，直接返回那一个，不重复排队。`expected_version` 与当前方案不一致时，排队请求同样返回 `409`。后台高清任务（`origin` 为 polish）仍然为用户的请求让路。浏览器界面总是带 `queue:true`。

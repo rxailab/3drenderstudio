@@ -945,7 +945,9 @@ def _run_job(ident):
             hero_optimizer.run_job(j)
             return
         if j['kind']=='analyze':
+            update_job(ident,progress=10)
             r=execute(j,{'action':'analyze','model_path':p['model_path'],'plan':j['plan']},base)
+            update_job(ident,progress=40)
             pose=None
             if not p.get('analysis') and get('job',ident)['status']!='cancelled':
                 # A file can arrive upside-down or on its side: stand it up before the first picture.
@@ -953,7 +955,8 @@ def _run_job(ident):
                 try:
                     if runtime_status()['capabilities'].get('orientation'):
                         pose=orientation.first_pose(p,r,DATA/p['id']/'orientation'/j['id'],
-                                                    lambda:get('job',ident)['status']=='cancelled',lambda stage:update_job(ident,stage=stage))
+                                                    lambda:get('job',ident)['status']=='cancelled',
+                                                    lambda stage:update_job(ident,stage=stage,progress=orientation.progress_of(stage,40,95) or 40))
                 except InterruptedError: return
             with LOCK:
                 if get('job',ident)['status']=='cancelled': return

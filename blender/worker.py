@@ -740,6 +740,9 @@ def render(req,objects,meshes):
     event('正在打包可复现工程')
     bpy.ops.file.pack_all();bpy.ops.wm.save_as_mainfile(filepath=str(blend))
     event('Cycles 正在渲染',device=dev,shot=shot.get('id'))
+    # Blender 5 no longer prints the sample count while it renders; the job's percentage is read from it.
+    from blender.render_progress import report as report_render_progress
+    report_render_progress()
     started=time.time();bpy.ops.render.render(write_still=True)
     # Re-check the actual evaluated scene after rendering. Corrections are bounded;
     # the analytic fit normally requires zero retries and never reports invented work.
