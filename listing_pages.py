@@ -80,6 +80,28 @@ class Shot:
             return 0.0
         return self.picture.cover([max(0, x0), max(0, y0), min(1, x1), min(1, y1)])[0]
 
+    def shares(self, rect):
+        """(share of a page rectangle on the product, share on the workpiece)."""
+        picture = self.picture
+        if not picture:
+            return 0.0, 0.0
+        x0, y0 = self.fraction(rect[0], rect[1]); x1, y1 = self.fraction(rect[2], rect[3])
+        if x1 <= 0 or y1 <= 0 or x0 >= 1 or y0 >= 1:
+            return 0.0, 0.0
+        piece = picture.objects.index('Listing workpiece') if 'Listing workpiece' in picture.objects else None
+        c0 = max(0, int(x0 * picture.nx)); c1 = min(picture.nx, max(c0 + 1, int(x1 * picture.nx + 1)))
+        r0 = max(0, int(y0 * picture.ny)); r1 = min(picture.ny, max(r0 + 1, int(y1 * picture.ny + 1)))
+        product = work = 0
+        for row in range(r0, r1):
+            for column in range(c0, c1):
+                cell = picture.cells[row * picture.nx + column]
+                if cell == piece and piece is not None:
+                    work += 1
+                elif cell >= 0:
+                    product += 1
+        area = max(1, (r1 - r0) * (c1 - c0))
+        return product / area, work / area
+
     def product_box(self):
         rect = self.result.get('product_rect') or [0, 0, 1, 1]
         return [*self.point(rect[0], rect[1]), *self.point(rect[2], rect[3])]
@@ -105,12 +127,26 @@ def _away(p1, p2, centre, amount):
     return amount if (middle[0] - centre[0]) * nx + (middle[1] - centre[1]) * ny >= 0 else -amount
 
 
-def _line_cover(shot, p1, p2, offset):
-    """How much of a dimension line drawn at this offset would lie over the product or the workpiece."""
-    lines, _, _ = draw.dimension_parts({'p1': list(p1), 'p2': list(p2), 'offset': offset})
-    a, b = lines[0]['points']
-    samples = [(a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share) for share in (.08, .25, .42, .58, .75, .92)]
-    return sum(shot.cover([x - 14, y - 14, x + 14, y + 14]) for x, y in samples) / len(samples)
+def _dimension_fit(shot, p1, p2, centre, label, avoid=()):
+    """Where a dimension can be read: (offset, label position along it), or None when it would run over the tool.
+
+    The line may cross the workpiece, never the product; its label sits clear of both, and of the points in ``avoid``.
+    """
+    for amount in (30, 64):
+        offset = _away(p1, p2, centre, amount)
+        lines, _, normal = draw.dimension_parts({'p1': list(p1), 'p2': list(p2), 'offset': offset})
+        a, b = lines[0]['points']
+        along = [(a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share) for share in (.06, .2, .35, .5, .65, .8, .94)]
+        if any(shot.shares([x - 12, y - 12, x + 12, y + 12])[0] > .08 for x, y in along):
+            continue
+        if any(math.hypot(x - ax, y - ay) < 46 for x, y in along for ax, ay in avoid):
+            continue
+        width = len(label) * 15 + 24; side = 1 if offset >= 0 else -1
+        for share in (.5, .34, .66, .22, .78):
+            x = a[0] + (b[0] - a[0]) * share + normal[0] * 26 * side; y = a[1] + (b[1] - a[1]) * share + normal[1] * 26 * side
+            if sum(shot.shares([x - width / 2, y - 20, x + width / 2, y + 20])) < .02 and all(math.hypot(x - ax, y - ay) > 70 for ax, ay in avoid):
+                return offset, share
+    return None
 
 
 # ---- main ----
@@ -233,6 +269,11 @@ def _place_labels(brand, shot, entries, box, column, detail=True, size=27):
                     best = (score, at)
                 at += step
             parts, _ = el.callout(brand, feature['title'], feature.get('detail') if detail else '', point, x, best[1], column, side, size=size)
+            if shot.cover([x - 6, best[1] - 6, x + column + 6, best[1] + height + 6]) > .04:
+                # No clear spot in its column: the words get a plate of the ground so they stay readable over the picture.
+                words = [part for part in parts if part['type'] == 'text']; widest = max(draw.block_size(part['lines'], part['style'])[0] for part in words)
+                left = x + column - widest if side == 'left' else x
+                parts.insert(1, {'type': 'rect', 'x': left - 10, 'y': best[1] - 10, 'w': widest + 20, 'h': height + 18, 'fill': brand.ground, 'radius': 6, 'opacity': .88})
             items += parts; placed += 1
     return items, placed
 
@@ -281,12 +322,13 @@ def page_usecase(ctx):
     title = use.get('headline') or ('%s %s' % (strings(ctx)['in_use'], '· ' + workpiece_label(ctx, facts) if facts else '')).strip()
     frame_items, box = el.frame(brand, H, title); items += frame_items
     centre_box = shot.product_box(); centre = ((centre_box[0] + centre_box[2]) / 2, (centre_box[1] + centre_box[3]) / 2)
-    notes = []
+    notes = []; marked = []
     for key, mark in (('diameter', 'Ø '), ('thickness', '')):
         anchor = (facts.get('anchors') or {}).get(key)
         if not anchor:
             continue
         p1 = shot.point(*anchor['p1']); p2 = shot.point(*anchor['p2'])
+        marked.append(((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2))
         # Read across the workpiece, the label carried clear of it on the side away from the tool.
         if math.hypot(p1[0] - centre[0], p1[1] - centre[1]) > math.hypot(p2[0] - centre[0], p2[1] - centre[1]):
             p1, p2 = p2, p1
@@ -301,17 +343,18 @@ def page_usecase(ctx):
         lx = max(box[0], min(box[2] - width, lx)); ly = max(box[1], min(box[3] - cap, ly))
         items.append({'type': 'rect', 'x': lx - 9, 'y': ly - 9, 'w': width + 18, 'h': cap + 18, 'fill': brand.ground, 'radius': 6, 'opacity': .86})
         items.append({'type': 'text', 'x': lx, 'y': ly, 'w': width + 4, 'text': label, 'style': style})
+        marked.append((lx + width / 2, ly + cap / 2))
     if ctx['size_known']:
         edges = {row['axis']: row for row in shot.result.get('dimension_edges', [])}
         level = max((edges[axis] for axis in 'xy' if axis in edges), key=lambda row: row['mm'], default=None)
         for row in [level, edges.get('z')]:
             if not row or row['apparent'] < .12:
                 continue
-            p1 = shot.point(*row['p1']); p2 = shot.point(*row['p2'])
-            # Only where the line runs clear of the tool and of the workpiece; a size that cannot be read is left out.
-            offset = next((value for value in (_away(p1, p2, centre, 30), _away(p1, p2, centre, 64)) if _line_cover(shot, p1, p2, value) < .2), None)
-            if offset is not None:
-                items.append(el.dimension(brand, p1, p2, length_text(ctx, row['mm']), offset, size=24))
+            p1 = shot.point(*row['p1']); p2 = shot.point(*row['p2']); label = length_text(ctx, row['mm'])
+            # A size that cannot be read clear of the tool is left out rather than drawn across it.
+            found = _dimension_fit(shot, p1, p2, centre, label, marked)
+            if found:
+                items.append(el.dimension(brand, p1, p2, label, found[0], size=24, label_at=found[1]))
     else:
         notes.append('没有填写产品的真实尺寸，产品本身的尺寸线没有画出；工件按模型文件的单位估算比例。')
     anchored = [(feature, shot.anchor(feature.get('parts'))) for feature in product['features']]
@@ -358,7 +401,7 @@ def page_feature(ctx, index):
 def page_band(ctx):
     """A picture above a band: the band carries the headline, a line under it and up to three key figures."""
     brand = ctx['brand']; product = ctx['product']; items = []; split = 610
-    band = brand.dark if brand.preset != 'flat' else brand.accent
+    band = brand.dark if brand.preset != 'flat' else brand.ground
     if ctx.get('photo'):
         items.append({'type': 'image', 'src': str(ctx['photo']), 'x': 0, 'y': 0, 'w': 1000, 'h': split, 'fit': 'cover', 'anchor': (.5, .5)})
     else:
@@ -369,7 +412,7 @@ def page_band(ctx):
         hero = Shot(ctx['shots']['hero'].result, ctx['shots']['hero'].picture)
         items.append(hero.place([120, 40, 880, split - 40], shadow=True))
     items += [{'type': 'rect', 'x': 0, 'y': split, 'w': 1000, 'h': H - split, 'fill': band},
-              {'type': 'rect', 'x': 0, 'y': split, 'w': 1000, 'h': 10, 'fill': brand.accent_for(band) if band != brand.accent else brand.ink_for(band)}]
+              {'type': 'rect', 'x': 0, 'y': split, 'w': 1000, 'h': 10, 'fill': brand.accent_for(band)}]
     figures = product['figures'][:3]; text_width = 560 if figures else 880; x = 56; y = split + 62
     parts, height = el.headline(brand, product['headline'] or product['title'], x, y, text_width, 80, 3, ground=band)
     items += parts

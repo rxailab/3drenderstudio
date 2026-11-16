@@ -144,7 +144,7 @@ def place_workpiece(spec, lo, hi, unit_mm, root):
         if spec['kind'] in ROUND:
             spec['diameter_mm'] = spec.get('diameter_mm') or geometry.stock_size(min(size.x, size.y, size.z) * unit_mm * .5)
         else:
-            spec['thickness_mm'] = spec.get('thickness_mm') or 18.0
+            spec['thickness_mm'] = spec.get('thickness_mm') or {'sheet': 3.0, 'block': 60.0}.get(spec['kind'], 18.0)
             spec['width_mm'] = spec.get('width_mm') or (size[1 - long_axis] * unit_mm * 1.5 + max(size) * unit_mm * .3 if mode == 'under'
                                                         else max(size[1 - long_axis] * unit_mm * 2.2, size.z * unit_mm * 1.6))
         # Under the tool the stock runs out of the picture both ways; in front of it, it stands a little taller than the tool.

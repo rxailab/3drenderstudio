@@ -155,7 +155,9 @@ class Brand:
         self.accent_source = 'user' if record['accent'] else 'product' if product_color else 'default'
         self.dark = record['dark'] or DARK; self.light = LIGHT
         kind = self.tokens['ground']
-        self.ground = self.accent if kind == 'accent' else self.dark if kind == 'dark' else self.light
+        # A colour taken from the product would hide the product on a page of that colour: such a ground is deepened.
+        flat = draw.mix(self.accent, '#000000', .42) if self.accent_source == 'product' else self.accent
+        self.ground = flat if kind == 'accent' else self.dark if kind == 'dark' else self.light
         self.ink = draw.on(self.ground, '#121212', '#ffffff')
         self.on_dark = self.ground != self.light and self.ink == '#ffffff'
         self.soft = draw.mix(self.ink, self.ground, .42)

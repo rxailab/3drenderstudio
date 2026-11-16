@@ -287,6 +287,14 @@ class ImageClientTests(unittest.TestCase):
         # With no scene of its own, the stock scene follows the choice too.
         self.assertIn('with a person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=True))
         self.assertNotIn('person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=False))
+        # Hands at work, close up: the tool, the hands and what it works on; no face and no whole figure.
+        hands = scene_imagegen.prompt('pliers', 180, 3, 'An electrician in a hallway strips a cable.', '1:1', people=True, framing='hands')
+        for phrase in ('close-up of the product at work', 'hands of an adult hold and operate the product', 'at the point of contact',
+                       'no face, no head and no whole figure', 'overrides any wider view', 'bare or in plain work gloves'):
+            self.assertIn(phrase, hands)
+        self.assertNotIn('arms and upper body in the frame', hands); self.assertNotIn('People are ordinary adults', hands)
+        self.assertIn('arms and upper body in the frame', scene_imagegen.prompt('pliers', 180, 3, '', '1:1', people=True, framing='person'))
+        self.assertNotIn('close-up of the product at work', scene_imagegen.prompt('pliers', 180, 3, '', '1:1', people=False, framing='hands'))
 
     def test_sizes_follow_the_plan_and_views_cover_the_other_sides(self):
         self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(2048, 2048), (2048, 1536), (1536, 2048)])

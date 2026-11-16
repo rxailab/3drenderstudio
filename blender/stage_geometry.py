@@ -26,7 +26,7 @@ def largest_opening(occupied, nu, nv, directions=16, need=ENCLOSED):
     edge = [(x, y) for y in range(nv) for x in range(nu) if occupied[y * nu + x]
             and not (solid(x - 1, y) and solid(x + 1, y) and solid(x, y - 1) and solid(x, y + 1))]
     rays = [(math.cos(2 * math.pi * k / directions), math.sin(2 * math.pi * k / directions)) for k in range(directions)]
-    best = None
+    best = None; found = []
     for y in range(nv):
         for x in range(nu):
             if occupied[y * nu + x]:
@@ -47,9 +47,15 @@ def largest_opening(occupied, nu, nv, directions=16, need=ENCLOSED):
                 continue
             radius = math.sqrt(min((ex - x) ** 2 + (ey - y) ** 2 for ex, ey in edge)) - .5
             score = radius * (enclosure - .5)
-            if radius >= 1.5 and (best is None or score > best[0]):
-                best = (score, x, y, radius, enclosure)
-    return best[1:] if best else None
+            if radius >= 1.5:
+                found.append((x, y, radius, enclosure))
+                if best is None or score > best[0]:
+                    best = (score, x, y, radius, enclosure)
+    if not best:
+        return None
+    # The score finds the opening; its size is the widest disc that fits there, which may sit a little nearer the mouth.
+    _, bx, by, reach, _ = best
+    return max((row for row in found if (row[0] - bx) ** 2 + (row[1] - by) ** 2 <= reach * reach), key=lambda row: (row[2], row[3]))
 
 
 def stock_size(limit, sizes=PIPE_SIZES, fill=.92):

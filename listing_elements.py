@@ -169,24 +169,27 @@ def frame(brand, height, title=None, mark=None):
     """The header and footer every page of the listing shares. Returns (items, content box [x0, y0, x1, y1])."""
     items = []; top = 40; bottom = height - 40; header = brand.tokens['header']; footer = brand.tokens['footer']
     mark = mark or (brand.badges[0] if brand.badges else None)
+    logo = getattr(brand, 'logo_path', None); named = brand.name if not logo else ''
     if header == 'band':
         band = 124; stripe = 10
         items += [{'type': 'rect', 'x': 0, 'y': 0, 'w': 1000, 'h': band, 'fill': brand.dark},
                   {'type': 'rect', 'x': 0, 'y': band, 'w': 1000, 'h': stripe, 'fill': brand.accent_on_dark}]
         right = 948
-        if brand.name and title:
+        if logo:
+            items.append({'type': 'image', 'src': str(logo), 'x': 728, 'y': 30, 'w': 220, 'h': band - 60, 'fit': 'contain', 'anchor': (1, .5)}); right = 700
+        if named and title:
             style = {**brand.tokens['headline'], 'size': 24, 'color': draw.mix('#ffffff', brand.dark, .25), 'align': 'right'}
             items.append({'type': 'text', 'x': 600, 'y': (band - draw.cap_height(style)) / 2, 'w': 348, 'text': brand.name, 'style': style}); right = 560
         if title:
             style = {**brand.tokens['headline'], 'size': 50, 'color': '#ffffff'}
-            item, block = text(title, style, 52, 0, right - 52 if brand.name else 896, 1, .5)
+            item, block = text(title, style, 52, 0, right - 52, 1, .5)
             item['y'] = (band - draw.cap_height(item['style'])) / 2; items.append(item)
         elif mark:
             parts, _ = badge(brand, mark, 52, 30, 64, 'box', brand.dark); items += parts
-            if brand.name:
+            if named:
                 style = {**brand.tokens['headline'], 'size': 24, 'color': draw.mix('#ffffff', brand.dark, .25), 'align': 'right'}
                 items.append({'type': 'text', 'x': 500, 'y': (band - draw.cap_height(style)) / 2, 'w': 448, 'text': brand.name, 'style': style})
-        elif brand.name:
+        elif named:
             style = {**brand.tokens['headline'], 'size': 44, 'color': '#ffffff'}
             items.append({'type': 'text', 'x': 52, 'y': (band - draw.cap_height(style)) / 2, 'w': 896, 'text': brand.name, 'style': style})
         top = band + stripe + 26
@@ -208,6 +211,8 @@ def frame(brand, height, title=None, mark=None):
             top += 14
     elif mark:
         parts, _ = badge(brand, mark, 56, 52, 58); items += parts; top = 138
+    if logo and header != 'band':
+        items.append({'type': 'image', 'src': str(logo), 'x': 764, 'y': 44, 'w': 180, 'h': 64, 'fit': 'contain', 'anchor': (1, .5)}); top = max(top, 128)
     if footer == 'band':
         band = 54
         items.append({'type': 'rect', 'x': 0, 'y': height - band, 'w': 1000, 'h': band, 'fill': brand.dark})
@@ -279,13 +284,20 @@ def callout(brand, title, detail, anchor, x, y, w, side, ground=None, size=27):
     if anchor:
         edge = x + w + 14 if side == 'left' else x - 14
         middle = y + draw.cap_height(title_item['style']) / 2
-        items.insert(0, leader(brand, (edge, middle), anchor, ground))
+        if (anchor[0] > edge + 6) if side == 'right' else (anchor[0] < edge - 6):
+            # The spot is above or below the words, not beside them: the line leaves from the label's own edge, never through it.
+            above = anchor[1] < y
+            start = (max(x + 8, min(x + w - 8, anchor[0])), y - 12 if above else y + block + 10)
+            line = leader(brand, start, anchor, ground); line['points'] = [list(start), list(anchor)]
+            items.insert(0, line)
+        else:
+            items.insert(0, leader(brand, (edge, middle), anchor, ground))
     return items, block
 
 
-def dimension(brand, p1, p2, label, offset=34, ground=None, size=25):
+def dimension(brand, p1, p2, label, offset=34, ground=None, size=25, label_at=.5):
     ground = ground or brand.ground; ink = brand.ink_for(ground)
-    return {'type': 'dimension', 'p1': list(p1), 'p2': list(p2), 'offset': offset, 'label': label, 'color': ink, 'width': 2.4, 'plate': ground, 'ends': 'arrow',
+    return {'type': 'dimension', 'p1': list(p1), 'p2': list(p2), 'offset': offset, 'label': label, 'label_at': label_at, 'color': ink, 'width': 2.4, 'plate': ground, 'ends': 'arrow',
             'marker_size': 11, 'style': {**brand.tokens['label'], 'size': size, 'color': ink, 'case': 'none'}}
 
 

@@ -377,6 +377,7 @@ def state(project_id):
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
             'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in listing_pages.KINDS.items()},
+            'order': list(AUTO_ORDER),
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
             'options': {'workpieces': list(WORKPIECES), 'materials': list(MATERIALS), 'modes': list(MODES), 'languages': list(LANGUAGES),
                         'workpiece_names': listing_pages.WORKPIECE_NAMES['zh'], 'material_names': listing_pages.MATERIAL_NAMES['zh']},
@@ -462,7 +463,7 @@ def picture_requests(project, product, size_mm, rows):
             if use.get(key):
                 workpiece[key] = use[key]
         requests['usecase'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm), 'workpiece': workpiece,
-                               'camera': {'azimuth': azimuth, 'elevation': 20, 'focal_length': 85, 'margin': .15, 'auto': 'workpiece', 'offset': [0, .03]},
+                               'camera': {'azimuth': azimuth, 'elevation': 20, 'focal_length': 85, 'margin': .15, 'auto': 'workpiece', 'offset': [0, -.02]},
                                'ground': 'shadow' if use['mode'] in ('under', 'front') else 'none', 'size': [1600, 1600], 'samples': 48}
     return requests
 
@@ -531,6 +532,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         shots[name] = listing_pages.Shot(result, picture)
     product_color = brand_kit.dominant_color(shots['hero'].path)
     brand = brand_kit.Brand(brand_record, product_color)
+    brand.logo_path = components.path_of(project_id, brand_record.get('logo'))
     ctx = context(project, product, brand, parts, shots, size_mm, known)
     folder = DATA / project_id / 'listing' / ('build-' + uuid.uuid4().hex[:10]); folder.mkdir(parents=True)
     pages = []
@@ -577,7 +579,11 @@ def _run(task_id):
         if not cancelled():
             _task_update(task_id, status='running', stage=stage, progress=round(low + (high - low) * max(0.0, min(1.0, share))), detail=detail)
     try:
-        _task_update(task_id, status='running')
+        with LOCK:
+            task = get(KIND, task_id)
+            if task['status'] != 'queued':          # cancelled before it started
+                return
+            task['status'] = 'running'; put(KIND, task)
         pages, _ = build(project_id, cancelled, progress)
         if not cancelled():
             _task_update(task_id, status='completed', stage='done', progress=100, detail='', pages=len(pages))

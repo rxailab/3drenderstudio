@@ -579,6 +579,53 @@ def component_refresh(ident,component_id):
     engine.require_runtime('render')
     return jsonify(components.refresh(ident,component_id)),202
 
+@app.get('/api/projects/<ident>/listing')
+def listing_state(ident):
+    """The listing workspace: product record, brand, components, planned and built images."""
+    import listing
+    return jsonify(listing.state(ident))
+
+@app.put('/api/projects/<ident>/listing/product')
+def listing_product(ident):
+    import listing
+    return jsonify(listing.save_product(ident,request.get_json(force=True)))
+
+@app.put('/api/projects/<ident>/listing/brand')
+def listing_brand(ident):
+    import listing
+    return jsonify(listing.save_brand(ident,request.get_json(force=True)))
+
+@app.route('/api/projects/<ident>/listing/logo',methods=['POST','DELETE'])
+def listing_logo(ident):
+    import listing
+    if request.method=='DELETE': return jsonify(listing.save_brand(ident,{'logo':None}))
+    upload=request.files.get('file')
+    if not upload: raise ValueError('请选择标志图片')
+    return jsonify(listing.save_logo(ident,upload.stream,upload.filename))
+
+@app.post('/api/projects/<ident>/listing/draft')
+def listing_draft(ident):
+    """Fill the product record's words from the model and the user's notes."""
+    import listing
+    return jsonify(listing.draft(ident,request.get_json(force=True)))
+
+@app.post('/api/projects/<ident>/listing/build')
+def listing_build(ident):
+    import listing
+    try:return jsonify(listing.submit(ident,request.get_json(silent=True) or {})),202
+    except engine.JobConflictError as exc:abort(409,description=str(exc))
+
+@app.post('/api/projects/<ident>/listing/<task_id>/cancel')
+def listing_cancel(ident,task_id):
+    import listing
+    return jsonify(listing.cancel(ident,task_id))
+
+@app.get('/api/projects/<ident>/listing/download')
+def listing_download(ident):
+    import listing
+    data,name=listing.archive(ident)
+    return send_file(io.BytesIO(data),mimetype='application/zip',as_attachment=True,download_name=name)
+
 @app.post('/api/projects/<ident>/scene/<task_id>/cancel')
 def scene_cancel(ident,task_id):
     import scene_stylist
@@ -934,6 +981,8 @@ if __name__=='__main__':
     orientation.recover_interrupted()
     import components
     components.start();components.recover_interrupted()
+    import listing
+    listing.recover_interrupted()
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

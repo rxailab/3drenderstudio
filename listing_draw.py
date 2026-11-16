@@ -105,23 +105,43 @@ def cased(text, case):
     return text.upper() if case == 'upper' else text.title() if case == 'title' else text
 
 
-def _runs(text):
-    """Split into stretches of one script: [(text, is CJK)]."""
+@lru_cache(maxsize=4096)
+def _has_glyph(family, char):
+    """Whether this family draws the character itself. A display face covers little beyond basic Latin."""
+    face = _font(family, 32, 400, 100, False)
+    try:
+        return bytes(face.getmask(char)) != bytes(face.getmask('\uffff')) or char == '\uffff'
+    except (OSError, ValueError):
+        return True
+
+
+def _runs(text, family='inter'):
+    """Split into stretches drawn with one font: [(text, 'cjk' | 'plain' | '')], '' being the style's own face."""
     runs = []
     for char in text:
-        wide = bool(CJK.match(char))
-        if runs and runs[-1][1] == wide:
+        kind = 'cjk' if CJK.match(char) else 'plain' if ord(char) > 126 and family != 'inter' and not _has_glyph(family, char) else ''
+        if char == ' ' and runs:
+            kind = runs[-1][1] if runs[-1][1] != 'cjk' else ''
+        if runs and runs[-1][1] == kind:
             runs[-1][0] += char
         else:
-            runs.append([char, wide])
-    return [(part, wide) for part, wide in runs]
+            runs.append([char, kind])
+    return [(part, kind) for part, kind in runs]
+
+
+def _face(style, size, kind):
+    if kind == 'cjk':
+        return _cjk_font(size)
+    if kind == 'plain':
+        return _font('inter', size, style['weight'], 100, False)
+    return _font(style['font'], size, style['weight'], style['width'], style['italic'])
 
 
 def _advance(text, style, pixels_per_unit):
     """Width in pixels of one stretch of text at this scale, tracking included."""
     size = max(1, round(style['size'] * pixels_per_unit)); total = 0.0
-    for part, wide in _runs(text):
-        face = _cjk_font(size) if wide else _font(style['font'], size, style['weight'], style['width'], style['italic'])
+    for part, kind in _runs(text, style['font']):
+        face = _face(style, size, kind)
         if style['tracking']:
             total += sum(face.getlength(char) for char in part) + style['tracking'] * size * len(part)
         else:
@@ -220,7 +240,8 @@ def dimension_parts(item):
     if abs(offset) > 10:
         for (px, py), (qx, qy) in (((x1, y1), a), ((x2, y2), b)):
             lines.append({'points': [(px + nx * gap, py + ny * gap), (qx + nx * past, qy + ny * past)], 'thin': True})
-    middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+    share = float(item.get('label_at', .5))                 # where along the span the label sits
+    middle = (a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share)
     return lines, middle, (nx, ny)
 
 
@@ -272,7 +293,8 @@ class Painter:
         layer, draw, origin = self._layer((x, y, x + w, y + h))
         if layer is None:
             return
-        box = (self.px(x) - origin[0], self.px(y) - origin[1], self.px(x + w) - origin[0] - 1, self.px(y + h) - origin[1] - 1)
+        left = self.px(x) - origin[0]; top = self.px(y) - origin[1]
+        box = (left, top, max(left, self.px(x + w) - origin[0] - 1), max(top, self.px(y + h) - origin[1] - 1))       # never inside out, however small
         radius = min(self.px(float(item.get('radius', 0))), (box[2] - box[0]) / 2, (box[3] - box[1]) / 2)
         stroke = max(1, round(self.px(float(item.get('stroke_width', 2))))) if item.get('stroke') else 0
         fill = color(item['fill']) if item.get('fill') else None
@@ -381,8 +403,8 @@ class Painter:
         size = max(1, round(self.px(style['size'])))
         for part, accented in line:
             ink = accent if accented and accent else fill
-            for piece, wide in _runs(part):
-                face = _cjk_font(size) if wide else _font(style['font'], size, style['weight'], style['width'], style['italic'])
+            for piece, kind in _runs(part, style['font']):
+                face = _face(style, size, kind)
                 if style['tracking']:
                     for char in piece:
                         draw.text((x, baseline), char, font=face, fill=ink, anchor='ls', stroke_width=stroke, stroke_fill=stroke_fill)

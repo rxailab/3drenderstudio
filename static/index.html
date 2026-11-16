@@ -56,6 +56,7 @@
 <span>AI 设置</span>
 </button>
 <span class="topbar-divider project-only" aria-hidden="true"></span>
+<button id="listingOpen" class="button secondary project-only" type="button" title="把产品、套装组件和品牌风格排成一组电商图片">套图</button>
 <button id="previewButton" class="button secondary project-only" type="button" aria-describedby="renderReason">预览</button>
 <button id="renderButton" class="button primary project-only" type="button" aria-describedby="renderReason">渲染 4K</button>
 <p id="renderReason" class="sr-only" role="status"></p>
@@ -906,6 +907,38 @@
 </div>
 </section>
 </dialog>
+<dialog id="listingDialog" class="listing-dialog" aria-labelledby="listingTitle">
+<div class="dialog-header">
+<div>
+<h2 id="listingTitle">套图</h2>
+<p id="listingIntro">把产品、套装组件和品牌风格排成一组电商图片：主图、套装清单、功能标注、使用场景标注、特写、标题横幅、规格。</p>
+</div>
+<button type="button" class="icon-button close-dialog" aria-label="关闭套图窗口">×</button>
+</div>
+<div class="listing-body">
+<section class="listing-side" aria-label="套图设置">
+<div class="listing-tabs" role="tablist" aria-label="套图设置">
+<button type="button" role="tab" data-listing-tab="product" aria-selected="true">产品信息</button>
+<button type="button" role="tab" data-listing-tab="components" aria-selected="false">套装组件</button>
+<button type="button" role="tab" data-listing-tab="brand" aria-selected="false">品牌风格</button>
+<button type="button" role="tab" data-listing-tab="usecase" aria-selected="false">使用场景</button>
+</div>
+<div id="listingPanel" class="listing-panel" role="tabpanel"></div>
+</section>
+<section class="listing-main" aria-label="套图图片">
+<div class="listing-bar">
+<button id="listingBuild" class="button primary" type="button">生成套图</button>
+<button id="listingCancel" class="button subtle" type="button" hidden>取消</button>
+<a id="listingDownload" class="button secondary" href="#" hidden>下载全部（ZIP）</a>
+<span id="listingStatus" class="listing-status" role="status"></span>
+</div>
+<div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
+<div id="listingPlan" class="listing-plan" role="group" aria-label="要生成的图片"></div>
+<ul id="listingNotes" class="listing-notes"></ul>
+<div id="listingPages" class="listing-pages"></div>
+</section>
+</div>
+</dialog>
 <dialog id="aiSettingsDialog" class="ai-settings-dialog" aria-labelledby="aiSettingsTitle">
 <form id="aiSettingsForm">
 <div class="dialog-header">
@@ -982,5 +1015,6 @@
 <script src="/static/layer.js?v=24" defer></script>
 <script src="/static/app.js?v=24" defer>
 </script>
+<script src="/static/listing.js?v=29" defer></script>
 </body>
 </html>
