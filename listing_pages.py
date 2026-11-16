@@ -413,13 +413,14 @@ def page_band(ctx):
         items.append(hero.place([120, 40, 880, split - 40], shadow=True))
     items += [{'type': 'rect', 'x': 0, 'y': split, 'w': 1000, 'h': H - split, 'fill': band},
               {'type': 'rect', 'x': 0, 'y': split, 'w': 1000, 'h': 10, 'fill': brand.accent_for(band)}]
-    figures = product['figures'][:3]; text_width = 560 if figures else 880; x = 56; y = split + 62
+    figures = product['figures'][:3]; x = 56; y = split + 62
+    column = (360 / len(figures) if len(figures) > 1 else 300) if figures else 0; left = 1000 - 56 - column * len(figures)
+    text_width = left - x - 34 if figures else 880                # the words stop short of the figures
     parts, height = el.headline(brand, product['headline'] or product['title'], x, y, text_width, 80, 3, ground=band)
     items += parts
     if product['subline']:
         sub, _ = el.paragraph(brand, product['subline'], x, y + height + 24, text_width, 25, band, max_lines=3); items += sub
     if figures:
-        column = 360 / len(figures) if len(figures) > 1 else 300; left = 1000 - 56 - column * len(figures)
         for index, figure in enumerate(figures):
             stat_items, _ = el.stat(brand, figure['value'], figure.get('unit', ''), figure['label'], left + index * column + 10, split + 96, column - 20, band,
                                     size=min(86, column * .36), align='center')

@@ -628,6 +628,19 @@ class BuildTests(StoreCase):
         self.assertEqual(shot.shares([320, 400, 480, 480]), (1.0, 0.0)); self.assertEqual(shot.shares([20, 510, 200, 570])[0], 0.0)
         self.assertGreater(shot.shares([20, 510, 200, 570])[1], .8)
 
+    def test_on_the_band_the_headline_stops_short_of_the_key_figures(self):
+        figures = [{'value': '8,500', 'unit': 'rpm', 'label': 'No-load speed'}, {'value': '115', 'unit': 'mm', 'label': 'Disc'}]
+        for preset in brand_kit.PRESETS:
+            with self.subTest(preset=preset):
+                page = listing_pages.compose('band', self.context(preset, headline='Cuts steel, stays cool', figures=figures))
+                texts = [item for item in page['items'] if item['type'] == 'text']
+                headline = texts[0]; reach = headline['x'] + max(draw.line_width(line, headline['style']) for line in headline['lines'])
+                first_figure = min(item['x'] for item in texts if any('8,500' in part for line in item.get('lines') or [[(item.get('text', ''), False)]] for part, _ in line))
+                self.assertLess(reach, first_figure - 10, (reach, first_figure))
+        photo = self.context(); photo['photo'] = photo['shots']['hero'].path
+        first = listing_pages.compose('band', photo)['items'][0]
+        self.assertEqual((first['type'], first['fit'], first['w']), ('image', 'cover', 1000))       # a photograph, when there is one, fills the top
+
     def test_the_specification_page_prints_the_users_rows_and_the_measured_size(self):
         words = self.words(listing_pages.compose('specs', self.context()))
         for expected in ('SPECIFICATIONS', 'PIPE CAPACITY', '6 - 22 MM', 'LENGTH', '300 MM', 'HEIGHT', '180 MM'):
@@ -694,6 +707,7 @@ class BuildTests(StoreCase):
 
     def test_the_web_layer_serves_the_workspace(self):
         import app as application
+        mocked = patch.object(application, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)       # the file route reads its own name for the folder
         client = application.app.test_client()
         state = client.get('/api/projects/fixture/listing').get_json()
         self.assertEqual((state['product']['model'], state['brand']['name'], state['pages'], state['task']), ('PC-22', 'NORTHFORGE', [], None))
