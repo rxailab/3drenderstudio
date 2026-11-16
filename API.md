@@ -1,5 +1,37 @@
 # 本地接口与可复现性
 
+## v30 产品锁定的场景图、倒影、随项目上传的组件
+
+**新建项目时上传组件。** `POST /api/projects` 新增两个可选字段：
+
+- `component_files`：每个组件一个文件（GLB / OBJ / ZIP，或一张 PNG / JPG / WebP），最多 24 个。
+- `components`：JSON 数组，与 `component_files` 按顺序一一对应，每项可含 `name`、`role`、`sku`、`caption`、`quantity`、`size_mm`，规则同 `PUT /api/projects/{id}/components/{component_id}`。
+
+文件格式不支持、`role` 未知或 `quantity` 不是 1 到 99 的整数时，整次上传返回 400，不创建项目。带组件的上传在返回中多出 `components`（已登记的组件）和 `component_errors`（`[{file, error}]`，例如 ZIP 里没有模型或有多个模型、图片过大）。组件在产品分析结束后才开始处理。`POST /api/projects/{id}/components` 仍然可用，界面不再使用。
+
+**场景图的产品锁定。** `generated` 记录的变化：
+
+- `anchor`：`{version, box, mask, canvas_url, closeup_url}`。`box` 是产品在画面中的位置（`[x0, y0, x1, y1]`，画面比例）；`mask` 为 `false` 表示图像服务不接受遮罩（返回 400），已改为不带遮罩重试；`canvas_url` 是交给图像模型的画布；`closeup_url` 是选中那一次的并排特写，只在测量通过时有。
+- `references` 只有一张：按场景相机渲染的产品。
+- `check.lock`：`{version, status, score, scale, shift, covered, changed, regions, tiles, tile_scores}`。`status` 取 `kept`、`moved`、`changed`、`hidden`；`score` 是轮廓匹配度；`covered` 是被手或工件挡住的比例；`changed` 是边缘对不上的小块比例，`regions` 是这些小块的位置（画面比例）。`status` 不是 `kept` 时，`check.status` 为 `failed`，不再调用视觉模型。
+- `discarded[]` 多出 `lock`（该次的 `status`）。
+
+场景任务的阶段新增「渲染产品（锁定外形用）」「核对产品位置与外形」「产品被移动或改动，正在重新生成」。
+
+**倒影。** 方案新增 `reflection`，默认 `true`；为 `false` 时恢复旧的无倒影地面。渲染结果新增 `reflection`：
+
+- 白底与灰底：`{ground, reflected_columns, strength, length, reach_px}`，`ground` 为 `white` 或 `soft`。
+- 深色底：`{method: "glossy floor"}`。
+- 用 3D 道具布置的场景，或 `reflection` 为 `false`：`null`。
+
+**套图。**
+
+- 主图在有模型组件时使用新的摆拍 `kit`：产品与组件在同一个场景里渲染。摆拍请求新增 `companions`，结果多出 `companions`（`[{name, role, rect}]`）和 `kit_rect`。
+- 名称含工具类词语、高度至少是长宽中较大者 1.45 倍的产品，套图里的摆拍改为平放（只影响套图，不改项目的方案）。
+- 摆拍结果与套图中的抠图默认带倒影；尺寸规格页除外。
+
+**删除的接口。** 图文图层与图标的接口已删除：`/api/projects/{id}/layers/…` 与 `/api/icons`、`/api/icons/draw`。下文 v23 到 v26 中关于图文图层的内容只作历史记录。
+
 ## v29 套图
 
 **组件。** 项目的 `components` 是组件列表。

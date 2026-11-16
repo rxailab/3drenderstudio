@@ -1,22 +1,26 @@
 """Usage scenes that need people or a real place, made by an image model.
 
 A scene with an operator, a jobsite or a garden cannot be assembled from a
-floor, a wall and a few props. For those the product is rendered in Blender
-from a few angles, exactly as it is, and the renders go to an image model with
-the description of the scene. The renders are the only pictures the model
-receives: they pin down the product's shape, parts and colours, so the model
-places this product in the scene instead of inventing a similar one. The
-result is then compared with the renders by the vision model, and a picture
-that changed the product is made once more with the differences named. The
-same check looks for a person: when the user asked for one and the picture
-has none (or the other way round), that too is corrected once.
+floor, a wall and a few props. For those an image model paints the scene. It
+used to be given renders of the product and asked to draw the product into
+the scene; it drew it again, and the copy drifted: parts bent, went missing or
+changed size, most of all in a hand. Now the product is not drawn by the model
+at all (see scene_lock.py):
 
-    references()   the product from the target angle and two others (cached)
-    prompt()       the request: what to keep exactly, which scene to build
-    edit()         one call to the Images API, streamed so slow gateways hold;
-                   when a gateway gives up all the same, once more at low quality
-    check()        does the product still match the renders; is a person there
-    create()       all of the above; returns the image and its record
+    product_render()  the product from the scene's camera, on transparent film (cached)
+    prompt()          the request: the product in image 1 is finished and fixed;
+                      paint the scene, the hands and the shadow around it
+    edit()            one call to the Images API with the canvas and a mask that
+                      keeps the product, streamed so slow gateways hold; when a
+                      gateway gives up all the same, once more at low quality
+    scene_lock        whether the product stayed where it was and as it was,
+                      measured on the picture
+    check()           the vision model's look: the product beside its render,
+                      whether a person (or only hands) is there
+    create()          all of the above; returns the image and its record
+
+A picture that moved, redrew or hid the product, or got the people wrong, is
+made once more with the fault named.
 
 No third-party picture is ever sent: the reference pack contributes words
 only (see scene_audience.py), and publisher names are removed from them.
@@ -45,6 +49,14 @@ REFERENCE_VERSION = 1          # part of the cache key: raise it when reference 
 REFERENCE_QUALITY = 'reference'
 REFERENCE_TIMEOUT = 900
 MAX_ATTEMPTS = 2               # the first picture, and one correction when the product changed
+RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
+RENDER_SAMPLES = 48
+LOCK_FIXES = {'moved': 'the product was moved, resized or drawn again somewhere else: it must stay exactly where it is in image 1, at the '
+                       'same size and angle, and only the area around it may be painted',
+              'changed': 'parts of the product were redrawn%s: every part must stay exactly as it is in image 1',
+              'hidden': 'the product is almost hidden: hands or objects may overlap its edges, but most of it must stay in view'}
+LOCK_NOTES = {'moved': '图像模型移动或重画了产品，没有保持它在画面中的位置与外形。', 'changed': '图像模型改动了产品的部分外形。',
+              'hidden': '产品被手或物体遮挡得太多。'}
 READ_TIMEOUT = 150             # seconds without a byte
 TOTAL_TIMEOUT = 480
 MAX_STREAM = 96 * 1024 * 1024
@@ -54,7 +66,7 @@ SIZES_1K = {'1:1': (1024, 1024), '4:3': (1536, 1024), '3:4': (1024, 1536)}
 
 FIDELITY_PROMPT = '''You check a generated photograph against renders of the real product. The REFERENCE images are renders of the product's 3D model from several sides: they are the truth about its shape, parts, colours and materials. GENERATED is a photograph made by an image model; it should show this same product in a scene.
 Compare the product in GENERATED with the references. Return data only:
-- product_present: the product is in the picture, once, and recognisable.
+- product_present: the product is in the picture exactly once and recognisable; a second copy, a doubled outline or a ghost of it counts as false.
 - shape_consistent: its overall shape and proportions match, allowing for perspective and for a drawer, door or lid shown open.
 - parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
@@ -70,7 +82,7 @@ Judge only what can be seen. A side that faces away is not a difference, and a p
 PEOPLE_RULES = {
     True: ('PEOPLE. The picture must show a person actually using or handling the product: their hands on it and at least their arms '
            'and upper body in the frame, in a natural working posture. The person is clearly visible, not a blur at the edge. The '
-           'product stays the main subject and is not hidden by the person.'),
+           'product stays the main subject and is not hidden by the person; hands hold it as it is placed and never change its shape.'),
     False: ('PEOPLE. Nobody is in the picture: no person, no hands or other body parts, no silhouettes, shadows or reflections of '
             'people. The product stands or lies ready for use in the scene.'),
 }
@@ -79,10 +91,11 @@ PEOPLE_FIXES = {True: 'no person is visible: show a person clearly using or hand
 PEOPLE_NOTES = {True: '画面里没有出现人物，与「包含人物」的要求不符。', False: '画面里出现了人物，与「不含人物」的要求不符。'}
 # A hand at work says more about a tool than a whole figure does: the default way a person appears.
 FRAMINGS = ('hands', 'person')
-HANDS_RULE = ('PEOPLE. A close-up of the product at work. One or two hands of an adult hold and operate the product, and the thing it '
+HANDS_RULE = ('PEOPLE. A close-up of the product at work. One or two hands of an adult come in from the edge of the frame, hold and operate the '
+              'product where a user grips it, and the thing it '
               'is working on is in the frame at the point of contact. Crop tight around the product, the hands and the work: forearms '
               'may enter from the edge of the frame, but no face, no head and no whole figure appears. This framing overrides any '
-              'wider view in the scene description. The product is the largest thing in the picture, sharp, and not hidden by the hands.')
+              'wider view in the scene description. The product is the largest thing in the picture, sharp, and not hidden by the hands: fingers may wrap round it and cover small parts of it, never change its shape.')
 HANDS_FIXES = {'missing': 'no hand is visible: show one or two hands holding and operating the product, close up, with what it works on',
                'face': 'a face, a head or a whole figure is visible: crop to a close-up of the hands on the product and the work, with no '
                        'head or torso in the frame'}
@@ -95,6 +108,10 @@ class ImageError(ValueError):
 
 class GatewayError(ImageError):
     """The gateway in front of the image model gave up (HTTP 502 or 504), usually because the picture took too long."""
+
+
+class RejectedError(ImageError):
+    """The service refused the request as made (HTTP 400): a parameter it does not take, such as the mask."""
 
 
 def config():
@@ -215,8 +232,28 @@ def references(project, plan, azimuth, elevation, cancelled=None, progress=None)
     return rows
 
 
-def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None, people=None, framing=None):
-    """The words sent with the renders. ``scene`` is the only free text in it.
+def product_render(project, plan, azimuth, elevation, size_mm, canvas, cancelled=None, progress=None):
+    """The product as the scene's camera sees it, on transparent film, at the plan's pose and finishes. Cached per request.
+
+    Returns the staged result: 'path' (RGBA PNG), 'product_rect', 'azimuth', 'elevation' and the rest of blender/stage.py's report.
+    """
+    import components
+    stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
+    pixels = RENDER_PX.get(max(canvas), 1400)
+    request = {'action': 'render', 'model_path': str(project['model_path']), 'plan': _reference_plan(plan), 'size_mm': float(size_mm or 300),
+               'camera': {'azimuth': float(azimuth), 'elevation': float(elevation), 'focal_length': 55, 'margin': .04},
+               'ground': 'none', 'size': [pixels, pixels], 'samples': RENDER_SAMPLES}
+    say('渲染产品（锁定外形用）')
+    try:
+        return components.stage(project['id'], request, stop)
+    except components.ComponentCancelled:
+        raise InterruptedError() from None
+    except ValueError as exc:
+        raise ImageError('产品渲染失败，当前方案未修改：%s' % str(exc)[:160]) from None
+
+
+def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None):
+    """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
     may be, and None when the scene description alone decides. With a person,
@@ -227,18 +264,19 @@ def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None, peopl
     product = re.sub(r'\s+', ' ', str(product or 'product')).strip()[:120]
     size = ''
     if size_mm:
-        size = ' Its largest dimension is about %s.' % ('%d cm' % round(size_mm / 10) if size_mm >= 100 else '%d mm' % round(size_mm))
-    views = ('The attached image is a render of it.' if count == 1 else
-             'The attached %d images are renders of it from different sides: image 1 is the side to show it from, '
-             'the others show its other sides and its top.' % count)
+        size = ' Its largest dimension is about %s, which sets the scale of everything around it.' % (
+            '%d cm' % round(size_mm / 10) if size_mm >= 100 else '%d mm' % round(size_mm))
     lines = [
-        'Create one photorealistic photograph for an online shop.',
-        'THE PRODUCT is a %s.%s %s Reproduce this product exactly as rendered: the same shape and proportions, the same number '
-        'and position of every part, the same colours and materials. Do not redesign, simplify, add or remove anything on it, and '
-        'do not put any logo or lettering on it. Show one single product, complete and clearly recognisable, seen from roughly the '
-        'side of image 1.' % (product, size, views),
-        'THE SCENE. ' + (scene or ('A believable place where this product is used, the product standing ready for use.' if people is False
-                                   else 'A believable place where this product is used, with a person using it.')),
+        'Complete this photograph for an online shop. Image 1 is the unfinished photograph.',
+        'THE PRODUCT is a %s.%s It is already in image 1, in its final place, on a plain grey ground. It is finished and fixed: '
+        'keep it exactly as it is, in the same position, at the same size and angle, with the same shape, parts, colours and materials. '
+        'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Only the light falling on it may '
+        'change, to match the scene.' % (product, size),
+        'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it stands: what it rests on '
+        'or is held by, the shadow it casts, the place around it. The perspective, scale and light of the scene must agree with the '
+        'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
+            'A believable place where this product is used, the product standing ready for use.' if people is False
+            else 'A believable place where this product is used, with a person using it.')),
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
         'signs, captions or other text anywhere in the picture, and no watermark.%s Composition for a %s frame.'
         % (((' and its surroundings', '') if people is False else
@@ -253,7 +291,7 @@ def prompt(product, size_mm, count, scene, aspect='1:1', corrections=None, peopl
     if corrections:
         fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:6] if str(item).strip())
         if fixes:
-            lines.append('CORRECTIONS. An earlier attempt got these wrong, compared with the renders and with this request. Fix each of them: ' + fixes + '.')
+            lines.append('CORRECTIONS. An earlier attempt got these wrong, compared with image 1 and with this request. Fix each of them: ' + fixes + '.')
     return '\n\n'.join(lines)
 
 
@@ -348,8 +386,12 @@ def _read_stream(response, stop, say, deadline):
     return final, usage
 
 
-def edit(value, text, images, size, cancelled=None, progress=None):
-    """One generation: the renders in, a PNG out. Returns {'png', 'size', 'usage'}."""
+def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
+    """One generation: the renders in, a PNG out. Returns {'png', 'size', 'usage'}.
+
+    ``mask`` is PNG bytes the size of the first image: where it is transparent the model may paint,
+    where it is opaque the first image is to be kept.
+    """
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
     from ai_client import NoRedirect
     from ai_model_policy import assert_model_allowed
@@ -367,6 +409,8 @@ def edit(value, text, images, size, cancelled=None, progress=None):
         except (OSError, ValueError, RuntimeError):
             raise ImageError('无法读取产品参考图，未发送图像请求。') from None
         files.append(('image[]', 'product-%d.png' % index, content))
+    if mask:
+        files.append(('mask', 'mask.png', mask))
     fields = [('model', value['model']), ('prompt', text), ('size', '%dx%d' % tuple(size)), ('quality', value.get('quality', 'medium')),
               ('stream', 'true'), ('partial_images', '2')]
     body, content_type = _multipart(fields, files)
@@ -390,7 +434,7 @@ def edit(value, text, images, size, cancelled=None, progress=None):
         raise
     except urllib.error.HTTPError as error:
         message = _http_message(error); code = error.code; error.close()
-        raise (GatewayError if code in (502, 504) else ImageError)(message) from None
+        raise (GatewayError if code in (502, 504) else RejectedError if code == 400 else ImageError)(message) from None
     except (socket.timeout, TimeoutError):
         raise ImageError('图像生成超时，请重试。') from None
     except urllib.error.URLError:
@@ -413,7 +457,7 @@ def fidelity_schema():
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product, people=None, framing=None):
+def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None):
     """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
@@ -435,6 +479,10 @@ def check(reference_paths, generated_path, product, people=None, framing=None):
         for index, path in enumerate(reference_paths, 1):
             blocks += [{'type': 'text', 'text': 'REFERENCE %d: render of the real product.' % index}, ai._image(path, value['provider'])]
         blocks += [{'type': 'text', 'text': 'GENERATED: the photograph to check.'}, ai._image(generated_path, value['provider'], max_size=1536)]
+        if closeup:
+            blocks += [{'type': 'text', 'text': 'CLOSE-UP: on the left the render, on the right the same part of GENERATED at the same scale. '
+                                                'Compare the product part by part here; anything in front of it (a hand, the workpiece) is not a difference.'},
+                       ai._image(closeup, value['provider'], max_size=1536)]
         message = body['messages'][-1]
         if not isinstance(message.get('content'), list):
             raise ValueError('unexpected request shape')
@@ -464,6 +512,15 @@ def check(reference_paths, generated_path, product, people=None, framing=None):
             'product_consistent': faithful, 'people': seen}
 
 
+def _lock_verdict(lock, box):
+    """A failed check for a picture whose product the measurement says was not kept."""
+    import scene_lock
+    status = lock['status']
+    places = scene_lock.describe(lock, box) if status == 'changed' else []
+    issue = LOCK_FIXES[status] % ((' (around its %s)' % ', '.join(places[:3])) if places else '') if status == 'changed' else LOCK_FIXES[status]
+    return {'status': 'failed', 'issues': [issue], 'note': LOCK_NOTES[status], 'product_consistent': False}
+
+
 def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None):
     """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``.
 
@@ -471,23 +528,43 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     nobody may be; None leaves it to the scene description. ``framing``
     'hands' shows that person as hands at work, close up, with no face.
     """
+    import scene_lock
     hands = people is True and framing == 'hands'
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
     value = config()
     if not value:
         raise ImageError('图像模型未配置或已关闭，无法生成含人物或复杂环境的场景。')
     started = time.time()
-    rows = references(project, plan, azimuth, elevation, stop, say)
-    paths = [row['path'] for row in rows]
     aspect = plan.get('aspect', '1:1'); size = size_for(aspect, value['model'])
     folder.mkdir(parents=True, exist_ok=True)
+    staged = product_render(project, plan, azimuth, elevation, size_mm, size, stop, say)
+    if stop(): raise InterruptedError()
+    # The anchor: the product's own render in its final place; the mask keeps it, the model paints the rest.
+    with Image.open(staged['path']) as cutout:
+        canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'none')
+    canvas_path = folder / 'canvas.png'; canvas.save(canvas_path)
+    reference = Image.new('RGB', size, (255, 255, 255)); reference.paste(layer, mask=layer.getchannel('A'))
+    reference_path = folder / 'reference.png'; reference.save(reference_path)
+    buffer = io.BytesIO(); scene_lock.mask(layer).save(buffer, 'PNG'); masked = buffer.getvalue()
+    box_share = [round(box[0] / size[0], 4), round(box[1] / size[1], 4), round(box[2] / size[0], 4), round(box[3] / size[1], 4)]
     attempts = []; corrections = None; usage = {}; retry = ''; lowered = None
     for number in range(1, MAX_ATTEMPTS + 1):
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
-        text = prompt(product, size_mm, len(paths), scene, aspect, corrections, people, framing)
+        text = prompt(product, size_mm, scene, aspect, corrections, people, framing)
+
+        def call(value):
+            nonlocal masked
+            try:
+                return edit(value, text, [canvas_path], size, stop, say, mask=masked)
+            except RejectedError:
+                if not masked:
+                    raise
+                # A service that takes no mask still gets the anchored canvas; the measurement below still applies.
+                masked = None
+                return edit(value, text, [canvas_path], size, stop, say)
         try:
-            result = edit(value, text, paths, size, stop, say)
+            result = call(value)
         except GatewayError:
             # A gateway that cuts slow requests off still lets a quick, low-quality picture through.
             if value.get('quality', 'medium') == 'low':
@@ -495,27 +572,40 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             if stop(): raise InterruptedError()
             say('图像服务未能在「%s」质量下完成，改用 low 质量重试' % value.get('quality', 'medium'))
             lowered = value.get('quality', 'medium'); value = {**value, 'quality': 'low'}
-            result = edit(value, text, paths, size, stop, say)
+            result = call(value)
         target = folder / ('attempt%d.png' % number)
         target.write_bytes(result['png'])
         for key, amount in result['usage'].items():
             usage[key] = usage.get(key, 0) + amount
         if stop(): raise InterruptedError()
-        say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
-        verdict = check(paths, target, product, people, framing)
-        attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text})
+        say('核对产品位置与外形')
+        with Image.open(target) as picture:
+            lock = scene_lock.inspect(layer, picture)
+            closeup = None
+            if lock['status'] == 'kept':
+                closeup = folder / ('closeup%d.jpg' % number)
+                scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
+        if lock['status'] != 'kept':
+            verdict = _lock_verdict(lock, box_share)          # no need to ask a model about a product that is measurably not there
+        else:
+            say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
+            verdict = check([reference_path], target, product, people, framing, closeup)
+        verdict['lock'] = lock
+        attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup})
         if verdict['status'] != 'failed':
             break
         corrections = verdict['issues']
         wrong_people = verdict.get('people', {}).get('ok') is False
-        retry = ('产品与参考图不一致，正在重新生成' if not wrong_people else
+        retry = ('产品被移动或改动，正在重新生成' if lock['status'] != 'kept' else
+                 '产品与参考图不一致，正在重新生成' if not wrong_people else
                  '画面里出现了人脸或整个人，正在重新生成手部特写' if hands and verdict['people'].get('visible') else
                  '画面里没有操作产品的手，正在重新生成' if hands else
                  '画面里没有人物，正在重新生成' if people else '画面里出现了人物，正在重新生成')
-    # A passing picture wins; otherwise one that got the people right, then the fewest differences, the later on a tie.
+    # A passing picture wins; otherwise one that kept the product, then got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
     if chosen is None:
-        chosen = min(reversed(attempts), key=lambda item: (item['check'].get('people', {}).get('ok') is False, len(item['check']['issues'])))
+        chosen = min(reversed(attempts), key=lambda item: (item['check']['lock']['status'] != 'kept',
+                                                           item['check'].get('people', {}).get('ok') is False, len(item['check']['issues'])))
     stem = folder.name
     png = folder / (stem + '.png'); jpg = folder / (stem + '.jpg')
     png.write_bytes(chosen['file'].read_bytes())       # untouched: the model's own provenance metadata stays in the file
@@ -523,11 +613,15 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
         picture.convert('RGB').save(jpg, quality=95, subsampling=0)
     width, height = chosen['size']
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
+    import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),
-              'references': [{'url': url(row['path']), 'azimuth': row['azimuth'], 'elevation': row['elevation']} for row in rows],
+              'references': [{'url': url(staged['path']), 'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation)}],
+              'anchor': {'version': scene_lock.VERSION, 'box': box_share, 'mask': bool(masked), 'canvas_url': url(canvas_path),
+                         **({'closeup_url': url(chosen['closeup'])} if chosen.get('closeup') else {})},
               # The quality that was asked for, when the service only completed the picture at a lower one.
               **({'quality_lowered_from': lowered} if lowered else {}),
-              'discarded': [{'url': url(item['file']), 'issues': item['check']['issues']} for item in attempts if item is not chosen]}
+              'discarded': [{'url': url(item['file']), 'issues': item['check']['issues'], 'lock': item['check']['lock']['status']}
+                            for item in attempts if item is not chosen]}
     return {'png': png, 'jpg': jpg, 'width': width, 'height': height, 'record': record}

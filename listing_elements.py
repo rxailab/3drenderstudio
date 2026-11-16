@@ -165,11 +165,16 @@ def paragraph(brand, content, x, y, w, size, ground=None, role='body', max_lines
     return [item], height
 
 
-def frame(brand, height, title=None, mark=None):
-    """The header and footer every page of the listing shares. Returns (items, content box [x0, y0, x1, y1])."""
+def frame(brand, height, title=None, mark=None, fallback=None):
+    """The header and footer every page of the listing shares. Returns (items, content box [x0, y0, x1, y1]).
+
+    ``fallback`` is said in a header band that would otherwise stand empty (no title, badge, name or logo).
+    """
     items = []; top = 40; bottom = height - 40; header = brand.tokens['header']; footer = brand.tokens['footer']
     mark = mark or (brand.badges[0] if brand.badges else None)
     logo = getattr(brand, 'logo_path', None); named = brand.name if not logo else ''
+    if header == 'band' and not (title or mark or named or logo):
+        title = fallback
     if header == 'band':
         band = 124; stripe = 10
         items += [{'type': 'rect', 'x': 0, 'y': 0, 'w': 1000, 'h': band, 'fill': brand.dark},
@@ -235,11 +240,13 @@ def frame(brand, height, title=None, mark=None):
     return items, [40, top, 960, bottom]
 
 
-def cutout(src, x, y, w, h, anchor=(.5, 1), shadow=True, crop=None, flip=False, opacity=1):
-    """A cut-out picture fitted into a box, standing on its own soft shadow."""
+def cutout(src, x, y, w, h, anchor=(.5, 1), shadow=True, crop=None, flip=False, opacity=1, reflection=True):
+    """A cut-out picture fitted into a box, standing on its own soft shadow, with its reflection on the floor."""
     item = {'type': 'image', 'src': str(src), 'x': x, 'y': y, 'w': w, 'h': h, 'fit': 'contain', 'anchor': anchor}
     if shadow:
         item['shadow'] = {'kind': 'ground', 'opacity': .26, 'blur': 9, 'squash': .1}
+    if reflection:
+        item['reflection'] = {'opacity': .3, 'length': .4}
     if crop:
         item['crop'] = crop
     if flip:

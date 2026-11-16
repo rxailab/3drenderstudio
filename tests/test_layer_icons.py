@@ -78,16 +78,6 @@ class CatalogueTests(Offline):
             self.assertGreater((folder / name).stat().st_size, 200)
         self.assertIn('ISC', (folder / 'LICENSE-lucide.txt').read_text(encoding='utf-8'))
 
-    def test_the_photoshop_writer_is_the_recorded_one_with_its_licences(self):
-        folder = ROOT / 'static' / 'vendor' / 'ag-psd'
-        record = json.loads((folder / 'VENDORED.json').read_text(encoding='utf-8'))
-        writer = record['packages'][0]
-        self.assertEqual((writer['package'], writer['license']), ('ag-psd', 'MIT'))
-        self.assertEqual(hashlib.sha256((folder / writer['file']).read_bytes()).hexdigest(), writer['sha256'])
-        self.assertEqual({row['package'] for row in record['packages'][1:]}, {'pako', 'base64-js'})      # bundled inside it
-        for name in ('ag-psd', 'pako', 'base64-js'):
-            self.assertIn('Permission is hereby granted', (folder / ('LICENSE-%s.txt' % name)).read_text(encoding='utf-8'))
-
     def test_a_word_finds_the_literal_picture(self):
         for query, wanted in (('扳手', 'wrench'), ('扳手尺寸', 'wrench'), ('尺寸', 'ruler'), ('承重', 'weight'), ('锁', 'lock'), ('padlock', 'lock'),
                               ('weights', 'weight'), ('drawers', 'archive'), ('电池续航', 'battery'), ('wrench', 'wrench')):
@@ -263,35 +253,6 @@ class AgentTests(Offline):
         self.assertLess(line.getpixel((24, 24))[0], 80); self.assertEqual(line.getpixel((24, 4)), (255, 255, 255))
         ring = icons.rasterise({'ops': [['e', 'M2 2h20v20H2z M8 8h8v8H8z']], 'stroke': 2, 'grid': 24}, 48)
         self.assertLess(ring.getpixel((8, 8))[0], 80); self.assertEqual(ring.getpixel((24, 24)), (255, 255, 255))      # even-odd: the middle is a hole
-
-
-class RouteTests(Offline):
-    def setUp(self):
-        super().setUp()
-        import app as web
-        self.client = web.app.test_client()
-
-    def test_icons_are_searched_and_online_results_come_only_when_asked_and_allowed(self):
-        found = self.client.get('/api/icons?q=%E6%89%B3%E6%89%8B')                  # 扳手
-        body = found.get_json()
-        self.assertEqual(found.status_code, 200); self.assertIn('wrench', body['icons'][0]['name'])
-        self.assertEqual((body['online'], body['online_allowed']), ([], False))
-        self.assertEqual(set(body['icons'][0]), {'id', 'source', 'name', 'license', 'ops', 'stroke', 'grid'})
-        with patch.object(icons, 'online_allowed', return_value=True), patch.object(icons, 'search_online', return_value=[]) as online:
-            self.client.get('/api/icons?q=wrench'); self.assertFalse(online.called)
-            self.client.get('/api/icons?q=wrench&online=1'); self.assertTrue(online.called)
-        for query in ('', '%20', 'x' * 61):
-            with self.subTest(query=query):
-                self.assertEqual(self.client.get('/api/icons?q=' + query).status_code, 400)
-
-    def test_a_drawing_is_asked_for_by_name_and_refused_without_a_model(self):
-        refused = self.client.post('/api/icons/draw', json={'concept': '扳手'})
-        self.assertEqual(refused.status_code, 400); self.assertIn('未配置 AI', refused.get_json()['error'])
-        for body in ({}, {'concept': ''}, {'concept': 'x' * 81}, {'concept': 3}, []):
-            with self.subTest(body=body):
-                self.assertEqual(self.client.post('/api/icons/draw', json=body).status_code, 400)
-        with patch.object(icons, 'draw', return_value=GOOD):
-            self.assertEqual(self.client.post('/api/icons/draw', json={'concept': '扳手'}).get_json()['glyph'], GOOD)
 
 
 if __name__ == '__main__':

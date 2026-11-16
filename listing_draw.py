@@ -515,6 +515,8 @@ class Painter:
                              {'blur': shadow.get('blur', 8), 'dy': 0, 'opacity': shadow.get('opacity', .26), 'color': shadow.get('color', '#000000')})
         elif shadow:
             self._shadow(layer.getchannel('A'), origin, shadow)
+        if item.get('reflection'):
+            self._reflection(layer, origin, item['reflection'])
         crop = (max(0, -origin[0]), max(0, -origin[1]), min(layer.width, self.canvas.width - origin[0]), min(layer.height, self.canvas.height - origin[1]))
         if crop[2] <= crop[0] or crop[3] <= crop[1]:
             return
@@ -528,6 +530,42 @@ class Painter:
                 self.ellipse(ring)
             else:
                 self.rect({**ring, 'radius': item.get('radius', 0) if mask_kind == 'round' else 0})
+
+    def _reflection(self, layer, origin, settings):
+        """The cut-out mirrored down from where each part of it meets the floor, fading with distance (as blender/reflection.py does for renders).
+
+        Done in narrow vertical strips, each flipped about its own lowest point, so the reflection meets an outline that is
+        not level (a box seen from above, a tool on a diagonal) all along it.
+        """
+        alpha = layer.getchannel('A'); bounds = alpha.point(lambda value: 255 if value > 200 else 0).getbbox()
+        if not bounds:
+            return
+        opacity = float(settings.get('opacity', .32)); share = float(settings.get('length', .45))
+        strip = max(2, round(layer.width / 260)); height = bounds[3] - bounds[1]
+        reach = max(2, round(height * share))
+        mirror = Image.new('RGBA', (layer.width, layer.height + reach), (0, 0, 0, 0))
+        solid = alpha.point(lambda value: 255 if value > 200 else 0)
+        for left in range(bounds[0], bounds[2], strip):
+            right = min(bounds[2], left + strip)
+            column = solid.crop((left, 0, right, layer.height)).getbbox()
+            if not column:
+                continue
+            lowest = column[3]; length = max(1, min(reach, round((column[3] - column[1]) * share)))
+            source = layer.crop((left, max(0, lowest - length), right, lowest)).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+            mirror.alpha_composite(source, (left, lowest))
+        # Fade: strongest where it meets the product, gone by the end of its reach.
+        ramp = Image.linear_gradient('L').resize((1, reach)).point(lambda value: round((1 - value / 255) ** 1.6 * 255 * opacity))
+        fade = Image.new('L', mirror.size, 0)
+        for left in range(bounds[0], bounds[2], strip):
+            right = min(bounds[2], left + strip)
+            column = solid.crop((left, 0, right, layer.height)).getbbox()
+            if column:
+                fade.paste(ramp.resize((right - left, reach)), (left, column[3]))
+        mirror.putalpha(ImageChops.multiply(mirror.getchannel('A'), fade))
+        mirror = mirror.filter(ImageFilter.GaussianBlur(max(.6, layer.width / 1400)))
+        crop = (max(0, -origin[0]), max(0, -origin[1]), min(mirror.width, self.canvas.width - origin[0]), min(mirror.height, self.canvas.height - origin[1]))
+        if crop[2] > crop[0] and crop[3] > crop[1]:
+            self.canvas.alpha_composite(mirror.crop(crop), (max(0, origin[0]), max(0, origin[1])))
 
     def icon(self, item):
         import layer_icons

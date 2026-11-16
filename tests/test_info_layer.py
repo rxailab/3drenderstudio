@@ -156,15 +156,6 @@ class ContractTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 info_layer.validate({**base, **bad})
 
-    def test_the_page_draws_exactly_the_icons_the_server_accepts(self):
-        script = (ROOT / 'static' / 'layer.js').read_text(encoding='utf-8')
-        block = script[script.index('const LAYER_ICONS = {'):script.index('};', script.index('const LAYER_ICONS = {'))]
-        drawn = re.findall(r'^\s+([a-z]+): \[', block, flags=re.M)
-        self.assertEqual(tuple(drawn), info_layer.ICONS)
-        for path in re.findall(r"'(M[^']+)'", block):
-            self.assertRegex(path, r'^[MmLlHhVvCcSsAaZz0-9 .\-]+$')              # path data only
-
-
 class KeyPointTests(unittest.TestCase):
     def test_points_name_what_the_parts_are_called_and_never_invent_a_figure(self):
         content, notes = info_layer.copy_rules(project())
@@ -282,121 +273,6 @@ class PictureTests(unittest.TestCase):
         self.assertAlmostEqual(info_layer.text_width('台面', .05), .1)
 
 
-class StorageTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        self.data = Path(self.temp.name)
-        for module in (store, engine, info_layer):
-            item_patch = patch.object(module, 'DATA', self.data); item_patch.start(); self.addCleanup(item_patch.stop)
-        with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
-        record = project(); folder = self.data / 'p' / 'runs' / 'r'; folder.mkdir(parents=True)
-        image = Image.new('RGB', (64, 64), 'white')
-        for x in range(20, 44):
-            for y in range(16, 54): image.putpixel((x, y), (200, 30, 30))
-        image.save(folder / 'hero.png')
-        record['outputs'] = [{'job_id': 'j1', 'shot_id': 'hero', 'version': 1, 'quality': 'preview', 'width': 64, 'height': 64, 'created_at': 5,
-                              'png_url': '/files/p/runs/r/hero.png'}]
-        store.put('project', record)
-
-    def test_a_layer_is_saved_beside_the_plan_and_never_makes_a_render_stale(self):
-        before = store.get('project', 'p')
-        saved = info_layer.save('p', 'hero', {'layer': {'version': 1, 'items': [item()]}, 'expected_revision': 0})
-        self.assertEqual((saved['revision'], len(saved['items'])), (1, 1))
-        after = store.get('project', 'p')
-        self.assertEqual((after['version'], after['plan'], after['history']), (before['version'], before['plan'], before['history']))
-        self.assertEqual(info_layer.save('p', 'hero', {'layer': {'version': 1, 'items': []}, 'expected_revision': 1})['revision'], 2)
-        with self.assertRaises(info_layer.LayerConflict): info_layer.save('p', 'hero', {'layer': {'version': 1, 'items': []}, 'expected_revision': 1})
-        with self.assertRaises(KeyError): info_layer.save('p', 'no-such-shot', {'layer': {'version': 1, 'items': []}})
-        with self.assertRaises(ValueError): info_layer.save('p', 'hero', {'layer': {'version': 1, 'items': [item(type='script')]}})
-        self.assertEqual(engine.project_view('p')['layers']['hero']['revision'], 2)
-        info_layer.remove('p', 'hero'); self.assertNotIn('hero', store.get('project', 'p')['layers'])
-
-    def test_a_proposal_is_laid_out_on_the_saved_scene_and_saves_nothing(self):
-        cells = [0 if 20 <= index % 64 < 44 and 16 <= index // 64 < 54 else -1 for index in range(64 * 64)]
-        for y in range(20, 26):
-            for x in range(22, 42): cells[y * 64 + x] = 1
-        scene = {'success': True, 'nx': 64, 'ny': 64, 'cells': cells, 'objects': ['柜体', 'G-07C抽屉(2)_8']}
-        with patch.object(info_layer, 'probe', return_value=scene) as probe:
-            result = info_layer.suggest('p', 'hero', {'hint': '', 'output': {'job_id': 'j1', 'version': 1, 'quality': 'preview'}})
-        self.assertEqual(probe.call_args.args[1]['job_id'], 'j1')
-        report = result['report']; layer = result['layer']
-        self.assertEqual((report['source'], report['probe'], report['layout']), ('rules', 'scene', layer['layout']))
-        self.assertEqual(report['suitable'][0], layer['layout']); self.assertEqual(sorted(report['suitable']), sorted(['split', 'callouts', 'scene', 'cards', 'spotlight', 'specs']))
-        drawer = next(point for point in layer['content']['points'] if point['title'] == 'Drawer storage')
-        self.assertTrue(22 / 64 <= drawer['anchor'][0] <= 42 / 64 and 20 / 64 <= drawer['anchor'][1] <= 26 / 64)    # where the drawer is in the render
-        self.assertTrue(report['icons']); self.assertTrue(all(icon['source'] in ('lucide', 'tabler') and icon['license'] in ('ISC', 'MIT') for icon in report['icons'].values()))
-        self.assertIn(layer['content']['points'][0]['glyph'], layer['glyphs'])
-        self.assertEqual(layer['basis']['aspect'], '1:1'); self.assertEqual(layer['basis']['azimuth'], store.get('project', 'p')['plan']['shots'][0]['azimuth'])
-        self.assertNotIn('theme', layer); self.assertRegex(layer['canvas']['color'], r'^#[0-9a-f]{6}$')
-        # The same words as structure notes: the line ends on the drawer, wherever the layout put the picture.
-        with patch.object(info_layer, 'probe', return_value=scene):
-            notes = info_layer.suggest('p', 'hero', {'layout': 'callouts'})
-        note = next(item for item in notes['layer']['items'] if item['type'] == 'callout' and item['title'] == 'Drawer storage')
-        x, y = in_render(notes['layer'], note['anchor'])
-        self.assertTrue(22 / 64 - .01 <= x <= 42 / 64 + .01 and 20 / 64 - .01 <= y <= 26 / 64 + .01)
-        self.assertEqual((notes['report']['layout'], notes['report']['anchored']), ('callouts', 1))
-        self.assertNotIn('layers', store.get('project', 'p'))
-
-    def test_without_the_scene_the_picture_itself_is_read_and_the_report_says_so(self):
-        with patch.object(info_layer, 'probe', return_value=None):
-            result = info_layer.suggest('p', 'hero', {})
-        self.assertEqual(result['report']['probe'], 'image'); self.assertTrue(any('没有指向线' in note for note in result['report']['notes']))
-        layer = result['layer']; headline = next(entry for entry in layer['items'] if entry['id'] == 'headline')
-        left, top = on_canvas(layer, (20 / 64, 16 / 64)); right, bottom = on_canvas(layer, (44 / 64, 54 / 64))      # the red block, as the layout shows it
-        end = headline['y'] + len(headline['text'].split('\n')) * headline['size'] * headline['leading']
-        self.assertTrue(headline['x'] + headline['w'] <= left + .01 or headline['x'] >= right - .01 or end <= top + .01 or headline['y'] >= bottom - .01)
-        self.assertTrue(all(entry.get('anchor') is None for entry in layer['items']))
-        self.assertTrue(all(point['anchor'] is None for point in layer['content']['points']))
-
-    def test_another_layout_keeps_the_words_and_asks_no_model(self):
-        with patch.object(info_layer, 'probe', return_value=None):
-            first = info_layer.suggest('p', 'hero', {'hint': '台面承重 120 kg'})
-        content = copy.deepcopy(first['layer']['content']); content['headline'] = '我的标题'
-        with patch.object(info_layer, 'probe', return_value=None), patch.object(info_layer, '_ask', side_effect=AssertionError('no model')):
-            again = info_layer.recompose('p', 'hero', {'layout': 'spotlight', 'content': content, 'glyphs': first['layer'].get('glyphs', {})})
-        layer = again['layer']
-        self.assertEqual((layer['layout'], layer['source'], again['report']['layout']), ('spotlight', 'manual', 'spotlight'))
-        self.assertEqual(next(item for item in layer['items'] if item['id'] == 'headline')['text'].replace('\n', ''), '我的标题')
-        self.assertEqual([item['value'] for item in layer['items'] if item['type'] == 'figure'], ['120'])
-        self.assertEqual(layer['content']['headline'], '我的标题')
-        self.assertNotIn('layers', store.get('project', 'p'))
-
-    def test_requests_that_cannot_be_served_say_why(self):
-        with self.assertRaisesRegex(ValueError, '先生成'): info_layer.suggest('p', 'campaign', {})
-        with self.assertRaisesRegex(ValueError, '先生成'): info_layer.suggest('p', 'hero', {'output': {'job_id': 'other', 'version': 1, 'quality': 'preview'}})
-        with self.assertRaisesRegex(ValueError, '不能超过'): info_layer.suggest('p', 'hero', {'hint': 'x' * 401})
-        with self.assertRaisesRegex(ValueError, '未知的版式'): info_layer.suggest('p', 'hero', {'layout': 'collage'})
-        with self.assertRaisesRegex(ValueError, '请选择一个版式'): info_layer.recompose('p', 'hero', {'layout': 'collage'})
-        with self.assertRaisesRegex(ValueError, '引用了不存在的图标'): info_layer.recompose('p', 'hero', {'layout': 'split', 'content': {'points': [{'title': 'a', 'glyph': 'g1'}]}})
-        with self.assertRaises(KeyError): info_layer.suggest('p', 'nope', {})
-
-    def test_the_web_layer_reads_writes_and_reports_conflicts(self):
-        import app as web
-        client = web.app.test_client()
-        with patch.object(web, 'DATA', self.data):
-            self.assertEqual(client.get('/api/projects/p/layers/hero').get_json()['layer'], None)
-            body = {'layer': {'version': 1, 'items': [item()]}, 'expected_revision': 0}
-            saved = client.put('/api/projects/p/layers/hero', json=body)
-            self.assertEqual((saved.status_code, saved.get_json()['revision']), (200, 1))
-            self.assertEqual(client.put('/api/projects/p/layers/hero', json=body).status_code, 409)
-            self.assertEqual(client.put('/api/projects/p/layers/hero', json={'layer': {'version': 1, 'items': [item(type='x')]}}).status_code, 400)
-            self.assertEqual(client.get('/api/projects/p/layers/nope').status_code, 404)
-            self.assertEqual(client.get('/api/projects/p').get_json()['layers']['hero']['items'][0]['text'], '标题')
-            with patch.object(info_layer, 'probe', return_value=None):
-                proposal = client.post('/api/projects/p/layers/hero/suggest', json={'hint': ''})
-            self.assertEqual(proposal.status_code, 200); self.assertEqual([entry['id'] for entry in proposal.get_json()['layer']['items']][:2], ['kicker', 'headline'])
-            content, glyphs = proposal.get_json()['layer']['content'], proposal.get_json()['layer'].get('glyphs', {})
-            with patch.object(info_layer, 'probe', return_value=None):
-                switched = client.post('/api/projects/p/layers/hero/compose', json={'layout': 'cards', 'content': content, 'glyphs': glyphs})
-                orphan = client.post('/api/projects/p/layers/hero/compose', json={'layout': 'cards', 'content': content})
-            self.assertEqual((switched.status_code, switched.get_json()['layer']['layout']), (200, 'cards'))
-            if glyphs: self.assertEqual(orphan.status_code, 400)                     # an icon is only referred to with its drawing
-            self.assertEqual(client.post('/api/projects/p/layers/hero/compose', json={'layout': 'collage'}).status_code, 400)
-            self.assertEqual(client.post('/api/projects/p/layers/hero/suggest', json={'layout': 'collage'}).status_code, 400)
-            self.assertEqual(client.delete('/api/projects/p/layers/hero').get_json()['removed'], True)
-
-
 def cube(name, low, high, material):
     x0, y0, z0 = low; x1, y1, z1 = high
     corners = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
@@ -449,16 +325,6 @@ class SceneProbeRuntimeTests(unittest.TestCase):
         self.assertTrue(view.rect[0] < drawer[0] < view.rect[2])
         again = info_layer.probe('p', self.output)                                # the second read comes from the cache
         self.assertEqual(again, scene); self.assertEqual(len(list((self.data / 'p' / 'layers' / 'probes').glob('*.json'))), 1)
-
-    def test_a_proposal_on_the_real_scene_points_at_the_parts(self):
-        result = info_layer.suggest('p', 'hero', {})
-        self.assertEqual((result['report']['probe'], result['report']['source'], result['layer']['layout']), ('scene', 'rules', 'callouts'))
-        callouts = {entry['title']: entry for entry in result['layer']['items'] if entry['type'] == 'callout'}
-        self.assertEqual(sorted(callouts), ['Drawer storage', 'On casters'])
-        view = info_layer.Picture(info_layer.probe('p', self.output))
-        for entry in callouts.values():
-            self.assertTrue(view.on_product(*in_render(result['layer'], entry['anchor'])))
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -248,11 +248,45 @@ def create_project(base,name='',metadata=None,platform=None):
     with LOCK:
         put('project',p);engine.submit(ident,'analyze');return engine.project_view(ident)
 
+def _component_uploads():
+    """The components sent with a new project: [(file, fields)], checked before anything is saved."""
+    import components
+    files=request.files.getlist('component_files')
+    try: described=json.loads(request.form.get('components','[]') or '[]')
+    except ValueError: raise ValueError('组件信息格式无效') from None
+    if not isinstance(described,list): raise ValueError('组件信息格式无效')
+    if len(files)>components.MAX_COMPONENTS: raise ValueError('一个项目最多 %d 个组件'%components.MAX_COMPONENTS)
+    rows=[]
+    for index,upload in enumerate(files):
+        name=upload.filename or ''
+        if Path(name).suffix.lower() not in components.MODEL_SUFFIXES+components.PICTURE_SUFFIXES+('.zip',):
+            raise ValueError('组件文件格式不受支持：'+Path(name).name+'；每个组件请上传一个 GLB / OBJ / ZIP，或一张 PNG / JPG / WebP 图片')
+        info=described[index] if index<len(described) and isinstance(described[index],dict) else {}
+        fields={key:info.get(key) for key in ('name','role','sku','caption','quantity','size_mm') if info.get(key) not in (None,'')}
+        components.fields(fields)                      # a bad name, type or quantity is refused before the project is made
+        rows.append((upload,fields))
+    return rows
+
+def _register_components(ident,rows):
+    import components
+    added=[];errors=[]
+    for upload,fields in rows:
+        component_id,base=components.reserve(ident)
+        try:
+            if Path(upload.filename).suffix.lower()=='.zip': extract_archive(upload.stream,base)
+            else: upload.save(safe_path(base,Path(upload.filename.replace('\\','/')).name))
+            added.append(components.register(ident,component_id,fields,check_resources))
+        except (ValueError,zipfile.BadZipFile,OSError) as exc:
+            components.discard(ident,component_id)
+            errors.append({'file':Path(upload.filename).name,'error':str(exc)[:200] if isinstance(exc,ValueError) else '文件无法读取'})
+    return added,errors
+
 @app.post('/api/projects')
 def upload():
     files=request.files.getlist('files')
     if not files: raise ValueError('请选择模型文件')
     engine.require_runtime('render')
+    component_rows=_component_uploads()
     platform=request.form.get('platform','').strip() or None
     if platform: ecommerce_platforms.platform(platform)
     ident=uuid.uuid4().hex;base=DATA/ident/'originals';base.mkdir(parents=True)
@@ -267,7 +301,12 @@ def upload():
         refdir=base.parent/'references';refdir.mkdir()
         path=safe_path(refdir,Path(reference.filename).name);reference.save(path);metadata['reference']=str(path)
         metadata['reference_status']='已保存；明确要求对照参考图时，智能调整会读取这张图片'
-    return jsonify(create_project(base,request.form.get('name',''),metadata,platform)),201
+    view=create_project(base,request.form.get('name',''),metadata,platform)
+    if component_rows:
+        # Processed in the background once the product's own analysis has run; see components.process.
+        added,errors=_register_components(ident,component_rows)
+        view={**view,'components':added,'component_errors':errors}
+    return jsonify(view),201
 
 @app.post('/api/projects/<ident>/plan')
 def plan(ident):
@@ -637,51 +676,6 @@ def scene_remove(ident):
     body=request.get_json(silent=True) or {}
     scene_stylist.remove(ident,body.get('expected_version'))
     return jsonify(engine.project_view(ident))
-
-@app.route('/api/projects/<ident>/layers/<shot_id>',methods=['GET','PUT','DELETE'])
-def layer_edit(ident,shot_id):
-    """The editable text and icon layer of one shot. It is not part of the plan: saving it never makes a render stale."""
-    import info_layer
-    if request.method=='PUT':
-        try: return jsonify(info_layer.save(ident,shot_id,request.get_json(force=True)))
-        except info_layer.LayerConflict as exc: abort(409,description=str(exc))
-    if request.method=='DELETE': return jsonify(info_layer.remove(ident,shot_id))
-    project=get('project',ident);info_layer._shot(project,shot_id)
-    return jsonify(layer=info_layer.layers(project).get(shot_id),icons=list(info_layer.ICONS))
-
-@app.post('/api/projects/<ident>/layers/<shot_id>/suggest')
-def layer_suggest(ident,shot_id):
-    import info_layer
-    return jsonify(info_layer.suggest(ident,shot_id,request.get_json(force=True)))
-
-@app.post('/api/projects/<ident>/layers/<shot_id>/compose')
-def layer_compose_route(ident,shot_id):
-    """The layer's words laid out in another composition. No model is asked; nothing is saved."""
-    import info_layer
-    return jsonify(info_layer.recompose(ident,shot_id,request.get_json(force=True)))
-
-@app.get('/api/icons')
-def icon_search():
-    """Icons for a word, from the vendored open sets and, when asked for, Iconify's free sets online."""
-    import layer_icons
-    query=request.args.get('q','')
-    if not isinstance(query,str) or not query.strip() or len(query)>60: raise ValueError('请输入要找的图标，最多 60 个字')
-    rows=layer_icons.search(query,32)
-    online=[]
-    if request.args.get('online')=='1' and layer_icons.online_allowed():
-        known={row['id'] for row in rows}
-        online=[row for row in layer_icons.search_online(query,16) if row['id'] not in known]
-    return jsonify(icons=[layer_icons.public(row) for row in rows],online=[layer_icons.public(row) for row in online],
-                   online_allowed=layer_icons.online_allowed())
-
-@app.post('/api/icons/draw')
-def icon_draw():
-    """A line icon drawn by the configured model and checked by the vision model."""
-    import layer_icons
-    body=request.get_json(force=True)
-    if not isinstance(body,dict) or not isinstance(body.get('concept'),str) or not body['concept'].strip() or len(body['concept'])>80:
-        raise ValueError('请写出要画的图标是什么，最多 80 个字')
-    return jsonify(glyph=layer_icons.draw(body['concept']))
 
 @app.get('/api/projects/<ident>/material-agent/tasks')
 def material_agent_list(ident):

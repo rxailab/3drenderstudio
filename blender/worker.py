@@ -555,6 +555,14 @@ def studio(plan,shot,meshes,set_meshes=()):
     mat=bpy.data.materials.new('Studio floor material');mat.use_nodes=True
     bs=bsdf_of(mat);bs.inputs['Base Color'].default_value=(.92,.92,.92,1) if white else (.57,.61,.67,1) if not dark else (.018,.025,.04,1)
     bs.inputs['Roughness'].default_value=.7;floor.data.materials.append(mat)
+    if dark and plan.get('reflection',True):
+        # A dark floor is a real surface: a clear coat lets Cycles render the product's reflection in it.
+        from blender.reflection import glossy
+        glossy(mat,dark)
+    elif not white and plan.get('reflection',True) and not set_meshes:
+        # A light grey floor would reflect a room as dim as the product: it catches the shadow instead, and the
+        # reflection is added on the studio gradient after the render (blender/reflection.py).
+        floor.is_shadow_catcher=True
     if white:
         # Camera sees neutral white; other rays retain a moderate physical environment.
         # Cycles shadow catcher carries the real contact shadow onto this background.
@@ -732,14 +740,19 @@ def render(req,objects,meshes):
     scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'reference':.04,'showcase':.015,'standard':.015,'fine':.005}[quality]
     scene.cycles.use_denoising=True;scene.cycles.max_bounces=12;scene.cycles.transmission_bounces=12
     scene.cycles.time_limit=0 if quality!='fine' else float(plan.get('time_budget',1200))
-    scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGB';scene.render.image_settings.color_depth='8'
-    scene.render.film_transparent=False
+    # A white background cannot reflect (it is a shadow catcher): it is rendered on transparent film and finished with
+    # its reflection afterwards (blender/reflection.py), so the background stays pure white.
+    reflect_white=plan.get('reflection',True) and (settings.get('style')=='white' or (settings.get('style') not in ('white','dark') and not set_meshes))
+    reflect_ground='white' if settings.get('style')=='white' else 'soft'
+    scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGBA' if reflect_white else 'RGB';scene.render.image_settings.color_depth='8'
+    scene.render.film_transparent=False             # the saved project keeps its white background; transparency is for this render only
     stem=out.name;png=out/(stem+'.png');jpg=out/(stem+'.jpg');blend=out/(stem+'.blend')
     scene.render.filepath=str(png)
     scene['studio_plan']=json.dumps(plan,ensure_ascii=False);scene['studio_shot']=json.dumps(shot,ensure_ascii=False)
     scene['studio_operations']=json.dumps(operations,ensure_ascii=False)
     event('正在打包可复现工程')
     bpy.ops.file.pack_all();bpy.ops.wm.save_as_mainfile(filepath=str(blend))
+    scene.render.film_transparent=reflect_white
     event('Cycles 正在渲染',device=dev,shot=shot.get('id'),sample_target=scene.cycles.samples,
           render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
     # Blender 5 no longer prints the sample count while it renders; report it so the percentage does not
@@ -791,9 +804,16 @@ def render(req,objects,meshes):
             else '已达到自动取景修正上限，请人工调整相机与留白')
     if checks['corrections']:
         scene['studio_camera_correction']=json.dumps(attempts)
-        bpy.ops.wm.save_as_mainfile(filepath=str(blend))
-    scene.render.image_settings.file_format='JPEG';scene.render.image_settings.quality=95
-    bpy.data.images['Render Result'].save_render(filepath=str(jpg),scene=scene)
+        scene.render.film_transparent=False;bpy.ops.wm.save_as_mainfile(filepath=str(blend));scene.render.film_transparent=reflect_white
+    reflection=None
+    if reflect_white:
+        event('正在加入地面倒影')
+        from blender.reflection import finish_white
+        reflection=finish_white(png,jpg,kind=reflect_ground)
+        scene.render.image_settings.color_mode='RGB'
+    else:
+        scene.render.image_settings.file_format='JPEG';scene.render.image_settings.quality=95
+        bpy.data.images['Render Result'].save_render(filepath=str(jpg),scene=scene)
     scene.render.image_settings.file_format='PNG'
     event('正在校验导出图片')
     for file in (png,jpg):
@@ -819,6 +839,7 @@ def render(req,objects,meshes):
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},
+                reflection=reflection or ({'method':'glossy floor'} if plan.get('reflection',True) and settings.get('style')=='dark' else None),
                 render_settings=dict(engine='CYCLES',samples=scene.cycles.samples,noise_threshold=scene.cycles.adaptive_threshold,
                                      time_limit=scene.cycles.time_limit,denoising=True),blender_version=bpy.app.version_string)
 

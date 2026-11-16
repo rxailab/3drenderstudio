@@ -262,6 +262,13 @@ class ElementTests(unittest.TestCase):
         banded = el.frame(brand_kit.Brand({'preset': 'frame', 'badges': ['20V']}), 1000, None)[0]
         self.assertIn('20V', [item.get('text') for item in banded if item['type'] == 'text'])       # no title: the badge stands in the band
 
+    def test_a_header_band_with_nothing_to_say_names_the_product(self):
+        bare = brand_kit.Brand({'preset': 'frame', 'name': '', 'badges': []})
+        items, _ = el.frame(bare, 1000, None, fallback='Cordless Angle Grinder')
+        self.assertIn('CORDLESS ANGLE GRINDER', ' '.join(''.join(part for line in item.get('lines') or [] for part, _ in line) for item in items if item['type'] == 'text').upper())
+        badged = brand_kit.Brand({'preset': 'frame', 'badges': ['20V']})
+        self.assertNotIn('Cordless', str(el.frame(badged, 1000, None, fallback='Cordless')[0]))      # a badge already fills it
+
     def test_a_logo_takes_the_place_of_the_name(self):
         brand = brand_kit.Brand({'preset': 'frame', 'name': 'NORTHFORGE'}); brand.logo_path = '/tmp/logo.png'
         items, _ = el.frame(brand, 1000, 'Kit includes')
@@ -474,6 +481,34 @@ class RecordTests(StoreCase):
         self.assertFalse(listing.default_product({'name': '20V Cordless Drill'})['usecase']['enabled'])       # suggested, not switched on
         self.assertEqual(listing.usecase_for('管子割刀')['kind'], 'pipe'); self.assertIsNone(listing.usecase_for('Tool cabinet'))
 
+    def test_a_long_tool_stood_on_end_is_shown_lying_level_and_nothing_else_is_turned(self):
+        import orientation
+        record = store.get('project', 'fixture')
+        record.update(name='锂电角磨机'); record['analysis']['features']['dimensions'] = [.92, 1.775, 3.34]; record['plan']['rotation'] = [0, 0, 0]
+        rotation, laid = listing.display_rotation(record)
+        self.assertTrue(laid)
+        width, depth, height = orientation.oriented_dimensions([.92, 1.775, 3.34], rotation)
+        self.assertAlmostEqual(width, 3.34, places=3); self.assertLess(height, 2)               # its length across, lying level
+        self.assertAlmostEqual(orientation.oriented_dimensions([.92, 1.775, 3.34], rotation)[0], max(width, depth, height), places=3)
+        for name, dims in (('Water bottle', [.8, .8, 2.6]),                                    # tall, but not a tool: it stays upright
+                           ('Cordless drill', [1.0, .3, 1.25]),                                # a tool, but not much taller than long
+                           ('Angle grinder', [3.34, 1.775, .92])):                             # a tool already lying level
+            with self.subTest(name=name):
+                record.update(name=name); record['analysis']['features']['dimensions'] = dims
+                self.assertEqual(listing.display_rotation(record), ([0.0, 0.0, 0.0], False))
+        record.update(name='Angle grinder'); record['analysis']['features']['dimensions'] = [.92, 1.775, 3.34]
+        requests = listing.picture_requests(record, listing.stored(record)[0], 330, [{'kind': 'main', 'index': 0}, {'kind': 'specs', 'index': 0}])
+        self.assertEqual(requests['hero']['plan']['rotation'], listing.display_rotation(record)[0])
+        self.assertEqual(requests['side']['plan']['rotation'], requests['hero']['plan']['rotation'])
+        self.assertEqual(requests['side']['camera']['azimuth'], 0)                              # the long side, face on
+        self.assertEqual(record['plan']['rotation'], [0, 0, 0])                                 # the project's own pose is not changed
+
+    def test_a_line_the_copy_writer_cut_short_ends_on_a_whole_word(self):
+        self.assertEqual(listing.whole('Battery powered, for cutting and grinding without a…', 120), 'Battery powered, for cutting and grinding without')
+        self.assertEqual(listing.whole('Cuts PVC, PEX and copper pipe, one-hand…', 120), 'Cuts PVC, PEX and copper pipe')
+        self.assertEqual(listing.whole('Complete line.', 120), 'Complete line.')
+        self.assertEqual(listing.whole('  spaced   out  ', 120), 'spaced out')
+
     def test_what_is_saved_is_checked_and_parts_must_be_the_models_own(self):
         state = listing.save_product('fixture', {'title': 'Pipe Cutter', 'model': 'PC-22', 'size_mm': '225',
                                                  'features': [{'title': 'Hardened wheel', 'detail': 'Replaceable', 'parts': [PARTS[0], 'Not a part']}, {'title': ' '}],
@@ -641,6 +676,20 @@ class BuildTests(StoreCase):
         first = listing_pages.compose('band', photo)['items'][0]
         self.assertEqual((first['type'], first['fit'], first['w']), ('image', 'cover', 1000))       # a photograph, when there is one, fills the top
 
+    def test_a_feature_close_up_shows_the_whole_product_with_a_magnifier_on_the_part(self):
+        ctx = self.context()
+        detail = ctx['shots']['detail0']
+        page = listing_pages.compose('feature', ctx, 0)
+        images = [item for item in page['items'] if item['type'] == 'image']
+        self.assertEqual(images[0]['src'], ctx['shots']['hero'].path)                           # the whole product
+        circle = next(item for item in images if item.get('mask') == 'circle')
+        self.assertEqual(circle['src'], detail.path)
+        self.assertEqual([round(value, 3) for value in circle['crop']], [round(value, 3) for value in listing_pages._part_crop(detail.result, [PARTS[0]])])
+        self.assertTrue(any(item['type'] == 'line' and item.get('end') == 'ring' for item in page['items']))      # pointing at the part
+        self.assertIsNone(listing_pages._part_crop(detail.result, ['Not a part']))
+        square = listing_pages._part_crop({'parts': [{'name': 'a', 'rect': [.4, .4, .5, .6]}]}, ['a'])
+        self.assertAlmostEqual(square[2] - square[0], square[3] - square[1]); self.assertTrue(0 <= square[0] and square[3] <= 1)
+
     def test_the_specification_page_prints_the_users_rows_and_the_measured_size(self):
         words = self.words(listing_pages.compose('specs', self.context()))
         for expected in ('SPECIFICATIONS', 'PIPE CAPACITY', '6 - 22 MM', 'LENGTH', '300 MM', 'HEIGHT', '180 MM'):
@@ -704,6 +753,61 @@ class BuildTests(StoreCase):
         failed = listing.latest('fixture')
         self.assertEqual((failed['status'], failed['error']), ('failed', '渲染失败：显存不足'))
         self.assertEqual(store.get('project', 'fixture')['listing']['pages'], kept)
+
+    def test_components_sent_with_a_new_project_are_registered_and_a_bad_one_refuses_the_upload(self):
+        import app as application
+        for module in (application,):
+            mocked = patch.object(module, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)
+        client = application.app.test_client()
+        glb = (ROOT / 'samples' / 'matte-pump-bottle.glb').read_bytes()
+        picture = io.BytesIO(); Image.new('RGB', (120, 80), 'white').save(picture, 'PNG')
+        with patch.object(engine, 'submit') as submit:
+            made = client.post('/api/projects', content_type='multipart/form-data', data={
+                'files': (io.BytesIO(glb), 'grinder.glb'), 'name': 'Grinder kit',
+                'component_files': [(io.BytesIO(glb), 'battery.glb'), (io.BytesIO(picture.getvalue()), 'bag.png')],
+                'components': json.dumps([{'name': '20V battery', 'role': 'battery', 'quantity': 2}, {'name': 'Tool bag', 'role': 'bag'}])})
+        self.assertEqual(made.status_code, 201, made.get_json())
+        body = made.get_json(); ident = body['id']
+        self.assertEqual(submit.call_args.args[:2], (ident, 'analyze'))
+        self.assertEqual([(row['name'], row['role'], row['quantity'], row['kind'], row['status']) for row in body['components']],
+                         [('20V battery', 'battery', 2, 'model', 'queued'), ('Tool bag', 'bag', 1, 'image', 'queued')])
+        self.assertEqual(body['component_errors'], [])
+        stored = store.get('project', ident)
+        self.assertEqual(len(components.components(stored)), 2)
+        self.assertEqual(len(list((self.data / ident / 'originals').rglob('*.glb'))), 1)             # the project's own model stays alone
+        self.assertEqual(components.QUEUE.qsize(), 2)
+        # A component that cannot be one refuses the whole upload before anything is made.
+        before = {record['id'] for record in store.all_records('project')}
+        refused = client.post('/api/projects', content_type='multipart/form-data', data={
+            'files': (io.BytesIO(glb), 'grinder.glb'), 'component_files': [(io.BytesIO(b'%PDF'), 'manual.pdf')]})
+        self.assertEqual(refused.status_code, 400); self.assertIn('组件文件格式不受支持', refused.get_json()['error'])
+        bad_role = client.post('/api/projects', content_type='multipart/form-data', data={
+            'files': (io.BytesIO(glb), 'grinder.glb'), 'component_files': [(io.BytesIO(glb), 'x.glb')], 'components': json.dumps([{'role': 'rocket'}])})
+        self.assertEqual(bad_role.status_code, 400)
+        self.assertEqual({record['id'] for record in store.all_records('project')}, before)
+
+    def test_components_with_models_are_rendered_with_the_product_for_the_main_image(self):
+        record = store.get('project', 'fixture')
+        parts = [{'name': 'Battery', 'role': 'battery', 'quantity': 2, 'size_mm': 120, 'model_path': '/m/battery.glb', 'rotation': [180, 0, 0],
+                  'finishes': [{'name': 'Shell', 'preset': 'matte_plastic'}], 'path': 'x.png'},
+                 {'name': 'Bag', 'role': 'bag', 'quantity': 1, 'size_mm': None, 'path': 'bag.png'}]            # a photograph only: not in 3D
+        kit = listing.kit_request(record, record['plan'], 225, parts, 35)
+        self.assertEqual(kit['companions'], [{'name': 'Battery', 'role': 'battery', 'model_path': '/m/battery.glb', 'size_mm': 120, 'quantity': 2,
+                                              'rotation': [180, 0, 0], 'plan': {'material_overrides': [{'name': 'Shell', 'preset': 'matte_plastic'}]}}])
+        self.assertEqual((kit['model_path'], kit['size_mm'], kit['camera']['azimuth'], kit['ground']), (record['model_path'], 225.0, 35, 'none'))
+        self.assertIsNone(listing.kit_request(record, record['plan'], 225, parts[1:], 35))
+        requests = listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'main', 'index': 0}], parts)
+        self.assertIn('kit', requests)
+        self.assertNotIn('kit', listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'callouts', 'index': 0}], parts))
+        # The main image is the kit render itself, cropped to everything in it, with a photograph-only component beside.
+        ctx = self.context()
+        result = self.stage('fixture', kit); result['kit_rect'] = [.2, .3, .8, .8]
+        ctx['shots']['kit'] = listing_pages.Shot(result)
+        ctx['components'] = [{**parts[0], 'path': ctx['shots']['hero'].path}, {**parts[1], 'path': ctx['shots']['hero'].path}]
+        page = listing_pages.compose('main', ctx)
+        images = [item for item in page['items'] if item['type'] == 'image']
+        self.assertEqual(images[0]['src'], str(result['path'])); self.assertEqual([round(value, 4) for value in images[0]['crop']], [.185, .285, .815, .815])
+        self.assertTrue(images[0].get('reflection')); self.assertEqual(len(images), 2)
 
     def test_the_web_layer_serves_the_workspace(self):
         import app as application
@@ -810,6 +914,21 @@ class RuntimeTests(unittest.TestCase):
         with Image.open(out / result['image']) as image:
             self.assertEqual((image.size, image.mode), ((96, 96), 'RGBA'))
             alpha = image.getchannel('A'); self.assertEqual(alpha.getpixel((1, 1)), 0); self.assertGreater(alpha.getextrema()[1], 200)
+
+    def test_components_are_staged_round_the_product_at_their_own_size(self):
+        box = '\n'.join(['o Box'] + ['v %g %g %g' % (x, y, z) for z in (0, 40) for x, y in ((0, 0), (60, 0), (60, 30), (0, 30))]
+                         + ['f 1 2 3 4', 'f 8 7 6 5', 'f 1 5 6 2', 'f 2 6 7 3', 'f 3 7 8 4', 'f 4 8 5 1']) + '\n'
+        (self.folder / 'box.obj').write_text(box, encoding='utf-8')
+        result, _ = self.run_stage('kit', companions=[{'name': 'Battery', 'role': 'battery', 'model_path': str(self.folder / 'box.obj'), 'size_mm': 60, 'quantity': 2},
+                                                      {'name': 'Case', 'role': 'case', 'model_path': str(self.folder / 'box.obj'), 'size_mm': 150, 'quantity': 1}])
+        self.assertEqual([row['name'] for row in result['companions']], ['Battery', 'Battery', 'Case'])
+        kit = result['kit_rect']; product = result['product_rect']
+        self.assertTrue(kit[0] <= product[0] and kit[2] >= product[2] and kit[3] >= product[3], (kit, product))
+        for row in result['companions']:
+            self.assertTrue(0 <= row['rect'][0] < row['rect'][2] <= 1 and 0 <= row['rect'][1] < row['rect'][3] <= 1, row)
+        width = lambda rect: rect[2] - rect[0]
+        self.assertGreater(width(result['companions'][2]['rect']), width(result['companions'][0]['rect']))      # the case is the larger thing
+        self.assertEqual(result['dimensions_mm'], [100.0, 30.0, 100.0])                                       # the product itself is measured alone
 
     def test_a_view_is_chosen_that_shows_the_part_asked_for(self):
         result, _ = self.run_stage('focus', camera={'azimuth': 35, 'elevation': 20, 'margin': .2, 'focus': ['Frame'], 'azimuths': [35, -35, 125]})

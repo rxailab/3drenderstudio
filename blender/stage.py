@@ -342,6 +342,103 @@ def visible_share(camera, names, wanted, longest=40):
     return sum(1 for cell in cells if cell in targets) / max(1, len(cells))
 
 
+def _import(path):
+    """Import one more model into the scene without clearing it. Returns its new mesh objects and their root objects."""
+    before = set(bpy.data.objects)
+    suffix = Path(path).suffix.lower()
+    if suffix == '.obj':
+        bpy.ops.wm.obj_import(filepath=str(path), forward_axis='NEGATIVE_Z', up_axis='Y')
+    elif suffix == '.glb':
+        bpy.ops.import_scene.gltf(filepath=str(path), import_pack_images=True)
+    else:
+        raise ValueError('组件模型格式不受支持')
+    added = [ob for ob in bpy.data.objects if ob not in before]
+    for ob in added:
+        if ob.type in ('LIGHT', 'CAMERA'):
+            ob.hide_render = True
+    return [ob for ob in added if ob.type == 'MESH' and len(ob.data.polygons)], [ob for ob in added if ob.parent is None]
+
+
+def _remapped(plan, meshes):
+    """The component's own finishes, with material names as they came in here (an import renames clashes 'Name.001')."""
+    import re
+    present = {m.name for ob in meshes for m in ob.data.materials if m}
+    base = lambda name: re.sub(r'(?:\.\d{3})+$', '', name)
+
+    def actual(name):
+        if name in ('*', 'all') or name in present:
+            return name
+        return next((candidate for candidate in sorted(present) if base(candidate) == name), None)
+    overrides = []
+    for override in plan.get('material_overrides') or []:
+        name = actual(override.get('name', '*'))
+        if name:
+            overrides.append({**override, 'name': name})
+    return {**plan, 'material_overrides': overrides, 'object_material_overrides': []}
+
+
+KIT_SCALE = .72                  # kit images show the product larger than its accessories, as the examples do
+
+
+def add_companions(rows, unit_mm, lo, hi, azimuth, kit_scale=KIT_SCALE):
+    """The other things in the box, each at its own real size, arranged round the product the way a kit is shown.
+
+    Containers (a case, a bag) stand behind the product; everything else flanks it, larger things nearer, a little in
+    front so nothing hides the product; a quantity of two or more shows two. Returns [{'name', 'meshes', 'role'}].
+    """
+    toward = Vector((math.sin(math.radians(azimuth)), -math.cos(math.radians(azimuth)), 0))     # from the product to the camera, level
+    across = Vector((math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth)), 0))     # to the camera's right
+    radius = max((hi - lo).x, (hi - lo).y) / 2; gap = max(hi - lo) * .06
+    placed = []; front = []; back = []
+    for row in rows:
+        for copy in range(min(2, int(row.get('quantity') or 1))):
+            meshes, roots = _import(row['model_path'])
+            if not meshes:
+                continue
+            holder = bpy.data.objects.new('Companion %s %d' % (row.get('name', ''), copy), None); bpy.context.scene.collection.objects.link(holder)
+            for ob in roots:
+                matrix = ob.matrix_world.copy(); ob.parent = holder; ob.matrix_world = matrix
+            holder.rotation_euler = Euler([math.radians(value) for value in row.get('rotation') or [0, 0, 0]])
+            bpy.context.view_layer.update()
+            c_lo, c_hi, _ = worker.bounds(meshes)
+            size_mm = float(row.get('size_mm') or 100)
+            scale = size_mm / unit_mm / max(max(c_hi - c_lo), 1e-9) * kit_scale
+            holder.scale = (scale,) * 3; bpy.context.view_layer.update()
+            c_lo, c_hi, _ = worker.bounds(meshes)
+            # Stand it on the floor with its longer side across the picture.
+            if (c_hi - c_lo).y > (c_hi - c_lo).x * 1.15:
+                holder.rotation_euler.rotate(Euler((0, 0, math.radians(90)))); bpy.context.view_layer.update(); c_lo, c_hi, _ = worker.bounds(meshes)
+            holder.location -= Vector(((c_lo.x + c_hi.x) / 2, (c_lo.y + c_hi.y) / 2, c_lo.z)); bpy.context.view_layer.update()
+            c_lo, c_hi, _ = worker.bounds(meshes)
+            try:
+                worker.apply_material_overrides(meshes, _remapped(row.get('plan') or {}, meshes))
+            except ValueError:
+                pass
+            entry = {'name': row.get('name', ''), 'role': row.get('role', 'other'), 'meshes': meshes, 'holder': holder, 'size': c_hi - c_lo}
+            (back if row.get('role') in ('case', 'bag') else front).append(entry); placed.append(entry)
+    # Behind: containers side by side, close behind the product and a little to the left, so the product overlaps them.
+    offset = -radius * .35
+    for entry in back:
+        depth = (entry['size'].x * abs(toward.x) + entry['size'].y * abs(toward.y)) / 2
+        width = entry['size'].x * abs(across.x) + entry['size'].y * abs(across.y)
+        entry['holder'].location += -toward * (radius * .2 + depth) + across * (offset + width / 2 - width * .5)
+        offset += width + gap
+    # In front: the smaller things in the two front corners, larger first, so the product stays whole between and above them.
+    half = max(abs(Vector((x, y, 0)).dot(across)) for x in (lo.x, hi.x) for y in (lo.y, hi.y))
+    front.sort(key=lambda entry: -max(entry['size']))
+    sides = {1: half * .35, -1: half * .35}; rows = {1: 0.0, -1: 0.0}
+    for index, entry in enumerate(front):
+        side = -1 if index % 2 == 0 else 1
+        width = entry['size'].x * abs(across.x) + entry['size'].y * abs(across.y)
+        depth = entry['size'].x * abs(toward.x) + entry['size'].y * abs(toward.y)
+        if sides[side] + width > half * 1.9 and sides[side] > half * .35:
+            sides[side] = half * .35; rows[side] += depth + gap * .5        # a second, nearer row on that side
+        entry['holder'].location += toward * (radius * .7 + depth / 2 + rows[side]) + across * side * (sides[side] + width / 2)
+        sides[side] += width + gap * .6
+    bpy.context.view_layer.update()
+    return [{'name': entry['name'], 'role': entry['role'], 'meshes': entry['meshes']} for entry in placed]
+
+
 def run(request):
     out = Path(request['output_dir']); out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene; started = time.time()
@@ -360,6 +457,10 @@ def run(request):
     width, height = [int(value) for value in request.get('size', [1600, 1600])]
     scene.render.resolution_x = width; scene.render.resolution_y = height; scene.render.resolution_percentage = 100
     piece = None; facts = None
+    companions = []
+    if request.get('companions'):
+        worker.event('正在摆放套装组件')
+        companions = add_companions(request['companions'], unit_mm, lo, hi, float((request.get('camera') or {}).get('azimuth', 35)))
     if request.get('workpiece'):
         worker.event('正在放置工件')
         piece, facts = place_workpiece(request['workpiece'], lo, hi, unit_mm, root)
@@ -373,6 +474,8 @@ def run(request):
     margin = float(view.get('margin', .05)); elevation = float(view.get('elevation', 18)); azimuth = float(view.get('azimuth', 35))
     focus = [ob for ob in meshes if ob.name in set(view.get('focus') or [])]
     framed = corners(focus or meshes); passing = None
+    for entry in companions:
+        framed += corners(entry['meshes'])
     if piece is not None and facts['mode'] == 'under' and view.get('frame') != 'all':
         # The stock's near edge, under the tool, belongs in the picture: its thickness is read there.
         rotation = piece.matrix_world.to_3x3(); centre = Vector(facts['centre']); half = Vector(facts['half']); axis = Vector(facts['axis'])
@@ -427,10 +530,12 @@ def run(request):
     known = names + ([WORKPIECE] if piece is not None else [])
     nx, ny, cells = grid_probe(camera, known, int(request.get('grid', 96)))
     parts = outlines(camera, meshes)
+    kit = [{'name': entry['name'], 'role': entry['role'], 'rect': union([row['rect'] for row in outlines(camera, entry['meshes'])])} for entry in companions]
     result = {'success': True, 'width': width, 'height': height, 'unit_mm': unit_mm, 'azimuth': azimuth, 'elevation': elevation,
               'projection': 'orthographic' if data.type == 'ORTHO' else 'perspective',
               'dimensions_mm': [round((hi[i] - lo[i]) * unit_mm, 1) for i in range(3)],
               'product_rect': union([row['rect'] for row in parts]), 'parts': parts,
+              **({'companions': kit, 'kit_rect': union([row['rect'] for row in parts] + [row['rect'] for row in kit if row['rect']])} if kit else {}),
               'probe': {'success': True, 'nx': nx, 'ny': ny, 'cells': cells, 'objects': known},
               'dimension_edges': dimension_edges(camera, lo, hi, unit_mm), 'warnings': warnings,
               'lights': len(studio.get('lights', [])), 'blender_version': bpy.app.version_string}

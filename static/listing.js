@@ -112,15 +112,8 @@ function listingRenderComponents() {
     for(const row of rows){const node=$('listingPanel').querySelector(`[data-component="${row.id}"] .listing-component-status`);if(node)node.textContent=`${listingStageNames[row.stage] || '处理中'} · ${Math.round(row.progress || 0)}%`;}
     return;
   }
-  $('listingPanel').innerHTML=`<p class="field-help">产品之外随箱附带的东西：电池、充电器、工具箱……每个组件上传一个模型（OBJ / GLB / ZIP），或一张白底 / 透明背景的图片。模型会自动分析、摆正并渲染成抠图。</p>
-    <form id="listingComponentForm" class="listing-upload">
-      <input id="listingComponentFiles" type="file" multiple accept=".glb,.obj,.mtl,.zip,.png,.jpg,.jpeg,.webp" aria-label="选择组件文件">
-      <div class="listing-grid3"><input id="listingComponentName" type="text" maxlength="60" placeholder="名称（可不填）" aria-label="新组件名称">
-      <input id="listingComponentSku" type="text" maxlength="40" placeholder="型号" aria-label="新组件型号">
-      <input id="listingComponentQuantity" type="text" inputmode="numeric" placeholder="数量" aria-label="新组件数量"></div>
-      <button type="submit" class="button secondary">添加组件</button>
-    </form>
-    <div class="listing-components">${rows.map(listingComponentHTML).join('') || '<p class="field-help">还没有组件。</p>'}</div>`;
+  $('listingPanel').innerHTML=`<p class="field-help">随箱附带的电池、充电器、工具箱等组件，在新建项目时与主模型一起上传。模型组件会自动分析、摆正，在主图里与产品一起渲染；这里可以修改名称、型号、数量和朝向。</p>
+    <div class="listing-components">${rows.map(listingComponentHTML).join('') || '<p class="field-help">这个项目没有组件。新建项目时可在上传窗口的「套装组件」里添加。</p>'}</div>`;
 }
 function listingRenderBrand() {
   const b=listingEdit.brand,used=listingState.brand;
@@ -272,24 +265,32 @@ async function listingOnClick(event) {
     else if(action==='logo-remove'){listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingRenderBrand();}
   }catch(error){toast(error.message,true);}
 }
-async function listingAddComponent(event) {
-  event.preventDefault();
-  const files=[...$('listingComponentFiles').files];if(!files.length)return toast('请选择组件的模型或图片文件',true);
-  const form=new FormData();for(const file of files)form.append('files',file);
-  form.append('paths',JSON.stringify(files.map(file=>file.webkitRelativePath || file.name)));
-  for(const [key,id] of [['name','listingComponentName'],['sku','listingComponentSku'],['quantity','listingComponentQuantity']])if($(id).value.trim())form.append(key,$(id).value.trim());
-  const submit=event.target.querySelector('button[type="submit"]');submit.disabled=true;
-  try{await api(`/api/projects/${listingProject}/components`,{method:'POST',body:form});event.target.reset();await listingLoad(false);toast('组件已添加，正在处理');}
-  catch(error){toast(error.message,true);}finally{submit.disabled=false;}
+// The 套图 tab in the inspector: what has been built for this project, and the way into the workspace.
+let listingSummaryFor=null,listingSummaryState=null,listingSummaryLoading=false;
+async function listingRenderSummary(force=false) {
+  const node=$('listingSummary');if(!node || !current)return;
+  if(typeof inspectorTab!=='undefined' && inspectorTab!=='listing' && !force)return;
+  const id=current.id;
+  if((listingSummaryFor!==id || force) && !listingSummaryLoading){
+    listingSummaryLoading=true;
+    try{listingSummaryState=await api(`/api/projects/${id}/listing`);listingSummaryFor=id;}catch(_){listingSummaryState=null;listingSummaryFor=id;}
+    finally{listingSummaryLoading=false;}
+    if(!current || current.id!==id)return;
+  }
+  const state=listingSummaryFor===id?listingSummaryState:null,pages=state?.pages || [];
+  const parts=(state?.components || []).length,stamp=Math.round((state?.built_at || 0)*1000);
+  node.innerHTML=!state?'<p class="field-help">正在读取套图…</p>'
+    :`<p class="field-help">${pages.length?`已生成 ${pages.length} 张`:'还没有生成套图'}${parts?` · ${parts} 个组件`:''}${state.task && ['queued','running'].includes(state.task.status)?` · 正在生成 ${Math.round(state.task.progress || 0)}%`:''}</p>`
+     +(pages.length?`<div class="listing-summary-pages">${pages.slice(0,6).map(page=>`<img src="${esc(page.url)}?t=${stamp}" alt="${esc(state.kinds?.[page.kind]?.zh || page.kind)}" loading="lazy">`).join('')}</div>`:'');
 }
 function listingInit() {
   const dialog=$('listingDialog');if(!dialog)return;
   $('listingOpen').onclick=()=>listingOpen();
+  if($('listingOpenPanel'))$('listingOpenPanel').onclick=()=>listingOpen();
   dialog.addEventListener('click',listingOnClick);
   dialog.addEventListener('input',listingOnInput);
   dialog.addEventListener('change',event=>{listingOnChange(event);});
-  dialog.addEventListener('submit',event=>{if(event.target.id==='listingComponentForm')listingAddComponent(event);});
-  dialog.addEventListener('close',()=>{clearTimeout(listingTimer);if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));});
+  dialog.addEventListener('close',()=>{clearTimeout(listingTimer);if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));listingRenderSummary(true);});
   $('listingBuild').onclick=()=>listingBuildNow();
   $('listingCancel').onclick=async()=>{const task=listingState?.task;if(!task)return;try{await api(`/api/projects/${listingProject}/listing/${task.id}/cancel`,{method:'POST'});await listingLoad(false);}catch(error){toast(error.message,true);}};
 }
