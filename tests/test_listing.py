@@ -262,6 +262,13 @@ class ElementTests(unittest.TestCase):
         banded = el.frame(brand_kit.Brand({'preset': 'frame', 'badges': ['20V']}), 1000, None)[0]
         self.assertIn('20V', [item.get('text') for item in banded if item['type'] == 'text'])       # no title: the badge stands in the band
 
+    def test_a_header_band_with_nothing_to_say_names_the_product(self):
+        bare = brand_kit.Brand({'preset': 'frame', 'name': '', 'badges': []})
+        items, _ = el.frame(bare, 1000, None, fallback='Cordless Angle Grinder')
+        self.assertIn('CORDLESS ANGLE GRINDER', ' '.join(''.join(part for line in item.get('lines') or [] for part, _ in line) for item in items if item['type'] == 'text').upper())
+        badged = brand_kit.Brand({'preset': 'frame', 'badges': ['20V']})
+        self.assertNotIn('Cordless', str(el.frame(badged, 1000, None, fallback='Cordless')[0]))      # a badge already fills it
+
     def test_a_logo_takes_the_place_of_the_name(self):
         brand = brand_kit.Brand({'preset': 'frame', 'name': 'NORTHFORGE'}); brand.logo_path = '/tmp/logo.png'
         items, _ = el.frame(brand, 1000, 'Kit includes')
@@ -474,6 +481,34 @@ class RecordTests(StoreCase):
         self.assertFalse(listing.default_product({'name': '20V Cordless Drill'})['usecase']['enabled'])       # suggested, not switched on
         self.assertEqual(listing.usecase_for('管子割刀')['kind'], 'pipe'); self.assertIsNone(listing.usecase_for('Tool cabinet'))
 
+    def test_a_long_tool_stood_on_end_is_shown_lying_level_and_nothing_else_is_turned(self):
+        import orientation
+        record = store.get('project', 'fixture')
+        record.update(name='锂电角磨机'); record['analysis']['features']['dimensions'] = [.92, 1.775, 3.34]; record['plan']['rotation'] = [0, 0, 0]
+        rotation, laid = listing.display_rotation(record)
+        self.assertTrue(laid)
+        width, depth, height = orientation.oriented_dimensions([.92, 1.775, 3.34], rotation)
+        self.assertAlmostEqual(width, 3.34, places=3); self.assertLess(height, 2)               # its length across, lying level
+        self.assertAlmostEqual(orientation.oriented_dimensions([.92, 1.775, 3.34], rotation)[0], max(width, depth, height), places=3)
+        for name, dims in (('Water bottle', [.8, .8, 2.6]),                                    # tall, but not a tool: it stays upright
+                           ('Cordless drill', [1.0, .3, 1.25]),                                # a tool, but not much taller than long
+                           ('Angle grinder', [3.34, 1.775, .92])):                             # a tool already lying level
+            with self.subTest(name=name):
+                record.update(name=name); record['analysis']['features']['dimensions'] = dims
+                self.assertEqual(listing.display_rotation(record), ([0.0, 0.0, 0.0], False))
+        record.update(name='Angle grinder'); record['analysis']['features']['dimensions'] = [.92, 1.775, 3.34]
+        requests = listing.picture_requests(record, listing.stored(record)[0], 330, [{'kind': 'main', 'index': 0}, {'kind': 'specs', 'index': 0}])
+        self.assertEqual(requests['hero']['plan']['rotation'], listing.display_rotation(record)[0])
+        self.assertEqual(requests['side']['plan']['rotation'], requests['hero']['plan']['rotation'])
+        self.assertEqual(requests['side']['camera']['azimuth'], 0)                              # the long side, face on
+        self.assertEqual(record['plan']['rotation'], [0, 0, 0])                                 # the project's own pose is not changed
+
+    def test_a_line_the_copy_writer_cut_short_ends_on_a_whole_word(self):
+        self.assertEqual(listing.whole('Battery powered, for cutting and grinding without a…', 120), 'Battery powered, for cutting and grinding without')
+        self.assertEqual(listing.whole('Cuts PVC, PEX and copper pipe, one-hand…', 120), 'Cuts PVC, PEX and copper pipe')
+        self.assertEqual(listing.whole('Complete line.', 120), 'Complete line.')
+        self.assertEqual(listing.whole('  spaced   out  ', 120), 'spaced out')
+
     def test_what_is_saved_is_checked_and_parts_must_be_the_models_own(self):
         state = listing.save_product('fixture', {'title': 'Pipe Cutter', 'model': 'PC-22', 'size_mm': '225',
                                                  'features': [{'title': 'Hardened wheel', 'detail': 'Replaceable', 'parts': [PARTS[0], 'Not a part']}, {'title': ' '}],
@@ -640,6 +675,20 @@ class BuildTests(StoreCase):
         photo = self.context(); photo['photo'] = photo['shots']['hero'].path
         first = listing_pages.compose('band', photo)['items'][0]
         self.assertEqual((first['type'], first['fit'], first['w']), ('image', 'cover', 1000))       # a photograph, when there is one, fills the top
+
+    def test_a_feature_close_up_shows_the_whole_product_with_a_magnifier_on_the_part(self):
+        ctx = self.context()
+        detail = ctx['shots']['detail0']
+        page = listing_pages.compose('feature', ctx, 0)
+        images = [item for item in page['items'] if item['type'] == 'image']
+        self.assertEqual(images[0]['src'], ctx['shots']['hero'].path)                           # the whole product
+        circle = next(item for item in images if item.get('mask') == 'circle')
+        self.assertEqual(circle['src'], detail.path)
+        self.assertEqual([round(value, 3) for value in circle['crop']], [round(value, 3) for value in listing_pages._part_crop(detail.result, [PARTS[0]])])
+        self.assertTrue(any(item['type'] == 'line' and item.get('end') == 'ring' for item in page['items']))      # pointing at the part
+        self.assertIsNone(listing_pages._part_crop(detail.result, ['Not a part']))
+        square = listing_pages._part_crop({'parts': [{'name': 'a', 'rect': [.4, .4, .5, .6]}]}, ['a'])
+        self.assertAlmostEqual(square[2] - square[0], square[3] - square[1]); self.assertTrue(0 <= square[0] and square[3] <= 1)
 
     def test_the_specification_page_prints_the_users_rows_and_the_measured_size(self):
         words = self.words(listing_pages.compose('specs', self.context()))

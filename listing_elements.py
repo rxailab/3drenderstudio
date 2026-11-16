@@ -165,11 +165,16 @@ def paragraph(brand, content, x, y, w, size, ground=None, role='body', max_lines
     return [item], height
 
 
-def frame(brand, height, title=None, mark=None):
-    """The header and footer every page of the listing shares. Returns (items, content box [x0, y0, x1, y1])."""
+def frame(brand, height, title=None, mark=None, fallback=None):
+    """The header and footer every page of the listing shares. Returns (items, content box [x0, y0, x1, y1]).
+
+    ``fallback`` is said in a header band that would otherwise stand empty (no title, badge, name or logo).
+    """
     items = []; top = 40; bottom = height - 40; header = brand.tokens['header']; footer = brand.tokens['footer']
     mark = mark or (brand.badges[0] if brand.badges else None)
     logo = getattr(brand, 'logo_path', None); named = brand.name if not logo else ''
+    if header == 'band' and not (title or mark or named or logo):
+        title = fallback
     if header == 'band':
         band = 124; stripe = 10
         items += [{'type': 'rect', 'x': 0, 'y': 0, 'w': 1000, 'h': band, 'fill': brand.dark},

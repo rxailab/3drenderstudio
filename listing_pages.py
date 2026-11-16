@@ -109,6 +109,12 @@ class Shot:
         return [*self.point(rect[0], rect[1]), *self.point(rect[2], rect[3])]
 
 
+def frame(ctx, title=None, mark=None):
+    """The listing's shared frame; a header band with nothing else to say names the product."""
+    product = ctx['product']
+    return el.frame(ctx['brand'], H, title, mark, fallback=product.get('title'))
+
+
 def strings(ctx):
     return STRINGS[ctx['language']]
 
@@ -203,7 +209,7 @@ def _rows(count):
 def page_includes(ctx):
     """What is in the box: each thing as its own cut-out over its model number and a line of description."""
     brand = ctx['brand']; product = ctx['product']; hero = ctx['shots']['hero']
-    items = el.ground(brand, H); frame_items, box = el.frame(brand, H, strings(ctx)['includes']); items += frame_items
+    items = el.ground(brand, H); frame_items, box = frame(ctx, strings(ctx)['includes']); items += frame_items
     cells = [{'path': None, 'heading': product['model'] or product['title'], 'lines': [product['title'] if product['model'] else product['subline']], 'quantity': 1}]
     for part in ctx['components']:
         prefix = '(%d) ' % part['quantity'] if part['quantity'] > 1 else ''
@@ -291,7 +297,7 @@ def _place_labels(brand, shot, entries, box, column, detail=True, size=27):
 def page_callouts(ctx):
     """The product in the middle, its features named around it with leader lines in the brand's manner."""
     brand = ctx['brand']; product = ctx['product']; hero = Shot(ctx['shots']['hero'].result, ctx['shots']['hero'].picture)
-    items = el.ground(brand, H); frame_items, box = el.frame(brand, H, product['title'] if brand.tokens['header'] != 'band' else None); items += frame_items
+    items = el.ground(brand, H); frame_items, box = frame(ctx, product['title'] if brand.tokens['header'] != 'band' else None); items += frame_items
     features = product['features'][:6]; column = 196
     anchored = []; loose = []
     picture_box = [box[0] + column - 70, box[1] + 10, box[2] - column + 70, box[3] - 10]
@@ -330,7 +336,7 @@ def page_usecase(ctx):
     items.append({'type': 'image', 'src': shot.path, 'x': 0, 'y': 0, 'w': 1000, 'h': 1000, 'fit': 'cover'})
     shot.crop = [0, 0, 1, 1]; shot.origin = (0, 0); shot.scale = 1000 / shot.width; shot.box = [0, 0, 1000, 1000]
     title = use.get('headline') or ('%s %s' % (strings(ctx)['in_use'], '· ' + workpiece_label(ctx, facts) if facts else '')).strip()
-    frame_items, box = el.frame(brand, H, title); items += frame_items
+    frame_items, box = frame(ctx, title); items += frame_items
     centre_box = shot.product_box(); centre = ((centre_box[0] + centre_box[2]) / 2, (centre_box[1] + centre_box[3]) / 2)
     notes = []; marked = []
     for key, mark in (('diameter', 'Ø '), ('thickness', '')):
@@ -380,10 +386,22 @@ def page_usecase(ctx):
 
 # ---- feature close-up ----
 
+def _part_crop(result, parts, pad=.4):
+    """A square around the named parts in a staged picture, as shares of it; None when they are not in it."""
+    rects = [row['rect'] for row in result.get('parts', []) if row['name'] in set(parts or []) and row.get('rect')]
+    if not rects:
+        return None
+    x0 = min(r[0] for r in rects); y0 = min(r[1] for r in rects); x1 = max(r[2] for r in rects); y1 = max(r[3] for r in rects)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2; half = max(x1 - x0, y1 - y0) * (1 + pad) / 2
+    half = min(.5, max(.12, half)); cx = min(1 - half, max(half, cx)); cy = min(1 - half, max(half, cy))
+    return [cx - half, cy - half, cx + half, cy + half]
+
+
 def page_feature(ctx, index):
-    """One feature, close: a headline and a line over a picture of the part that fills the rest of the page."""
+    """One feature: a headline and a line over the whole product, with a magnifier on the part and a line to it."""
     brand = ctx['brand']; feature = ctx['product']['features'][index]; shot = ctx['shots'].get('detail%d' % index)
-    items = el.ground(brand, H); frame_items, box = el.frame(brand, H, None); items += frame_items
+    hero = Shot(ctx['shots']['hero'].result, ctx['shots']['hero'].picture)
+    items = el.ground(brand, H); frame_items, box = frame(ctx, None); items += frame_items
     x = box[0] + 16; y = box[1] + 22; width = box[2] - box[0] - 32
     number, _ = el.badge(brand, '%02d' % (index + 1), x, y, 44, 'pill' if brand.preset != 'tech' else 'hex'); items += number; y += 44 + 30
     parts, height = el.headline(brand, feature['title'], x, y, width, 78, 2)
@@ -391,18 +409,26 @@ def page_feature(ctx, index):
     if feature.get('detail'):
         detail, detail_height = el.paragraph(brand, feature['detail'], x, y + 24, width, 27, max_lines=2)
         items += detail; y += 24 + detail_height
-    y += 40
-    if shot:
-        edge = brand.tokens['card']['style'] == 'rules'            # a framed brand runs the picture from edge to edge
-        left = 0 if edge else box[0]; right = 1000 if edge else box[2]; bottom = box[3] + (22 if edge else 0)
-        plate = '#eef0f2' if not brand.on_dark else draw.mix(brand.ground, '#ffffff', .1)
-        radius = 0 if edge else brand.tokens['card']['radius']
-        items.append({'type': 'rect', 'x': left, 'y': y, 'w': right - left, 'h': bottom - y, 'fill': plate, 'radius': radius,
-                      'gradient': {'to': draw.mix(plate, '#000000', .1)}})
-        if brand.on_dark:
-            items.append({'type': 'texture', 'kind': 'glow', 'x': left + 100, 'y': y, 'w': right - left - 200, 'h': bottom - y, 'color': brand.accent, 'opacity': .2})
-        items.append({'type': 'image', 'src': shot.path, 'x': left, 'y': y, 'w': right - left, 'h': bottom - y, 'fit': 'cover', 'anchor': (.5, .5),
-                      **({'mask': 'round', 'radius': radius} if radius else {})})
+    y += 30
+    room = box[3] - y; diameter = max(220.0, min(400.0, room * .82))
+    crop = _part_crop(shot.result, feature.get('parts')) if shot else None
+    # The whole product on the left; the magnifier on the right, over the empty side of the page.
+    picture_box = [box[0], y + 10, box[2] - diameter * (.55 if crop else 0), box[3] - 6]
+    items.append(hero.place(picture_box, shadow=not brand.on_dark, reflection=True))
+    point = hero.anchor(feature.get('parts'))
+    if crop:
+        cx = box[2] - diameter / 2 - 4; cy = y + room / 2
+        if point:
+            # Out of the way of the part it shows: above it when the part is low, below when it is high.
+            cy = min(box[3] - diameter / 2 - 4, max(y + diameter / 2, point[1] - diameter * .45 if point[1] > y + room * .55 else point[1] + diameter * .45))
+            accent = brand.accent_for(brand.ground)
+            length = math.hypot(point[0] - cx, point[1] - cy) or 1.0
+            edge = (cx + (point[0] - cx) / length * diameter / 2, cy + (point[1] - cy) / length * diameter / 2)
+            if length > diameter / 2 + 12:
+                items.append({'type': 'line', 'points': [list(edge), list(point)], 'color': accent, 'width': 3, 'end': 'ring', 'marker_size': 16, 'ground': brand.ground})
+        items += el.inset(brand, shot.path, cx, cy, diameter, crop)
+    elif point:
+        items.append({'type': 'ellipse', 'x': point[0] - 28, 'y': point[1] - 28, 'w': 56, 'h': 56, 'stroke': brand.accent_for(brand.ground), 'stroke_width': 4})
     return _page('feature', items, brand.ground)
 
 
@@ -445,7 +471,7 @@ def page_band(ctx):
 def page_benefits(ctx):
     """The product beside its points: an icon or a tick, a title and a line each."""
     brand = ctx['brand']; product = ctx['product']
-    items = el.ground(brand, H); frame_items, box = el.frame(brand, H, product['headline'] or strings(ctx)['why']); items += frame_items
+    items = el.ground(brand, H); frame_items, box = frame(ctx, product['headline'] or strings(ctx)['why']); items += frame_items
     hero = Shot(ctx['shots']['hero'].result, ctx['shots']['hero'].picture)
     items.append(hero.place([box[0], box[1] + 10, 520, box[3] - 10], shadow=not brand.on_dark, reflection=True))
     features = product['features'][:5]; x = 560; width = box[2] - x; top = box[1] + 20
@@ -476,7 +502,7 @@ def page_benefits(ctx):
 def page_specs(ctx):
     """A level side view with its measured length and height, over the specification table."""
     brand = ctx['brand']; product = ctx['product']; shot = ctx['shots']['side']
-    items = el.ground(brand, H); frame_items, box = el.frame(brand, H, strings(ctx)['specs']); items += frame_items
+    items = el.ground(brand, H); frame_items, box = frame(ctx, strings(ctx)['specs']); items += frame_items
     rows = [(spec['label'], spec['value']) for spec in product['specs']][:8]
     dims = shot.result.get('dimensions_mm') or []; names = strings(ctx)
     if ctx['size_known'] and len(dims) == 3:

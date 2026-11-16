@@ -10,6 +10,7 @@ A page prints only numbers the user entered or that were measured on the model.
 """
 import copy
 import io
+import math
 import json
 import re
 import shutil
@@ -305,6 +306,17 @@ def save_logo(project_id, stream, filename):
     return save_brand(project_id, {'logo': components.url(target)})
 
 
+def whole(text, limit):
+    """A line cut short by the copy writer ('…') ends at its last whole word or clause instead."""
+    text = ' '.join(str(text or '').split())
+    if text.endswith(('…', '...')):
+        text = text.rstrip('…').rstrip('.').rstrip()
+        cut = max(text.rfind(mark) for mark in (',', '，', ';', '；', ' — ', ' - '))
+        text = text[:cut] if cut > len(text) * .5 else text.rsplit(' ', 1)[0] if ' ' in text else text
+        text = text.rstrip(' ,，;；-—')
+    return text[:limit]
+
+
 def draft(project_id, body):
     """Write the product record's words from the model's names and the user's notes (by the copy model when one is configured)."""
     import info_layer
@@ -322,12 +334,12 @@ def draft(project_id, body):
         raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
     names = part_names(project)
     content, source, notes, _ = info_layer.content_for(project, hint.strip(), None, names, language)
-    features = [{'title': point['title'], 'detail': point.get('detail', ''), 'parts': point.get('parts', []), 'icon': point.get('icon', '')}
+    features = [{'title': whole(point['title'], 40), 'detail': whole(point.get('detail', ''), 90), 'parts': point.get('parts', []), 'icon': point.get('icon', '')}
                 for point in content['points']][:MAX_FEATURES]
     listed = {row['label'].lower() for row in content['figures']}
     specs = [{'label': spec['label'], 'value': (spec['value'] + (' ' + spec['unit'] if spec.get('unit') else '')).strip()} for spec in content['specs']][:MAX_SPECS]
     figures = [{'value': row['value'], 'unit': row.get('unit', ''), 'label': row['label']} for row in content['figures']][:MAX_FIGURES]
-    update = {'language': language, 'headline': content['headline'][:60], 'subline': content['subline'][:120]}
+    update = {'language': language, 'headline': whole(content['headline'], 60), 'subline': whole(content['subline'], 120)}
     # Words the user already wrote are kept; a draft only fills what is empty unless asked to replace.
     replace = body.get('replace') is True
     if replace or not product['features']:
@@ -433,6 +445,39 @@ def recover_interrupted():
 
 # ---- building ----
 
+TOOL_WORDS = ('grinder', 'saw', 'cutter', 'wrench', 'plier', 'screwdriver', 'driver', 'hammer', 'sander', 'planer', 'router', 'blower',
+              'trimmer', 'torch', 'gun', 'file', 'chisel', 'knife', 'tool', '角磨', '磨光', '锯', '刀', '钳', '扳手', '起子', '螺丝刀', '锤',
+              '砂光', '打磨', '电刨', '吹风', '修边', '割草', '工具', '切割', '电动')
+UPRIGHT_LIMIT = 1.45     # a tool this many times taller than it is long or wide is shown lying level, as listings show it
+
+
+def display_rotation(project):
+    """The pose a listing shows the product in. A long tool that the pose check stood on end (a grinder on its battery)
+    is laid level, its length across the picture, as tool listings show it; anything else keeps the project's pose.
+
+    Returns (rotation, laid): ``laid`` says whether it was turned.
+    """
+    import orientation
+    rotation = [float(value) for value in project['plan'].get('rotation', [0, 0, 0])]
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    name = ' '.join(str(value) for value in (project.get('name', ''), metadata.get('product_category', ''))).lower()
+    measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions')
+    if not measured or not any(word in name for word in TOOL_WORDS):
+        return rotation, False
+    width, depth, height = orientation.oriented_dimensions(measured, rotation)
+    if height < UPRIGHT_LIMIT * max(width, depth):
+        return rotation, False
+    # A quarter turn about the level line from the product to the camera, as if the picture itself were turned: the side
+    # that faced the camera still faces it (a grinder's disc stays face-on), its length now runs across, its top to the left.
+    azimuth = math.radians(_hero_view(project)[0])
+    ux, uy = math.sin(azimuth), -math.cos(azimuth)
+    turn = [[ux * ux, ux * uy, uy], [ux * uy, uy * uy, -ux], [-uy, ux, 0.0]]          # 90 degrees about (ux, uy, 0)
+    laid = orientation.then(rotation, orientation.euler(turn))
+    # Then about the vertical, so its own length, depth and height line up with the scene's axes again: it is measured true,
+    # and the listing camera sees it from the same three-quarter angle the product was first shown from.
+    return orientation.then(laid, [0, 0, -math.degrees(azimuth)]), True
+
+
 def _hero_view(project):
     shot = next((row for row in project['plan'].get('shots', []) if row.get('id') == 'hero'), {})
     azimuth = float(shot.get('azimuth', 35))
@@ -453,6 +498,7 @@ def kit_request(project, plan, size_mm, parts, azimuth):
 def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
+    plan['rotation'], _ = display_rotation(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1500)}
     if 'main' in kinds:
