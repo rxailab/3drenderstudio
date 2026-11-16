@@ -46,7 +46,7 @@ class Shot:
         self.width = result['width']; self.height = result['height']
         self.crop = [0.0, 0.0, 1.0, 1.0]; self.origin = (0.0, 0.0); self.scale = 1000 / self.width; self.box = [0, 0, 1000, 1000]
 
-    def place(self, box, pad=.015, anchor=(.5, .5), shadow=False, whole=False):
+    def place(self, box, pad=.015, anchor=(.5, .5), shadow=False, whole=False, reflection=None):
         """The image item that shows the product part of the picture inside ``box`` [x0, y0, x1, y1]."""
         rect = [0, 0, 1, 1] if whole else self.result.get('product_rect') or [0, 0, 1, 1]
         self.crop = [max(0.0, rect[0] - pad), max(0.0, rect[1] - pad), min(1.0, rect[2] + pad), min(1.0, rect[3] + pad)]
@@ -55,7 +55,9 @@ class Shot:
         drawn = (width * self.scale, height * self.scale)
         self.origin = (box[0] + (box[2] - box[0] - drawn[0]) * anchor[0], box[1] + (box[3] - box[1] - drawn[1]) * anchor[1])
         self.box = [self.origin[0], self.origin[1], self.origin[0] + drawn[0], self.origin[1] + drawn[1]]
-        return el.cutout(self.path, self.origin[0], self.origin[1], drawn[0], drawn[1], (.5, .5), shadow, None if whole else list(self.crop))
+        # A product standing on something is reflected in it; a picture laid on a page without a floor (specs, a whole scene) is not.
+        return el.cutout(self.path, self.origin[0], self.origin[1], drawn[0], drawn[1], (.5, .5), shadow, None if whole else list(self.crop),
+                         reflection=shadow if reflection is None else reflection)
 
     def point(self, fx, fy):
         """A point of the picture (fractions of its size) in page units."""
@@ -286,13 +288,13 @@ def page_callouts(ctx):
     anchored = []; loose = []
     picture_box = [box[0] + column - 70, box[1] + 10, box[2] - column + 70, box[3] - 10]
     loose_room = 0
-    picture_item = hero.place(picture_box, shadow=not brand.on_dark)
+    picture_item = hero.place(picture_box, shadow=not brand.on_dark, reflection=True)
     for feature in features:
         point = hero.anchor(feature.get('parts'))
         (anchored if point else loose).append((feature, point))
     if loose:
         loose_room = 70
-        picture_item = hero.place([picture_box[0], picture_box[1], picture_box[2], picture_box[3] - loose_room], shadow=not brand.on_dark)
+        picture_item = hero.place([picture_box[0], picture_box[1], picture_box[2], picture_box[3] - loose_room], shadow=not brand.on_dark, reflection=True)
         anchored = [(feature, hero.anchor(feature.get('parts'))) for feature, _ in anchored]
     items.append(picture_item)
     label_items, placed = _place_labels(brand, hero, anchored, [box[0], box[1], box[2], box[3] - loose_room], column, detail=brand.preset != 'frame')
@@ -437,7 +439,7 @@ def page_benefits(ctx):
     brand = ctx['brand']; product = ctx['product']
     items = el.ground(brand, H); frame_items, box = el.frame(brand, H, product['headline'] or strings(ctx)['why']); items += frame_items
     hero = Shot(ctx['shots']['hero'].result, ctx['shots']['hero'].picture)
-    items.append(hero.place([box[0], box[1] + 10, 520, box[3] - 10], shadow=not brand.on_dark))
+    items.append(hero.place([box[0], box[1] + 10, 520, box[3] - 10], shadow=not brand.on_dark, reflection=True))
     features = product['features'][:5]; x = 560; width = box[2] - x; top = box[1] + 20
     slot = (box[3] - top) / max(1, len(features)); size = min(74, slot * .5)
     for index, feature in enumerate(features):
@@ -476,7 +478,7 @@ def page_specs(ctx):
     columns = 2 if len(rows) > 4 else 1; per = math.ceil(len(rows) / columns) if rows else 0
     row_height = 56; table_height = per * row_height + 16 if rows else 0
     picture_box = [box[0] + 90, box[1] + 50, box[2] - 90, box[3] - table_height - 86]
-    items.append(shot.place(picture_box, shadow=not brand.on_dark))
+    items.append(shot.place(picture_box, shadow=not brand.on_dark, reflection=False))       # the dimension lines run under it
     notes = []
     if ctx['size_known']:
         centre_box = shot.product_box(); centre = ((centre_box[0] + centre_box[2]) / 2, (centre_box[1] + centre_box[3]) / 2)
