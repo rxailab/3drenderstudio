@@ -249,6 +249,17 @@
 <div id="materialAgentTasks" class="material-agent-tasks" aria-live="polite">
 </div>
 </details></section>
+<section class="panel-section orient-section" aria-labelledby="orientTitle">
+<div class="orient-heading"><h2 id="orientTitle">摆放朝向</h2><span id="orientBadge" class="orient-badge" hidden></span></div>
+<p id="orientStatus" class="render-reason" role="status" hidden></p>
+<div id="orientPoses" class="orient-poses" role="group" aria-label="候选姿态，点击改用" hidden></div>
+<div class="orient-actions">
+<button id="orientAuto" class="button secondary" type="button" aria-describedby="orientStatus">自动摆正</button>
+<button id="orientFlip" class="button subtle" type="button" title="把产品上下颠倒过来">上下翻转</button>
+<button id="orientTurnLeft" class="button subtle" type="button" title="绕竖直方向转 90°，换一个面朝向镜头" aria-label="左转 90°">↺ 90°</button>
+<button id="orientTurnRight" class="button subtle" type="button" title="绕竖直方向转 90°，换一个面朝向镜头" aria-label="右转 90°">↻ 90°</button>
+</div>
+</section>
 <section class="panel-section hero-optimize" aria-label="主图优化">
 <button id="optimizeHeroButton" class="button secondary full-width" type="button" aria-describedby="optimizeHeroReason" hidden>自动优化主图</button>
 <p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
@@ -268,7 +279,15 @@
 <select id="sceneMethodSelect" aria-describedby="sceneMethodHelp">
 <option value="auto">自动：有人物或真实环境时用图像模型</option>
 <option value="render">3D 道具场景（Blender 渲染）</option>
-<option value="generate">AI 图像生成（人物 / 真实环境）</option>
+<option value="generate">AI 图像生成（真实环境，可含人物）</option>
+</select>
+</div>
+<div class="scene-audience-row">
+<label class="field-label" for="scenePeopleSelect">画面人物</label>
+<select id="scenePeopleSelect" aria-describedby="sceneMethodHelp">
+<option value="auto">自动：由场景策划决定</option>
+<option value="include">包含人物（有人在使用产品）</option>
+<option value="exclude">不含人物（只有产品与环境）</option>
 </select>
 </div>
 <p id="sceneMethodHelp" class="field-help" hidden></p>

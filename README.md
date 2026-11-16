@@ -19,6 +19,19 @@
 ![导出的 PSD 及其图层结构](validation/v26-psd-layers.jpg)
 
 用法、规则、验证范围与未验证的部分见 [TEXT_LAYER_LAYOUT_UPDATE.md](TEXT_LAYER_LAYOUT_UPDATE.md)。
+## 画面人物选项与模型自动摆正 v27
+
+**场景图里要不要有人，由你决定。** 「使用场景」新增「画面人物」：自动、包含人物、不含人物。选了之后，策划按它写画面，图像请求里写明“必须有人在使用产品”或“画面里不出现人”，生成后的核对也看这一项，不符就带着纠正重做一次。3D 道具场景里没有人，所以那种方式下不提供「包含人物」。
+
+![「包含人物」与「不含人物」各生成一张](validation/v27-people-choice.jpg)
+
+**倒着或躺着的模型，导入时摆正。** 模型文件的坐标轴由导出软件决定，文件是倒的，之前所有图就都是倒的。现在出第一张图之前，应用渲染六个候选姿态，由视觉模型判断哪个是正的（没有视觉模型时看部件名称），有把握才改。
+
+![六个候选姿态，以及摆正前后的首图](validation/v27-orientation.jpg)
+
+**判断错了一点就改。** 「调整」面板的「摆放朝向」列出六个候选姿态的缩略图，点一下改用；也可以上下翻转、绕竖直方向转 90°，或重新自动摆正。每次都是一个可撤销的版本，并立即预览。
+
+摆正只在一把电钻和一件工具柜上实测过，判断可能出错；没有视觉模型时多数模型需要手动选姿态。做法、接口、验证范围和未验证的部分见 [POSE_AND_PEOPLE_UPDATE.md](POSE_AND_PEOPLE_UPDATE.md)。
 
 ## 按人群策划的使用场景图 v25
 
@@ -280,6 +293,7 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 - `layer_icons.py`、`scripts/vendor_icons.py`、`static/vendor/icons/`：图标 agent（随附图标库查找、在线查找、视觉模型挑选、AI 绘制与核对），以及随附图标库的下载与校验。
 - `scripts/vendor_psd_writer.py`、`static/vendor/ag-psd/`：浏览器端写 Photoshop 文件的 ag-psd（MIT），以及它的下载与校验。
 - `scene_stylist.py`、`scene_props.py`、`scene_set.py`、`blender/scene_layout.py`、`blender/scene_dress.py`：使用场景的导演与采购、Poly Haven 目录检索与下载校验、场景数据约定、无界面布置求解，以及渲染时按记录重建道具、地面、背景墙与景深。
+- `orientation.py`、`blender/orient.py`：候选姿态的渲染与测量、由视觉模型或部件名称判断哪一面朝上、把姿态写入方案，以及点选、翻转、转向。
 - `ecommerce.py`、`ecommerce_platforms.py`、`blender/render_matte.py`：平台主图规则、真实图片的合规检查、产品蒙版、纯白底／透明底合成与平台套图导出。
 - `ai_client.py`、`ai_config.py`：AI服务配置、结构化视觉诊断与修改请求；失败时明确退回有限规则检查。
 - `material_edit.py`、`blender/pick_surface.py`：已渲染场景的真实部件定位、材质读取及可回退局部编辑。

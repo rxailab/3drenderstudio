@@ -748,6 +748,21 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .lookdev-record p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 
 /* Usage scene */
+.orient-section { display: grid; gap: 8px; }
+.orient-section .render-reason.is-summary { color: var(--muted); }
+.orient-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.orient-heading h2 { margin: 0; }
+.orient-badge { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; color: var(--muted); background: var(--raised); }
+.orient-badge.is-changed { color: var(--ink); }
+.orient-poses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.orient-pose { display: grid; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.3; cursor: pointer; text-align: center; }
+.orient-pose img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: #eef0f3; }
+.orient-pose span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orient-pose:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+.orient-pose.is-current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--ink); }
+.orient-pose:disabled { cursor: default; opacity: .6; }
+.orient-actions { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, .8fr); gap: 6px; }
+.orient-actions .button { padding-left: 6px; padding-right: 6px; white-space: nowrap; }
 .scene-set { display: grid; gap: 6px; }
 .scene-details summary { cursor: pointer; color: var(--muted); font-size: 11px; }
 .scene-set .render-reason.is-summary { color: var(--muted); }
@@ -764,12 +779,14 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .scene-proposal strong, .scene-brief strong { display: block; font-size: 12px; color: var(--ink); }
 .scene-proposal p, .scene-brief p { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .scene-proposal .scene-method { color: var(--ink); }
+.scene-proposal .scene-people { color: var(--ink); }
 .scene-proposal a, .scene-brief a, .scene-generated a { color: inherit; text-decoration: underline; }
 .scene-brief { margin: 6px 0; }
 .scene-generated { font-size: 11px; line-height: 1.6; color: var(--muted); }
 .scene-generated p { margin: 4px 0 0; }
 .scene-check.is-passed strong { color: var(--green); }
 .scene-check.is-failed strong { color: var(--amber); }
+.scene-check-people.is-failed { color: var(--amber); }
 .scene-details .scene-issues { margin: 2px 0 0; padding-left: 16px; list-style: disc; max-height: none; }
 .scene-details .scene-issues li { display: list-item; border: 0; padding: 0; }
 .scene-refs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }

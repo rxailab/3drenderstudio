@@ -52,6 +52,7 @@ RUNTIME_COMPONENTS={
     'scene_set':('blender/worker.py','blender/scene_dress.py','blender/scene_layout.py','scene_set.py','scene_props.py'),
     'layer_probe':('blender/layer_probe.py','blender/pick_surface.py'),
     'scene_image':('blender/worker.py','scene_imagegen.py','scene_audience.py','references/eu-tool-ecommerce/references.csv'),
+    'orientation':('blender/worker.py','blender/orient.py','orientation.py'),
 }
 
 def runtime_status():
@@ -99,6 +100,9 @@ def project_view(ident):
     import scene_stylist
     p['scene_task']=scene_stylist.latest(ident)
     p['queue']=queue_view(ident)
+    import orientation
+    p['orientation']=orientation.public(p.get('orientation'))
+    p['orient_task']=orientation.latest(ident)
     return p
 
 class JobConflictError(ValueError):
@@ -942,10 +946,23 @@ def _run_job(ident):
             return
         if j['kind']=='analyze':
             r=execute(j,{'action':'analyze','model_path':p['model_path'],'plan':j['plan']},base)
+            pose=None
+            if not p.get('analysis') and get('job',ident)['status']!='cancelled':
+                # A file can arrive upside-down or on its side: stand it up before the first picture.
+                import orientation
+                try:
+                    if runtime_status()['capabilities'].get('orientation'):
+                        pose=orientation.first_pose(p,r,DATA/p['id']/'orientation'/j['id'],
+                                                    lambda:get('job',ident)['status']=='cancelled',lambda stage:update_job(ident,stage=stage))
+                except InterruptedError: return
             with LOCK:
                 if get('job',ident)['status']=='cancelled': return
                 p=get('project',p['id'])
                 if not p.get('analysis'):
+                    if pose:
+                        p['orientation']=pose
+                        if pose.get('changed') and orientation.valid_rotation(pose.get('rotation')) and p['plan'].get('rotation')==[0,0,0]:
+                            p['plan']['rotation']=pose['rotation']
                     p['plan']=apply_material_note(enrich(p['plan'],r),r,p.get('metadata',{}).get('material_note'))
                     if p['plan'].get('look')=='showcase':
                         # Placeholder CAD materials get real finishes before the first image.
