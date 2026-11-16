@@ -1,0 +1,8 @@
+Icons in this folder come from two open-source sets, converted to plain path data by scripts/vendor_icons.py.
+
+@iconify-json/lucide 1.2.154 - ISC licence (https://github.com/lucide-icons/lucide/blob/main/LICENSE), Lucide Contributors
+@iconify-json/tabler 1.2.45 - MIT licence (https://github.com/tabler/tabler-icons/blob/master/LICENSE), Paweł Kuna
+
+Both licences permit use, copying, modification and distribution, including commercially, provided the
+copyright notice and permission notice are kept with the icons. Their full texts are in LICENSE-lucide.txt
+and LICENSE-tabler.txt beside this file.

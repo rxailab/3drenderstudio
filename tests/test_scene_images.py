@@ -374,12 +374,10 @@ class StylistFlowTests(unittest.TestCase):
 
     def test_generating_again_replaces_the_scene_and_removing_it_restores_the_plan(self):
         self.run_task(seed=1)
-        with self.assertRaises(engine.JobConflictError):          # its own preview is still rendering
+        with patch.object(scene_stylist.threading, 'Thread') as thread:       # its own preview is still in the queue: that is no reason to refuse
             scene_stylist.submit('fixture', {'expected_version': 2, 'seed': 2})
         for job in store.all_records('job'):
             if job['status'] in ('queued', 'running'): engine.cancel(job['id'])
-        with patch.object(scene_stylist.threading, 'Thread') as thread:
-            scene_stylist.submit('fixture', {'expected_version': 2, 'seed': 2})
         scene_stylist._run(thread.call_args.kwargs['args'][0])
         saved = store.get('project', 'fixture')
         self.assertEqual(saved['version'], 3)
@@ -392,14 +390,30 @@ class StylistFlowTests(unittest.TestCase):
         self.assertNotIn('scene_set', removed['plan']); self.assertNotIn('scene', [shot['id'] for shot in removed['plan']['shots']])
         self.assertEqual(removed['history'][-1]['reason'], '移除使用场景')
 
-    def test_a_plan_changed_meanwhile_is_never_overwritten(self):
-        with patch.object(scene_stylist.threading, 'Thread') as thread:
-            task = scene_stylist.submit('fixture', {'expected_version': 1})
-        changed = store.get('project', 'fixture'); changed['version'] = 2; changed['plan']['exposure'] = .5; store.put('project', changed)
-        scene_stylist._run(thread.call_args.kwargs['args'][0])
-        task = store.get(scene_stylist.KIND, task['id'])
-        self.assertEqual(task['status'], 'failed'); self.assertIn('已被修改', task['error'])
-        self.assertNotIn('scene_set', store.get('project', 'fixture')['plan'])
+    def test_a_plan_changed_meanwhile_keeps_its_change_unless_the_change_moves_the_props(self):
+        def run_after(change):
+            with patch.object(scene_stylist.threading, 'Thread') as thread:
+                task = scene_stylist.submit('fixture', {'expected_version': store.get('project', 'fixture')['version']})
+            def built(*args, **kwargs):
+                result = original(*args, **kwargs)
+                changed = store.get('project', 'fixture'); change(changed['plan']); changed['version'] += 1; store.put('project', changed)
+                return result
+            with patch.object(scene_stylist, 'build', side_effect=built):
+                scene_stylist._run(thread.call_args.kwargs['args'][0])
+            for job in store.all_records('job'):
+                if job['status'] in ('queued', 'running'): engine.cancel(job['id'])
+            return store.get(scene_stylist.KIND, task['id'])
+        original = scene_stylist.build
+        task = run_after(lambda plan: plan.update(exposure=.5))
+        self.assertEqual(task['status'], 'completed', task.get('error')); self.assertEqual(task['result']['rebased_from'], 1)
+        saved = store.get('project', 'fixture')
+        self.assertEqual((saved['version'], saved['plan']['exposure']), (3, .5), 'the scene is added to the plan as it is now')
+        first = saved['plan']['scene_set']['seed']
+        task = run_after(lambda plan: plan.update(rotation=[0, 0, 90]))
+        self.assertEqual(task['status'], 'failed'); self.assertIn('朝向', task['error'])
+        saved = store.get('project', 'fixture')
+        self.assertEqual((saved['version'], saved['plan']['rotation'], saved['plan']['scene_set']['seed']), (4, [0, 0, 90], first),
+                         'the turned model is kept and the earlier scene stays as it was')
 
     def test_requests_are_validated_and_one_scene_is_built_at_a_time(self):
         for body in ({'hint': 'x' * 400}, {'expected_version': 0}, {'seed': 'lucky'}, {'expected_version': 9}):
