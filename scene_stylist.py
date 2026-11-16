@@ -501,8 +501,9 @@ def _layout(project, plan, shot, props, units, seed, keywords, folder, elevation
 # How far a scene task is when it enters a stage, by the words the stage begins with. Rendering the three
 # reference views and waiting for the image model are the long stretches, so they get the room.
 STAGE_PROGRESS = (('识别产品与使用场景', 4), ('推荐目标人群与场景', 8), ('从 Poly Haven 搜集道具模型', 25), ('准备地面与背景', 45), ('布置场景', 60),
-                  ('渲染产品参考角度 1', 12), ('渲染产品参考角度 2', 28), ('渲染产品参考角度 3', 44), ('图像模型正在生成场景', 60),
-                  ('图像模型正在生成（已返回草图）', 70), ('图像服务未能', 72), ('核对产品', 88), ('产品与参考图不一致', 74), ('画面里', 74))
+                  ('渲染产品参考角度 1', 12), ('渲染产品参考角度 2', 28), ('渲染产品参考角度 3', 44), ('渲染产品（锁定外形用）', 20),
+                  ('图像模型正在生成场景', 50), ('图像模型正在生成（已返回草图）', 64), ('图像服务未能', 66), ('核对产品位置与外形', 80),
+                  ('核对产品', 88), ('产品与参考图不一致', 70), ('产品被移动或改动', 70), ('画面里', 70))
 
 
 def stage_progress(stage):

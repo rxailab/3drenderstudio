@@ -28,6 +28,7 @@ import engine
 import planner
 import scene_audience
 import scene_imagegen
+import scene_lock
 import scene_props
 import scene_stylist
 import studio_store as store
@@ -267,34 +268,39 @@ class ImageClientTests(unittest.TestCase):
             opener.assert_not_called()
 
     def test_the_request_names_what_to_keep_and_carries_no_publisher_names(self):
-        text = scene_imagegen.prompt('rolling tool cabinet', 738, 3, 'A Bosch-style jobsite. An installer opens the drawer.', '4:3',
+        text = scene_imagegen.prompt('rolling tool cabinet', 738, 'A Bosch-style jobsite. An installer opens the drawer.', '4:3',
                                      ['top surface is black, should be light brushed steel'])
-        self.assertIn('THE PRODUCT is a rolling tool cabinet. Its largest dimension is about 74 cm.', text)
-        self.assertIn('Reproduce this product exactly as rendered', text); self.assertIn('landscape 4:3', text)
+        self.assertIn('THE PRODUCT is a rolling tool cabinet. Its largest dimension is about 74 cm', text)
+        # The product is already in the picture: it is kept, not drawn; everything else is painted round it.
+        for phrase in ('It is already in image 1, in its final place', 'It is finished and fixed', 'Do not move, turn, resize, redraw',
+                       'PAINT EVERYTHING ELSE', 'Nothing of the grey ground may remain', 'the shadow it casts'):
+            self.assertIn(phrase, text)
+        self.assertIn('landscape 4:3', text)
         self.assertIn('CORRECTIONS.', text); self.assertIn('light brushed steel', text)
         self.assertNotIn('Bosch', text)
-        single = scene_imagegen.prompt('small bottle', None, 1, '', '1:1')
-        self.assertIn('The attached image is a render of it.', single); self.assertNotIn('largest dimension', single); self.assertNotIn('CORRECTIONS', single)
+        single = scene_imagegen.prompt('small bottle', None, '', '1:1')
+        self.assertNotIn('largest dimension', single); self.assertNotIn('CORRECTIONS', single)
         self.assertNotIn('PEOPLE.', single)                    # nothing was asked: the scene description decides
 
     def test_the_request_says_whether_a_person_is_in_the_picture(self):
         scene = 'A workshop bench by a window.'
-        wanted = scene_imagegen.prompt('angle grinder', 300, 3, scene, '1:1', people=True)
+        wanted = scene_imagegen.prompt('angle grinder', 300, scene, '1:1', people=True)
         self.assertIn('PEOPLE. The picture must show a person actually using or handling the product', wanted)
         self.assertLess(wanted.index('THE SCENE.'), wanted.index('PEOPLE.')); self.assertLess(wanted.index('PEOPLE.'), wanted.index('RULES.'))
-        barred = scene_imagegen.prompt('angle grinder', 300, 3, scene, '1:1', people=False)
+        barred = scene_imagegen.prompt('angle grinder', 300, scene, '1:1', people=False)
         self.assertIn('PEOPLE. Nobody is in the picture', barred); self.assertNotIn('People are ordinary adults', barred)
         # With no scene of its own, the stock scene follows the choice too.
-        self.assertIn('with a person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=True))
-        self.assertNotIn('person using it', scene_imagegen.prompt('angle grinder', 300, 3, '', '1:1', people=False))
+        self.assertIn('with a person using it', scene_imagegen.prompt('angle grinder', 300, '', '1:1', people=True))
+        self.assertNotIn('person using it', scene_imagegen.prompt('angle grinder', 300, '', '1:1', people=False))
         # Hands at work, close up: the tool, the hands and what it works on; no face and no whole figure.
-        hands = scene_imagegen.prompt('pliers', 180, 3, 'An electrician in a hallway strips a cable.', '1:1', people=True, framing='hands')
-        for phrase in ('close-up of the product at work', 'hands of an adult hold and operate the product', 'at the point of contact',
+        hands = scene_imagegen.prompt('pliers', 180, 'An electrician in a hallway strips a cable.', '1:1', people=True, framing='hands')
+        for phrase in ('close-up of the product at work', 'hold and operate the product where a user grips it', 'at the point of contact',
+                       'never change its shape',
                        'no face, no head and no whole figure', 'overrides any wider view', 'bare or in plain work gloves'):
             self.assertIn(phrase, hands)
         self.assertNotIn('arms and upper body in the frame', hands); self.assertNotIn('People are ordinary adults', hands)
-        self.assertIn('arms and upper body in the frame', scene_imagegen.prompt('pliers', 180, 3, '', '1:1', people=True, framing='person'))
-        self.assertNotIn('close-up of the product at work', scene_imagegen.prompt('pliers', 180, 3, '', '1:1', people=False, framing='hands'))
+        self.assertIn('arms and upper body in the frame', scene_imagegen.prompt('pliers', 180, '', '1:1', people=True, framing='person'))
+        self.assertNotIn('close-up of the product at work', scene_imagegen.prompt('pliers', 180, '', '1:1', people=False, framing='hands'))
 
     def test_sizes_follow_the_plan_and_views_cover_the_other_sides(self):
         self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(2048, 2048), (2048, 1536), (1536, 2048)])
@@ -382,20 +388,28 @@ class CreateTests(unittest.TestCase):
         self.data = Path(temp.name)
         for module in (store, engine, scene_imagegen):
             mocked = patch.object(module, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)
-        self.rows = []
-        for index, (azimuth, elevation) in enumerate(scene_imagegen.angles(35, 18)):
-            path = self.data / 'fixture' / 'refs' / ('ref%d.png' % index); path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(png())
-            self.rows.append({'path': path, 'azimuth': azimuth, 'elevation': elevation, 'cached': False})
-        self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []
-        def check(references, generated, product, people=None, framing=None):
-            self.checked.append(people); self.framings.append(framing)
+        # The product render: a red block on transparent film, as blender/stage.py leaves it.
+        self.cutout = self.data / 'fixture' / 'stage' / 'x' / 'picture.png'; self.cutout.parent.mkdir(parents=True, exist_ok=True)
+        film = Image.new('RGBA', (400, 400), (0, 0, 0, 0)); film.paste((200, 30, 30, 255), (100, 120, 300, 280)); film.save(self.cutout)
+        self.rendered = []
+        def product_render(project, plan, azimuth, elevation, size_mm, canvas, cancelled=None, progress=None):
+            self.rendered.append((azimuth, elevation, tuple(canvas)))
+            return {'path': self.cutout, 'azimuth': azimuth, 'elevation': elevation, 'product_rect': [.25, .3, .75, .7]}
+        self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []; self.closeups = []; self.images = []; self.masks = []
+        self.locks = []                                        # what the measurement says of each picture; 'kept' when not set
+        def check(references, generated, product, people=None, framing=None, closeup=None):
+            self.checked.append(people); self.framings.append(framing); self.closeups.append(closeup)
             return self.verdicts.pop(0)
-        for target, name, effect in ((scene_imagegen, 'config', lambda: IMAGE), (scene_imagegen, 'references', lambda *a, **k: self.rows),
-                                     (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', check)):
+        def inspect(layer, picture):
+            status = self.locks.pop(0) if self.locks else 'kept'
+            return {'version': 1, 'status': status, 'score': .6 if status != 'moved' else .3, 'scale': 1.0, 'shift': [0, 0], 'covered': .1,
+                    'changed': .2 if status == 'changed' else 0.0, 'regions': [[.6, .3, .7, .4]] if status == 'changed' else []}
+        for target, name, effect in ((scene_imagegen, 'config', lambda: IMAGE), (scene_imagegen, 'product_render', product_render),
+                                     (scene_imagegen, 'edit', self.edit), (scene_imagegen, 'check', check), (scene_lock, 'inspect', inspect)):
             mocked = patch.object(target, name, side_effect=effect); mocked.start(); self.addCleanup(mocked.stop)
 
-    def edit(self, value, text, images, size, cancelled=None, progress=None):
-        self.prompts.append(text)
+    def edit(self, value, text, images, size, cancelled=None, progress=None, mask=None):
+        self.prompts.append(text); self.images.append(list(images)); self.masks.append(mask)
         return {'png': png(tuple(size), (len(self.prompts) * 40, 0, 0)), 'size': list(size), 'usage': {'total_tokens': 100}}
 
     def create(self, aspect='1:1', **options):
@@ -410,9 +424,21 @@ class CreateTests(unittest.TestCase):
         with Image.open(made['jpg']) as picture: self.assertEqual((picture.format, picture.size), ('JPEG', (2048, 1536)))
         record = made['record']
         self.assertEqual((record['model'], record['attempts'], record['check']['status'], record['usage']), ('gpt-image-2', 1, 'passed', {'total_tokens': 100}))
-        self.assertEqual([row['azimuth'] for row in record['references']], [30.0, -30.0, 15.0])
-        self.assertTrue(all(row['url'].startswith('/files/fixture/') for row in record['references']))
+        self.assertEqual(record['references'], [{'url': '/files/fixture/stage/x/picture.png', 'azimuth': 35, 'elevation': 18}])
+        self.assertEqual(self.rendered, [(35, 18, (2048, 1536))])                   # one render, from the scene's own camera
         self.assertEqual(len(self.prompts), 1); self.assertNotIn('CORRECTIONS', self.prompts[0])
+        # The model gets one picture, the anchored canvas, and a mask that keeps the product.
+        canvas = Path(self.images[0][0]); self.assertEqual(canvas.name, 'canvas.png')
+        with Image.open(canvas) as picture:
+            self.assertEqual(picture.size, (2048, 1536)); self.assertEqual(picture.getpixel((5, 5)), scene_lock.GROUND)
+            self.assertEqual(picture.getpixel((1024, 768))[:3], (200, 30, 30))        # the product, in the middle of the frame
+        with Image.open(io.BytesIO(self.masks[0])) as mask:
+            self.assertEqual((mask.size, mask.mode), ((2048, 1536), 'RGBA'))
+            self.assertEqual((mask.getpixel((5, 5))[3], mask.getpixel((1024, 768))[3]), (0, 255))       # painted round it, kept on it
+        self.assertEqual((record['anchor']['mask'], record['anchor']['canvas_url']), (True, '/files/fixture/scene_ai/t1/scene/canvas.png'))
+        self.assertTrue(record['anchor']['closeup_url'].endswith('/closeup1.jpg'))
+        self.assertEqual(Path(self.closeups[0]).name, 'closeup1.jpg')                 # the vision model compares the product side by side
+        self.assertEqual(record['check']['lock']['status'], 'kept')
 
     def test_a_changed_product_is_made_once_more_with_the_differences_named(self):
         self.verdicts = [{'status': 'failed', 'issues': ['top surface is black'], 'note': '不一致。'}, {'status': 'passed', 'issues': [], 'note': '一致。'}]
@@ -452,9 +478,41 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(made['record']['check']['issues'], ['one', 'two', 'three'])
         self.assertIn('PEOPLE. Nobody is in the picture', self.prompts[0])
 
+    def test_a_product_that_moved_or_was_redrawn_is_made_again_without_asking_the_vision_model(self):
+        self.locks = ['moved', 'kept']
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        stages = []
+        made = self.create(progress=stages.append)
+        self.assertEqual((made['record']['attempts'], made['record']['check']['status'], len(self.checked)), (2, 'passed', 1))       # the first was measured, not asked
+        self.assertIn('CORRECTIONS.', self.prompts[1]); self.assertIn('must stay exactly where it is in image 1', self.prompts[1])
+        self.assertIn('产品被移动或改动，正在重新生成', stages)
+        self.assertEqual(made['record']['discarded'], [{'url': '/files/fixture/scene_ai/t1/scene/attempt1.png', 'issues': [scene_imagegen.LOCK_FIXES['moved']], 'lock': 'moved'}])
+        self.locks = ['changed', 'changed']
+        made = self.create()
+        self.assertEqual((made['record']['check']['status'], made['record']['check']['lock']['status']), ('failed', 'changed'))
+        self.assertIn('parts of the product were redrawn (around its', made['record']['check']['issues'][0])
+        self.assertEqual(made['record']['check']['note'], scene_imagegen.LOCK_NOTES['changed'])
+        # When neither passes, a picture that kept the product beats one that did not, whatever else it got wrong.
+        self.locks = ['kept', 'moved']
+        self.verdicts = [{'status': 'failed', 'issues': ['one', 'two', 'three'], 'note': 'x', 'people': {'ok': False}}]
+        made = self.create()
+        self.assertEqual((made['record']['check']['lock']['status'], made['record']['check']['issues']), ('kept', ['one', 'two', 'three']))
+
+    def test_a_service_that_takes_no_mask_still_gets_the_anchored_canvas(self):
+        sent = []
+        def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
+            sent.append(mask is not None)
+            if mask is not None: raise scene_imagegen.RejectedError('图像请求被拒绝（HTTP 400）')
+            return self.edit(value, text, images, size)
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        with patch.object(scene_imagegen, 'edit', side_effect=edit):
+            made = self.create()
+        self.assertEqual((sent, made['record']['anchor']['mask']), ([True, False], False))
+        self.assertEqual(Path(self.images[0][0]).name, 'canvas.png')
+
     def test_a_gateway_that_gives_up_gets_one_more_try_at_low_quality_and_the_record_says_so(self):
         asked = []
-        def edit(value, text, images, size, cancelled=None, progress=None):
+        def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
             asked.append(value['quality'])
             if value['quality'] != 'low': raise scene_imagegen.GatewayError('图像服务暂时不可用，请稍后重试。（HTTP 502）')
             return self.edit(value, text, images, size)
