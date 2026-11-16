@@ -493,6 +493,19 @@ def _layout(project, plan, shot, props, units, seed, keywords, folder, elevation
     return result
 
 
+# How far a scene task is when it enters a stage, by the words the stage begins with. Rendering the three
+# reference views and waiting for the image model are the long stretches, so they get the room.
+STAGE_PROGRESS = (('识别产品与使用场景', 4), ('推荐目标人群与场景', 8), ('从 Poly Haven 搜集道具模型', 25), ('准备地面与背景', 45), ('布置场景', 60),
+                  ('渲染产品参考角度 1', 12), ('渲染产品参考角度 2', 28), ('渲染产品参考角度 3', 44), ('图像模型正在生成场景', 60),
+                  ('图像模型正在生成（已返回草图）', 70), ('图像服务未能', 72), ('核对产品', 88), ('产品与参考图不一致', 74), ('画面里', 74))
+
+
+def stage_progress(stage):
+    """The percentage a scene task shows on entering ``stage``; None for a stage nothing is known about."""
+    text = str(stage or '')
+    return next((share for words, share in STAGE_PROGRESS if text.startswith(words)), None)
+
+
 def _update(task_id, **fields):
     with LOCK:
         task = get(KIND, task_id)
@@ -703,7 +716,9 @@ def _run(task_id):
         built_from = project['version']; base_plan = copy.deepcopy(project['plan'])
         def cancelled():
             return get(KIND, task_id)['status'] == 'cancelled'
-        say = lambda stage: _update(task_id, stage=stage)
+        def say(stage):
+            reached = stage_progress(stage)
+            _update(task_id, stage=stage, **({} if reached is None else {'progress': reached}))
         proposal = with_method(_proposal(project, task, _source_image(project), say), task.get('method'))
         picture = None
         if proposal['method'] == 'generate':
@@ -771,8 +786,8 @@ def _run(task_id):
 
 
 def public(task):
-    keys = ('id', 'project_id', 'status', 'stage', 'error', 'result', 'applied_version', 'job_id', 'created_at', 'finished_at', 'base_version',
-            'queued_behind', 'waited_seconds')
+    keys = ('id', 'project_id', 'status', 'stage', 'progress', 'error', 'result', 'applied_version', 'job_id', 'created_at', 'finished_at',
+            'base_version', 'queued_behind', 'waited_seconds')
     return {key: copy.deepcopy(task[key]) for key in keys if key in task}
 
 

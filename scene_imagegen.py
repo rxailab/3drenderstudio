@@ -106,11 +106,23 @@ def size_for(aspect, model=''):
     return table.get(aspect, table['1:1'])
 
 
+AZIMUTH_STEP = 15              # reference views snap to these steps, so a slightly different camera reuses the renders
+ELEVATION_STEP = 10
+
+
 def angles(azimuth, elevation):
-    """The target view, the product's other front corner, and a look down on it."""
-    other = -azimuth if abs(azimuth) >= 20 else azimuth + 70
+    """The target view, the product's other front corner, and a look down on it.
+
+    Rendering the three views is the longest part of a generated scene, and every
+    proposal names a slightly different camera (35 degrees, then 30). An image
+    model does not need the angle to the degree, so the views snap to a coarse
+    grid: a second scene for the same product then finds them already rendered.
+    """
+    azimuth = round(float(azimuth) / AZIMUTH_STEP) * AZIMUTH_STEP
+    elevation = max(ELEVATION_STEP, round(float(elevation) / ELEVATION_STEP) * ELEVATION_STEP)
+    other = -azimuth if abs(azimuth) >= 20 else azimuth + 75
     return [(round(float(azimuth), 1), round(float(elevation), 1)), (round(float(other), 1), round(float(elevation), 1)),
-            (round(azimuth * .5, 1), round(min(62.0, elevation + 30), 1))]
+            (round(azimuth * .5, 1), round(min(60.0, elevation + 30), 1))]
 
 
 def reference_shot(index, azimuth, elevation):

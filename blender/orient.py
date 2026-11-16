@@ -26,6 +26,9 @@ from worker import bounds, event, load_asset, prepare
 
 ROOT_NAME = 'Studio asset transform'
 MAX_POINTS = 120000        # vertices kept for measuring; more say nothing new about how a model rests
+PART_POINTS = 3000         # vertices kept per part, to tell which parts reach the floor and the top
+MAX_FACES = 400000         # triangles kept for the flat-contact measure
+FLAT = .97                 # a face counts as lying on the floor when its normal is within about 14 degrees of straight down
 SLAB = .02                 # share of the height that counts as "touching the floor"
 GRID = 256                 # footprint resolution for hulls
 
@@ -37,9 +40,9 @@ def _write(path, value):
 
 
 def cloud(meshes):
-    """World-space vertices, the surface's centre of area, and each part's centre."""
+    """World-space vertices, the surface's centre of area, each part's own vertices, and the faces (centre, area-weighted normal)."""
     graph = bpy.context.evaluated_depsgraph_get()
-    vertices = []; weighted = np.zeros(3); total = 0.0; parts = []
+    vertices = []; weighted = np.zeros(3); total = 0.0; parts = []; centres = []; normals = []
     for ob in meshes:
         evaluated = ob.evaluated_get(graph); mesh = evaluated.to_mesh()
         try:
@@ -55,9 +58,12 @@ def cloud(meshes):
                 index = np.empty(triangles * 3, dtype=np.int32); mesh.loop_triangles.foreach_get('vertices', index)
                 index = index.reshape(triangles, 3)
                 a, b, c = world[index[:, 0]], world[index[:, 1]], world[index[:, 2]]
-                area = np.linalg.norm(np.cross(b - a, c - a), axis=1) * .5
+                cross = np.cross(b - a, c - a) * .5                 # its length is the triangle's area, its direction the face normal
+                area = np.linalg.norm(cross, axis=1)
                 weighted += ((a + b + c) / 3 * area[:, None]).sum(axis=0); total += float(area.sum())
-            parts.append((ob.name, (world.min(axis=0) + world.max(axis=0)) / 2))
+                centres.append((a + b + c) / 3); normals.append(cross)
+            own = world if len(world) <= PART_POINTS else world[np.random.default_rng(len(parts)).choice(len(world), PART_POINTS, replace=False)]
+            parts.append((ob.name, own))
             vertices.append(world)
         finally:
             evaluated.to_mesh_clear()
@@ -67,7 +73,11 @@ def cloud(meshes):
     if len(points) > MAX_POINTS:
         points = points[np.random.default_rng(7).choice(len(points), MAX_POINTS, replace=False)]
     centre = weighted / total if total > 1e-12 else points.mean(axis=0)
-    return points, centre, parts
+    faces = (np.concatenate(centres), np.concatenate(normals)) if centres else (np.zeros((0, 3)), np.zeros((0, 3)))
+    if len(faces[0]) > MAX_FACES:
+        keep = np.random.default_rng(11).choice(len(faces[0]), MAX_FACES, replace=False)
+        faces = (faces[0][keep], faces[1][keep] * (len(faces[0]) / MAX_FACES))
+    return points, centre, parts, faces
 
 
 def matrix_of(rotation):
@@ -109,7 +119,7 @@ def inset(polygon, point):
     return -1.0 if least is None else least
 
 
-def measure(points, centre, parts, rotation):
+def measure(points, centre, parts, faces, rotation):
     """How the model rests on the floor in this pose."""
     turn = matrix_of(rotation)
     posed = points @ turn.T; weight = turn @ centre
@@ -124,12 +134,31 @@ def measure(points, centre, parts, rotation):
     lift = max(float(weight[2] - low[2]), extent * 1e-6)
     margin = inset(support, spot) * cell
     centre_box = (low + high) / 2; half = np.maximum(size / 2, extent * 1e-6)
+    # Faces that lie on the floor: near it and facing straight down. A base made to stand on is a flat face;
+    # a housing on its curved back, or a tool on an edge, touches along lines and points and scores nothing.
+    slab = max(height * SLAB, extent * .004)
+    face_centres, face_normals = faces
+    flat_area = 0.0
+    if len(face_centres):
+        heights = face_centres @ turn[2] - low[2]
+        down = -(face_normals @ turn[2]); areas = np.linalg.norm(face_normals, axis=1)
+        lying = (heights <= slab) & (down >= FLAT * np.maximum(areas, 1e-18))
+        flat_area = float(areas[lying].sum())
+    footprint_area = max(area_of(footprint) * cell * cell, 1e-12)
     return {'dimensions': [round(float(value), 6) for value in size],
+            'flat_contact': round(min(1.0, flat_area / footprint_area), 4),
             'support_ratio': round(area_of(support) / max(area_of(footprint), 1e-9), 4),
             'weight_height': round(lift / height, 4),
             # The angle the model can lean before its weight leaves what it stands on.
             'tip_angle': round(math.degrees(math.atan2(margin, lift)), 2),
-            'parts': [{'name': name, 'height': round(float(((turn @ position) - centre_box)[2] / half[2]), 3)} for name, position in parts[:400]]}
+            'parts': [part_heights(name, own @ turn.T, float(low[2]), height, float(centre_box[2]), float(half[2])) for name, own in parts[:400]]}
+
+
+def part_heights(name, posed, floor, height, middle, half):
+    """Where one part sits in a pose: its centre (-1 bottom .. 1 top) and how near it comes to the floor and the top (0 .. 1)."""
+    lowest = float(posed[:, 2].min()); highest = float(posed[:, 2].max())
+    return {'name': name, 'height': round(((lowest + highest) / 2 - middle) / half, 3),
+            'low': round((lowest - floor) / height, 3), 'high': round((highest - floor) / height, 3)}
 
 
 def pose(root, meshes, rotation):
@@ -205,13 +234,13 @@ def run(request):
     root = bpy.data.objects[ROOT_NAME]
     # Measured once in the file's own frame; every pose is that cloud turned.
     pose(root, meshes, [0, 0, 0])
-    points, centre, parts = cloud(meshes)
+    points, centre, parts, faces = cloud(meshes)
     size = max(128, min(640, int(request.get('size', 320)))); samples = max(4, min(64, int(request.get('samples', 16))))
     camera = stage(size, samples) if request.get('render', True) else None
     rows = []
     for index, candidate in enumerate(candidates, 1):
         rotation = [float(value) for value in candidate['rotation']]
-        row = {'id': str(candidate['id']), 'rotation': rotation, **measure(points, centre, parts, rotation)}
+        row = {'id': str(candidate['id']), 'rotation': rotation, **measure(points, centre, parts, faces, rotation)}
         if camera:
             event('正在查看候选姿态 %d / %d' % (index, len(candidates)))
             low, high = pose(root, meshes, rotation)

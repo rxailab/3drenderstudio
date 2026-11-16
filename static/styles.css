@@ -153,6 +153,7 @@ pre { margin: 0; }
 .help-note { margin-top: 8px; }
 .help-note > summary, .ecommerce-basis > summary { font-size: 11px; color: var(--subtle); }
 .help-note > summary:hover, .ecommerce-basis > summary:hover { color: var(--muted); }
+.job-percent { margin-left: 6px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-hover); }
 .progress-track { height: 3px; background: var(--active); border-radius: 2px; overflow: hidden; }
 .progress-track > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s ease-out; }
 

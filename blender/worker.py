@@ -742,6 +742,10 @@ def render(req,objects,meshes):
     bpy.ops.file.pack_all();bpy.ops.wm.save_as_mainfile(filepath=str(blend))
     event('Cycles 正在渲染',device=dev,shot=shot.get('id'),sample_target=scene.cycles.samples,
           render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+    # Blender 5 no longer prints the sample count while it renders; report it so the percentage does not
+    # depend on what a given version logs.
+    from blender.render_progress import report as report_render_progress
+    report_render_progress()
     started=time.time();bpy.ops.render.render(write_still=True)
     # Re-check the actual evaluated scene after rendering. Corrections are bounded;
     # the analytic fit normally requires zero retries and never reports invented work.
@@ -774,7 +778,9 @@ def render(req,objects,meshes):
         if safe or attempt>=limit: break
         target=Vector(cam['target']);scene.camera.location=target+(scene.camera.location-target)*1.18
         bpy.context.view_layer.update();cam['position']=list(scene.camera.location)
-        event('取景检查未通过，自动增加拍摄距离',correction=attempt+1)
+        event('取景检查未通过，自动增加拍摄距离',correction=attempt+1,sample_target=scene.cycles.samples,
+              render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+        report_render_progress()            # a new render: its count starts from nothing again
         bpy.ops.render.render(write_still=True)
     checks['attempts']=attempts
     checks['automatic_check_status']='passed' if safe else 'manual_review'

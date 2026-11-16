@@ -878,6 +878,8 @@ def execute(request):
     scene['studio_hero_actual_state']=json.dumps({'version':SCHEMA_VERSION,'request_id':ident,'camera':after['camera'],'lighting':after['lighting'],'exposure':after['exposure']},ensure_ascii=False)
     scene['studio_hero_source_sha256']=request['source_sha256']
     print('HERO_STAGE rendering',flush=True)
+    from blender.render_progress import report as report_render_progress
+    report_render_progress()
     response=bpy.ops.render.render(write_still=True)
     if 'FINISHED' not in response or not png.is_file():raise RuntimeError('没有完成本次真实渲染')
     rendered=catalog(scene,products,points)

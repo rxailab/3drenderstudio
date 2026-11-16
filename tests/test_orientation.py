@@ -31,14 +31,18 @@ from test_scene_images import project
 QUARTERS = (0, 90, 180, -90)
 
 
-def rows(parts=None, folder=None):
-    """The six candidates as blender/orient.py would report them."""
+def rows(parts=None, folder=None, flat=None):
+    """The six candidates as blender/orient.py would report them. ``flat`` gives the flat contact per candidate id."""
     result = []
     for ident, label, rotation in orientation.POSES:
         up = orientation.matrix(rotation)[2]            # which of the file's axes points up in this pose
+        placed = []
+        for name, position in (parts or []):
+            height = round(sum(up[axis] * position[axis] for axis in range(3)), 3)
+            middle = (height + 1) / 2                   # a small part: it reaches a little below and above its centre
+            placed.append({'name': name, 'height': height, 'low': round(max(0.0, middle - .05), 3), 'high': round(min(1.0, middle + .05), 3)})
         row = {'id': ident, 'label': label, 'rotation': [float(value) for value in rotation], 'dimensions': [1.0, 1.0, 2.0],
-               'support_ratio': .2, 'weight_height': .5, 'tip_angle': 10.0,
-               'parts': [{'name': name, 'height': round(sum(up[axis] * position[axis] for axis in range(3)), 3)} for name, position in (parts or [])]}
+               'support_ratio': .2, 'weight_height': .5, 'tip_angle': 10.0, 'flat_contact': (flat or {}).get(ident), 'parts': placed}
         if folder is not None:
             path = folder / ('pose_%s.png' % ident); path.parent.mkdir(parents=True, exist_ok=True)
             Image.new('RGB', (orientation.SIZE, orientation.SIZE), (200, 200, 210)).save(path)
@@ -126,8 +130,12 @@ class VisionTests(unittest.TestCase):
         self.sheet = orientation.sheet(self.rows, self.folder / 'sheet.png')
         self.vision = {'provider': 'anthropic', 'base_url': 'https://api.hai.network/anthropic', 'model': 'claude-sonnet-4-6', 'api_key': 'k', 'enabled': True}
 
-    def reply(self, **changes):
-        value = {'product': 'cordless drill', 'upright': 'B', 'also_normal': [], 'confident': True, 'reason': '电池底座在下。'}
+    def reply(self, fits=None, **changes):
+        chosen = changes.get('upright', 'B')
+        value = {'product': 'cordless drill', 'rests_on': 'It stands upright on the flat underside of its battery pack.', 'carried_by': 'flat_underside',
+                 'cells': [{'cell': letter, 'on_ground': 'the battery underside' if letter == chosen else 'the chuck', 'fits': letter == chosen if fits is None else letter in fits}
+                           for letter in 'ABCDEF'],
+                 'upright': chosen, 'also_normal': [], 'confident': True, 'reason': '电池底座在下。'}
         value.update(changes)
         return value
 
@@ -147,14 +155,23 @@ class VisionTests(unittest.TestCase):
             self.assertLess(sum(picture.getpixel((20, 20))), 150)          # the letter's dark tab, top left of cell A
             self.assertGreater(sum(picture.getpixel((200, 200))), 500)     # the pose picture itself
 
-    def test_the_vision_model_is_shown_the_sheet_and_its_confident_answer_is_taken(self):
-        (row, source, reason, product), body = self.ask(self.reply(), names=['Drill_01'])
-        self.assertEqual((row['id'], source, reason, product), ('flip', 'vision', '电池底座在下。', 'cordless drill'))
+    def test_the_pose_agent_is_shown_the_sheet_and_the_measurements_and_its_confident_answer_is_taken(self):
+        (row, source, reason, seen), body = self.ask(self.reply(), names=['Drill_01'])
+        self.assertEqual((row['id'], source, reason, seen['product']), ('flip', 'vision', '电池底座在下。', 'cordless drill'))
+        self.assertEqual((seen['rests_on'], seen['carried_by'], seen['model']), ('It stands upright on the flat underside of its battery pack.', 'flat_underside', 'claude-sonnet-4-6'))
+        self.assertEqual([(cell['id'], cell['fits']) for cell in seen['cells']][:2], [('file', False), ('flip', True)])
         content = body['messages'][-1]['content']
         self.assertEqual([block['type'] for block in content], ['text', 'image', 'text'])
         facts = json.loads(content[-1]['text'])
-        self.assertEqual((facts['cells'], facts['part_names']), (list('ABCDEF'), ['Drill_01']))
-        self.assertIn('right way up', body['system'] if isinstance(body.get('system'), str) else json.dumps(body.get('system')))
+        self.assertEqual(facts['cells'], list('ABCDEF'))
+        self.assertEqual(facts['facts'][0], {'cell': 'A', 'stance': 'stands tall'})        # one anonymous mesh: nothing else was measured
+        system = body['system'] if isinstance(body.get('system'), str) else json.dumps(body.get('system'))
+        self.assertIn('set down properly', system); self.assertIn('flat underside of the battery pack', system)
+
+    def test_the_answer_is_reasoned_in_order_before_a_cell_is_named(self):
+        fields = list(orientation.pose_schema(6)['properties'])
+        self.assertEqual(fields, ['product', 'rests_on', 'carried_by', 'cells', 'upright', 'also_normal', 'confident', 'reason'])
+        self.assertEqual(orientation.pose_schema(6)['properties']['cells']['minItems'], 6)        # every cell is described, not only the chosen one
 
     def test_the_files_own_pose_is_left_only_on_a_confident_answer(self):
         (row, source, _, _), _ = self.ask(self.reply(upright='A'))
@@ -165,8 +182,51 @@ class VisionTests(unittest.TestCase):
         (row, source, _, _), _ = self.ask(self.reply(upright='E', also_normal=['A', 'F']))
         self.assertEqual((row['id'], source), ('file', 'vision'))
 
+    def test_an_answer_that_contradicts_itself_is_not_trusted(self):
+        # The agent names B but said itself that B does not fit.
+        (row, source, reason, seen), _ = self.ask(self.reply(fits=['D']))
+        self.assertEqual((row['id'], source, seen['confident']), ('file', 'file', False)); self.assertIn('不能确定', reason)
+
+    def test_a_choice_the_measurements_speak_against_changes_nothing(self):
+        # A grinder that already rests on its battery: its flat face is down in the file's pose, hardly at all when flipped.
+        measured = rows(folder=self.folder / 'measured', flat={'file': .11, 'flip': .05, 'right': .14})
+        ask = lambda **changes: self.ask(self.reply(**changes), lambda: orientation.choose(measured, self.sheet))[0]
+        row, source, reason, seen = ask()
+        self.assertEqual((row['id'], source, seen['doubt']), ('file', 'file', True)); self.assertIn('与测量不符', reason)
+        # A cabinet on casters has no flat face down the right way up; that is no contradiction.
+        self.assertEqual(ask(carried_by='feet_or_wheels')[0]['id'], 'flip')
+        # The other way round the measurements agree, and nothing was measured means nothing is contradicted.
+        agree = rows(folder=self.folder / 'agree', flat={'file': .05, 'flip': .4})
+        self.assertEqual(self.ask(self.reply(), lambda: orientation.choose(agree, self.sheet))[0][0]['id'], 'flip')
+        self.assertFalse(orientation.contradicted(self.rows, self.rows[1], 'flat_underside'))
+        # It only ever withholds a change: it never proposes the other pose.
+        self.assertTrue(orientation.contradicted(measured, measured[1], 'flat_underside'))
+        self.assertFalse(orientation.contradicted(measured, measured[0], 'flat_underside'))
+
+    def test_measurements_are_put_into_words_for_the_agent(self):
+        grinder = [('Battery_Pack', (.6, 0, .95)), ('Motor_Housing', (0, 0, -.9)), ('Cutting_Disc', (-.8, 0, .9))]
+        named = rows(grinder, flat={'file': .04, 'flip': .11})
+        for row in named: row['dimensions'] = [2.0, 1.0, .55] if row['id'] in ('file', 'flip') else [.55, 1.0, 2.0] if row['id'] in ('right', 'left') else [2.0, .55, 1.3]
+        facts = orientation.cell_facts(named)
+        self.assertEqual(facts[0], {'cell': 'A', 'stance': 'lies level', 'flat_face_on_floor': .04, 'on_floor': ['Motor_Housing'], 'on_top': ['Battery_Pack', 'Cutting_Disc']})
+        self.assertEqual((facts[1]['on_floor'], facts[1]['on_top'], facts[1]['flat_face_on_floor']), (['Battery_Pack', 'Cutting_Disc'], ['Motor_Housing'], .11))
+        self.assertEqual([fact['stance'] for fact in facts], ['lies level', 'lies level', 'in between', 'in between', 'stands tall', 'stands tall'])
+        # One mesh, or hundreds of parts: the lists would say nothing, so they are left out.
+        self.assertNotIn('on_floor', orientation.cell_facts(rows([('Mesh_0', (0, 0, 0))]))[0])
+        self.assertNotIn('on_floor', orientation.cell_facts(rows([('p%d' % index, (0, 0, -.9)) for index in range(81)]))[0])
+
+    def test_a_stronger_model_can_be_named_for_the_pose_agent_alone(self):
+        with patch('ai_config.read_env', return_value={'AI_POSE_MODEL': ' gpt-6.1-sol '}):
+            (_, _, _, seen), body = self.ask(self.reply())
+            self.assertEqual((seen['model'], body['model']), ('gpt-6.1-sol', 'gpt-6.1-sol'))
+            with patch.object(ai_config, 'get_vision_config', return_value=self.vision):
+                asked = orientation._vision()
+            self.assertEqual((asked['api_key'], asked['base_url']), ('k', self.vision['base_url']))       # the vision model's endpoint and key
+        with patch('ai_config.read_env', return_value={}):
+            self.assertEqual(self.ask(self.reply())[1]['model'], 'claude-sonnet-4-6')
+
     def test_without_an_answer_part_names_decide_and_otherwise_nothing_changes(self):
-        for reply in (ValueError('AI 请求超时'), {'upright': 'Z'}, {'product': 'x', 'upright': 'B'}):
+        for reply in (ValueError('AI 请求超时'), self.reply(upright='Z'), {'product': 'x', 'upright': 'B'}, {key: value for key, value in self.reply().items() if key != 'cells'}):
             with self.subTest(reply=reply):
                 (row, source, reason, _), _ = self.ask(reply)
                 self.assertEqual((row['id'], source), ('file', 'file')); self.assertIn('朝向未自动调整', reason)
@@ -183,10 +243,15 @@ class VisionTests(unittest.TestCase):
         sheet = orientation.sheet(turns, self.folder / 'front.png', columns=2)
         with Image.open(sheet) as picture:
             self.assertEqual(picture.size, (2 * 320 + 3 * 10, 2 * 320 + 3 * 10))
-        seen, body = self.ask({'front': 'C', 'confident': True, 'reason': '夹头朝向镜头。'}, lambda: orientation.front_by_vision(turns, sheet))
-        self.assertEqual((seen['row']['id'], seen['confident']), ('turn180', True))
-        self.assertEqual(json.loads(body['messages'][-1]['content'][-1]['text'])['cells'], list('ABCD'))
+        answer = {'rests_properly': True, 'front': 'C', 'confident': True, 'reason': '夹头朝向镜头。'}
+        seen, body = self.ask(answer, lambda: orientation.front_by_vision(turns, sheet, 'cordless drill', 'It stands on its battery.'))
+        self.assertEqual((seen['row']['id'], seen['confident'], seen['rests']), ('turn180', True, True))
+        facts = json.loads(body['messages'][-1]['content'][-1]['text'])
+        self.assertEqual((facts['cells'], facts['product'], facts['should_rest']), (list('ABCD'), 'cordless drill', 'It stands on its battery.'))
+        refused, _ = self.ask({**answer, 'rests_properly': False, 'reason': '立在电池尾端。'}, lambda: orientation.front_by_vision(turns, sheet))
+        self.assertEqual((refused['rests'], refused['reason']), (False, '立在电池尾端。'))
         self.assertIsNone(self.ask(ValueError('x'), lambda: orientation.front_by_vision(turns, sheet))[0])
+        self.assertIsNone(self.ask({'front': 'C', 'confident': True, 'reason': 'x'}, lambda: orientation.front_by_vision(turns, sheet))[0])     # not the agreed answer
 
 
 class Fixture(unittest.TestCase):
@@ -204,8 +269,10 @@ class Fixture(unittest.TestCase):
         with store.connection() as connection:
             connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', project('充电式电钻'))
-        self.pictured = []; self.upright = {'row': 'flip', 'confident': True, 'reason': '电池底座在下。', 'product': 'cordless drill', 'also': []}
-        self.front = None; self.vision = True
+        self.pictured = []; self.upright = {'row': 'flip', 'confident': True, 'reason': '电池底座在下。', 'product': 'cordless drill', 'also': [],
+                                            'rests_on': 'It stands upright on the flat underside of its battery pack.', 'carried_by': 'flat_underside',
+                                            'model': 'gpt-6.1-sol', 'cells': [{'id': 'flip', 'on_ground': 'the battery underside', 'fits': True}]}
+        self.front = None; self.vision = True; self.second_looks = []
         for name, effect in (('picture', self.picture), ('by_vision', self.by_vision), ('front_by_vision', self.front_by_vision)):
             mocked = patch.object(orientation, name, side_effect=effect); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(orientation, '_vision', side_effect=lambda: {'provider': 'anthropic'} if self.vision else None)
@@ -225,9 +292,11 @@ class Fixture(unittest.TestCase):
         if not self.vision or self.upright is None: return None
         return {**self.upright, 'row': next(row for row in candidates if row['id'] == self.upright['row'])}
 
-    def front_by_vision(self, candidates, image):
+    def front_by_vision(self, candidates, image, product=None, rests_on=None):
+        self.second_looks.append((product, rests_on))
         if not self.front: return None
-        return {'row': next(row for row in candidates if row['id'] == self.front['row']), 'confident': self.front.get('confident', True), 'reason': '夹头朝向镜头。'}
+        return {'row': next(row for row in candidates if row['id'] == self.front.get('row', 'turn0')), 'confident': self.front.get('confident', True),
+                'rests': self.front.get('rests', True), 'reason': self.front.get('reason', '夹头朝向镜头。')}
 
 
 class DecisionTests(Fixture):
@@ -243,8 +312,19 @@ class DecisionTests(Fixture):
         self.assertTrue((self.data / record['sheet_url'][7:]).is_file())
         self.assertEqual(self.pictured, [['file', 'flip', 'forward', 'backward', 'right', 'left'], ['turn0', 'turn90', 'turn180', 'turn270']])
         self.assertNotIn('front', record)                                  # nobody could say which side is the front
+        self.assertEqual((record['rests_on'], record['model'], record['product']), (self.upright['rests_on'], 'gpt-6.1-sol', 'cordless drill'))
+        self.assertEqual(self.second_looks, [('cordless drill', self.upright['rests_on'])])       # the second look is told what to look for
         shown = orientation.public(record)
         self.assertNotIn('sheet_url', shown); self.assertEqual(shown['candidates'][1]['rotation'], [180.0, 0.0, 0.0])
+        self.assertEqual((shown['rests_on'], shown['cells']), (record['rests_on'], record['cells']))
+
+    def test_a_pose_that_does_not_rest_as_described_on_the_second_look_is_not_applied(self):
+        self.front = {'rests': False, 'reason': '立在电池尾端，不是电池底面。', 'row': 'turn90'}
+        record = self.decide()
+        self.assertEqual((record['chosen'], record['changed'], record['source'], record['rotation']), ('file', False, 'file', [0.0, 0.0, 0.0]))
+        self.assertEqual(record['rejected']['id'], 'flip'); self.assertIn('立在电池尾端', record['reason']); self.assertNotIn('front', record)
+        self.assertTrue((self.data / record['rejected']['sheet_url'][7:]).is_file())
+        self.assertEqual(orientation.public(record)['rejected']['id'], 'flip')
 
     def test_a_righted_model_also_gets_its_front_turned_to_the_camera(self):
         self.front = {'row': 'turn180'}
@@ -480,9 +560,15 @@ class RuntimeTests(unittest.TestCase):
         # Standing on its base it is steady; on its pump head it is not.
         self.assertGreater(upright['support_ratio'], flipped['support_ratio'])
         self.assertGreater(upright['tip_angle'], flipped['tip_angle'])
-        # Each part's height in the pose mirrors when the model is flipped.
+        # Each part's height in the pose mirrors when the model is flipped, and so does how near it comes to floor and top.
         for first, second in zip(upright['parts'], flipped['parts']):
             self.assertEqual(first['name'], second['name']); self.assertAlmostEqual(first['height'], -second['height'], places=2)
+            self.assertAlmostEqual(first['low'], 1 - second['high'], places=2)
+            self.assertTrue(0 <= first['low'] <= first['high'] <= 1.001, first)
+        self.assertTrue(any(part['low'] <= .04 for part in upright['parts']))          # something stands on the floor
+        # Its flat base lies on the floor; the pump head on top is no flat face to stand on.
+        self.assertGreater(upright['flat_contact'], .2); self.assertLess(flipped['flat_contact'], upright['flat_contact'] / 2)
+        self.assertLess(lying['flat_contact'], upright['flat_contact'] / 2)
 
 
 if __name__ == '__main__':

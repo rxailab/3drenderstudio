@@ -291,8 +291,12 @@ class ImageClientTests(unittest.TestCase):
     def test_sizes_follow_the_plan_and_views_cover_the_other_sides(self):
         self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(2048, 2048), (2048, 1536), (1536, 2048)])
         self.assertEqual(scene_imagegen.size_for('4:3', 'gpt-image-1'), (1536, 1024))
-        self.assertEqual(scene_imagegen.angles(35, 18), [(35.0, 18.0), (-35.0, 18.0), (17.5, 48.0)])
-        self.assertEqual(scene_imagegen.angles(5, 50), [(5.0, 50.0), (75.0, 50.0), (2.5, 62.0)])       # a frontal view still gets a second side
+        self.assertEqual(scene_imagegen.angles(35, 18), [(30.0, 20.0), (-30.0, 20.0), (15.0, 50.0)])
+        self.assertEqual(scene_imagegen.angles(5, 50), [(0.0, 50.0), (75.0, 50.0), (0.0, 60.0)])       # a frontal view still gets a second side
+        # Cameras a few degrees apart share their reference renders: rendering them is the longest step of a generated scene.
+        self.assertEqual(scene_imagegen.angles(30, 15), scene_imagegen.angles(35, 18)); self.assertEqual(scene_imagegen.angles(33.4, 22), scene_imagegen.angles(35, 18))
+        self.assertNotEqual(scene_imagegen.angles(50, 18), scene_imagegen.angles(35, 18))
+        self.assertEqual(scene_imagegen.angles(-40, 2)[0], (-45.0, 10.0))                               # never level with the floor
 
 
 class FidelityTests(unittest.TestCase):
@@ -389,7 +393,7 @@ class CreateTests(unittest.TestCase):
         with Image.open(made['jpg']) as picture: self.assertEqual((picture.format, picture.size), ('JPEG', (2048, 1536)))
         record = made['record']
         self.assertEqual((record['model'], record['attempts'], record['check']['status'], record['usage']), ('gpt-image-2', 1, 'passed', {'total_tokens': 100}))
-        self.assertEqual([row['azimuth'] for row in record['references']], [35.0, -35.0, 17.5])
+        self.assertEqual([row['azimuth'] for row in record['references']], [30.0, -30.0, 15.0])
         self.assertTrue(all(row['url'].startswith('/files/fixture/') for row in record['references']))
         self.assertEqual(len(self.prompts), 1); self.assertNotIn('CORRECTIONS', self.prompts[0])
 
