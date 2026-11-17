@@ -501,6 +501,7 @@ def _layout(project, plan, shot, props, units, seed, keywords, folder, elevation
 # How far a scene task is when it enters a stage, by the words the stage begins with. Rendering the three
 # reference views and waiting for the image model are the long stretches, so they get the room.
 STAGE_PROGRESS = (('识别产品与使用场景', 4), ('推荐目标人群与场景', 8), ('从 Poly Haven 搜集道具模型', 25), ('准备地面与背景', 45), ('布置场景', 60),
+                  ('渲染候选使用姿态', 10), ('选择产品的使用姿态', 13), ('渲染姿态微调', 15), ('微调产品的使用姿态', 18),
                   ('渲染产品参考角度 1', 12), ('渲染产品参考角度 2', 28), ('渲染产品参考角度 3', 44), ('渲染产品（锁定外形用）', 20),
                   ('图像模型正在生成场景', 50), ('图像模型正在生成（已返回草图）', 64), ('图像服务未能', 66), ('核对产品位置与外形', 80),
                   ('核对产品', 88), ('产品与参考图不一致', 70), ('产品被移动或改动', 70), ('画面里', 70))
@@ -626,8 +627,11 @@ def build(project, hint='', seed=None, cancelled=None, progress=None, folder=Non
                   'props': [{key: prop[key] for key in ('id', 'asset_id', 'name', 'zone', 'source_url', 'license')} for prop in placed]}
 
 
-def generate(project, proposal, hint='', cancelled=None, progress=None, folder=None):
-    """A scene made by the image model from renders of the product: returns (plan, record, picture)."""
+def generate(project, proposal, hint='', cancelled=None, progress=None, folder=None, pose='auto'):
+    """A scene made by the image model from renders of the product: returns (plan, record, picture).
+
+    ``pose`` 'auto' shows the product held or set down the way it is used in this scene; 'keep' in the plan's own pose.
+    """
     import scene_imagegen
     plan = copy.deepcopy(project['plan'])
     plan['shots'] = [item for item in plan['shots'] if item['id'] != SHOT_ID]
@@ -645,7 +649,8 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     picture = scene_imagegen.create(project, plan, azimuth, elevation, scene, proposal.get('product') or project.get('name'),
                                     size_mm if basis != 'category' else None, folder, cancelled, progress,
                                     people=proposal['people'] if type(proposal.get('people')) is bool else None,
-                                    framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None)
+                                    framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None,
+                                    pose=pose, hint=hint)
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')
@@ -653,9 +658,16 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     made = picture['record']
     record = {'summary': _line(proposal.get('summary'), 400) or '由图像模型生成的使用场景', 'source': proposal.get('source', 'rules'),
               'method': 'generate', 'model': made['model'], 'attempts': made['attempts'], 'check': made['check'],
-              'people': made.get('people'), 'framing': made.get('framing'),
+              'people': made.get('people'), 'framing': made.get('framing'), 'pose': _pose_summary(made.get('pose')),
               'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height']}
     return plan, record, picture
+
+
+def _pose_summary(pose):
+    """What the scene record shows of the product's pose in the picture."""
+    if not isinstance(pose, dict):
+        return None
+    return {key: pose.get(key) for key in ('mode', 'source', 'changed', 'label', 'description', 'contact', 'work_side', 'reason', 'sheets', 'seconds')}
 
 
 # What a generated picture shows of the product: when any of these change while it is being made,
@@ -730,7 +742,7 @@ def _run(task_id):
         picture = None
         if proposal['method'] == 'generate':
             plan, record, picture = generate(project, proposal, task.get('hint', ''), cancelled, say,
-                                             DATA / project['id'] / 'scene_ai' / task_id / 'scene')
+                                             DATA / project['id'] / 'scene_ai' / task_id / 'scene', task.get('pose') or 'auto')
         else:
             plan, record = build(project, task.get('hint', ''), task.get('seed'), cancelled, say, proposal=proposal)
         record.update(audience=_audience_record(proposal), method_note=proposal.get('method_note'))
@@ -834,8 +846,17 @@ def recommend(project_id, body):
     return proposal
 
 
+def _pose_choice(body):
+    """How the product is posed in a generated scene: 'auto' (as it is used there) or 'keep' (its own pose)."""
+    import scene_pose
+    pose = (body.get('pose') if isinstance(body, dict) else None) or 'auto'
+    if pose not in scene_pose.MODES: raise ValueError('产品姿态选项无效')
+    return pose
+
+
 def submit(project_id, body):
     hint, audience, reference, method, people = _choices(body)
+    pose = _pose_choice(body)
     expected = body.get('expected_version')
     if expected is not None and (type(expected) is not int or expected < 1): raise ValueError('方案版本无效')
     seed = body.get('seed')
@@ -851,7 +872,7 @@ def submit(project_id, body):
         if any(task['project_id'] == project_id and task['status'] in ACTIVE for task in all_records(KIND)):
             raise engine.JobConflictError('场景正在生成，请稍候。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': '等待开始', 'error': None,
-                'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'people': people, 'seed': seed,
+                'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'people': people, 'pose': pose, 'seed': seed,
                 'base_version': project['version'], 'created_at': time.time()}
         put(KIND, task)
         threading.Thread(target=_run, args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()

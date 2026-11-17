@@ -174,8 +174,8 @@ def pose(root, meshes, rotation):
     return bounds(meshes)[:2]
 
 
-def stage(size, samples):
-    """A plain floor, soft daylight and one camera, the same for every pose."""
+def stage(size, samples, floor=True):
+    """A plain floor, soft daylight and one camera, the same for every pose. Without the floor the model is seen as if held."""
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'; scene.cycles.device = 'CPU'
     scene.cycles.samples = samples; scene.cycles.use_adaptive_sampling = False
@@ -196,7 +196,8 @@ def stage(size, samples):
     if shader:
         shader.inputs['Base Color'].default_value = (.62, .64, .68, 1); shader.inputs['Roughness'].default_value = .9
     bpy.ops.mesh.primitive_plane_add(size=60, location=(0, 0, 0))
-    floor = bpy.context.active_object; floor.name = 'Orientation floor'; floor.data.materials.append(floor_material)
+    plane = bpy.context.active_object; plane.name = 'Orientation floor'; plane.data.materials.append(floor_material)
+    plane.hide_render = not floor
     sun_data = bpy.data.lights.new('Orientation sun', 'SUN'); sun_data.energy = 2.6; sun_data.angle = math.radians(18)
     sun = bpy.data.objects.new('Orientation sun', sun_data); scene.collection.objects.link(sun)
     sun.rotation_euler = Euler((math.radians(48), 0, math.radians(-32)))
@@ -236,7 +237,7 @@ def run(request):
     pose(root, meshes, [0, 0, 0])
     points, centre, parts, faces = cloud(meshes)
     size = max(128, min(640, int(request.get('size', 320)))); samples = max(4, min(64, int(request.get('samples', 16))))
-    camera = stage(size, samples) if request.get('render', True) else None
+    camera = stage(size, samples, request.get('floor', True) is not False) if request.get('render', True) else None
     rows = []
     for index, candidate in enumerate(candidates, 1):
         rotation = [float(value) for value in candidate['rotation']]

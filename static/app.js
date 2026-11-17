@@ -623,15 +623,26 @@ function sceneGeneratedHTML(output) {
     :typeof made.people==='boolean' && status!=='passed' && status!=='failed'?`<p class="scene-check-people">画面人物：要求${hands && made.people?wanted(true):(made.people?'包含':'不含')+'人物'}，未能自动核对，请自行查看。</p>`:'';
   const issues=Array.isArray(check.issues)?check.issues.filter(item=>typeof item==='string').slice(0,6):[];
   const references=(Array.isArray(made.references)?made.references:[]).map(row=>sceneFile(row?.url)).filter(Boolean).slice(0,8);
+  const single=references.length===1 && made.anchor;
   return `<p class="scene-check is-${esc(status || 'unchecked')}"><strong>${esc(label)}</strong>${check.note?' '+esc(check.note):''}</p>`+people
     +(issues.length?`<ul class="scene-issues">${issues.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:'')
-    +(references.length?`<p>发给图像模型的产品参考图（${references.length} 个角度，Blender 渲染）：</p><div class="scene-refs">${references.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="产品参考角度 ${index+1}" loading="lazy"></a>`).join('')}</div>`:'');
+    +scenePoseHTML(made.pose)
+    +(references.length?`<p>${single?'锁定在画面里的产品渲染（Blender，图像模型不能改动）：':`发给图像模型的产品参考图（${references.length} 个角度，Blender 渲染）：`}</p><div class="scene-refs">${references.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="产品参考角度 ${index+1}" loading="lazy"></a>`).join('')}</div>`:'');
+}
+function scenePoseHTML(pose) {
+  // How the product was posed for the picture: chosen from renders of real poses, or kept as the main image shows it.
+  if(!pose || typeof pose!=='object')return '';
+  const sheets=(Array.isArray(pose.sheets)?pose.sheets:[]).map(sceneFile).filter(Boolean).slice(0,2);
+  const how=pose.mode==='keep'?'保持主图姿态（你指定）':pose.source==='ai'?(pose.changed?'按使用场景调整':'按使用场景判断，保持主图姿态'):'保持主图姿态';
+  const reason=typeof pose.reason==='string' && pose.reason?'：'+esc(pose.reason):'';
+  return `<p class="scene-pose">产品姿态：${esc(how)}${reason}</p>`
+    +(sheets.length?`<p class="field-help">候选姿态：${sheets.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener">${index?'微调':'第一轮'}</a>`).join(' · ')}</p>`:'');
 }
 function renderSceneSet() {
   const button=$('sceneButton'),status=$('sceneStatus'),details=$('sceneDetails');
   const section=button.closest('.scene-set');section.hidden=!current;if(!current)return;
   if(sceneChoiceProject!==current.id){
-    sceneChoiceProject=current.id;$('sceneAudienceSelect').value='auto';$('sceneMethodSelect').value='auto';$('scenePeopleSelect').value='auto';fillSceneReferences();
+    sceneChoiceProject=current.id;$('sceneAudienceSelect').value='auto';$('sceneMethodSelect').value='auto';$('scenePeopleSelect').value='auto';if($('scenePoseSelect'))$('scenePoseSelect').value='auto';fillSceneReferences();
     if(sceneLibrary?.failed && !sceneLibraryLoading)sceneLibrary=null;
   }
   if(!sceneLibrary)loadSceneLibrary();
@@ -656,10 +667,12 @@ function renderSceneSet() {
   audience.hidden=!segments.length;
   if(segments.length){
     const disabled=locked || active || !ready;
-    for(const id of ['sceneAudienceSelect','sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect','sceneRecommend'])$(id).disabled=disabled;
+    for(const id of ['sceneAudienceSelect','sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect','scenePoseSelect','sceneRecommend'])if($(id))$(id).disabled=disabled;
     $('sceneRecommend').textContent=sceneRecommending?'正在推荐…':'推荐人群与场景';
     if(sceneRecommending)$('sceneRecommend').setAttribute('aria-busy','true');else $('sceneRecommend').removeAttribute('aria-busy');
     const image=sceneLibrary.image || {},wantsImage=$('sceneMethodSelect').value!=='render';
+    // The pose is the image model's concern: a scene built from 3D props shows the product as the plan stands it.
+    if($('scenePoseRow'))$('scenePoseRow').hidden=!wantsImage || !image.available;
     // A person can only be asked for where the image model makes the picture.
     const people=$('scenePeopleSelect'),include=people.querySelector('option[value="include"]'),handsOnly=people.querySelector('option[value="hands"]'),canInclude=wantsImage && !!image.available;
     include.disabled=!canInclude;if(handsOnly)handsOnly.disabled=!canInclude;
@@ -719,7 +732,7 @@ async function generateScene() {
   try{
     if(dirty)await savePlan(true);
     if(current?.id!==id)return;
-    const task=await api(`/api/projects/${encodeURIComponent(id)}/scene`,{method:'POST',body:{expected_version:current.version,...sceneChoices()}});
+    const task=await api(`/api/projects/${encodeURIComponent(id)}/scene`,{method:'POST',body:{expected_version:current.version,...sceneChoices(),pose:$('scenePoseSelect')?.value==='keep'?'keep':'auto'}});
     if(current?.id===id){current.scene_task=task;sceneSeenTask=null;}
   }catch(error){sceneErrors.set(id,error.message || '场景未能开始，请重试。');}
   finally{sceneSubmitting=false;if(current)renderProject();}
