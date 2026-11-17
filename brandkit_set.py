@@ -633,7 +633,7 @@ def lay_out(kind, ctx, out, work):
     if number:
         notes.append('为通过版式检查，这张图用了精简版本（第 %d 种排法）。' % (number + 1))
     record = {'status': 'not_verified', 'rounds': 0, 'applied': []}
-    if ctx.get('review'):
+    if ctx.get('review') and not ctx.get('review_refused'):
         reference = ctx['assets']['hero']['path']
         facts = brandkit_review.facts_of(ctx['product'])
         scenes = [('scene%d' % (index + 1), ctx['assets']['scene%d' % (index + 1)], row['focus']) for index, row in enumerate(ctx.get('scenes') or [])]
@@ -641,6 +641,8 @@ def lay_out(kind, ctx, out, work):
             verdict = brandkit_review.review(kind, job, out, ctx['product'], reference, _measured(qa))
         except Exception as exc:
             verdict = None; notes.append('视觉审核没有完成（%s），这张图未经审核。' % str(exc)[:80])
+            if re.search(r'HTTP 40[123]', str(exc)):
+                ctx['review_refused'] = str(exc)[:80]        # quota or key refused: the other pages do not ask again
         if verdict:
             first = verdict; tried = {number}; current = (job, verdict, qa)
             for round_number in range(1, brandkit_review.MAX_REVISIONS + 1):

@@ -55,7 +55,7 @@ ART_DIRECTOR = (
     'new facts or numbers), remove_text (target an optional text field), drop_item (target a list and index; keeps at least the minimum), '
     'refocus_scene (target a scene, give focus x,y in 0..1 of the scene picture for its crop centre), swap_scene (use another scene picture), '
     'next_layout (try the template\'s next arrangement), none (no automatic fix). Do not ask for things the actions cannot do. '
-    'Never praise; be specific. Write evidence and summary in the language of the page.')
+    'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '
     'its selling points and specs. Each page has one job (goal). Write in the requested language, within the character limits, no '
@@ -91,13 +91,53 @@ def available():
     return bool(text), bool(vision)
 
 
+def _repaired(text):
+    """JSON a model wrote with plain double quotes inside its strings: a quote that is not next to JSON structure
+    (``: , } ]`` after a closing one) is taken as part of the text and escaped."""
+    out = []; inside = False
+    for index, char in enumerate(text):
+        if char == '"' and (index == 0 or text[index - 1] != '\\'):
+            after = text[index + 1:].lstrip()[:1]
+            if not inside:
+                inside = True; out.append(char); continue
+            if after in (':', ',', '}', ']', ''):
+                inside = False; out.append(char); continue
+            out.append('\\"'); continue
+        out.append(char)
+    return ''.join(out)
+
+
+def _decoded(value, schema):
+    """A model's answer with any nested list or object it sent as a JSON string read back into one."""
+    kind = schema.get('type')
+    if kind in ('array', 'object') and isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            try:
+                value = json.loads(_repaired(value))
+            except ValueError:
+                return value
+    if kind == 'object' and isinstance(value, dict):
+        return {key: _decoded(child, schema.get('properties', {}).get(key, {})) for key, child in value.items()}
+    if kind == 'array' and isinstance(value, list):
+        return [_decoded(child, schema.get('items', {})) for child in value]
+    return value
+
+
 def _ask(config, system, facts, schema, image_path=None, reference_path=None):
+    """One call; an answer that does not fit the schema is asked for once more."""
     import ai_client as ai
     body = ai._payload(config, system, facts, schema, image_path=image_path, reference_path=reference_path,
                        label_images=bool(image_path), max_tokens=3000)
-    output = ai._response(ai._post(config, body), config, ai.TOOL_NAME)
-    ai._check_schema(output, schema)
-    return output
+    for attempt in (1, 2):
+        output = _decoded(ai._response(ai._post(config, body), config, ai.TOOL_NAME), schema)
+        try:
+            ai._check_schema(output, schema)
+            return output
+        except ai.SchemaValidationError:
+            if attempt == 2:
+                raise
 
 
 def facts_of(product):

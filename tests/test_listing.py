@@ -325,6 +325,10 @@ class StoreCase(unittest.TestCase):
         for target, name, value in ((engine, 'require_runtime', None), (engine, 'blender_path', '/usr/bin/blender')):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(info_layer, '_config', return_value=None); mocked.start(); self.addCleanup(mocked.stop)       # no model service
+        import scene_imagegen
+        import scene_stylist
+        for target in ((scene_stylist, '_config'), (scene_imagegen, 'config')):                                         # whatever .env says
+            mocked = patch.object(*target, return_value=None); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
             connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         record = project('Ratchet Pipe Cutter'); record['model_path'] = str(self.data / 'fixture' / 'originals' / 'cutter.glb')
@@ -726,6 +730,20 @@ class BuildTests(StoreCase):
         self.assertTrue(any('视觉审核未通过' in note for note in by_kind['T06']['notes']))
         self.assertTrue(any(note.startswith('整套检查') and '第 3、4 张' in note for note in notes))
         self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/*.rev*.png')))
+
+    def test_a_refused_review_is_not_asked_again_for_the_other_pages(self):
+        import brandkit_review
+        calls = []
+
+        def ask(config, system, facts, schema, image_path=None, reference_path=None):
+            calls.append(system); raise ValueError('AI 服务的额度已用尽（HTTP 402）')
+        for target, name, value in ((brandkit_review, 'available', (False, True)), (brandkit_review, '_configs', (None, {'model': 'vision'}))):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        pool = listing.concurrent.futures.ThreadPoolExecutor
+        with patch.object(brandkit_review, '_ask', side_effect=ask), patch.object(listing.concurrent.futures, 'ThreadPoolExecutor', lambda workers: pool(1)):
+            pages, notes = listing.build('fixture')
+        self.assertEqual(len(calls), 1); self.assertEqual({page['review']['status'] for page in pages}, {'not_verified'})
+        self.assertTrue(any('之后的页面没有再请求审核' in note for note in notes))
 
     def test_without_a_vision_model_no_page_is_called_reviewed(self):
         pages, notes = listing.build('fixture')

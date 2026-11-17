@@ -718,7 +718,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
                           'width': width, 'height': height, 'notes': page_notes, 'review': review,
                           'checks': {'passed': not brandkit_render.layout_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
-        if vision_ready and len(pages) > 1:
+        if ctx.get('review_refused'):
+            notes.append('视觉审核被 AI 服务拒绝（%s），之后的页面没有再请求审核。' % ctx['review_refused'])
+        if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
             progress('compose', 1, '视觉模型检查整套图')
             try:
                 set_review = brandkit_review.review_set(pages, folder, product)
