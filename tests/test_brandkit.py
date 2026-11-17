@@ -86,6 +86,49 @@ class GeometryTests(unittest.TestCase):
         self.assertEqual(set(brandkit_set.KINDS) - set(brandkit_set.AUTO), set(brandkit_set.BLOCKED))
 
 
+class ReviseTests(unittest.TestCase):
+    """The art director's fixes, applied only where they are allowed and keep the facts."""
+    FACTS = {'title': 'Pipe Cutter', 'specs': [{'label': 'Capacity', 'value': '6 - 22 mm'}]}
+
+    def verdict(self, *actions):
+        return {'issues': [{'region': 'r', 'evidence': 'e', 'action': action} for action in actions], 'vetoes': [], 'score': 60}
+
+    def test_text_is_only_ever_shortened_and_never_gains_a_number(self):
+        import brandkit_review as review
+        job = {'headline': 'Cuts pipe from 6 to 22 mm cleanly', 'support': 'A line', 'features': [{'title': 'Hardened wheel', 'body': 'Replaceable'}, {'title': 'Rollers'}]}
+        new, applied = review.revise('T01', job, self.verdict({'type': 'shorten_text', 'target': 'headline', 'text': 'Cuts 6–22 mm pipe'}), self.FACTS)
+        self.assertEqual(new['headline'], 'Cuts 6–22 mm pipe'); self.assertEqual(job['headline'], 'Cuts pipe from 6 to 22 mm cleanly')
+        for action in ({'type': 'shorten_text', 'target': 'headline', 'text': 'Cuts 50 mm pipe'},          # a new number
+                       {'type': 'shorten_text', 'target': 'headline', 'text': 'Cuts pipe from 6 to 22 mm cleanly, every time'},
+                       {'type': 'remove_text', 'target': 'headline'}, {'type': 'shorten_text', 'target': 'price', 'text': 'x'},
+                       {'type': 'drop_item', 'target': 'features', 'index': 0}):                            # T01 keeps two callouts
+            with self.subTest(action=action):
+                self.assertEqual(review.revise('T01', job, self.verdict(action), self.FACTS), (None, []))
+        new, applied = review.revise('T01', job, self.verdict({'type': 'remove_text', 'target': 'features.0.body'},
+                                                              {'type': 'remove_text', 'target': 'support'}), self.FACTS)
+        self.assertIsNone(new['features'][0]['body']); self.assertIsNone(new['support']); self.assertEqual(len(applied), 2)
+
+    def test_items_scenes_and_layouts(self):
+        import brandkit_review as review
+        job = {'items': [{'asset': 'scene1', 'focus': [.5, .5]}, {'asset': 'scene2', 'focus': [.5, .5]}, {'asset': 'scene3', 'focus': [.5, .5]}]}
+        new, _ = review.revise('T08', job, self.verdict({'type': 'drop_item', 'target': 'items', 'index': 2},
+                                                        {'type': 'refocus_scene', 'target': 'scene1', 'focus': [.3, .7]}), self.FACTS)
+        self.assertEqual([item['asset'] for item in new['items']], ['scene1', 'scene2']); self.assertEqual(new['items'][0]['focus'], [.3, .7])
+        self.assertEqual(review.revise('T08', job, self.verdict({'type': 'refocus_scene', 'target': 'scene1', 'focus': [2, .7]}), self.FACTS), (None, []))
+        poster = {'scene': 'scene1', 'focus': [.5, .5], 'assets': {'scene1': {'file': 'a'}}}
+        new, _ = review.revise('T12', poster, self.verdict({'type': 'swap_scene'}), self.FACTS, [('scene1', {'file': 'a'}, [.5, .5]), ('scene2', {'file': 'b'}, [.4, .6])])
+        self.assertEqual((new['scene'], new['focus'], list(new['assets'])), ('scene2', [.4, .6], ['scene2']))
+        self.assertEqual(review.revise('T12', poster, self.verdict({'type': 'next_layout'}), self.FACTS), ('next_layout', ['换一种排法']))
+
+    def test_the_copywriter_and_the_reviewer_are_skipped_without_models(self):
+        import brandkit_review as review
+        with patch.object(review, '_configs', return_value=(None, None)):
+            self.assertEqual(review.write_copy({'language': 'en'}, ['T01']), ({}, None))
+            self.assertIsNone(review.review('T01', {}, 'x.png', {}))
+            self.assertFalse(review.passed(None))
+        self.assertTrue(set(brandkit_set.AUTO) <= set(review.briefs()))
+
+
 @unittest.skipUnless(brandkit_render.available(), 'No Chrome/Chromium/Edge: template layout not run')
 class LayoutTests(StoreCase):
     """A whole set, laid out by the real templates in a headless browser, with Blender and the image model stood in for."""

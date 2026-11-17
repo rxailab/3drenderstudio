@@ -39,7 +39,7 @@ function slot(x, y, parent) {   // replaceable brand area; never filled with a s
   return s;
 }
 function copy(x, y, w, parent, hlMax) {
-  const hl = T.text('headline', job.headline, x, y, w, 'headline' + (land && mode === 'band' ? ' compact' : ''), {tier:'headline', maxLines: hlMax, parent});   // r2: landscape panel uses the defined compact size
+  const hl = T.text('headline', job.headline, x, y, w, 'headline' + ((land && mode === 'band') || job.compact ? ' compact' : ''), {tier:'headline', maxLines: hlMax, parent});   // r2: landscape panel uses the defined compact size
   let yy = T.rect(hl).y + T.rect(hl).h + 3 * G;
   const r = T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}, parent); T.box(r, x, yy, 120, 8);
   yy += 8 + 4 * G;

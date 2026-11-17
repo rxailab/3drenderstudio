@@ -177,7 +177,7 @@ def shape(mask):
     return record
 
 
-def flatten(source, target, pad=.03, ground=(255, 255, 255), dark=False, trim=True):
+def flatten(source, target, pad=.03, ground=(255, 255, 255), dark=False, trim=True, region=None):
     """A render with a transparent background, trimmed to the product and laid on a plain ground, as the
     templates expect (they multiply a light ground away and test text against non-white pixels).
 
@@ -191,6 +191,8 @@ def flatten(source, target, pad=.03, ground=(255, 255, 255), dark=False, trim=Tr
     # A close-up is already framed on its part by the camera, and the templates crop it to their frames themselves:
     # it keeps every pixel so a large frame is not filled by enlarging it.
     crop = (max(0, box[0] - px), max(0, box[1] - px), min(image.width, box[2] + px), min(image.height, box[3] + px)) if trim else (0, 0, image.width, image.height)
+    if region:          # a close-up: the window round the parts it is about (fractions of the render)
+        crop = (round(region[0] * image.width), round(region[1] * image.height), round(region[2] * image.width), round(region[3] * image.height))
     piece = image.crop(crop)
     if dark:
         base = Image.new('RGB', piece.size, ground)
@@ -207,6 +209,57 @@ def flatten(source, target, pad=.03, ground=(255, 255, 255), dark=False, trim=Tr
         fields.update(shape(piece.getchannel('A')))
     width, height = image.size
     return fields, (crop[0] / width, crop[1] / height, crop[2] / width, crop[3] / height)
+
+
+def _visible_patch(probe, names):
+    """The box (fractions) of the largest connected patch where these parts are visible in a render, from its probe."""
+    if not isinstance(probe, dict) or not probe.get('cells') or not probe.get('nx'):
+        return None
+    nx, ny = probe['nx'], probe['ny']; wanted = {index for index, name in enumerate(probe.get('objects', [])) if name in set(names)}
+    remaining = {(index % nx, index // nx) for index, cell in enumerate(probe['cells']) if cell in wanted}
+    best = []
+    while remaining:
+        stack = [remaining.pop()]; patch = []
+        while stack:
+            x, y = stack.pop(); patch.append((x, y))
+            for neighbour in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if neighbour in remaining:
+                    remaining.discard(neighbour); stack.append(neighbour)
+        if len(patch) > len(best):
+            best = patch
+    if len(best) < 2:
+        return None
+    return [min(x for x, _ in best) / nx, min(y for _, y in best) / ny, (max(x for x, _ in best) + 1) / nx, (max(y for _, y in best) + 1) / ny]
+
+
+def part_region(result, names, least=.42, margin=.3):
+    """The window of a close-up render that shows these parts: the largest patch where they are visible (one rivet of
+    four, the near handle), widened by ``margin`` of its size, made square and at least ``least`` of the picture across
+    (so a frame is not filled by enlarging a few pixels). Fractions of the picture; None when the render does not say
+    where the parts are."""
+    box = _visible_patch(result.get('probe'), names)
+    if box is None:
+        wanted = set(names)
+        rects = [row['rect'] for row in result.get('parts') or [] if row.get('name') in wanted and isinstance(row.get('rect'), list) and len(row['rect']) == 4]
+        rects = [[max(0.0, min(1.0, value)) for value in rect] for rect in rects]
+        rects = [rect for rect in rects if rect[2] > rect[0] and rect[3] > rect[1]]
+        if not rects:
+            return None
+        box = max(rects, key=lambda rect: (rect[2] - rect[0]) * (rect[3] - rect[1]))
+    width, height = result.get('width') or 1, result.get('height') or 1
+    x0, y0, x1, y1 = box[0] * width, box[1] * height, box[2] * width, box[3] * height
+    side = max(x1 - x0, y1 - y0) * (1 + 2 * margin); side = min(max(side, least * min(width, height)), min(width, height))
+    cx = min(max((x0 + x1) / 2, side / 2), width - side / 2); cy = min(max((y0 + y1) / 2, side / 2), height - side / 2)
+    return (round((cx - side / 2) / width, 4), round((cy - side / 2) / height, 4), round((cx + side / 2) / width, 4), round((cy + side / 2) / height, 4))
+
+
+def part_focus(result, names, region):
+    """Where the parts sit inside a close-up window (fractions of it): the crop centre for a frame of another shape."""
+    box = _visible_patch(result.get('probe'), names)
+    if box is None or not region:
+        return [.5, .5]
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    return [round(min(1, max(0, (cx - region[0]) / (region[2] - region[0]))), 3), round(min(1, max(0, (cy - region[1]) / (region[3] - region[1]))), 3)]
 
 
 def remap(point, crop):
@@ -410,7 +463,11 @@ def _measure(mm, unit):
 
 def jobs_for(kind, ctx):
     """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried."""
-    t = TEXT[ctx['language']]; product = ctx['product']; assets = ctx['assets']
+    t = dict(TEXT[ctx['language']]); product = ctx['product']; assets = ctx['assets']
+    written = (ctx.get('copy') or {}).get(kind) or {}
+    for key in ('eyebrow', 'headline'):
+        if written.get(key):
+            t['%s_%s' % (kind, key)] = written[key]          # the copywriter's line for this product, when it passed its checks
     title = product['title'] or ''; headline = product['headline'] or title
     if kind == 'T12':
         # The poster takes a picture the image model made; a studio render of the workpiece stays on the inside pages.
@@ -424,7 +481,14 @@ def jobs_for(kind, ctx):
             name = 'scene%d' % (scene_index + 1)
             out.append(_job(kind, ctx, mode='band', scene=name, focus=scene['focus'], assets={name: assets[name]}, **base))
         out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, **base))
-        out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, **{**base, 'support': None}))
+        out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, compact=True, **base))
+        # The solid poster's text column is narrow: as poster setting does, a clause mark ending a line may go.
+        bare = re.sub(r'[，、；：,;:]\n', '\n', base['headline'])
+        if bare != base['headline']:
+            out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, **{**base, 'headline': bare}))
+            out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, compact=True, **{**base, 'headline': bare}))
+        out.append(_job(kind, ctx, mode='solid', hero='hero', assets={'hero': assets['hero']}, compact=True,
+                        **{**base, 'headline': bare, 'support': None}))
         return out
     if kind == 'T01':
         points = [{'title': _clip(product['features'][index]['title'], 24), 'body': _clip(product['features'][index].get('detail'), 48), 'anchor': point}
@@ -440,7 +504,7 @@ def jobs_for(kind, ctx):
         return out
     if kind == 'T03':
         details = [{'title': _clip(product['features'][index]['title'], 22), 'body': _clip(product['features'][index].get('detail'), 40),
-                    'detail': name, 'focus': [.5, .5]} for index, name in ctx['details']]
+                    'detail': name, 'focus': (ctx.get('focus') or {}).get(name, [.5, .5])} for index, name in ctx['details']]
         out = []
         for count in (3, 2):
             if len(details) >= count:
@@ -525,9 +589,26 @@ def jobs_for(kind, ctx):
     return []
 
 
+def _measured(qa):
+    """What the layout checks measured, for the art director: the smallest text at phone size and what was laid out."""
+    texts = [row for row in qa.get('elements', []) if row.get('kind') == 'text']
+    small = min((row.get('equiv_px_at_360', 99) for row in texts if row.get('tier') in ('headline', 'important')), default=None)
+    return {'layout_checks_passed': not brandkit_render.layout_issues(qa), 'smallest_important_text_px_at_360': small,
+            'text_blocks': len(texts), 'notes': qa.get('notes', [])[:3]}
+
+
+def _better(a, b):
+    """Whether verdict a beats verdict b: fewer vetoes first, then the higher score."""
+    if b is None:
+        return True
+    return (len(a['vetoes']), -a['score']) < (len(b['vetoes']), -b['score'])
+
+
 def lay_out(kind, ctx, out, work):
-    """Render the first version of a page that passes the layout checks (or the one with the fewest problems).
-    Returns (qa, notes)."""
+    """Lay a page out: the first version that passes the layout checks (or the one with the fewest problems), then,
+    when a vision model is configured, the art director's review and up to two rounds of fixes.
+    Returns (qa, notes, review record)."""
+    import brandkit_review
     candidates = jobs_for(kind, ctx)
     if not candidates:
         raise ValueError('「%s」没有可用的内容' % KINDS[kind][0])
@@ -547,13 +628,62 @@ def lay_out(kind, ctx, out, work):
     qa, problems, target, number = best
     if target != out:
         shutil.move(str(target), str(out))
+    job = candidates[number]
     notes = []
     if number:
         notes.append('为通过版式检查，这张图用了精简版本（第 %d 种排法）。' % (number + 1))
+    record = {'status': 'not_verified', 'rounds': 0, 'applied': []}
+    if ctx.get('review'):
+        reference = ctx['assets']['hero']['path']
+        facts = brandkit_review.facts_of(ctx['product'])
+        scenes = [('scene%d' % (index + 1), ctx['assets']['scene%d' % (index + 1)], row['focus']) for index, row in enumerate(ctx.get('scenes') or [])]
+        try:
+            verdict = brandkit_review.review(kind, job, out, ctx['product'], reference, _measured(qa))
+        except Exception as exc:
+            verdict = None; notes.append('视觉审核没有完成（%s），这张图未经审核。' % str(exc)[:80])
+        if verdict:
+            first = verdict; tried = {number}; current = (job, verdict, qa)
+            for round_number in range(1, brandkit_review.MAX_REVISIONS + 1):
+                if brandkit_review.passed(current[1]):
+                    break
+                revised, applied = brandkit_review.revise(kind, current[0], current[1], facts, scenes)
+                if revised == 'next_layout':
+                    following = next((index for index in range(len(candidates)) if index not in tried), None)
+                    if following is None:
+                        break
+                    tried.add(following); revised = candidates[following]
+                if revised is None:
+                    break
+                trial = out.with_name('%s.rev%d.png' % (out.stem, round_number))
+                trial_qa = brandkit_render.render(kind, revised, trial, work)
+                if brandkit_render.layout_issues(trial_qa):
+                    trial.unlink(missing_ok=True); notes.append('审核建议的修改（%s）没有通过版式检查，未采用。' % '、'.join(applied)); break
+                try:
+                    trial_verdict = brandkit_review.review(kind, revised, trial, ctx['product'], reference, _measured(trial_qa))
+                except Exception:
+                    trial.unlink(missing_ok=True); break
+                record['rounds'] = round_number
+                if _better(trial_verdict, current[1]):
+                    shutil.move(str(trial), str(out)); current = (revised, trial_verdict, trial_qa); record['applied'] += applied; qa = trial_qa
+                else:
+                    trial.unlink(missing_ok=True); notes.append('第 %d 轮修改（%s）没有让评分变好，保留原版。' % (round_number, '、'.join(applied)))
+                    break
+            verdict = current[1]
+            record.update(status='passed' if brandkit_review.passed(verdict) and not record['applied'] else
+                                 'revised' if brandkit_review.passed(verdict) else 'failed',
+                          score=verdict['score'], first_score=first['score'], scores=verdict['scores'], model=verdict.get('model'),
+                          vetoes=[row['kind'] for row in verdict['vetoes']], summary=verdict['summary'],
+                          issues=[{'region': row.get('region', ''), 'evidence': row.get('evidence', '')} for row in verdict['issues']])
+            if record['applied']:
+                notes.append('按视觉审核修改：%s（%d → %d 分）。' % ('、'.join(record['applied']), first['score'], verdict['score']))
+            if record['status'] == 'failed':
+                notes.append('视觉审核未通过（%d 分%s）：%s' % (verdict['score'], '，否决项 ' + '、'.join(record['vetoes']) if record['vetoes'] else '',
+                                                          '；'.join(row.get('evidence', '') for row in verdict['issues'])[:220]))
+    problems = brandkit_render.layout_issues(qa)
     if problems:
         notes.append('版式检查仍有 %d 处问题：%s。' % (len(problems), '、'.join(sorted({row['check'] for row in problems}))))
     if any(row.get('check') == 'font_missing' for row in qa.get('issues', [])):
         notes.append('本机缺少 Noto Sans 字体，已用系统字体代替。')
     for line in qa.get('notes', [])[:2]:
         notes.append(str(line)[:160])
-    return qa, notes
+    return qa, notes, record

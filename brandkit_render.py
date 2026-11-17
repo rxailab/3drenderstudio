@@ -27,7 +27,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('phrase_break', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -141,6 +141,17 @@ def pixel_checks(qa, job):
     qa['pixel_checks'] = found
 
 
+def phrase_checks(qa, job):
+    """A Chinese headline wraps only where its author broke it: one more line than written means a phrase was split."""
+    if job.get('lang') != 'zh':
+        return
+    for row in qa.get('elements', []):
+        if row.get('kind') == 'text' and row.get('tier') == 'headline' and not row.get('exempt'):
+            written = str(row.get('text', '')).count('\n') + 1
+            if row.get('lines', 0) > written:
+                qa['issues'].append({'check': 'phrase_break', 'id': row['id'], 'detail': '%d lines for %d written' % (row['lines'], written)})
+
+
 def render(template_id, job, out, work=None):
     """Lay out one page and write it to ``out`` (PNG). Returns the QA record (``issues`` empty when it passed)."""
     executable = chrome_path()
@@ -169,6 +180,7 @@ def render(template_id, job, out, work=None):
     if not out.is_file():
         raise RenderError('排版浏览器没有输出图片：%s' % shot_result.stderr.decode('utf-8', 'replace')[-300:])
     pixel_checks(qa, job)
+    phrase_checks(qa, job)
     with Image.open(out) as image:
         if image.size != (width, height):
             # The new headless mode can add the browser's frame; the page itself starts at the top left.

@@ -9,6 +9,7 @@ writes them as PNG files.
 
 A page prints only numbers the user entered or that were measured on the model.
 """
+import concurrent.futures
 import copy
 import io
 import math
@@ -25,6 +26,7 @@ from studio_store import DATA, LOCK, get, put, all_records
 
 import brand_kit
 import brandkit_render
+import brandkit_review
 import brandkit_set
 import components
 
@@ -636,24 +638,27 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     pages = []
     try:
         progress('compose', 0, '准备排版素材')
-        assets = {}; anchors = []; details = []; macros = []
+        assets = {}; anchors = []; details = []; macros = []; focus = {}
         hero, crop = brandkit_set.flatten(shots['hero']['path'], assets_folder / 'hero.png')
         assets['hero'] = hero
         picture = shots['hero']['picture']
         for index in brandkit_set.anchored(product):
             found, share = picture.anchor(product['features'][index]['parts']) if picture else (None, 0)
-            if found and share > .0008:
+            if found and share > .0003:          # a small part (a rivet, a button) still gets its line
                 point = brandkit_set.remap(found, crop)
                 if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
                     anchors.append((index, point))
-        for index, _ in _focus_features(product, 3):
+        for index, names in _focus_features(product, 3):
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
-                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), trim=False)
+                region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25)
+                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), trim=False, region=region)
+                focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
                 details.append((index, name))
             if 'macro%d' % index in shots:
                 name = 'macro%d' % index
-                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(22, 24, 27), dark=True, trim=False)
+                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(22, 24, 27), dark=True, trim=False,
+                                                       region=brandkit_set.part_region(shots[name]['result'], names, least=.3, margin=.15))
                 macros.append((index, name))
         if 'side' in shots:
             assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
@@ -662,7 +667,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         for index, scene in enumerate(scenes):
             assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
-               'anchors': anchors, 'details': details, 'macros': macros, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
+               'anchors': anchors, 'details': details, 'macros': macros, 'focus': focus, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
         has, why = brandkit_set.requirements(product, parts, known, len(scenes))
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
@@ -672,22 +677,57 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         for row in rows:
             if not has.get(row['kind']):
                 notes.append('「%s」没有生成：%s。' % (brandkit_set.KINDS[row['kind']][0], why.get(row['kind'], '缺少内容')))
-        for index, row in enumerate(made):
+        # Supervision: the copy model writes each page's lines, the vision model reviews every finished page.
+        text_ready, vision_ready = brandkit_review.available()
+        if text_ready:
+            progress('compose', 0, '文案模型撰写各页标题')
+            ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
+            if copy_note:
+                notes.append(copy_note)
+        ctx['review'] = vision_ready
+        if not vision_ready:
+            notes.append('视觉模型未配置：各页只做了版式测量，没有经过视觉审核。')
+        laid = {}; done = [0]; lock = threading.Lock()
+
+        def one(row):
             if cancelled():
                 raise ListingCancelled()
             kind = row['kind']
-            progress('compose', index / len(made), '排版第 %d / %d 张：%s' % (index + 1, len(made), brandkit_set.KINDS[kind][0]))
-            name = '%02d-%s.png' % (len(pages) + 1, kind)
             try:
-                qa, page_notes = brandkit_set.lay_out(kind, ctx, folder / name, work)
+                result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
             except brandkit_render.RenderError:
                 raise
             except Exception as exc:
-                notes.append('「%s」排版失败：%s' % (brandkit_set.KINDS[kind][0], str(exc)[:160])); continue
+                result = exc
+            with lock:
+                done[0] += 1
+                progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
+            return kind, result
+        progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
+        with concurrent.futures.ThreadPoolExecutor(3) as pool:
+            for kind, result in pool.map(one, made):
+                laid[kind] = result
+        for row in made:
+            kind = row['kind']; result = laid[kind]
+            if isinstance(result, Exception):
+                notes.append('「%s」排版失败：%s' % (brandkit_set.KINDS[kind][0], str(result)[:160])); continue
+            qa, page_notes, review = result
+            name = '%02d-%s.png' % (len(pages) + 1, kind)
+            (folder / ('%s.png' % kind)).rename(folder / name)
             width, height = qa['render']['size']
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
-                          'width': width, 'height': height, 'notes': page_notes,
+                          'width': width, 'height': height, 'notes': page_notes, 'review': review,
                           'checks': {'passed': not brandkit_render.layout_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
+        if vision_ready and len(pages) > 1:
+            progress('compose', 1, '视觉模型检查整套图')
+            try:
+                set_review = brandkit_review.review_set(pages, folder, product)
+            except Exception as exc:
+                set_review = None; notes.append('整套图的视觉检查没有完成（%s）。' % str(exc)[:80])
+            if set_review:
+                repeats = '；'.join('第 %s 张' % '、'.join(str(number) for number in group) for group in set_review['repeats'] if len(group) > 1)
+                notes.append('整套检查：%s%s%s' % ('风格一致。' if set_review['consistent'] else '风格不够统一。',
+                                                 ('内容重复：' + repeats + '。') if repeats else '', set_review['notes']))
         shutil.rmtree(work, ignore_errors=True)
         if not pages:
             raise ValueError('没有排出任何图片：' + '；'.join(notes[-3:]))

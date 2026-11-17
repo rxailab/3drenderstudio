@@ -192,8 +192,15 @@ function listingRenderMain() {
   $('listingPages').innerHTML=(scenes.length?`<section class="listing-scenes" aria-label="本次使用的场景图"><span class="field-label">场景图（图像模型生成，产品由遮罩锁定）</span><div>${scenes.map((row,index)=>
     `<a href="${esc(row.url)}" target="_blank" rel="noopener" title="${esc(row.title || '')}"><img src="${esc(row.url)}" alt="场景图 ${index+1}：${esc(row.title || '')}" loading="lazy"></a>`).join('')}</div></section>`:'')+pages.map((page,index)=>`<figure class="listing-page">
     <a href="${esc(page.url)}" target="_blank" rel="noopener" title="查看原图"><img src="${esc(page.url)}?t=${stamp}" alt="套图第 ${index+1} 张：${esc(kinds[page.kind]?.zh || page.kind)}" loading="lazy"></a>
-    <figcaption><span>${String(index+1).padStart(2,'0')} · ${esc(kinds[page.kind]?.zh || page.kind)}${page.checks?(page.checks.passed?' · 版式检查通过':' · 版式需检查'):''}</span><span>${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a></figcaption>
+    <figcaption><span>${String(index+1).padStart(2,'0')} · ${esc(kinds[page.kind]?.zh || page.kind)}${page.checks?(page.checks.passed?' · 版式通过':' · 版式需检查'):''}${listingReviewLabel(page.review)}</span><span>${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a></figcaption>
     ${(page.notes || []).map(note=>`<p class="field-help">${esc(note)}</p>`).join('')}</figure>`).join('');
+}
+
+function listingReviewLabel(review) {
+  // What the vision model's art director made of the page; a page nobody looked at is never shown as approved.
+  if(!review)return '';
+  const score=Number.isFinite(review.score)?` ${review.score}`:'';
+  return {passed:` · 审核通过${score}`,revised:` · 审核后修改${score}`,failed:` · 审核未通过${score}`,not_verified:' · 未经视觉审核'}[review.status] || '';
 }
 
 // ---- reading the forms ----

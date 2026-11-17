@@ -577,7 +577,7 @@ class BuildTests(StoreCase):
     def setUp(self):
         super().setUp()
         mocked = patch.object(components, 'stage', side_effect=self.stage); mocked.start(); self.addCleanup(mocked.stop)
-        self.jobs = []; self.failing = []; self.scenes = []
+        self.jobs = []; self.failing = {}; self.scenes = []
         for target, name, value in ((brandkit_render, 'available', True), (brandkit_set, 'image_model_ready', False)):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(brandkit_render, 'render', side_effect=self.fake_render); mocked.start(); self.addCleanup(mocked.stop)
@@ -592,7 +592,7 @@ class BuildTests(StoreCase):
         self.jobs.append((template_id, job))
         Path(out).parent.mkdir(parents=True, exist_ok=True)
         Image.new('RGB', (job['canvas']['width'], job['canvas']['height']), job['palette']['bg']).save(out)
-        issues = self.failing.pop(0) if self.failing else []
+        issues = self.failing[template_id].pop(0) if self.failing.get(template_id) else []
         return {'issues': issues, 'notes': [], 'render': {'png': str(out), 'size': [job['canvas']['width'], job['canvas']['height']]}}
 
     def scene(self, project, proposal, hint='', cancelled=None, progress=None, folder=None, pose='auto'):
@@ -684,12 +684,59 @@ class BuildTests(StoreCase):
         pages, _ = listing.build('fixture')
         self.assertEqual(self.job('T12')['mode'], 'solid'); self.assertNotIn('T08', [page['kind'] for page in pages])
 
+    def test_the_copy_and_vision_models_supervise_every_page(self):
+        import brandkit_review
+        reviewed = {}
+
+        def ask(config, system, facts, schema, image_path=None, reference_path=None):
+            if system == brandkit_review.COPYWRITER:
+                return {'pages': [{'template': 'T01', 'eyebrow': 'Parts', 'headline': 'Cuts clean, grips firm'},
+                                  {'template': 'T02', 'eyebrow': 'Close', 'headline': 'Cuts 50 mm pipe'},             # a number nobody gave: refused
+                                  {'template': 'T04', 'eyebrow': 'Specs', 'headline': 'x' * 80}]}                     # too long: refused
+            if system == brandkit_review.SET_REVIEW:
+                return {'consistent': True, 'repeats': [[3, 4]], 'weakest': 4, 'notes': '第 3、4 张都是部件特写。'}
+            kind = facts['template']['id']; reviewed[kind] = reviewed.get(kind, 0) + 1
+            self.assertEqual(reference_path, str(self.data / 'fixture' / 'listing' / Path(reference_path).parent.parent.name / 'assets' / 'hero.png'))
+            self.assertIn('facts', facts); self.assertEqual(facts['criteria_maximum'], brandkit_review.CRITERIA)
+            good = {'scores': {'product': 22, 'hierarchy': 18, 'composition': 17, 'task': 13, 'color': 9, 'independence': 8}, 'vetoes': [], 'issues': [], 'summary': 'ok'}
+            if kind == 'T01' and reviewed[kind] == 1:              # crowded: drop the second callout... which the minimum of two does not allow
+                return {**good, 'scores': {**good['scores'], 'composition': 8}, 'issues': [
+                    {'region': 'headline', 'evidence': 'too long', 'action': {'type': 'shorten_text', 'target': 'headline', 'text': 'Grips firm'}},
+                    {'region': 'callouts', 'evidence': 'crowded', 'action': {'type': 'drop_item', 'target': 'features', 'index': 1}}]}
+            if kind == 'T06':                                       # never good enough: two rounds, then reported
+                return {**good, 'vetoes': [{'kind': 'text_unreadable', 'evidence': 'table too small'}], 'issues': [
+                    {'region': 'table', 'evidence': 'small', 'action': {'type': 'next_layout'}}]}
+            return good
+        for target, name, value in ((brandkit_review, 'available', (True, True)), (brandkit_review, '_configs', ({'model': 'text'}, {'model': 'vision'}))):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(brandkit_review, '_ask', side_effect=ask); mocked.start(); self.addCleanup(mocked.stop)
+        pages, notes = listing.build('fixture')
+        by_kind = {page['kind']: page for page in pages}
+        self.assertEqual(self.job('T01')['headline'], 'Grips firm'); self.assertEqual(self.job('T01')['eyebrow'], 'Parts')
+        self.assertEqual(len(self.job('T01')['features']), 2)                                  # the drop that would go below two was not made
+        self.assertEqual(self.job('T02')['headline'], brandkit_set.TEXT['en']['T02_headline'])
+        self.assertEqual(self.job('T04')['headline'], brandkit_set.TEXT['en']['T04_headline'])
+        self.assertTrue(any('默认标题' in note for note in notes))
+        self.assertEqual((by_kind['T01']['review']['status'], by_kind['T01']['review']['first_score'], by_kind['T01']['review']['score']), ('revised', 78, 87))
+        self.assertIn('缩短headline', by_kind['T01']['review']['applied'])
+        self.assertEqual((by_kind['T12']['review']['status'], by_kind['T12']['review']['rounds']), ('passed', 0))
+        self.assertEqual((by_kind['T06']['review']['status'], by_kind['T06']['review']['vetoes']), ('failed', ['text_unreadable']))
+        self.assertEqual(reviewed['T06'], 2)                                                   # a revision that scores no better ends the loop
+        self.assertTrue(any('没有让评分变好' in note for note in by_kind['T06']['notes']))
+        self.assertTrue(any('视觉审核未通过' in note for note in by_kind['T06']['notes']))
+        self.assertTrue(any(note.startswith('整套检查') and '第 3、4 张' in note for note in notes))
+        self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/*.rev*.png')))
+
+    def test_without_a_vision_model_no_page_is_called_reviewed(self):
+        pages, notes = listing.build('fixture')
+        self.assertEqual({page['review']['status'] for page in pages}, {'not_verified'})
+        self.assertTrue(any('没有经过视觉审核' in note for note in notes))
+
     def test_a_page_that_fails_its_checks_is_laid_out_again_lighter(self):
-        self.failing = [[{'check': 'text_max_lines', 'id': 'headline'}]]
+        self.failing = {'T12': [[{'check': 'text_max_lines', 'id': 'headline'}]]}
         pages, _ = listing.build('fixture')
-        first, second = self.jobs[0][1], self.jobs[1][1]
-        self.assertEqual((self.jobs[0][0], self.jobs[1][0]), ('T12', 'T12'))
-        self.assertEqual((first['mode'], second['mode']), ('solid', 'solid')); self.assertIsNotNone(first['support']); self.assertIsNone(second['support'])
+        first, second = [job for kind, job in self.jobs if kind == 'T12']
+        self.assertEqual((first['mode'], second['mode']), ('solid', 'solid')); self.assertNotIn('compact', first); self.assertTrue(second['compact'])
         self.assertIn('精简版本', pages[0]['notes'][0]); self.assertTrue(pages[0]['checks']['passed'])
 
     def test_a_component_still_being_processed_is_left_out_and_said(self):
