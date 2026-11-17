@@ -523,14 +523,14 @@ def picture_requests(project, product, size_mm, rows, parts=()):
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': 0, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
-    for key, kind, limit, focal, margin in (('detail', 'T03', 3, 85, .2), ('macro', 'T02', 2, 120, .06)):
+    for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
         if kind in kinds:
             for index, names in _focus_features(product, limit):
                 requests['%s%d' % (key, index)] = {
                     'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                     'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': focal, 'margin': margin, 'focus': names,
                                'azimuths': [azimuth, -azimuth, azimuth + 90, azimuth - 90, azimuth + 180]},
-                    'ground': 'none', 'size': [1600, 1600], 'samples': 48}
+                    'ground': 'none', 'size': [pixels, pixels], 'samples': 48}
     if product['usecase']['enabled'] and kinds & {'T04', 'T08', 'T12'}:
         use = product['usecase']
         workpiece = {'kind': use['kind'], 'material': use['material'],
@@ -648,7 +648,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 point = brandkit_set.remap(found, crop)
                 if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
                     anchors.append((index, point))
-        for index, names in _focus_features(product, 3):
+        for index, names in _focus_features(product, 6):
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
                 region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25)
@@ -658,7 +658,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if 'macro%d' % index in shots:
                 name = 'macro%d' % index
                 assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(22, 24, 27), dark=True, trim=False,
-                                                       region=brandkit_set.part_region(shots[name]['result'], names, least=.3, margin=.15))
+                                                       region=brandkit_set.part_region(shots[name]['result'], names, least=.34, margin=.15))
                 macros.append((index, name))
         if 'side' in shots:
             assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
@@ -667,8 +667,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         for index, scene in enumerate(scenes):
             assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
-               'anchors': anchors, 'details': details, 'macros': macros, 'focus': focus, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
+               'anchors': anchors, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
+        ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes))
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
         why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写')
@@ -741,7 +742,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model')}
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check')}
                   for row in scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):

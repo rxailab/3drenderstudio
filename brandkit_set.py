@@ -54,14 +54,14 @@ TEXT = {
            'T02_headline': '近看细节', 'T04_headline': '核心参数', 'T04_eyebrow': '参数', 'T08_eyebrow': '使用场景', 'T08_headline': '用在需要它的地方',
            'T06_eyebrow': '尺寸', 'T06_headline': '外形尺寸', 'T05_headline': '包装清单', 'T05_note': '图示物品未按实际比例',
            'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度',
-           'table_note': '尺寸按 3D 模型测量，换算取整。', 'depth_note': '深度 %s。',
+           'table_note': '按 3D 模型测量。', 'depth_note': '深度 %s。',
            'scene_titles': ('上手使用', '随时待命', '换个场景')},
     'en': {'T01_eyebrow': 'Part overview', 'T01_headline': 'Every key part,\nclearly shown', 'T03_eyebrow': 'Details', 'T02_eyebrow': 'Up close',
            'T02_headline': 'The details, up close', 'T04_headline': 'Key figures', 'T04_eyebrow': 'Specs', 'T08_eyebrow': 'In use',
            'T08_headline': 'Made for the job', 'T06_eyebrow': 'Dimensions', 'T06_headline': 'Overall size', 'T05_headline': "What's in the box",
            'T05_note': 'Items not shown to scale', 'qty_pending': 'Qty to be confirmed', 'qty_prefix': 'Qty ', 'main': 'Main unit',
            'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth',
-           'table_note': 'Measured on the 3D model; conversions rounded.', 'depth_note': 'Depth %s.',
+           'table_note': 'Measured on the 3D model.', 'depth_note': 'Depth %s.',
            'scene_titles': ('In use', 'Ready to go', 'On the job')},
 }
 
@@ -312,6 +312,14 @@ def scene_briefs(project, settings, count):
     return briefs[:count]
 
 
+def _fit_line(text, limit):
+    """A line within ``limit`` characters, cut only after a whole clause; '' when even the first clause is too long."""
+    if len(text) <= limit:
+        return text
+    cuts = [index for index, char in enumerate(text[:limit + 1]) if char in '，、；。,;' and index > 0]
+    return text[:cuts[-1]].rstrip('，、；,;') + ('。' if re.search(r'[\u4e00-\u9fff]', text) else '') if cuts else ''
+
+
 def captions(project, product, briefs):
     """A short title and line for each scene, in the listing's language: by the copy model when one is
     configured, else plain titles by what the scene shows."""
@@ -322,18 +330,21 @@ def captions(project, product, briefs):
         config = scene_stylist._config(None)
         if not config:
             return rows
-        limit = (12, 22) if language == 'zh' else (28, 56)
+        limit = (8, 15) if language == 'zh' else (22, 44)
         schema = {'type': 'object', 'additionalProperties': False, 'required': ['scenes'],
                   'properties': {'scenes': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['title', 'body'],
                                                                        'properties': {'title': {'type': 'string'}, 'body': {'type': 'string'}}}}}}
         facts = {'product': product['title'] or project.get('name', ''), 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                  'title_max_chars': limit[0], 'line_max_chars': limit[1],
                  'scenes': [str(item['proposal'].get('scene', ''))[:600] for item in briefs]}
-        system = ('You write captions for product listing images. For each scene description, write a short title and one '
-                  'line saying what the scene shows the buyer. Describe only what the scene shows; no numbers, claims, prices or brands.')
+        system = ('You write captions for product listing images. For each scene description, write a short title naming the moment or '
+                  'place of use (not words like "展示"/"showcase" that describe the photo) and one short line saying what the buyer sees. '
+                  'Describe only what the scene shows; no numbers, no benefits or claims, no prices or brands. Respect the character limits '
+                  'strictly; different scenes get clearly different titles.')
         answer = scene_stylist._ask(config, system, facts, schema)
         for row, made in zip(rows, answer.get('scenes', [])):
-            title = ' '.join(str(made.get('title', '')).split())[:limit[0]]; body = ' '.join(str(made.get('body', '')).split())[:limit[1]]
+            title = ' '.join(str(made.get('title', '')).split()); body = _fit_line(' '.join(str(made.get('body', '')).split()), limit[1])
+            title = title if len(title) <= limit[0] else ''
             if title:
                 row.update(title=title, body=body)
     except Exception:
@@ -388,7 +399,8 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
             notes.append('第 %d 张场景图的产品核对没有完全通过，请检查后再使用。' % (index + 1))
         rows.append({'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
                      'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
-                     'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people')})
+                     'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
+                     'check': (record.get('check') or {}).get('status') or 'unchecked'})
     return rows, key if rows else None, notes
 
 
@@ -462,7 +474,14 @@ def _measure(mm, unit):
 
 
 def jobs_for(kind, ctx):
-    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried."""
+    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. When the
+    copywriter wrote this page's lines, the same versions with the template's own lines follow."""
+    if not (ctx.get('copy') or {}).get(kind):
+        return [{**job, '_lines': 'stock'} for job in _jobs_for(kind, ctx)]
+    return [{**job, '_lines': 'model'} for job in _jobs_for(kind, ctx)] + [{**job, '_lines': 'stock'} for job in _jobs_for(kind, {**ctx, 'copy': {}})]
+
+
+def _jobs_for(kind, ctx):
     t = dict(TEXT[ctx['language']]); product = ctx['product']; assets = ctx['assets']
     written = (ctx.get('copy') or {}).get(kind) or {}
     for key in ('eyebrow', 'headline'):
@@ -471,7 +490,8 @@ def jobs_for(kind, ctx):
     title = product['title'] or ''; headline = product['headline'] or title
     if kind == 'T12':
         # The poster takes a picture the image model made; a studio render of the workpiece stays on the inside pages.
-        scene_index = next((index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')), None)
+        made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
+        scene_index = next((index for index in made if ctx['scenes'][index].get('check') != 'failed'), made[0] if made else None)
         scene = ctx['scenes'][scene_index] if scene_index is not None else None
         brand = ctx.get('brand'); slot = bool(brand and brand.name)
         base = {'headline': _headline(headline, ctx['language'], 40), 'support': _clip(product['subline'], 90) or None, 'brand_slot': slot,
@@ -503,8 +523,11 @@ def jobs_for(kind, ctx):
                                     features=points[:count], assets={'hero': hero}))
         return out
     if kind == 'T03':
+        called = {index for index, _ in ctx['anchors'][:4]} if 'T01' in (ctx.get('kinds') or ()) else set()
+        fresh = [(index, name) for index, name in ctx['details'] if index not in called]
+        chosen = fresh if len(fresh) >= 2 else ctx['details']      # the callouts' points again only when there are not two others
         details = [{'title': _clip(product['features'][index]['title'], 22), 'body': _clip(product['features'][index].get('detail'), 40),
-                    'detail': name, 'focus': (ctx.get('focus') or {}).get(name, [.5, .5])} for index, name in ctx['details']]
+                    'detail': name, 'focus': (ctx.get('focus') or {}).get(name, [.5, .5])} for index, name in chosen]
         out = []
         for count in (3, 2):
             if len(details) >= count:
@@ -525,8 +548,12 @@ def jobs_for(kind, ctx):
                                 assets={row['detail']: assets[row['detail']] for row in use}))
         return out
     if kind == 'T04':
-        scene = ctx['scenes'][1] if len(ctx['scenes']) > 1 else ctx['scenes'][0]
-        name = 'scene2' if len(ctx['scenes']) > 1 else 'scene1'
+        # A scene whose product check passed, other than the poster's when there is one.
+        made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
+        poster = next((index for index in made if ctx['scenes'][index].get('check') != 'failed'), made[0] if made else None)
+        # Fidelity first: the poster's scene again rather than one whose product check failed.
+        order = sorted(range(len(ctx['scenes'])), key=lambda index: (ctx['scenes'][index].get('check') == 'failed', index == poster, index))
+        scene = ctx['scenes'][order[0]]; name = 'scene%d' % (order[0] + 1)
         specs = []
         for row in product['figures']:
             number, _ = _number_unit(row['value'])
@@ -546,8 +573,9 @@ def jobs_for(kind, ctx):
         return [_job(kind, ctx, scene=name, focus=scene['focus'], eyebrow=t['T04_eyebrow'], headline=t['T04_headline'],
                      specs=specs[:count], assets={name: assets[name]}) for count in counts]
     if kind == 'T08':
-        items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(row['title'], 20), 'body': _clip(row.get('body'), 44) or None, 'focus': row['focus']}
-                 for index, row in enumerate(ctx['scenes'])]
+        ranked = sorted(range(len(ctx['scenes'])), key=lambda index: (ctx['scenes'][index].get('check') == 'failed', index))[:3]
+        items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20), 'body': _clip(ctx['scenes'][index].get('body'), 44) or None,
+                  'focus': ctx['scenes'][index]['focus']} for index in sorted(ranked)]
         out = []
         for count in (3, 2):
             if len(items) >= count:
@@ -569,11 +597,11 @@ def jobs_for(kind, ctx):
             dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
                          'side': side_dir, 'at': at})
         depth_value, depth_unit = _measure(depth, unit)
-        note = t['table_note'] + ' ' + t['depth_note'] % ('%g %s' % (depth_value, depth_unit))
+        note = t['table_note'] + ('' if ctx['language'] == 'zh' else ' ') + t['depth_note'] % ('%g %s' % (depth_value, depth_unit))
         # A long, low product leaves the table column too little room: its figures go on the lines instead.
         wide = side['width'] / side['height'] > 1.8
         modes = ('onproduct', 'table') if wide else ('table', 'onproduct')
-        return [_job(kind, ctx, mode=mode, hero='side', eyebrow=t['T06_eyebrow'], headline=t['T06_headline'], dimensions=dims, dim_pad=pad,
+        return [_job(kind, ctx, mode=mode, hero='side', eyebrow=_clip(title, 24) or t['T06_eyebrow'], headline=t['T06_headline'], dimensions=dims, dim_pad=pad,
                      table_note=note if mode == 'table' else None, assets={'side': side}) for mode in modes for pad in (110, 150)]
     if kind == 'T05':
         import components
@@ -590,11 +618,26 @@ def jobs_for(kind, ctx):
 
 
 def _measured(qa):
-    """What the layout checks measured, for the art director: the smallest text at phone size and what was laid out."""
-    texts = [row for row in qa.get('elements', []) if row.get('kind') == 'text']
+    """What the browser measured, for the art director: where each picture lies and whether a whole product is inside the page,
+    which frames are close-ups by design, text sizes at phone width. Ground truth it must not contradict."""
+    width, height = (qa.get('canvas') or [1500, 1500])[:2]
+    elements = qa.get('elements', [])
+    texts = [row for row in elements if row.get('kind') == 'text']
     small = min((row.get('equiv_px_at_360', 99) for row in texts if row.get('tier') in ('headline', 'important')), default=None)
-    return {'layout_checks_passed': not brandkit_render.layout_issues(qa), 'smallest_important_text_px_at_360': small,
-            'text_blocks': len(texts), 'notes': qa.get('notes', [])[:3]}
+    pictures = []; by_id = {row.get('id'): row for row in elements}
+    for row in elements:
+        if row.get('kind') in ('product_image', 'detail_image') and row.get('w'):
+            if row.get('inframe') and by_id.get(row['id'] + '_frame'):
+                row = {**by_id[row['id'] + '_frame'], 'id': row['id'], 'crop': row.get('crop')}       # what shows is the frame, not the picture behind it
+            bleed = row.get('bleed')
+            inside = bleed or (row['x'] >= -1 and row['y'] >= -1 and row['x'] + row['w'] <= width + 1 and row['y'] + row['h'] <= height + 1)
+            whole = row.get('crop') == 'contain' and not bleed
+            pictures.append({'id': row['id'], 'box_px': [round(row['x']), round(row['y']), round(row['w']), round(row['h'])],
+                             'shows': 'the whole product, uncropped' if whole and inside else 'a crop by design (close-up or scene frame)',
+                             'fully_inside_page': bool(inside)})
+    return {'layout_checks_passed': not brandkit_render.layout_issues(qa), 'canvas_px': [width, height], 'pictures': pictures,
+            'smallest_important_text_px_at_360': small, 'text': [{'id': row['id'], 'lines': row.get('lines'), 'text': row.get('text', '')[:40]}
+                                                                  for row in texts][:14], 'notes': qa.get('notes', [])[:3]}
 
 
 def _better(a, b):
@@ -635,10 +678,10 @@ def lay_out(kind, ctx, out, work):
     record = {'status': 'not_verified', 'rounds': 0, 'applied': []}
     if ctx.get('review') and not ctx.get('review_refused'):
         reference = ctx['assets']['hero']['path']
-        facts = brandkit_review.facts_of(ctx['product'])
+        facts = ctx.get('facts') or brandkit_review.facts_of(ctx['product'])
         scenes = [('scene%d' % (index + 1), ctx['assets']['scene%d' % (index + 1)], row['focus']) for index, row in enumerate(ctx.get('scenes') or [])]
         try:
-            verdict = brandkit_review.review(kind, job, out, ctx['product'], reference, _measured(qa))
+            verdict = brandkit_review.checked(kind, job, out, ctx['product'], reference, _measured(qa), ctx.get('facts'))
         except Exception as exc:
             verdict = None; notes.append('视觉审核没有完成（%s），这张图未经审核。' % str(exc)[:80])
             if re.search(r'HTTP 40[123]', str(exc)):
@@ -649,8 +692,10 @@ def lay_out(kind, ctx, out, work):
                 if brandkit_review.passed(current[1]):
                     break
                 revised, applied = brandkit_review.revise(kind, current[0], current[1], facts, scenes)
-                if revised == 'next_layout':
-                    following = next((index for index in range(len(candidates)) if index not in tried), None)
+                if revised in ('next_layout', 'default_text'):
+                    stock = revised == 'default_text'
+                    following = next((index for index in range(len(candidates)) if index not in tried
+                                      and (not stock or candidates[index].get('_lines') == 'stock')), None)
                     if following is None:
                         break
                     tried.add(following); revised = candidates[following]
@@ -661,7 +706,7 @@ def lay_out(kind, ctx, out, work):
                 if brandkit_render.layout_issues(trial_qa):
                     trial.unlink(missing_ok=True); notes.append('审核建议的修改（%s）没有通过版式检查，未采用。' % '、'.join(applied)); break
                 try:
-                    trial_verdict = brandkit_review.review(kind, revised, trial, ctx['product'], reference, _measured(trial_qa))
+                    trial_verdict = brandkit_review.checked(kind, revised, trial, ctx['product'], reference, _measured(trial_qa), ctx.get('facts'))
                 except Exception:
                     trial.unlink(missing_ok=True); break
                 record['rounds'] = round_number
@@ -671,10 +716,14 @@ def lay_out(kind, ctx, out, work):
                     trial.unlink(missing_ok=True); notes.append('第 %d 轮修改（%s）没有让评分变好，保留原版。' % (round_number, '、'.join(applied)))
                     break
             verdict = current[1]
+            failed_scenes = sorted({key for key in current[0].get('assets', {}) if key.startswith('scene')
+                                    and (ctx['scenes'][int(key[5:]) - 1] if int(key[5:]) <= len(ctx['scenes']) else {}).get('check') == 'failed'})
+            if failed_scenes:          # the scene generator's own product check is a fact, not an opinion
+                verdict = {**verdict, 'vetoes': verdict['vetoes'] + [{'kind': 'scene_product_mismatch', 'evidence': '场景图的产品核对未通过：%s' % '、'.join(failed_scenes)}]}
             record.update(status='passed' if brandkit_review.passed(verdict) and not record['applied'] else
                                  'revised' if brandkit_review.passed(verdict) else 'failed',
                           score=verdict['score'], first_score=first['score'], scores=verdict['scores'], model=verdict.get('model'),
-                          vetoes=[row['kind'] for row in verdict['vetoes']], summary=verdict['summary'],
+                          vetoes=[row['kind'] for row in verdict['vetoes']], summary=verdict['summary'], refuted=verdict.get('refuted', 0),
                           issues=[{'region': row.get('region', ''), 'evidence': row.get('evidence', '')} for row in verdict['issues']])
             if record['applied']:
                 notes.append('按视觉审核修改：%s（%d → %d 分）。' % ('、'.join(record['applied']), first['score'], verdict['score']))

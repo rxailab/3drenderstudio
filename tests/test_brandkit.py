@@ -120,6 +120,45 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual((new['scene'], new['focus'], list(new['assets'])), ('scene2', [.4, .6], ['scene2']))
         self.assertEqual(review.revise('T12', poster, self.verdict({'type': 'next_layout'}), self.FACTS), ('next_layout', ['换一种排法']))
 
+    def test_the_copywriters_lines_are_checked_before_use(self):
+        import brandkit_review as review
+        product = {'language': 'zh', 'title': '托特包', 'model': '', 'headline': '', 'subline': '', 'size_mm': 476,
+                   'features': [{'title': '皮革提手', 'detail': ''}], 'specs': [], 'figures': [{'value': '476', 'unit': 'mm', 'label': '高度'}]}
+        answer = {'pages': [{'template': 'T01', 'eyebrow': '部位导览', 'headline': '卷边提手\n铆钉加固'},
+                            {'template': 'T04', 'eyebrow': '参数', 'headline': '高度476mm\n容量顺手'},          # a number, and two lines on a one-line page
+                            {'template': 'T02', 'eyebrow': '细节', 'headline': '细节看得见'},                  # the eyebrow repeated in the headline
+                            {'template': 'T08', 'eyebrow': '场景', 'headline': '一\n二\n三'}]}                # three lines
+        with patch.object(review, '_configs', return_value=({'model': 'text'}, None)), patch.object(review, '_ask', return_value=answer):
+            written, note = review.write_copy(product, ['T01', 'T02', 'T04', 'T08'])
+        self.assertEqual(written, {'T01': {'eyebrow': '部位导览', 'headline': '卷边提手\n铆钉加固'}})
+        self.assertIn('3 条', note)
+
+    def test_a_wrong_written_line_goes_back_to_the_default_and_unknown_fixes_are_read_as_none(self):
+        import brandkit_review as review
+        job = {'headline': '卷边皮革握手', 'lang': 'zh', '_lines': 'model'}
+        typo = {'issues': [], 'vetoes': [{'kind': 'text_broken', 'evidence': '「握手」应为「提手」'}], 'score': 77}
+        self.assertEqual(review.revise('T02', job, typo, self.FACTS), ('default_text', ['改用模板默认标题']))
+        self.assertEqual(review.revise('T02', {**job, '_lines': 'stock'}, typo, self.FACTS), (None, []))          # nothing to go back to
+        asked = self.verdict({'type': 'default_text'})
+        self.assertEqual(review.revise('T02', job, asked, self.FACTS)[0], 'default_text')
+        answer = review._cleaned({'issues': [{'region': 'r', 'evidence': 'e', 'action': {'type': 'move_callout'}}],
+                                  'vetoes': [{'kind': 'ugly', 'evidence': 'x'}, {'kind': 'text_broken', 'evidence': 'y'}]})
+        self.assertEqual((answer['issues'][0]['action'], [row['kind'] for row in answer['vetoes']]), ({'type': 'none'}, ['text_broken']))
+        new, _ = review.revise('T12', {'headline': '帆布托特，皮革收边', 'lang': 'zh'},
+                               self.verdict({'type': 'shorten_text', 'target': 'headline', 'text': '帆布托特\n，皮革边'}), self.FACTS)
+        self.assertEqual(new['headline'], '帆布托特，\n皮革边')                                                # re-broken at the pause
+
+    def test_the_reviewer_is_told_frames_not_the_pictures_behind_them(self):
+        qa = {'canvas': [1500, 1500], 'elements': [
+            {'id': 'detail2_frame', 'kind': 'shape', 'x': 84, 'y': 868, 'w': 600, 'h': 548},
+            {'id': 'detail2', 'kind': 'detail_image', 'x': 84, 'y': 868, 'w': 660, 'h': 660, 'inframe': True, 'crop': 'explicit_detail_crop'},
+            {'id': 'hero', 'kind': 'product_image', 'x': 700, 'y': 100, 'w': 700, 'h': 700, 'crop': 'contain'}], 'issues': []}
+        pictures = {row['id']: row for row in brandkit_set._measured(qa)['pictures']}
+        self.assertEqual((pictures['detail2']['box_px'], pictures['detail2']['fully_inside_page']), ([84, 868, 600, 548], True))
+        self.assertEqual(pictures['hero']['shows'], 'the whole product, uncropped')
+        self.assertEqual(brandkit_set._fit_line('格纹包身斜角朝前，皮革边条与铜铆钉', 15), '格纹包身斜角朝前。')
+        self.assertEqual(brandkit_set._fit_line('一句没有标点的很长很长的说明文字', 8), '')
+
     def test_the_copywriter_and_the_reviewer_are_skipped_without_models(self):
         import brandkit_review as review
         with patch.object(review, '_configs', return_value=(None, None)):

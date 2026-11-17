@@ -604,7 +604,8 @@ class BuildTests(StoreCase):
         self.scenes.append(proposal); folder.mkdir(parents=True, exist_ok=True)
         if progress: progress('图像模型正在生成场景')
         png = folder / (folder.name + '.png'); Image.new('RGB', (2048, 1536), (90, 110, 120)).save(png)
-        return None, {'summary': 'A scene', 'model': 'image-model', 'check': {'status': 'passed'}}, \
+        status = self.scene_checks.pop(0) if getattr(self, 'scene_checks', None) else 'passed'
+        return None, {'summary': 'A scene', 'model': 'image-model', 'check': {'status': status}}, \
             {'png': png, 'jpg': png, 'width': 2048, 'height': 1536, 'record': {'anchor': {'box': [.4, .3, .6, .8]}}}
 
     def with_scenes(self):
@@ -690,15 +691,18 @@ class BuildTests(StoreCase):
 
     def test_the_copy_and_vision_models_supervise_every_page(self):
         import brandkit_review
-        reviewed = {}
+        reviewed = {}; checks = []
 
-        def ask(config, system, facts, schema, image_path=None, reference_path=None):
+        def ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
             if system == brandkit_review.COPYWRITER:
                 return {'pages': [{'template': 'T01', 'eyebrow': 'Parts', 'headline': 'Cuts clean, grips firm'},
                                   {'template': 'T02', 'eyebrow': 'Close', 'headline': 'Cuts 50 mm pipe'},             # a number nobody gave: refused
                                   {'template': 'T04', 'eyebrow': 'Specs', 'headline': 'x' * 80}]}                     # too long: refused
             if system == brandkit_review.SET_REVIEW:
-                return {'consistent': True, 'repeats': [[3, 4]], 'weakest': 4, 'notes': '第 3、4 张都是部件特写。'}
+                return {'consistent': True, 'repeats': [[3, 4]], 'weakest': 4, 'notes': '**第 3、4 张**都是部件特写。'}
+            if system == brandkit_review.VERIFIER:                  # the second look: the close-up page's complaint does not stand
+                checks.append(facts['template'])
+                return {'claims': [{'number': row['number'], 'real': facts['template'] != 'T02', 'why': 'seen'} for row in facts['claims']]}
             kind = facts['template']['id']; reviewed[kind] = reviewed.get(kind, 0) + 1
             self.assertEqual(reference_path, str(self.data / 'fixture' / 'listing' / Path(reference_path).parent.parent.name / 'assets' / 'hero.png'))
             self.assertIn('facts', facts); self.assertEqual(facts['criteria_maximum'], brandkit_review.CRITERIA)
@@ -707,6 +711,10 @@ class BuildTests(StoreCase):
                 return {**good, 'scores': {**good['scores'], 'composition': 8}, 'issues': [
                     {'region': 'headline', 'evidence': 'too long', 'action': {'type': 'shorten_text', 'target': 'headline', 'text': 'Grips firm'}},
                     {'region': 'callouts', 'evidence': 'crowded', 'action': {'type': 'drop_item', 'target': 'features', 'index': 1}}]}
+            if kind == 'T02':                                       # a false alarm on the close-ups
+                self.assertEqual(facts['measured_layout']['canvas_px'], [1500, 1500])
+                return {**good, 'scores': {**good['scores'], 'product': 10}, 'issues': [
+                    {'region': 'close-up', 'evidence': 'product cut off', 'action': {'type': 'next_layout'}}]}
             if kind == 'T06':                                       # never good enough: two rounds, then reported
                 return {**good, 'vetoes': [{'kind': 'text_unreadable', 'evidence': 'table too small'}], 'issues': [
                     {'region': 'table', 'evidence': 'small', 'action': {'type': 'next_layout'}}]}
@@ -728,14 +736,16 @@ class BuildTests(StoreCase):
         self.assertEqual(reviewed['T06'], 2)                                                   # a revision that scores no better ends the loop
         self.assertTrue(any('没有让评分变好' in note for note in by_kind['T06']['notes']))
         self.assertTrue(any('视觉审核未通过' in note for note in by_kind['T06']['notes']))
-        self.assertTrue(any(note.startswith('整套检查') and '第 3、4 张' in note for note in notes))
+        self.assertTrue(any(note.startswith('整套检查') and '第 3、4 张' in note and '*' not in note for note in notes))
+        self.assertEqual((by_kind['T02']['review']['status'], by_kind['T02']['review']['refuted'], reviewed['T02']), ('passed', 1, 1))
+        self.assertNotIn('T12', checks)                                                        # a page that passes is not checked again
         self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/*.rev*.png')))
 
     def test_a_refused_review_is_not_asked_again_for_the_other_pages(self):
         import brandkit_review
         calls = []
 
-        def ask(config, system, facts, schema, image_path=None, reference_path=None):
+        def ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
             calls.append(system); raise ValueError('AI 服务的额度已用尽（HTTP 402）')
         for target, name, value in ((brandkit_review, 'available', (False, True)), (brandkit_review, '_configs', (None, {'model': 'vision'}))):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
@@ -749,6 +759,44 @@ class BuildTests(StoreCase):
         pages, notes = listing.build('fixture')
         self.assertEqual({page['review']['status'] for page in pages}, {'not_verified'})
         self.assertTrue(any('没有经过视觉审核' in note for note in notes))
+
+    def test_the_detail_column_shows_points_the_callouts_did_not(self):
+        listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]},
+                                                      {'title': 'C', 'parts': [PARTS[0]]}, {'title': 'D', 'parts': [PARTS[1]]},
+                                                      {'title': 'E', 'parts': [PARTS[0]]}, {'title': 'F', 'parts': [PARTS[1]]}]})
+        listing.build('fixture')
+        callouts = [row['title'] for row in self.job('T01')['features']]; column = [row['title'] for row in self.job('T03')['details']]
+        self.assertEqual(callouts, ['A', 'B', 'C', 'D']); self.assertEqual(column[:2], ['E', 'F'])
+        listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})
+        listing.build('fixture')
+        self.assertEqual([row['title'] for row in self.job('T03')['details']], ['A', 'B'])          # only two points: shown again rather than not at all
+
+    def test_the_stock_lines_are_tried_when_the_copywriters_do_not_fit(self):
+        import brandkit_review
+        self.failing = {'T01': [[{'check': 'text_max_lines', 'id': 'headline'}]] * 2}          # both arrangements with the model's line
+        with patch.object(brandkit_review, 'available', return_value=(True, False)), \
+                patch.object(brandkit_review, 'write_copy', return_value=({'T01': {'eyebrow': 'Parts', 'headline': 'A very long line'}}, None)):
+            pages, _ = listing.build('fixture')
+        tried = [job['headline'] for kind, job in self.jobs if kind == 'T01']
+        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], brandkit_set.TEXT['en']['T01_headline'])
+        self.assertTrue(next(page for page in pages if page['kind'] == 'T01')['checks']['passed'])
+
+    def test_scenes_whose_product_check_failed_stay_off_the_poster_and_fail_their_pages(self):
+        import brandkit_review
+        self.with_scenes(); self.scene_checks = ['failed', 'passed', 'failed']
+        good = {'scores': {'product': 22, 'hierarchy': 18, 'composition': 17, 'task': 13, 'color': 9, 'independence': 8}, 'vetoes': [], 'issues': [], 'summary': 'ok'}
+        for target, name, value in ((brandkit_review, 'available', (False, True)), (brandkit_review, '_configs', (None, {'model': 'vision'})),
+                                    (brandkit_review, '_ask', good)):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        pages, _ = listing.build('fixture')
+        self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene2', 'scene4'))      # the workpiece render, not a failed scene
+        by_kind = {page['kind']: page for page in pages}
+        self.assertEqual((by_kind['T12']['review']['status'], by_kind['T04']['review']['status']), ('passed', 'passed'))
+        self.assertEqual((by_kind['T08']['review']['status'], by_kind['T08']['review']['vetoes']), ('failed', ['scene_product_mismatch']))
+        self.assertEqual([item['asset'] for item in self.job('T08')['items']], ['scene1', 'scene2', 'scene4'])       # the failed third left out
+        self.scene_checks = ['passed', 'passed', 'failed']; listing.save_product('fixture', {'scenes': {'hint': 'again'}})
+        listing.build('fixture')
+        self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene1', 'scene2'))      # two that passed: one each
 
     def test_a_page_that_fails_its_checks_is_laid_out_again_lighter(self):
         self.failing = {'T12': [[{'check': 'text_max_lines', 'id': 'headline'}]]}

@@ -19,6 +19,7 @@ The models never write pixels or layout: every change goes through the templates
 """
 import copy
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -31,7 +32,7 @@ MAX_REVISIONS = 2
 MAX_ISSUES = 3
 CRITERIA = {'product': 25, 'hierarchy': 20, 'composition': 20, 'task': 15, 'color': 10, 'independence': 10}
 VETOES = ('product_distorted', 'product_cropped', 'text_unreadable', 'text_broken', 'claim_not_in_facts', 'scene_product_mismatch', 'wrong_pointer')
-ACTIONS = ('shorten_text', 'remove_text', 'drop_item', 'refocus_scene', 'swap_scene', 'next_layout', 'none')
+ACTIONS = ('shorten_text', 'remove_text', 'default_text', 'drop_item', 'refocus_scene', 'swap_scene', 'next_layout', 'none')
 TEXT_FIELDS = ('eyebrow', 'headline', 'support', 'subhead', 'table_note', 'note')
 LISTS = {'T01': ('features', 2), 'T02': ('features', 1), 'T03': ('details', 2), 'T04': ('specs', 2), 'T05': ('items', 1), 'T08': ('items', 2)}
 ITEM_TEXT = ('title', 'body', 'name', 'label', 'text')
@@ -52,18 +53,34 @@ ART_DIRECTOR = (
     'REFERENCE_IMAGE), wrong_pointer (a callout line points at the wrong part). '
     'Then name at most three of the most important problems, each with the region, the visible evidence, and one fix chosen from the '
     'allowed actions (editable lists the exact targets): shorten_text (target a text field, give the new shorter text, meaning kept, no '
-    'new facts or numbers), remove_text (target an optional text field), drop_item (target a list and index; keeps at least the minimum), '
+    'new facts or numbers), remove_text (target an optional text field), default_text (the eyebrow or headline is wrong, mistyped or '
+    'claims too much: use the template\'s plain default lines instead), drop_item (target a list and index; keeps at least the minimum), '
     'refocus_scene (target a scene, give focus x,y in 0..1 of the scene picture for its crop centre), swap_scene (use another scene picture), '
     'next_layout (try the template\'s next arrangement), none (no automatic fix). Do not ask for things the actions cannot do. '
+    'measured_layout is ground truth measured in the browser: where it says a picture shows the whole product, uncropped and fully '
+    'inside the page, never report it cropped or cut off; frames marked as a crop by design are close-ups or scene frames and may cut '
+    'the product. Report position or alignment only when it is plainly visible. For product fidelity compare details carefully with '
+    'REFERENCE_IMAGE: labels or patches on the product, colours, handles, hardware; a missing patch or a changed colour in a scene is '
+    'scene_product_mismatch. Check every line of text against the facts: a use, benefit or quality the facts do not state is '
+    'claim_not_in_facts. '
     'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '
-    'its selling points and specs. Each page has one job (goal). Write in the requested language, within the character limits, no '
-    'numbers unless the same number is in the facts, no prices, no superlatives you cannot support, no brand names. Chinese headlines may '
-    'contain one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", "Up close").')
+    'its selling points and specs. Each page has one job (goal): its headline names the concrete thing that page shows, taken from the '
+    'selling points (a part, a material, a use), never vague praise (no "处处讲究", "品质之选", "premium quality") and never a benefit the '
+    'facts do not state (no capacity, comfort or durability claims the selling points do not make). No numbers or units at all: figures '
+    'are printed elsewhere on the page. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
+    '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
+    '"Up close") that does not repeat the headline. Write the headlines of different pages differently.')
+VERIFIER = (
+    'You check another reviewer\'s claims about one listing image. For each numbered claim, look at CURRENT_RENDER (and REFERENCE_IMAGE, '
+    'the product\'s own render, for fidelity claims) and the measured layout, and say whether the claim is clearly true. measured_layout '
+    'is ground truth: a picture it says shows the whole product inside the page is not cropped. Default to real=false when you cannot '
+    'clearly see it. Answer in the language of the page, briefly.')
 SET_REVIEW = (
     'You review a whole e-commerce listing set shown as a contact sheet (pages numbered in reading order). Say whether the set reads as one '
-    'brand system, whether any two pages repeat the same picture or message, and which page adds least. Be brief and specific.')
+    'brand system, which pages repeat the same picture or message, and which page adds least. notes: at most two plain sentences, no '
+    'markdown, no lists.')
 
 
 def briefs():
@@ -125,13 +142,18 @@ def _decoded(value, schema):
     return value
 
 
-def _ask(config, system, facts, schema, image_path=None, reference_path=None):
-    """One call; an answer that does not fit the schema is asked for once more."""
+def _ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
+    """One call; an answer that does not fit the schema is asked for once more. ``clean`` tidies an answer before it is checked."""
     import ai_client as ai
     body = ai._payload(config, system, facts, schema, image_path=image_path, reference_path=reference_path,
                        label_images=bool(image_path), max_tokens=3000)
     for attempt in (1, 2):
         output = _decoded(ai._response(ai._post(config, body), config, ai.TOOL_NAME), schema)
+        if clean:
+            try:
+                output = clean(output)
+            except (TypeError, AttributeError):
+                pass
         try:
             ai._check_schema(output, schema)
             return output
@@ -140,11 +162,15 @@ def _ask(config, system, facts, schema, image_path=None, reference_path=None):
                 raise
 
 
-def facts_of(product):
-    """What the product record says: the only source of words and numbers on the pages."""
-    return {'title': product['title'], 'model': product.get('model', ''), 'headline': product['headline'], 'subline': product['subline'],
-            'selling_points': [{'title': row['title'], 'detail': row.get('detail', '')} for row in product['features']],
-            'specs': product['specs'], 'figures': product['figures'], 'longest_side_mm': product.get('size_mm')}
+def facts_of(product, measured_mm=None):
+    """What the product record says, and what was measured on the 3D model: the only sources of words and numbers on the pages."""
+    facts = {'title': product['title'], 'model': product.get('model', ''), 'headline': product['headline'], 'subline': product['subline'],
+             'selling_points': [{'title': row['title'], 'detail': row.get('detail', '')} for row in product['features']],
+             'specs': product['specs'], 'figures': product['figures'], 'longest_side_mm': product.get('size_mm')}
+    if measured_mm:
+        facts['measured_on_3d_model_mm'] = {key: round(value, 1) for key, value in measured_mm.items()}
+        facts['measurement_note'] = 'Sizes on the dimensions page are measured on the 3D model, scaled to the longest side the user gave; they are facts.'
+    return facts
 
 
 def _numbers(text):
@@ -175,7 +201,8 @@ def write_copy(product, kinds):
                                                                   'properties': {'template': {'type': 'string', 'enum': kinds}, 'eyebrow': {'type': 'string'},
                                                                                  'headline': {'type': 'string'}}}}}}
     request = {'language': 'Simplified Chinese' if language == 'zh' else 'English', 'limits_in_characters': limits, 'facts': facts,
-               'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind]} for kind in kinds]}
+               'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind],
+                          'max_lines': _LINES.get(kind, 2)} for kind in kinds]}
     try:
         answer = _ask(text, COPYWRITER, request, schema)
     except Exception as exc:
@@ -184,15 +211,18 @@ def write_copy(product, kinds):
     for row in answer.get('pages', []):
         kind = row.get('template')
         eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
-        headline = '\n'.join(' '.join(line.split()) for line in str(row.get('headline', '')).split('\n')[:2]).strip()
+        headline = '\n'.join(' '.join(line.split()) for line in str(row.get('headline', '')).split('\n') if line.strip())
         if kind not in kinds or not headline:
             continue
-        if len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or not grounded(headline + ' ' + eyebrow, facts):
+        too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
+        if (len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or too_many_lines
+                or re.search(r'\d', headline + eyebrow) or eyebrow and eyebrow in headline):
             refused += 1; continue
         written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题超长或含未提供的数字，已改用默认标题。' % refused) if refused else None
+    return written, ('有 %d 条模型写的标题超长、行数不对、含数字或眉题与标题重复，已改用默认标题。' % refused) if refused else None
 
 
+_LINES = {'T01': 2, 'T02': 2, 'T03': 1, 'T04': 1, 'T08': 2}
 _SHOWS = {'T01': 'the whole product with callout lines to its parts', 'T02': 'dark close-ups of one or two parts',
           'T03': 'the product with a column of part close-ups (headline is the product name; only the eyebrow is used)',
           'T04': 'a usage scene above a band of up to three key figures', 'T08': 'two or three usage scenes side by side'}
@@ -228,7 +258,17 @@ def editable(kind, job):
     return rows
 
 
-def review(kind, job, png, product, reference=None, measured=None):
+def _cleaned(answer):
+    """An answer with an action or veto the code does not know read as no action / no veto, rather than thrown away whole."""
+    for row in answer.get('issues') or []:
+        if isinstance(row, dict) and isinstance(row.get('action'), dict) and row['action'].get('type') not in ACTIONS:
+            row['action'] = {'type': 'none'}
+    if isinstance(answer.get('vetoes'), list):
+        answer['vetoes'] = [row for row in answer['vetoes'] if isinstance(row, dict) and row.get('kind') in VETOES]
+    return answer
+
+
+def review(kind, job, png, product, reference=None, measured=None, facts=None):
     """The art director's verdict on one page: {'score', 'scores', 'vetoes', 'issues', 'summary'}, or None without a vision model."""
     _, vision = _configs()
     if not vision:
@@ -236,10 +276,11 @@ def review(kind, job, png, product, reference=None, measured=None):
     brief = briefs().get(kind, {})
     request = {'template': {'id': kind, 'name': brief.get('name_zh'), 'goal': brief.get('goal'), 'avoid': brief.get('avoid'),
                             'adaptation_rules': brief.get('adaptation_rules')},
-               'page_language': product['language'], 'canvas': job['canvas'], 'facts': facts_of(product),
+               'page_language': product['language'], 'canvas': job['canvas'], 'facts': facts or facts_of(product),
                'editable': editable(kind, job), 'criteria_maximum': CRITERIA,
                'measured_layout': measured or {}, 'max_issues': MAX_ISSUES}
-    answer = _ask(vision, ART_DIRECTOR, request, _review_schema(), image_path=str(png), reference_path=str(reference) if reference else None)
+    answer = _ask(vision, ART_DIRECTOR, request, _review_schema(), image_path=str(png), reference_path=str(reference) if reference else None,
+                  clean=_cleaned)
     scores = {key: max(0, min(CRITERIA[key], int(answer['scores'].get(key, 0)))) for key in CRITERIA}
     issues = [row for row in answer.get('issues', []) if isinstance(row, dict)][:MAX_ISSUES]
     return {'score': sum(scores.values()), 'scores': scores, 'vetoes': answer.get('vetoes', [])[:4], 'issues': issues,
@@ -247,12 +288,48 @@ def review(kind, job, png, product, reference=None, measured=None):
 
 
 def passed(verdict):
-    return bool(verdict) and not verdict['vetoes'] and verdict['score'] >= PASS_SCORE
+    """No confirmed veto, and either the score clears the bar or none of the problems that held it down stood up to checking."""
+    if not verdict or verdict['vetoes']:
+        return False
+    return verdict['score'] >= PASS_SCORE or (verdict.get('refuted', 0) > 0 and not verdict['issues'])
+
+
+def verify(kind, png, product, reference, measured, verdict, facts=None):
+    """A second look at the art director's vetoes and problems: only the ones that are clearly visible are kept.
+    Returns the verdict with the refuted ones removed and their number in 'refuted'."""
+    _, vision = _configs()
+    claims = [('veto', row) for row in verdict['vetoes']] + [('issue', row) for row in verdict['issues']]
+    if not vision or not claims:
+        return verdict
+    schema = {'type': 'object', 'additionalProperties': False, 'required': ['claims'],
+              'properties': {'claims': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['number', 'real', 'why'],
+                                                                   'properties': {'number': {'type': 'integer'}, 'real': {'type': 'boolean'},
+                                                                                  'why': {'type': 'string'}}}}}}
+    request = {'template': kind, 'facts': facts or facts_of(product), 'measured_layout': measured or {},
+               'claims': [{'number': index + 1, 'kind': row.get('kind', 'issue') if kind_of == 'veto' else 'issue',
+                           'region': row.get('region', ''), 'claim': row.get('evidence', '')} for index, (kind_of, row) in enumerate(claims)]}
+    answer = _ask(vision, VERIFIER, request, schema, image_path=str(png), reference_path=str(reference) if reference else None)
+    real = {row['number'] for row in answer.get('claims', []) if row.get('real') is True}
+    kept_vetoes = [row for index, (kind_of, row) in enumerate(claims) if kind_of == 'veto' and index + 1 in real]
+    kept_issues = [row for index, (kind_of, row) in enumerate(claims) if kind_of == 'issue' and index + 1 in real]
+    return {**verdict, 'vetoes': kept_vetoes, 'issues': kept_issues, 'refuted': len(claims) - len(kept_vetoes) - len(kept_issues)}
+
+
+def checked(kind, job, png, product, reference=None, measured=None, facts=None):
+    """The art director's verdict, with its claims checked by a second look whenever the page would not pass as it stands."""
+    verdict = review(kind, job, png, product, reference, measured, facts)
+    if verdict and not passed(verdict):
+        verdict = verify(kind, png, product, reference, measured, verdict, facts)
+    return verdict
 
 
 def revise(kind, job, verdict, facts, other_scenes=()):
     """A new job with the art director's fixes applied, and the fixes that were applied; (None, []) when none can be."""
     new = copy.deepcopy(job); applied = []; next_layout = False
+    if any((issue.get('action') or {}).get('type') == 'default_text' for issue in verdict['issues']) or \
+            any(row.get('kind') in ('text_broken', 'claim_not_in_facts') for row in verdict['vetoes']):
+        if job.get('_lines') == 'model':
+            return 'default_text', ['改用模板默认标题']          # a written line that is wrong goes before anything is tuned
     name, minimum = LISTS.get(kind, (None, 0))
     drops = []
     for issue in verdict['issues']:
@@ -264,6 +341,9 @@ def revise(kind, job, verdict, facts, other_scenes=()):
                     new[field] = None; applied.append('删去%s' % field)
                 elif kind_of == 'shorten_text':
                     text = str(action.get('text') or '').strip()
+                    if field == 'headline' and job.get('lang') == 'zh':
+                        import brandkit_set
+                        text = brandkit_set._headline(text.replace('\n', ''), 'zh', 60)       # broken at a pause, not where the model put it
                     if text and len(text.replace('\n', '')) < len(new[field].replace('\n', '')) and grounded(text, facts):
                         new[field] = text; applied.append('缩短%s' % field)
             elif name and field == name and rest:
@@ -339,4 +419,4 @@ def review_set(pages, folder, product):
     finally:
         Path(sheet).unlink(missing_ok=True)
     return {'consistent': bool(answer['consistent']), 'repeats': [row for row in answer['repeats'] if isinstance(row, list)][:4],
-            'weakest': answer['weakest'], 'notes': str(answer['notes'])[:400], 'model': vision.get('model')}
+            'weakest': answer['weakest'], 'notes': re.sub(r'[*#`>]+|^\s*[-•]\s*', '', ' '.join(str(answer['notes']).split()))[:240], 'model': vision.get('model')}
