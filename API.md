@@ -1,5 +1,30 @@
 # 本地接口与可复现性
 
+## v32 品牌模板套图与并入的场景图
+
+**场景生成入口移除。** `POST /api/projects/{id}/scene` 返回 405，`POST /api/projects/{id}/scene/recommend` 返回 404。以下接口保留，用于查看和管理以前的场景：
+- `GET /api/projects/{id}/scene`：多了 `moved_to: "listing"`。
+- `POST /api/projects/{id}/scene/{task_id}/cancel`
+- `POST /api/projects/{id}/scene/remove`
+
+新的场景图由 `POST /api/projects/{id}/listing/build` 生成。
+
+**产品记录**（`PUT /api/projects/{id}/listing/product`）新增两个字段：
+- `aspect`：`"1:1"`（1500×1500，默认）或 `"4:5"`（1200×1500）。
+- `scenes`：`{enabled: bool, count: 1–3, audience: "auto" | 人群 id, people: "auto" | "hands" | "include" | "exclude", hint: ≤300 字}`。
+
+`pages` 的取值改为模板编号 `T01`–`T12`。以前保存的旧页面类型读取时丢弃，回到自动挑选。
+
+**套图状态**（`GET /api/projects/{id}/listing`）的变化：
+- `kinds` / `order` 改为模板编号，`auto` 是自动挑选的顺序。
+- `plan` 列出每个模板，暂时不能生成的带 `skipped` 原因。
+- 新增 `scenes`（本次使用的场景图 `{url, title, body, role}`）、`scene_options`（人群列表、`image_ready`、`max`、`people`、`aspects`）和 `layout_available`（是否找到可用的浏览器）。
+- 删除 `elements`。
+
+**页面**：每页新增 `checks: {passed, issues}`，记录排版后测量版面的结果；`notes` 写明用了第几种精简排法。
+
+**生成过程**的阶段为 `pictures`（Blender 素材）→ `scenes`（图像模型场景图）→ `compose`（模板排版）。场景图保存在 `data/{id}/listing/scenes-{key}/`；人群、人物、说明、张数和模型都不变时沿用。
+
 ## v31 场景图的产品姿态
 
 **请求。** `POST /api/projects/{id}/scene` 新增 `pose`：

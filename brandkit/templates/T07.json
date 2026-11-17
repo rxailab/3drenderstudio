@@ -1,0 +1,377 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T07",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "BAG-119",
+   "role": "composition",
+   "adopted_rules": [
+    "assembled view left, A/B/C components right",
+    "accent only on letters"
+   ],
+   "excluded_elements": [
+    "layer counts, dimensions",
+    "orange '3 layer / 2 handle' badges"
+   ]
+  },
+  {
+   "ref_id": "BAG-111",
+   "role": "information_structure",
+   "adopted_rules": [
+    "whole and parts visibly correspond"
+   ],
+   "excluded_elements": [
+    "sizes, 'scalable' claim"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F4F1EC",
+   "text": "#1F2225",
+   "muted": "#625B55",
+   "accent": "#D0612A"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 88,
+   "module_name": 50,
+   "module_body": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.0817,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "System",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.6043,
+    0.061
+   ],
+   "allow_overlap_with": [],
+   "text": "Three units, one stack",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "assembled",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.056,
+    0.4171,
+    0.3307,
+    0.5143
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "mod_stack",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "mod1",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.5,
+    0.2175,
+    0.2133,
+    0.1624
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "mod_a",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "mb1",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.7347,
+    0.2174,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m1_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.2681,
+    0.1583,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Organiser",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m1_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.3101,
+    0.1939,
+    0.07
+   ],
+   "allow_overlap_with": [],
+   "text": "Clear lid with compartments",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "lb1",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.4133,
+    0.4837,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "mod2",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.5,
+    0.4347,
+    0.2133,
+    0.2256
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "mod_b",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "mb2",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.7347,
+    0.4487,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m2_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.4993,
+    0.1747,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Middle box",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m2_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.5413,
+    0.1947,
+    0.105
+   ],
+   "allow_overlap_with": [],
+   "text": "Shown open in the source photo",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "lb2",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.4133,
+    0.6089,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "mod3",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.5211,
+    0.6825,
+    0.1712,
+    0.2275
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "mod_c",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "mb3",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.7347,
+    0.6975,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m3_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.7481,
+    0.1932,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Rolling base",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "m3_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7347,
+    0.7901,
+    0.1593,
+    0.105
+   ],
+   "allow_overlap_with": [],
+   "text": "Wheels, pull handle extended",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "lb3",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.4133,
+    0.7974,
+    0.04,
+    0.04
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "modules in the declared order; brackets drawn only when a level range is given",
+  "components without an approved view are not drawn and are named in a visible 'Not shown' note",
+  "portrait: component column narrows to 42% so the assembled view keeps width",
+  "slender sets: horizontal sequence mode (B)"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T07/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T07/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T07/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T07/matrix/sel_column_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T07/matrix/sel_column_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T07/matrix/sel_column_2mods_missing_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T07/source/T07.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T07/source/jobs/sel_column_en_1500.json",
+  "templates/T07/source/jobs/sel_column_zh_1200x1500.json",
+  "templates/T07/source/jobs/sel_column_2mods_missing_en_1500.json"
+ ],
+ "qa_report_path": "templates/T07/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

@@ -437,9 +437,9 @@ class StylistFlowTests(unittest.TestCase):
     def test_the_web_layer_exposes_the_task_and_keeps_scene_files_inside_the_project(self):
         import app as application
         client = application.app.test_client()
+        self.assertEqual(client.post('/api/projects/fixture/scene', json={'expected_version': 1}).status_code, 405)       # made by the listing set now
         with patch.object(scene_stylist.threading, 'Thread') as thread:
-            response = client.post('/api/projects/fixture/scene', json={'expected_version': 1})
-        self.assertEqual(response.status_code, 202)
+            scene_stylist.submit('fixture', {'expected_version': 1})
         scene_stylist._run(thread.call_args.kwargs['args'][0])
         view = client.get('/api/projects/fixture').get_json()
         self.assertEqual((view['scene_task']['status'], view['version']), ('completed', 2))

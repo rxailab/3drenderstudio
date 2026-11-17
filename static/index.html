@@ -265,55 +265,9 @@
 <p id="optimizeHeroReason" class="render-reason" role="status" hidden></p>
 </section>
 <section class="panel-section scene-set" aria-label="使用场景">
-<div id="sceneAudience" class="scene-audience" hidden>
-<div class="scene-audience-row">
-<label class="field-label" for="sceneAudienceSelect">目标人群</label>
-<select id="sceneAudienceSelect" aria-describedby="sceneProposal"><option value="auto">自动推荐</option></select>
-</div>
-<div class="scene-audience-row" id="sceneReferenceRow" hidden>
-<label class="field-label" for="sceneReferenceSelect">参考画面</label>
-<select id="sceneReferenceSelect"><option value="">由 AI 在该人群中选择</option></select>
-</div>
-<div class="scene-audience-row">
-<label class="field-label" for="sceneMethodSelect">生成方式</label>
-<select id="sceneMethodSelect" aria-describedby="sceneMethodHelp">
-<option value="auto">自动：有人物或真实环境时用图像模型</option>
-<option value="render">3D 道具场景（Blender 渲染）</option>
-<option value="generate">AI 图像生成（真实环境，可含人物）</option>
-</select>
-</div>
-<div class="scene-audience-row">
-<label class="field-label" for="scenePeopleSelect">画面人物</label>
-<select id="scenePeopleSelect" aria-describedby="sceneMethodHelp">
-<option value="auto">自动：由场景策划决定（有人时只拍手部特写）</option>
-<option value="hands">手部特写（手在操作产品，不露脸）</option>
-<option value="include">包含人物（看得到使用者）</option>
-<option value="exclude">不含人物（只有产品与环境）</option>
-</select>
-</div>
-<div class="scene-audience-row" id="scenePoseRow">
-<label class="field-label" for="scenePoseSelect">产品姿态</label>
-<select id="scenePoseSelect" aria-describedby="scenePoseHelp">
-<option value="auto">按使用场景设计（手持、倾斜、平放等）</option>
-<option value="keep">保持主图姿态</option>
-</select>
-<p id="scenePoseHelp" class="field-help">只用于 AI 图像生成。姿态从产品模型的真实渲染中选出，生成时产品外形仍被锁定，不会被画变形。</p>
-</div>
-<p id="sceneMethodHelp" class="field-help" hidden></p>
-<button id="sceneRecommend" class="button subtle full-width" type="button" aria-describedby="sceneProposal">推荐人群与场景</button>
-<div id="sceneProposal" class="scene-proposal" role="status" hidden></div>
-</div>
-<input id="sceneHint" type="text" maxlength="300" placeholder="可选：产品是什么、想要的场景，如“车间里的工具柜”" aria-label="使用场景说明">
-<button id="sceneButton" class="button secondary full-width" type="button" aria-describedby="sceneStatus">生成使用场景图</button>
+<p class="field-help">使用场景图已并入「套图」：生成套图时，系统按目标人群策划场景，由图像模型在锁定的产品渲染周围生成，并排进海报、场景参数图和使用场景组图。人群、人物与场景说明在套图的「场景」页设置。</p>
+<button id="sceneOpenListing" class="button secondary full-width" type="button">打开套图，生成场景图</button>
 <p id="sceneStatus" class="render-reason" role="status" hidden></p>
-<details id="sceneDetails" class="scene-details" hidden>
-<summary id="sceneDetailsTitle">场景道具与来源</summary>
-<div id="sceneBrief" class="scene-brief" hidden></div>
-<ul id="sceneProps"></ul>
-<div id="sceneGenerated" class="scene-generated" hidden></div>
-<p id="sceneNote" class="field-help"></p>
-<button id="sceneRemove" class="button subtle" type="button">移除使用场景</button>
-</details>
 <details id="sceneHistory" class="scene-history" hidden>
 <summary id="sceneHistoryTitle">历史使用场景图</summary>
 <div id="sceneHistoryList" class="scene-history-list"></div>
@@ -845,7 +799,7 @@
 <div class="dialog-header">
 <div>
 <h2 id="listingTitle">套图</h2>
-<p id="listingIntro">把产品、套装组件和品牌风格排成一组电商图片：主图、套装清单、功能标注、使用场景标注、特写、标题横幅、规格。</p>
+<p id="listingIntro">用品牌模板把产品、套装组件和品牌风格排成一组电商宣传图：海报主图、功能标注、主体与细节、细节特写、场景参数、使用场景组图、尺寸图、包装清单。使用场景图由图像模型自动生成。</p>
 </div>
 <button type="button" class="icon-button close-dialog" aria-label="关闭套图窗口">×</button>
 </div>
@@ -855,7 +809,7 @@
 <button type="button" role="tab" data-listing-tab="product" aria-selected="true">产品信息</button>
 <button type="button" role="tab" data-listing-tab="components" aria-selected="false">套装组件</button>
 <button type="button" role="tab" data-listing-tab="brand" aria-selected="false">品牌风格</button>
-<button type="button" role="tab" data-listing-tab="usecase" aria-selected="false">使用场景</button>
+<button type="button" role="tab" data-listing-tab="usecase" aria-selected="false">场景</button>
 </div>
 <div id="listingPanel" class="listing-panel" role="tabpanel"></div>
 </section>
@@ -946,8 +900,8 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=30" defer>
+<script src="/static/app.js?v=31" defer>
 </script>
-<script src="/static/listing.js?v=30" defer></script>
+<script src="/static/listing.js?v=31" defer></script>
 </body>
 </html>

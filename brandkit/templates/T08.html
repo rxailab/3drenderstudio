@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T08 · uses / steps / states — semantics are explicit */
+  #canvas{--bg:#26292D;--text:#F5F4F1;--muted:#C2C8CD;--accent:#E7B53C;--line:#4A5056;--wm:rgba(255,255,255,.05)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .headline{font:700 92px/1.03 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--accent);text-wrap:balance}
+  .u-no{font:700 30px/1 "Noto Sans Display",sans-serif;letter-spacing:.08em;color:var(--accent)}
+  .u-title{font:700 60px/1.08 "Noto Sans Display",sans-serif;color:var(--accent);text-wrap:balance}
+  .u-body{font:500 42px/1.3 "Noto Sans",sans-serif;color:var(--text);text-wrap:pretty}
+  #canvas[lang=zh] .headline{font:700 86px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .u-title{font:700 56px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .u-body{font:500 42px/1.42 "Noto Sans CJK SC",sans-serif}
+  .detail-frame.tile{border-radius:6px}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
+const floor = H - bandH - m * 0.75;
+const items = job.items.slice(0, 3);
+const sem = job.semantics || 'uses';           // uses | steps | states
+const numbered = sem === 'steps' && !!job.steps_approved;   // numbers only for approved step data
+if (sem === 'steps' && !job.steps_approved) T.notes.push('BLOCKED_BY_EVIDENCE: steps requested without approved step data; rendered unnumbered as uses');
+const mode = job.mode || (W / H >= 0.95 ? 'columns' : 'stagger');   // square/landscape read left->right, portrait top->bottom
+T.layoutInfo = {mode, semantics: sem};
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 7 * G;
+function caption(i, it, x, yy, w, align) {
+  const id = 'u' + (i + 1), els = [];
+  if (numbered) { const n = T.text(id + '_no', (job.step_label || 'STEP ') + (i + 1), x, yy, w, 'u-no', {tier:'meta', align}); els.push(n); yy = T.rect(n).y + T.rect(n).h + 2 * G; }
+  const t = T.text(id + '_title', it.title, x, yy, w, 'u-title', {tier:'important', maxLines: 2, align}); els.push(t); yy = T.rect(t).y + T.rect(t).h + 2 * G;
+  if (it.body) { const b = T.text(id + '_body', it.body, x, yy, w, 'u-body', {tier:'secondary', maxLines: 3, align}); els.push(b); yy = T.rect(b).y + T.rect(b).h; }
+  const y0 = parseFloat(els[0].style.top);
+  return {h: yy - y0, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+}
+const n = items.length;
+if (mode === 'stagger') {
+  /* ---- Direction A (AMZ-035): one row per item, image alternates sides, caption on the quiet side ---- */
+  const gap = 5 * G;
+  // two items: keep the row height of a 3-item layout and let whitespace grow (never invent a 3rd)
+  const rowH = (floor - y - 2 * gap) / 3;
+  const extra = (floor - y) - (n * rowH + (n - 1) * gap);
+  let yy = y + (n < 3 ? extra / 2 : 0);
+  const tw = Math.round(W * (job.tile_w ?? 0.56));
+  items.forEach((it, i) => {
+    const left = i % 2 === 0 ? job.first_side !== 'left' : job.first_side === 'left';   // default: first image on the right
+    const tx = left ? m : W - m - tw;
+    T.detailFrame('tile' + (i + 1), it.asset, tx, yy, tw, rowH, {class:'tile', fx: it.focus?.[0] ?? 0.5, fy: it.focus?.[1] ?? 0.5});
+    const cx = left ? m + tw + 6 * G : m, cw = W - 2 * m - tw - 6 * G;
+    const c = caption(i, it, cx, 0, cw, left ? 'left' : 'left');
+    c.move(yy + (rowH - c.h) / 2);
+    yy += rowH + gap;
+  });
+} else {
+  /* ---- Direction B: columns — reading order left→right, caption under each image ---- */
+  const gap = 5 * G;
+  const span = n < 3 ? (W - 2 * m) * (n === 2 ? 0.84 : 0.6) : W - 2 * m;   // 2 items: more whitespace, not wider claims
+  const cw = (span - (n - 1) * gap) / n, x0 = (W - span) / 2;
+  const caps = items.map((it, i) => caption(i, it, x0 + i * (cw + gap), 0, cw, 'left'));
+  const capH = Math.max(...caps.map(c => c.h));
+  const th = floor - y - capH - 4 * G;
+  items.forEach((it, i) => {
+    T.detailFrame('tile' + (i + 1), it.asset, x0 + i * (cw + gap), y, cw, th, {class:'tile', fx: it.focus?.[0] ?? 0.5, fy: it.focus?.[1] ?? 0.5});
+    caps[i].move(y + th + 4 * G);
+  });
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

@@ -1,0 +1,253 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T01 · light precision callouts. Tokens come from job.palette */
+  #canvas{--bg:#F4F4F1;--text:#1F2329;--muted:#5D666E;--line:#8E969D;--accent:#B3261E;--ring-fill:rgba(255,255,255,.9)}
+  .bgwash{position:absolute;inset:0;background:radial-gradient(120% 90% at 62% 58%, #FBFBF9 0%, var(--bg) 62%)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 100px/1.02 "Noto Sans Display",sans-serif;letter-spacing:-.012em;color:var(--text);text-wrap:balance}
+  #canvas[lang=zh] .headline{font:700 92px/1.16 "Noto Sans CJK SC",sans-serif;letter-spacing:.01em}
+  #canvas[lang=zh] .eyebrow{letter-spacing:.12em}
+  .headline.headline--long{font-size:80px}
+  #canvas[lang=zh] .headline.headline--long{font-size:76px}
+  .lbl-no{font:700 28px/1 "Noto Sans Display",sans-serif;color:var(--accent);letter-spacing:.06em}
+  .lbl-title{font:700 52px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .lbl-body{font:400 42px/1.24 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  #canvas[lang=zh] .lbl-title{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .lbl-body{font:400 42px/1.38 "Noto Sans CJK SC",sans-serif}
+  .rule{position:absolute;height:2px;background:var(--line)}
+  .rule-dot{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--accent)}
+  .hero{filter:none}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+T.el('div', {class:'bgwash'});
+const m = job.safe_margin || 84;            // safe margin (60–90 range)
+const bandH = job.demo ? 40 : 0;            // demo watermark band
+const G = 8;                                // 8px spacing unit
+const hero = T.asset(job.hero);
+const feats = job.features.slice(0, 4);
+// auto rule: wide/horizontal silhouettes -> band rows; slender-diagonal or tall silhouettes -> free-slot (diagonal) placement
+const mode = job.mode || (hero.hull || hero.width / hero.height < 0.8 ? 'diagonal' : 'band');
+T.layoutInfo = {mode};
+
+/* ---------- headline block (shared) ---------- */
+const headW = mode === 'diagonal' ? Math.min(W * 0.62, 900) : W - 2 * m;
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, headW, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, headW, 'headline', {tier:'headline', maxLines: 2});
+(function lines(){ const rg = document.createRange(); rg.selectNodeContents(hl); const n = new Set([...rg.getClientRects()].map(q => Math.round(q.top))).size; if (n > 2) { hl.classList.add('headline--long'); T.notes.push('headline used the single long-headline step'); } })();
+const headBottom = T.rect(hl).y + T.rect(hl).h;
+
+/* build a label (number + title + body + hairline) at (x,y) width w; returns parts */
+function makeLabel(i, f, x, y, w, align) {
+  const id = 'lbl' + (i + 1);
+  const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'lbl-no', {tier:'meta', align});
+  const t = T.text(id + '_title', f.title, x, y + 28 + 2 * G, w, 'lbl-title', {tier:'important', maxLines: 2, align});
+  const tr = T.rect(t);
+  let bottom = tr.y + tr.h;
+  let body = null;
+  if (f.body) { body = T.text(id + '_body', f.body, x, bottom + G, w, 'lbl-body', {tier:'secondary', maxLines: 3, align}); const br = T.rect(body); bottom = br.y + br.h; }
+  return {id, no, t, body, x, y, w, h: bottom - y};
+}
+function moveLabel(L, dy) { for (const e of [L.no, L.t, L.body]) if (e) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; L.y += dy; }
+function removeLabel(L) { for (const e of [L.no, L.t, L.body]) if (e) e.remove(); }
+
+if (mode === 'diagonal') {
+  /* ---- Direction A: large rotated-diagonal product, labels in the two free triangles ---- */
+  const theta = (job.hero_rotate_deg || 0) * Math.PI / 180;
+  const cb = hero.content_bbox || [0, 0, 1, 1];
+  const top = headBottom + 4 * G;
+  const box = {x: m + (job.hero_box_left ?? 0.08) * W, y: top, w: 0, h: 0};
+  box.w = W - m - box.x; box.h = H - bandH - m * 0.7 - box.y;
+  // rotated content bbox at scale 1 (relative to image centre)
+  const rot = (x, y) => [x * Math.cos(theta) - y * Math.sin(theta), x * Math.sin(theta) + y * Math.cos(theta)];
+  const hullN = hero.hull || [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
+  const cc = hullN.map(([u, v]) => rot((u - 0.5) * hero.width, (v - 0.5) * hero.height));
+  const bx0 = Math.min(...cc.map(p => p[0])), bx1 = Math.max(...cc.map(p => p[0])), by0 = Math.min(...cc.map(p => p[1])), by1 = Math.max(...cc.map(p => p[1]));
+  const s = Math.min(box.w / (bx1 - bx0), box.h / (by1 - by0)) * (job.hero_fill ?? 1);
+  // align rotated content bbox to bottom-right of box
+  const alX = job.hero_align?.[0] ?? 1, alY = job.hero_align?.[1] ?? 1;
+  const cX = box.x + (box.w - (bx1 - bx0) * s) * alX - bx0 * s, cY = box.y + (box.h - (by1 - by0) * s) * alY - by0 * s;
+  const r = {w: hero.width * s, h: hero.height * s}; r.x = cX - r.w / 2; r.y = cY - r.h / 2; r.scale = s;
+  const im = T.img('hero', job.hero, r, {class:'hero', blend:'multiply'});
+  im.style.transform = `rotate(${job.hero_rotate_deg || 0}deg)`; im.setAttribute('data-rotate', job.hero_rotate_deg || 0);
+  const P = (u, v) => { const q = rot((u - 0.5) * r.w, (v - 0.5) * r.h); return [cX + q[0], cY + q[1]]; };
+  const axisN = hero.axis || (hero.width >= hero.height ? [[0, 0.5], [1, 0.5]] : [[0.5, 0], [0.5, 1]]);
+  const ax = axisN.map(p => P(p[0], p[1]));
+  const half = (hero.half_width || 0.25) * r.w;
+  const dir = [ax[1][0] - ax[0][0], ax[1][1] - ax[0][1]]; const len = Math.hypot(dir[0], dir[1]);
+  const nrm = [-dir[1] / len, dir[0] / len];
+  const sd = p => ((p[0] - ax[0][0]) * nrm[0] + (p[1] - ax[0][1]) * nrm[1]);
+  const along = p => ((p[0] - ax[0][0]) * dir[0] + (p[1] - ax[0][1]) * dir[1]) / len;
+  const hullP = hullN.map(([u, v]) => P(u, v));
+  const inPoly = (p) => { let c = false; for (let i = 0, j = hullP.length - 1; i < hullP.length; j = i++) { const a = hullP[i], b = hullP[j]; if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+  const dSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+  const dPoly = (p) => { let d = 1e9; for (let i = 0, j = hullP.length - 1; i < hullP.length; j = i++) d = Math.min(d, dSeg(p, hullP[j], hullP[i])); return d; };
+  const inStrip = (rx, ry, rw, rh, pad) => {
+    for (let a = 0; a <= 8; a++) for (let b = 0; b <= 8; b++) {
+      const p = [rx + rw * a / 8, ry + rh * b / 8];
+      if (inPoly(p) || dPoly(p) < pad) return true;
+    }
+    return false;
+  };
+  const anchors = feats.map(f => P(f.anchor[0], f.anchor[1]));
+  const lw = Math.round(Math.min(430, W * 0.29));
+  const hr = (() => { const rg = document.createRange(); rg.selectNodeContents(hl); let x1 = 0; for (const q of rg.getClientRects()) x1 = Math.max(x1, q.right); const b = T.rect(hl); return {x: b.x, y: b.y, w: x1 - b.x, h: b.h}; })();
+  const floor = H - bandH - m * 0.75;
+  const occupied = [];
+  const free = (x, y, w, h) => {
+    if (y + h > floor || y < m) return false;
+    if (x < hr.x + hr.w + 32 && y < hr.y + hr.h + 40) return false;
+    if (inStrip(x - 12, y - 12, w + 24, h + 24, 28)) return false;
+    for (const o of occupied) if (x < o.x + o.w + 24 && x + w > o.x - 24 && y < o.y + o.h + 40 && y + h > o.y - 40) return false;
+    return true;
+  };
+  // ---- scored slot search: every placement order is tried; leaders must not cross labels/headline/other leaders
+  const built = feats.map((f, i) => { const L = makeLabel(i, f, 0, 0, lw, 'left'); return L; });
+  const lineW = built.map(L => { let mx = 0; for (const e of [L.t, L.body]) { if (!e) continue; const rg = document.createRange(); rg.selectNodeContents(e); for (const q of rg.getClientRects()) mx = Math.max(mx, q.right - parseFloat(e.style.left)); } return Math.min(lw, mx); });
+  const titleOff = 28 + 2 * G + 30;          // y offset of the title's first line centre within a label
+  const xs = []; for (let k = 0; k <= 4; k++) xs.push(Math.round(m + (W - 2 * m - lw) * k / 4));
+  function portFor(i, x, y) {
+    const a = anchors[i], h = built[i].h, w = lineW[i];
+    if (a[0] > x + w + 30) return [x + w + 22, y + titleOff];
+    if (a[0] < x - 30) return [x - 22, y + titleOff];
+    return a[1] > y + h ? [Math.min(Math.max(a[0], x + 10), x + w - 10), y + h + 18] : [Math.min(Math.max(a[0], x + 10), x + w - 10), y - 18];
+  }
+  function tryOrder(order) {
+    const occ = [], segs = []; let total = 0; const pos = [];
+    for (const i of order) {
+      const h = built[i].h; let best = null;
+      for (const x of xs) for (let y = m; y + h <= floor; y += 2 * G) {
+        if (!free2(x, y, lineW[i], h, occ)) continue;
+        const pt = portFor(i, x, y), a = anchors[i];
+        const seg = [pt, a];
+        let bad = false;
+        for (const o of occ) if (T.segRect(pt, a, o, 10)) { bad = true; break; }
+        if (!bad && T.segRect(pt, a, hr, 10)) bad = true;
+        if (!bad) for (const sg of segs) if (T.segIntersect(pt, a, sg[0], sg[1])) { bad = true; break; }
+        if (bad) continue;
+        const len = Math.hypot(a[0] - pt[0], a[1] - pt[1]);
+        // leaders running across the product body are allowed but penalised
+        let across = 0; for (let k = 1; k < 10; k++) { const q = [pt[0] + (a[0] - pt[0]) * k / 10, pt[1] + (a[1] - pt[1]) * k / 10]; if (inPoly(q)) across++; }
+        const score = len + across * 70 + (len < 90 ? 400 : 0);
+        if (!best || score < best.score) best = {x, y, score, pt};
+      }
+      if (!best) return null;
+      pos[i] = best; total += best.score;
+      occ.push({x: best.x, y: best.y, w: lineW[i], h: built[i].h}); segs.push([best.pt, anchors[i]]);
+    }
+    return {pos, total};
+  }
+  function free2(x, y, w, h, occ) {
+    if (y + h > floor || y < m) return false;
+    if (x < hr.x + hr.w + 32 && y < hr.y + hr.h + 40) return false;
+    if (inStrip(x - 12, y - 12, w + 24, h + 24, 28)) return false;
+    for (const o of occ) if (x < o.x + o.w + 40 && x + w > o.x - 40 && y < o.y + o.h + 48 && y + h > o.y - 48) return false;
+    return true;
+  }
+  let bestAll = null;
+  for (const ord of T.permutations(feats.map((f, i) => i))) { const r_ = tryOrder(ord); if (r_ && (!bestAll || r_.total < bestAll.total)) bestAll = r_; }
+  const labels = [], zones = [];
+  if (!bestAll) T.notes.push('no collision-free label arrangement; split features across images or switch to band mode');
+  feats.forEach((f, i) => {
+    const L = built[i]; const ps = bestAll ? bestAll.pos[i] : {x: m, y: floor - L.h, pt: [m, floor]};
+    for (const e of [L.no, L.t, L.body]) if (e) e.style.left = ps.x + 'px';
+    L.x = ps.x; moveLabel(L, ps.y - L.y); labels[i] = L; zones[i] = ps.x + lw / 2 < W / 2 ? 'L' : 'R';
+    T.leader('ldr' + (i + 1), [ps.pt, anchors[i]], L.id, 'a' + (i + 1));
+    T.svgEl('circle', {cx: ps.pt[0], cy: ps.pt[1], r: 5, class: 'anchor-dot'});
+    T.anchorDot('a' + (i + 1), anchors[i][0], anchors[i][1]);
+  });
+  function measureLine(L) {
+    let mx = 0; for (const e of [L.t, L.body]) { if (!e) continue; const rg = document.createRange(); rg.selectNodeContents(e); for (const q of rg.getClientRects()) mx = Math.max(mx, q.right - L.x); }
+    return mx;
+  }
+  const hp = hullP;
+  T.layoutInfo.zones = zones; T.layoutInfo.hero_rect = r; T.layoutInfo.hero_rotate_deg = job.hero_rotate_deg || 0; T.layoutInfo.hero_content_quad = hp;
+} else {
+  /* ---- Direction B: complete product in a central band; labels in rows above/below ---- */
+  const rowGap = 7 * G;
+  // provisional label height to reserve rows
+  const n = feats.length;
+  const prodTop0 = headBottom + 10 * G;
+  const r0 = T.contain(hero, m, 0, W - 2 * m, 10, 0.5, 0.5); // just for aspect
+  const anchorsN = feats.map(f => f.anchor);
+  // assign rows: anchors in the upper half of the product go above, lower half below; balance
+  let rows = anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below');
+  const maxPerRow = Math.ceil(n / 2);
+  for (const R of ['above', 'below']) {
+    let idx = rows.map((z, i) => z === R ? i : -1).filter(i => i >= 0);
+    while (idx.length > maxPerRow) { idx.sort((a, b) => Math.abs(anchorsN[a][1] - 0.5) - Math.abs(anchorsN[b][1] - 0.5)); const k = idx.shift(); rows[k] = R === 'above' ? 'below' : 'above'; }
+  }
+  // revision r2: with <=2 labels whose anchors sit on the same side, use one row so the product keeps its height
+  if (n <= 2 && new Set(anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below')).size === 1) rows = anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below');
+  const perRow = Math.max(rows.filter(z => z === 'above').length, rows.filter(z => z === 'below').length, 1);
+  const lw = Math.round(Math.min(perRow <= 2 ? 560 : 420, (W - 2 * m - (perRow - 1) * 6 * G) / perRow));
+  // build labels at temp positions to measure heights
+  const labels = feats.map((f, i) => makeLabel(i, f, m, 0, lw, 'left'));
+  const hAbove = Math.max(0, ...labels.filter((L, i) => rows[i] === 'above').map(L => L.h));
+  const hBelow = Math.max(0, ...labels.filter((L, i) => rows[i] === 'below').map(L => L.h));
+  const aboveTop = prodTop0;
+  const bottomLimit = H - bandH - m * 0.75;
+  const prodTop = aboveTop + (hAbove ? hAbove + rowGap : 0);
+  const prodBottom = bottomLimit - (hBelow ? hBelow + rowGap : 0);
+  const r = T.contain(hero, m, prodTop, W - 2 * m, prodBottom - prodTop, 0.5, 0.5);
+  T.img('hero', job.hero, r, {class:'hero', blend:'multiply'});
+  // distribute labels horizontally near their anchors, no overlap
+  for (const R of ['above', 'below']) {
+    const idx = rows.map((z, i) => z === R ? i : -1).filter(i => i >= 0).sort((a, b) => anchorsN[a][0] - anchorsN[b][0]);
+    const gap = 6 * G;
+    // revision r1: snap label columns to a shared grid so both rows align with the headline edge
+    const steps = Math.max(1, Math.floor((W - 2 * m - lw) / (lw * 0.5 + gap)));
+    const grid = []; for (let k = 0; k <= steps; k++) grid.push(Math.round(m + (W - 2 * m - lw) * k / steps));
+    let xs = [], last = -1e9;
+    idx.forEach((i, k) => {
+      const want = r.x + anchorsN[i][0] * r.w - lw * 0.3;
+      const remaining = idx.length - k - 1;
+      const ok = grid.filter(g => g >= last + lw + gap && g <= W - m - lw - remaining * (lw + gap) + 0.5);
+      const pick = ok.length ? ok.reduce((a, b) => Math.abs(b - want) < Math.abs(a - want) ? b : a) : Math.max(last + lw + gap, m);
+      xs.push(pick); last = pick;
+    });
+    idx.forEach((i, k) => {
+      const L = labels[i];
+      const yTarget = R === 'above' ? (r.y - rowGap - hAbove) : (r.y + r.h + rowGap);
+      for (const e of [L.no, L.t, L.body]) if (e) e.style.left = xs[k] + 'px';
+      L.x = xs[k]; moveLabel(L, yTarget - L.y);
+    });
+  }
+  // orthogonal leaders: vertical from label edge, elbow at mid gap
+  feats.forEach((f, i) => {
+    const L = labels[i];
+    const a = [r.x + f.anchor[0] * r.w, r.y + f.anchor[1] * r.h];
+    const px = Math.min(Math.max(a[0], L.x + 14), L.x + lw - 14);
+    let pts;
+    if (rows[i] === 'above') {
+      const py = L.y + L.h + 3 * G; const ey = (py + r.y) / 2;
+      pts = Math.abs(px - a[0]) < 1 ? [[px, py], a] : [[px, py], [px, ey], [a[0], ey], a];
+    } else {
+      const py = L.y - 3 * G; const ey = r.y + r.h + rowGap / 2;
+      pts = Math.abs(px - a[0]) < 1 ? [[px, py], a] : [[px, py], [px, ey], [a[0], ey], a];
+    }
+    T.leader('ldr' + (i + 1), pts, L.id, 'a' + (i + 1));
+    T.svgEl('circle', {cx: pts[0][0], cy: pts[0][1], r: 5, class: 'anchor-dot'});
+    T.anchorDot('a' + (i + 1), a[0], a[1]);
+  });
+  T.layoutInfo.rows = rows; T.layoutInfo.hero_rect = r;
+}
+// number labels in reading order (top-to-bottom, then left-to-right)
+(function renumber(){
+  const ls = [...document.querySelectorAll('.lbl-no')].map(e => ({e, x: parseFloat(e.style.left), y: parseFloat(e.style.top)}));
+  const rowTol = 160;
+  ls.sort((a, b) => Math.abs(a.y - b.y) < rowTol ? a.x - b.x : a.y - b.y);
+  ls.forEach((o, k) => o.e.textContent = String(k + 1).padStart(2, '0'));
+})();
+T.watermark();
+T.finish();
+})();
+</script></body></html>

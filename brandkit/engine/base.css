@@ -1,0 +1,16 @@
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#808080}
+#canvas{position:relative;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:"Noto Sans","Noto Sans CJK SC",sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.txt{overflow-wrap:normal;word-break:normal;hyphens:manual;white-space:pre-line}
+#canvas[lang=zh] .txt{font-family:"Noto Sans CJK SC","Noto Sans",sans-serif;line-break:strict;word-break:normal;letter-spacing:0}
+/* zh headlines: copy may carry \n at approved phrase boundaries; balance is off so the author break wins */
+#canvas[lang=zh] .headline{text-wrap:wrap}
+.leader{fill:none;stroke:var(--line);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.anchor-ring{fill:var(--ring-fill,rgba(255,255,255,.85));stroke:var(--accent);stroke-width:3}
+.anchor-dot{fill:var(--accent)}
+.detail-frame{overflow:hidden;position:absolute}
+.detail-frame img{position:absolute;display:block}
+img{display:block}
+.demo-band{background:rgba(18,18,18,.88);color:#fff;font:500 17px/40px "Noto Sans",sans-serif;padding:0 24px;white-space:nowrap;overflow:hidden;letter-spacing:.02em;z-index:50}
+.demo-wm{position:absolute;left:0;text-align:center;font:700 66px "Noto Sans Display",sans-serif;color:var(--wm,rgba(0,0,0,.045));transform:rotate(-28deg);pointer-events:none;letter-spacing:.1em;white-space:nowrap;z-index:49}

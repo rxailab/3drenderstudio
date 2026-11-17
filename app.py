@@ -528,28 +528,20 @@ def material_agent_create(ident):
     import material_agent
     return jsonify(material_agent.submit(ident,request.get_json(force=True))),202
 
-@app.route('/api/projects/<ident>/scene',methods=['GET','POST'])
-def scene_create(ident):
-    """A usage scene for this product: props from the CC0 catalogue, placed and previewed."""
+@app.get('/api/projects/<ident>/scene')
+def scene_state(ident):
+    """The project's earlier usage scene, if any. New scenes are made by the listing set (POST .../listing/build)."""
     import scene_stylist
-    if request.method=='GET':
-        project=get('project',ident)
-        return jsonify(task=scene_stylist.latest(ident),scene_set=project['plan'].get('scene_set'),
-                       scene_brief=project['plan'].get('scene_brief'),proposal=project.get('scene_proposal'),
-                       available=engine.runtime_status().get('capabilities',{}).get('scene_set',False))
-    return jsonify(scene_stylist.submit(ident,request.get_json(force=True))),202
+    project=get('project',ident)
+    return jsonify(task=scene_stylist.latest(ident),scene_set=project['plan'].get('scene_set'),
+                   scene_brief=project['plan'].get('scene_brief'),proposal=project.get('scene_proposal'),
+                   available=engine.runtime_status().get('capabilities',{}).get('scene_set',False),moved_to='listing')
 
 @app.get('/api/scene/audiences')
 def scene_audiences():
     """The audience reference pack and whether scenes with people can be generated."""
     import scene_audience
     return jsonify(**scene_audience.public(),image=ai_config.public_image_config())
-
-@app.post('/api/projects/<ident>/scene/recommend')
-def scene_recommend(ident):
-    """Which buyers this product's scene should address, and the picture to make for them."""
-    import scene_stylist
-    return jsonify(scene_stylist.recommend(ident,request.get_json(force=True)))
 
 @app.get('/references/<pack>/<name>')
 def scene_reference_pack(pack,name):

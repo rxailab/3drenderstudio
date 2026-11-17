@@ -1,0 +1,457 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T09",
+ "status": "blocked_by_evidence",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-042",
+   "role": "information_structure",
+   "adopted_rules": [
+    "two aligned columns sharing the same row dimensions",
+    "one closing information line at the bottom"
+   ],
+   "excluded_elements": [
+    "OURS/OTHERS labels",
+    "ticks and crosses",
+    "damage/kink photos used as evidence",
+    "4000 PSI and other claims"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F6F5F2",
+   "text": "#1E2226",
+   "muted": "#5E666D",
+   "accent": "#2C4C8C"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 84,
+   "subject_name": 56,
+   "row_label": 50,
+   "value": 76,
+   "value_compact": 64,
+   "alt": 42,
+   "note": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.2679,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Two sizes, same series",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.6713,
+    0.0583
+   ],
+   "allow_overlap_with": [],
+   "text": "8 in and 12 in, side by side",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "basis",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.072,
+    0.1716,
+    0.5886,
+    0.0387
+   ],
+   "allow_overlap_with": [],
+   "text": "Neutral side-by-side · not a tested comparison",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "note",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.8613,
+    0.8726,
+    0.07
+   ],
+   "allow_overlap_with": [],
+   "text": "Seller-stated values from each listing's own table; not measured or tested under one condition. Pictures not to scale.",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r1_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.496,
+    0.1152,
+    0.0747
+   ],
+   "allow_overlap_with": [],
+   "text": "Overall length",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r1a_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.3343,
+    0.508,
+    0.2473,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "19.5cm≈ 7.7 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r1b_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6705,
+    0.508,
+    0.2231,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "30cm≈ 11.8 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r2_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.604,
+    0.158,
+    0.0373
+   ],
+   "allow_overlap_with": [],
+   "text": "Jaw width",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r2a_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.3479,
+    0.5973,
+    0.2202,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "4.3cm≈ 1.7 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r2b_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6719,
+    0.5973,
+    0.2202,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "5.4cm≈ 2.1 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r3_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.6747,
+    0.2153,
+    0.0747
+   ],
+   "allow_overlap_with": [],
+   "text": "Max opening, one hand",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r3a_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.368,
+    0.6867,
+    0.18,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "3cm≈ 1.2 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r3b_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6719,
+    0.6867,
+    0.2202,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "4.5cm≈ 1.8 in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r4_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.7827,
+    0.1144,
+    0.0373
+   ],
+   "allow_overlap_with": [],
+   "text": "Weight",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r4a_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4066,
+    0.776,
+    0.1028,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "250g",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "r4b_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7306,
+    0.776,
+    0.1028,
+    0.0507
+   ],
+   "allow_overlap_with": [],
+   "text": "600g",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4261,
+    0.3485,
+    0.0638,
+    0.0403
+   ],
+   "allow_overlap_with": [],
+   "text": "8 in",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_sub",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.3265,
+    0.3941,
+    0.2631,
+    0.0672
+   ],
+   "allow_overlap_with": [],
+   "text": "Pump pliers · values HW-196",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s2_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7399,
+    0.3485,
+    0.0841,
+    0.0403
+   ],
+   "allow_overlap_with": [],
+   "text": "12 in",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s2_sub",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6505,
+    0.3941,
+    0.2631,
+    0.0672
+   ],
+   "allow_overlap_with": [],
+   "text": "Pump pliers · values HW-195",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_img",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.3909,
+    0.2369,
+    0.1342,
+    0.0956
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "pl_08",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "s2_img",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.7149,
+    0.2369,
+    0.1342,
+    0.0956
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "pl_12",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "rows share one dimension + one unit (structural): a value cannot be placed in a row of another unit",
+  "no approved evidence -> neutral side-by-side: identical column styling, no ticks/crosses/winner, basis chip 'not a tested comparison' always visible",
+  "requested evidence comparison without evidence -> blocked structure preview (slots + required fields, no values)",
+  "every value needs fact_id (template throws otherwise)",
+  "converted value inline; if it doesn't fit the column it drops to its own line",
+  "columns <400px use the compact value size (64px)",
+  "density: portrait max 3 rows, square/landscape max 4; more -> second image",
+  "landscape (W/H>1.15): subjects stacked left, table right with short column headers",
+  "subject images at equal display size + 'not to scale' note unless scale_calibrated"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T09/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/matrix/sel_rows_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/matrix/sel_rows_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/matrix/sel_rows_3rows_en_1500x1200.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T09/matrix/sel_structure_blocked_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T09/source/T09.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T09/source/jobs/sel_rows_en_1500.json",
+  "templates/T09/source/jobs/sel_rows_zh_1200x1500.json",
+  "templates/T09/source/jobs/sel_rows_3rows_en_1500x1200.json",
+  "templates/T09/source/jobs/sel_structure_blocked_en_1500.json"
+ ],
+ "qa_report_path": "templates/T09/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

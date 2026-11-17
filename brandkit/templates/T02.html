@@ -1,0 +1,118 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T02 · dark material & working-end close-ups */
+  #canvas{--bg:#24272B;--text:#F6F6F3;--muted:#C3C9CE;--accent:#E7B53C;--line:#6E767D;--wm:rgba(255,255,255,.05)}
+  .bgtone{position:absolute;inset:0;background:linear-gradient(160deg,#2A2E33 0%,var(--bg) 55%,#1F2225 100%)}
+  .headline.headline--long{font-size:76px}
+  #canvas[lang=zh] .headline.headline--long{font-size:72px}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .headline{font:700 92px/1.03 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .f-no{font:700 28px/1 "Noto Sans Display",sans-serif;color:var(--accent);letter-spacing:.08em}
+  .f-title{font:700 66px/1.06 "Noto Sans Display",sans-serif;color:var(--accent);text-wrap:balance}
+  .f-body{font:500 42px/1.3 "Noto Sans",sans-serif;color:var(--text);text-wrap:pretty}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .f-title{font:700 62px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .f-body{font:500 42px/1.42 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .eyebrow{letter-spacing:.12em}
+  .detail-frame.tile{border-radius:6px}
+  .hair{position:absolute;height:2px;background:var(--line)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+T.el('div', {class:'bgtone'});
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
+const floor = H - bandH - m * 0.75;
+const feats = job.features.slice(0, 2);
+const mode = job.mode || 'corners';
+T.layoutInfo = {mode};
+
+/* feature text block: number, title, body; returns {h} */
+function featureBlock(i, f, x, y, w, align) {
+  const id = 'f' + (i + 1);
+  const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'f-no', {tier:'meta', align});
+  const t = T.text(id + '_title', f.title, x, y + 28 + 3 * G, w, 'f-title', {tier:'important', maxLines: 2, align});
+  const tr = T.rect(t); let bottom = tr.y + tr.h;
+  let b = null;
+  if (f.body) { b = T.text(id + '_body', f.body, x, bottom + 2 * G, w, 'f-body', {tier:'secondary', maxLines: 3, align}); const br = T.rect(b); bottom = br.y + br.h; }
+  const els = [no, t, b].filter(Boolean);
+  return {h: bottom - y, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }, els};
+}
+/* feathered mask on the inner edges of a bleed frame */
+function feather(frame, sides, size) {
+  const g = sides.map(sd => `linear-gradient(to ${ {left:'right', right:'left', top:'bottom', bottom:'top'}[sd] }, transparent 0, #000 ${size}px)`);
+  frame.style.webkitMaskImage = g.join(','); frame.style.maskImage = g.join(',');
+  frame.style.webkitMaskComposite = 'source-in'; frame.style.maskComposite = 'intersect';
+}
+const scaleCap = job.max_detail_scale || 1.25;
+
+if (mode === 'corners') {
+  /* ---- Direction A: two close-ups entering from opposite corners; quiet text in the other two ---- */
+  const d1 = T.asset(feats[0].detail), d2 = feats[1] ? T.asset(feats[1].detail) : null;
+  // detail 1: top-right bleed; width fraction, height follows aspect but capped by scale
+  let w1 = Math.round(W * (job.d1_width ?? 0.66)); let h1 = Math.round(w1 * d1.height / d1.width);
+  const maxH1 = (d2 ? 0.58 : 0.72) * (H - bandH); if (h1 > maxH1) h1 = Math.round(maxH1);
+  const f1 = T.detailFrame('detail1', feats[0].detail, W - w1, 0, w1, h1, {bleed: true, fx: feats[0].focus?.[0] ?? 0.5, fy: feats[0].focus?.[1] ?? 0.5});
+  feather(f1.frame, ['left', 'bottom'], 150);
+  // text 1: left column, vertically centred on detail 1
+  const tw1 = Math.round(W - w1 - m - 4 * G + 120); // may run over feathered edge (allowed, edge is background)
+  const b1 = featureBlock(0, feats[0], m, 0, Math.min(tw1, 520), 'left');
+  b1.move(Math.max(m + (job.eyebrow ? 70 : 0), h1 * 0.5 - b1.h * 0.42));
+  for (const e of b1.els) e.setAttribute('data-allow', 'detail1_frame');
+  if (job.eyebrow) T.text('eyebrow', job.eyebrow, m, m + 4, 600, 'eyebrow', {tier:'meta'});
+  if (d2) {
+    let w2 = Math.round(W * (job.d2_width ?? 0.64)); let h2 = Math.round(w2 * d2.height / d2.width);
+    const maxH2 = (H - bandH) * 0.38; if (h2 > maxH2) h2 = Math.round(maxH2);
+    const y2 = H - bandH - h2;
+    const f2 = T.detailFrame('detail2', feats[1].detail, 0, y2, w2, h2, {bleed: true, fx: feats[1].focus?.[0] ?? 0.5, fy: feats[1].focus?.[1] ?? 0.5});
+    feather(f2.frame, ['right', 'top'], 140);
+    const tx2 = Math.round(w2 - 90), tw2 = W - m - tx2;
+    const b2 = featureBlock(1, feats[1], tx2, 0, tw2, 'left');
+    b2.move(Math.min(floor - b2.h, y2 + h2 * 0.5 - b2.h * 0.35));
+    for (const e of b2.els) e.setAttribute('data-allow', 'detail2_frame');
+    T.layoutInfo.detail2 = {w: w2, h: h2, scale: f2.scale};
+  }
+  T.layoutInfo.detail1 = {w: w1, h: h1, scale: f1.scale};
+} else {
+  /* ---- Direction B: one dominant portrait macro (right) + caption rail (left) + secondary strip (bottom) ---- */
+  const d1 = T.asset(feats[0].detail);
+  const colW = Math.round(W * (W / H < 0.9 ? 0.42 : 0.36));   // portrait canvases get a wider caption rail
+  const fx = colW + 6 * G;                         // macro frame left edge
+  const fw = W - fx;                               // bleed right
+  let fh = feats.length > 1 ? Math.min(Math.round(fw * d1.height / d1.width), Math.round((H - bandH) * 0.80)) : (H - bandH);   // single-detail fallback: macro runs full height
+  fh = Math.min(fh, Math.round(d1.height * scaleCap));
+  const f1 = T.detailFrame('detail1', feats[0].detail, fx, 0, fw, fh, {bleed: true, fx: feats[0].focus?.[0] ?? 0.5, fy: feats[0].focus?.[1] ?? 0.5});
+  feather(f1.frame, ['left', 'bottom'], 110);
+  let y = m + 4;
+  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, colW + 40, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+  const hl = T.text('headline', job.headline, m, y, colW + 80, 'headline', {tier:'headline', maxLines: 3, allow: ['detail1_frame']});
+  { const rg = document.createRange(); rg.selectNodeContents(hl); const n = new Set([...rg.getClientRects()].map(q => Math.round(q.top))).size; if (n > 3) { hl.classList.add('headline--long'); T.notes.push('headline used the single long-headline step'); } }
+  y = T.rect(hl).y + T.rect(hl).h + 8 * G;
+  const hair = T.el('div', {class:'hair', 'data-qa':'rule1', 'data-kind':'shape'}); T.box(hair, m, y, 96, 2);
+  y += 6 * G;
+  const b1 = featureBlock(0, feats[0], m, y, fx - m - 3 * G, 'left');
+  // bottom strip: secondary detail tile + text
+  if (feats[1]) {
+    const d2 = T.asset(feats[1].detail);
+    const sy = Math.max(fh + 6 * G, y + b1.h + 8 * G);
+    const sh = floor - sy;
+    let tw = Math.round(W * (job.d2_width ?? 0.44)); let th = Math.round(tw * d2.height / d2.width);
+    if (th > sh) { th = sh; }
+    const tile = T.detailFrame('detail2', feats[1].detail, m, floor - th, tw, th, {class:'tile', fx: feats[1].focus?.[0] ?? 0.5, fy: feats[1].focus?.[1] ?? 0.5});
+    const tx = m + tw + 6 * G;
+    const b2 = featureBlock(1, feats[1], tx, 0, W - m - tx, 'left');
+    b2.move(Math.min(floor - b2.h, floor - th + (th - b2.h) / 2));
+    T.layoutInfo.detail2 = {w: tw, h: th, scale: tile.scale};
+  }
+  T.layoutInfo.detail1 = {w: fw, h: fh, scale: f1.scale};
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T12 · editorial poster: one product story, ONE headline + ONE supporting line, replaceable brand slot.
+     No CTA / price / badges. Text never sits on scene texture: it lives in a solid band or a quiet ground. */
+  #canvas{--bg:#E9E6E0;--text:#1C1F22;--muted:#4F575E;--accent:#D0612A;--band:#16191C;--band-text:#F4F2EE;--band-muted:#B7BEC4;--wm:rgba(0,0,0,.045)}
+  .headline{font:800 128px/0.98 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);text-wrap:balance}
+  .on-band .headline{color:var(--band-text)}
+  .headline.compact{font-size:100px} #canvas[lang=zh] .headline.compact{font-size:92px}
+  .support{font:500 50px/1.3 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .on-band .support{color:var(--band-muted)}
+  .rule{position:absolute;background:var(--accent)}
+  .slot{position:absolute;border:2px dashed rgba(127,127,127,.65);border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .slot-t{font:700 26px/1 "Noto Sans Display",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:rgba(127,127,127,.95);text-align:center}
+  #canvas[lang=zh] .headline{font:900 118px/1.12 "Noto Sans CJK SC",sans-serif;letter-spacing:0;text-wrap:wrap}
+  #canvas[lang=zh] .support{font:500 50px/1.42 "Noto Sans CJK SC",sans-serif}
+  .band{position:absolute;background:var(--band)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const mode = job.mode || (job.scene ? 'band' : 'solid');
+const land = W / H > 1.2;
+T.layoutInfo = {mode, landscape: land};
+for (const k of ['cta', 'price', 'badges']) if (job[k]) T.notes.push(`'${k}' ignored: not part of the editorial template`);
+if (mode === 'band' && !job.scene) throw new Error('band mode needs a licensed scene; use solid mode');
+const slotW = 260, slotH = 72;
+function slot(x, y, parent) {   // replaceable brand area; never filled with a source logo
+  if (!job.brand_slot) return null;
+  const s = T.el('div', {class:'slot', 'data-qa':'brand_slot', 'data-kind':'shape', 'data-allow':'brand_slot_t'}, parent); T.box(s, x, y, slotW, slotH);
+  T.text('brand_slot_t', job.labels?.brand_slot || 'Brand slot', x, y + (slotH - 26) / 2, slotW, 'slot-t', {tier:'meta', maxLines: 1, align:'center', parent, allow:['brand_slot']});
+  return s;
+}
+function copy(x, y, w, parent, hlMax) {
+  const hl = T.text('headline', job.headline, x, y, w, 'headline' + (land && mode === 'band' ? ' compact' : ''), {tier:'headline', maxLines: hlMax, parent});   // r2: landscape panel uses the defined compact size
+  let yy = T.rect(hl).y + T.rect(hl).h + 3 * G;
+  const r = T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}, parent); T.box(r, x, yy, 120, 8);
+  yy += 8 + 4 * G;
+  let sp = null; if (job.support) { sp = T.text('support', job.support, x, yy, Math.min(w, 1040), 'support', {tier:'important', maxLines: 3, parent}); yy = T.rect(sp).y + T.rect(sp).h; }
+  return {hl, sp, rule: r, h: yy - y, move(dy) { for (const e of [hl, r, sp]) if (e) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+}
+
+if (mode === 'band') {
+  const sc = T.asset(job.scene);
+  if (!land) {
+    /* ---- Direction A (AMZ-065): scene on top, solid title band below — text never on texture ---- */
+    const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+    const c = copy(m, 0, W - 2 * m - (job.brand_slot ? slotW + 6 * G : 0), cont, 2);   // r1: headline never runs under the brand slot
+    const bandPad = 6 * G;
+    let top = floor - c.h - bandPad;
+    // scene height is bounded by pixel budget (cover scale <= cap)
+    const maxScene = Math.floor(sc.height * cap);
+    if (W / sc.width > cap) T.notes.push('scene narrower than canvas/cap: scene upscaled beyond cap is not allowed -> use solid mode');
+    if (top > maxScene) top = maxScene;
+    const band = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'headline,support,rule,brand_slot,brand_slot_t'}); T.box(band, 0, top, W, H - bandH - top);
+    T.root.insertBefore(band, cont);
+    T.detailFrame('scene', job.scene, 0, 0, W, top, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+    T.root.appendChild(cont);
+    c.move(top + bandPad);
+    slot(W - m - slotW, top + bandPad, cont);
+    T.layoutInfo.scene_h = top;
+  } else {
+    /* ---- landscape: scene right, solid panel left ---- */
+    const pw = Math.round(W * 0.40), sw = W - pw;
+    const band = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'headline,support,rule,brand_slot,brand_slot_t'}); T.box(band, 0, 0, pw, H - bandH);
+    T.detailFrame('scene', job.scene, pw, 0, sw, H - bandH, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+    const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+    const c = copy(m, 0, pw - m - 6 * G, cont, 3);
+    c.move(floor - c.h);
+    slot(m, m, cont);
+  }
+} else {
+  /* ---- Direction B (AMZ-038 headline zone): no scene — solid editorial ground, product large, headline in the quiet corner ---- */
+  const a = T.asset(job.hero);
+  const portraitish = W / H < 1.2;
+  // r1: strict two-zone split — text column and product column never share pixels
+  const cw = W - 2 * m;
+  const textW = Math.round(cw * (land ? 0.42 : 0.40));
+  const c = copy(m, m + 4, textW, null, 4);
+  const sl = slot(m, floor - slotH);
+  const px0 = m + textW + 5 * G;
+  let r = T.contain(a, px0, m, W - m - px0, floor - m, 0.5, 1);
+  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s}; r.x = px0 + (W - m - px0 - r.w) / 2; r.y = floor - r.h; }
+  T.img('hero', job.hero, r, {blend:'multiply'});
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

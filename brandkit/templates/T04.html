@@ -1,0 +1,123 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T04 · real use scene + spec/info band */
+  #canvas{--bg:#F2F1EE;--text:#1E2226;--muted:#5E666D;--accent:#D0612A;--line:#C9CDD1;--band:#1F2327;--band-text:#F5F4F1;--band-muted:#B9C0C6;--wm:rgba(0,0,0,.05)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .on-band .headline{color:var(--band-text);font-size:64px}
+  .s-label{font:700 42px/1.1 "Noto Sans Display",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .on-band .s-label{color:var(--band-muted)}
+  .s-value{font:700 128px/1 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);white-space:nowrap}
+  .s-value.compact{font-size:100px} .s-value.compact .u{font-size:44px}
+  .s-value .u{font-size:52px;font-weight:700;letter-spacing:0;margin-left:10px;color:var(--accent)}
+  .on-band .s-value{color:var(--band-text)}
+  .s-alt{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
+  .on-band .s-alt{color:var(--band-muted)}
+  .s-text{font:700 54px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .on-band .s-text{color:var(--band-text)}
+  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .on-band .headline{font-size:62px}
+  #canvas[lang=zh] .s-label{font:700 42px/1.2 "Noto Sans CJK SC",sans-serif;letter-spacing:.04em}
+  #canvas[lang=zh] .s-text{font:700 52px/1.25 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .s-alt{font:500 42px/1.3 "Noto Sans CJK SC",sans-serif}
+  .band{position:absolute;background:var(--band)}
+  .vrule{position:absolute;width:2px;background:rgba(255,255,255,.18)}
+  .light .vrule{background:var(--line)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = job.max_detail_scale || 1.25;
+const floor = H - bandH - m * 0.75;
+const sc = T.asset(job.scene);
+const specs = job.specs.slice(0, 3);
+const mode = job.mode || (W / H > 1.2 ? 'side' : 'band');
+T.layoutInfo = {mode};
+const fmt = s => s.value != null ? s.value : null;
+/* spec cell: label / value+unit / converted line, or qualitative text */
+function cell(i, s, x, y, w, parent, align) {
+  const id = 's' + (i + 1); const els = [];
+  const lab = T.text(id + '_label', s.label, x, y, w, 's-label', {tier:'secondary', maxLines: 2, parent, align}); els.push(lab);
+  let yy = T.rect(lab).y + T.rect(lab).h + 2 * G;
+  if (s.value != null) {
+    const v = T.text(id + '_value', '', x, yy, w, 's-value' + (w < 380 ? ' compact' : ''), {tier:'headline', maxLines: 1, parent, align});   // narrow columns use the defined compact value size
+    v.textContent = String(s.value); const u = document.createElement('span'); u.className = 'u'; u.textContent = s.unit; v.appendChild(u); els.push(v);
+    yy = T.rect(v).y + T.rect(v).h + G;
+    if (s.alt) { const a = T.text(id + '_alt', s.alt, x, yy, w, 's-alt', {tier:'secondary', maxLines: 1, parent, align}); els.push(a); yy = T.rect(a).y + T.rect(a).h; }
+  } else {
+    const t = T.text(id + '_text', s.text, x, yy, w, 's-text', {tier:'important', maxLines: 3, parent, align}); els.push(t); yy = T.rect(t).y + T.rect(t).h;
+  }
+  return {h: yy - y, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+}
+
+if (mode === 'band') {
+  /* ---- Direction A (AMZ-024): scene ~72% on top, dark info band with 3 columns + one headline line ---- */
+  const n = specs.length;
+  // build band content first (measure), then give the scene everything above it
+  const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+  const colGap = 6 * G, colW = (W - 2 * m - (n - 1) * colGap) / n;
+  const cells = specs.map((s, i) => cell(i, s, m + i * (colW + colGap), 0, colW, cont, 'center'));
+  const cellH = Math.max(...cells.map(c => c.h));
+  let hl = null, hlH = 0;
+  if (job.headline) { hl = T.text('headline', job.headline, m, 0, W - 2 * m, 'headline', {tier:'headline', maxLines: 1, parent: cont, align:'center'}); hlH = T.rect(hl).h + 5 * G; }
+  const bandPad = 7 * G;
+  let bandTop = floor - cellH - hlH - bandPad;   // content ends on the safe floor
+  // scene height capped by pixel budget
+  const maxScene = Math.round(Math.min(sc.height * cap, sc.height * W / sc.width * cap));
+  if (bandTop > maxScene) bandTop = maxScene;
+  const bandBox = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow': cells.flatMap(c => c.els.map(e => e.dataset.qa)).concat(hl ? ['headline'] : []).join(',')});
+  T.box(bandBox, 0, bandTop, W, H - bandH - bandTop);
+  T.root.insertBefore(bandBox, cont);
+  T.detailFrame('scene', job.scene, 0, 0, W, bandTop, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+  T.root.appendChild(cont);
+  let y = bandTop + bandPad;
+  if (hl) { hl.style.top = y + 'px'; y += hlH; }
+  cells.forEach(c => c.move(y + (cellH - c.h) / 2));
+  for (let i = 1; i < n; i++) { const r = T.el('div', {class:'vrule'}, cont); T.box(r, m + i * (colW + colGap) - colGap / 2, y, 2, cellH); }
+  T.layoutInfo.scene_h = bandTop;
+} else if (mode === 'stack') {
+  /* ---- Direction B: editorial stack on light ground — headline zone / native-scale scene / spec row ---- */
+  T.root.classList.add('light');
+  let y = m + 4;
+  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+  const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+  y = T.rect(hl).y + T.rect(hl).h + 6 * G;
+  const n = specs.length, colGap = 6 * G, colW = (W - 2 * m - (n - 1) * colGap) / n;
+  const cells = specs.map((s, i) => cell(i, s, m + i * (colW + colGap), 0, colW, null, 'left'));
+  const cellH = Math.max(...cells.map(c => c.h));
+  const rowTop = floor - cellH;
+  const sh = Math.min(rowTop - 7 * G - y, Math.round(sc.height * cap * W / W));
+  T.detailFrame('scene', job.scene, 0, y, W, sh, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+  cells.forEach(c => c.move(rowTop));
+  for (let i = 1; i < n; i++) { const r = T.el('div', {class:'vrule'}); T.box(r, m + i * (colW + colGap) - colGap / 2, rowTop, 2, cellH); }
+  T.layoutInfo.scene_h = sh;
+} else {
+  /* ---- Landscape adaptation: scene left, band becomes a dark side panel ---- */
+  const pw = Math.round(W * 0.36);
+  const sw = W - pw;
+  T.detailFrame('scene', job.scene, 0, 0, sw, H - bandH, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+  const bandBox = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape'}); T.box(bandBox, sw, 0, pw, H - bandH);
+  const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+  const ix = sw + 7 * G, iw = pw - 7 * G - m;
+  const allow = [];
+  let y = m;
+  if (job.headline) { const hl = T.text('headline', job.headline, ix, y, iw, 'headline', {tier:'headline', maxLines: 3, parent: cont}); y = T.rect(hl).y + T.rect(hl).h + 6 * G; allow.push('headline'); }
+  const cells = specs.map((s, i) => cell(i, s, ix, 0, iw, cont, 'left'));
+  let total = cells.reduce((a, c) => a + c.h, 0);
+  if (total + 3 * G * (cells.length - 1) > floor - y && allow.includes('headline')) {   // density rule: drop the panel headline before shrinking anything
+    document.querySelector('[data-qa=headline]').remove(); allow.splice(allow.indexOf('headline'), 1); y = m; T.notes.push('side panel: headline dropped by density rule');
+  }
+  const gap = Math.max(3 * G, (floor - y - total) / Math.max(1, cells.length - 1));
+  cells.forEach(c => { c.move(y); y += c.h + gap; allow.push(...c.els.map(e => e.dataset.qa)); });
+  bandBox.setAttribute('data-allow', allow.join(','));
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

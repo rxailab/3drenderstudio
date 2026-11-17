@@ -1,0 +1,423 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T06",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "BAG-012",
+   "role": "composition",
+   "adopted_rules": [
+    "one complete product, three dimension lines along real edges",
+    "light ground, few elements"
+   ],
+   "excluded_elements": [
+    "values 36/26/21 cm as facts (shown only as source-stated)",
+    "measuring from perspective pixels"
+   ]
+  },
+  {
+   "ref_id": "HW-344",
+   "role": "information_structure",
+   "adopted_rules": [
+    "spec block separate from the drawing to avoid line clutter"
+   ],
+   "excluded_elements": [
+    "bit/material specs"
+   ]
+  },
+  {
+   "ref_id": "BAG-086",
+   "role": "typography_hierarchy",
+   "adopted_rules": [
+    "readable values, no tiny footnotes"
+   ],
+   "excluded_elements": [
+    "model numbers, 17-inch claim"
+   ]
+  },
+  {
+   "ref_id": "HW-124",
+   "role": "detail_organization",
+   "adopted_rules": [
+    "lines outside the product, product complete"
+   ],
+   "excluded_elements": [
+    "thick frame"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F5F5F2",
+   "text": "#1E2226",
+   "muted": "#5E666D",
+   "accent": "#2C4C8C"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 88,
+   "dim_value": 64,
+   "dim_alt": 42,
+   "table_name": 50,
+   "table_note": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.0471,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Size",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.4906,
+    0.061
+   ],
+   "allow_overlap_with": [],
+   "text": "Outer dimensions",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "hero",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.156,
+    0.2281,
+    0.3647,
+    0.6256
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "hero_stack",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "d1_key",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0669,
+    0.5192,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "d2_key",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.3613,
+    0.8731,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "d3_key",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.1653,
+    0.8536,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tk1",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.642,
+    0.201,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t1_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.205,
+    0.2277,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Overall height",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t1_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.2523,
+    0.1308,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "text": "36.6 in",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t1_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.3003,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 93 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tk2",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.642,
+    0.3606,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t2_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.3646,
+    0.0961,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Width",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t2_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.4119,
+    0.1308,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "text": "20.1 in",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t2_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.4599,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 51 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tk3",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.642,
+    0.5202,
+    0.0427,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t3_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.5242,
+    0.0969,
+    0.0367
+   ],
+   "allow_overlap_with": [],
+   "text": "Depth",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t3_val",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.5715,
+    0.0961,
+    0.0427
+   ],
+   "allow_overlap_with": [],
+   "text": "15 in",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t3_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7007,
+    0.6195,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 38 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "t_note",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.642,
+    0.6851,
+    0.294,
+    0.175
+   ],
+   "allow_overlap_with": [],
+   "text": "Values as stated in the listing graphic; not verified. Converted values rounded to 1 cm.",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "dimension lines bound to measurement anchors (normalised on the asset); axis-aligned lines can sit at a set offset",
+  "values + unit as separate fields; conversion in→cm ×2.54 to 1 cm, cm→in ÷2.54 to 0.1 in, both labelled ≈",
+  "table mode: letter keys on the drawing, values in a side table (robust for tall/crowded products)",
+  "on-product mode: values on the lines (wide/compact products, needs ~230px padding)",
+  "no value without fact_id; missing value -> line not drawn"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T06/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/matrix/sel_table_stack_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/matrix/sel_table_bag_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/matrix/sel_table_stack_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T06/matrix/sel_onproduct_bag_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T06/source/T06.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T06/source/jobs/sel_table_stack_en_1500.json",
+  "templates/T06/source/jobs/sel_table_bag_en_1500.json",
+  "templates/T06/source/jobs/sel_table_stack_zh_1200x1500.json",
+  "templates/T06/source/jobs/sel_onproduct_bag_en_1500.json"
+ ],
+ "qa_report_path": "templates/T06/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

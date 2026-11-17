@@ -1,0 +1,138 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T11 · same-series variants. One shared view and ONE display scale for all variants;
+     display size never encodes real size unless scale_calibrated (approved lengths). */
+  #canvas{--bg:#F4F4F2;--text:#1E2226;--muted:#5E666D;--accent:#C8372D;--line:#D5D8DB;--pend:#8A6D1F;--pend-bg:#FBF3DC;--wm:rgba(0,0,0,.045)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .offer{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap;color:var(--text);background:#E6E7E8}
+  .offer.pending{color:var(--pend);background:var(--pend-bg)}
+  .v-model{font:700 96px/1 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);white-space:nowrap}
+  .v-model .u{font-size:46px;margin-left:8px;color:var(--accent)}
+  .v-name{font:600 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);text-wrap:balance}
+  .v-spec{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--text);white-space:nowrap}
+  .v-spec b{font-weight:700}
+  .note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted)}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .v-name,#canvas[lang=zh] .v-spec,#canvas[lang=zh] .note{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.38}
+  #canvas[lang=zh] .offer{letter-spacing:.04em}
+  .tick{position:absolute;background:var(--accent)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const V = (job.variants || []).slice(0, 4), n = V.length, L = job.labels || {};
+const mode = job.mode || 'columns';   // selected direction B; stair is explicit
+T.layoutInfo = {mode};
+if ((job.variants || []).length > 4) T.notes.push('more than 4 variants: split into another image');
+const calibrated = !!job.scale_calibrated && V.every(v => v.length_approved);
+if (!calibrated) T.notes.push('equal display scale for all variants; size differences not drawn');
+
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 3 * G;
+// offer type is explicit data: choose_one | bundle | (missing -> pending chip)
+const ot = job.offer_type;
+const offerTxt = ot === 'choose_one' ? (L.choose_one || 'Choose one size') : ot === 'bundle' ? (L.bundle || 'Sold together as a set') : (L.offer_pending || 'Sold singly or as a set: pending');
+if (!ot) T.notes.push('offer_type missing: variant list vs bundle not confirmed');
+const oc = T.text('offer', offerTxt, m, y, W - 2 * m, 'offer' + (ot ? '' : ' pending'), {tier:'meta', maxLines: 1}); oc.style.width = 'auto';
+y = T.rect(oc).y + T.rect(oc).h + 5 * G;
+// bottom note (always when not calibrated)
+let noteH = 0;
+const noteTxt = calibrated ? (job.note || '') : (job.note || (L.not_to_scale || 'Shown at the same display size — not to scale'));
+let noteEl = null;
+if (noteTxt) { noteEl = T.text('note', noteTxt, m, 0, W - 2 * m, 'note', {tier:'secondary', maxLines: 2}); noteH = T.rect(noteEl).h + 3 * G; noteEl.style.top = (floor - T.rect(noteEl).h) + 'px'; }
+const bottom = floor - noteH;
+
+function label(i, v, x, w, align) {
+  const id = 'v' + (i + 1), els = [];
+  const md = T.text(id + '_model', '', x, 0, w, 'v-model', {tier:'headline', maxLines: 1, align});
+  md.textContent = String(v.model); if (v.model_unit) { const u = document.createElement('span'); u.className = 'u'; u.textContent = v.model_unit; md.appendChild(u); }
+  els.push(md);
+  if (v.name) els.push(T.text(id + '_name', v.name, x, 0, w, 'v-name', {tier:'secondary', maxLines: 3, align}));
+  (v.specs || []).slice(0, 3).forEach((s, k) => {
+    if (s.value != null && !s.fact_id) throw new Error('spec without fact_id');
+    const e = T.text(id + '_spec' + (k + 1), '', x, 0, w, 'v-spec', {tier:'secondary', maxLines: 1, align});
+    e.innerHTML = ''; e.append(s.label + ' '); const b = document.createElement('b'); b.textContent = s.value + (s.unit ? ' ' + s.unit : ''); e.appendChild(b); els.push(e);
+  });
+  const h = els.reduce((s, e) => s + T.rect(e).h, 0) + (els.length - 1) * G + 2 * G;
+  return {els, h, place(yy) { yy += 0; for (const [k, e] of els.entries()) { e.style.top = yy + 'px'; yy += T.rect(e).h + (k === 0 ? 2 * G : G); } }};
+}
+// rotation helpers: content hull (normalised) -> rotated extents at scale 1
+const rotPts = (a, deg) => { const t = deg * Math.PI / 180, hull = a.hull || [[0,0],[1,0],[1,1],[0,1]];
+  return hull.map(([u, v]) => { const x = (u - 0.5) * a.width, yv = (v - 0.5) * a.height; return [x * Math.cos(t) - yv * Math.sin(t), x * Math.sin(t) + yv * Math.cos(t)]; }); };
+const ext = pts => ({x0: Math.min(...pts.map(p => p[0])), x1: Math.max(...pts.map(p => p[0])), y0: Math.min(...pts.map(p => p[1])), y1: Math.max(...pts.map(p => p[1]))});
+function placeRot(id, assetId, s, deg, cx, cy) {   // centre of the IMAGE at (cx,cy), rotated by deg
+  const a = T.asset(assetId), w = a.width * s, h = a.height * s;
+  const i = T.img(id, assetId, {x: cx - w / 2, y: cy - h / 2, w, h}, {blend:'multiply'});
+  if (deg) { i.style.transform = `rotate(${deg}deg)`; i.setAttribute('data-rotate', deg); }
+  const q = rotPts(a, deg).map(([px, py]) => [+(cx + px * s).toFixed(1), +(cy + py * s).toFixed(1)]);
+  i.setAttribute('data-quad', JSON.stringify(q));
+  return q;
+}
+const lenScale = v => calibrated ? v.length_mm / Math.max(...V.map(q => q.length_mm)) : 1;
+
+if (mode === 'stair') {
+  /* ---- Direction A (HW-316 / AMZ-017): same angle repeated, stepped down; labels in a shared right column ---- */
+  const a0 = T.asset(V[0].asset), e0 = ext(rotPts(a0, 0));
+  const stepA = (job.step ?? 0.52) * a0.height;           // vertical step in asset px (keeps parallel tools apart)
+  const labW = Math.round((W - 2 * m) * 0.34), gut = 5 * G;
+  const imgW = W - 2 * m - labW - gut;
+  const totH = (e0.y1 - e0.y0) + (n - 1) * stepA;
+  let s = Math.min(imgW / (e0.x1 - e0.x0), (bottom - y) / totH, cap);
+  const blockH = totH * s, y0 = y + (bottom - y - blockH) / 2;
+  const labs = V.map((v, i) => label(i, v, W - m - labW, labW, 'left'));
+  V.forEach((v, i) => {
+    const si = s * lenScale(v), a = T.asset(v.asset), e = ext(rotPts(a, 0));
+    const top = y0 + i * stepA * s;
+    const cx = m + imgW - e.x1 * si, cy = top - e.y0 * si;   // right-align content to the image column
+    placeRot('v' + (i + 1) + '_img', v.asset, si, 0, cx, cy);
+    // label: vertically centred on the handle-end band of this tool (lower third of its content box)
+    const anchorY = top + (e.y1 - e.y0) * si * (job.label_at ?? 0.78);
+    labs[i].place(Math.max(y, Math.min(bottom - labs[i].h, anchorY - labs[i].h / 2)));
+  });
+  // keep labels from colliding: push down in order
+  for (let i = 1; i < n; i++) {
+    const prev = labs[i - 1].els, cur = labs[i].els;
+    const pb = T.rect(prev[prev.length - 1]).y + T.rect(prev[prev.length - 1]).h + 4 * G, ct = T.rect(cur[0]).y;
+    if (ct < pb) labs[i].place(pb);
+  }
+} else {
+  /* ---- Direction B (HW-161 upright): tools stood upright in equal columns, label under each ---- */
+  const deg = job.upright_deg ?? 0;
+  // r2: column widths follow label needs (natural one-line width of name/specs), clamped to 0.75–1.35 of equal share
+  const eq = (W - 2 * m) / n;
+  const probe = T.el('div', {class:'txt v-name'}); probe.style.cssText = 'position:absolute;white-space:nowrap;visibility:hidden';
+  const need = V.map(v => { probe.textContent = v.name || ''; const a = probe.scrollWidth; probe.className = 'txt v-spec'; probe.textContent = (v.specs || []).map(s => s.label + ' ' + s.value + ' ' + (s.unit || '')).reduce((x, y) => x.length > y.length ? x : y, ''); const b = probe.scrollWidth; probe.className = 'txt v-name'; return Math.max(a, b) + 4 * G; });
+  probe.remove();
+  let wts = need.map(x => Math.min(1.35 * eq, Math.max(0.75 * eq, x)));
+  const k0 = (W - 2 * m) / wts.reduce((a, b) => a + b, 0); wts = wts.map(x => x * k0);
+  const colX = wts.map((_, i) => m + wts.slice(0, i).reduce((a, b) => a + b, 0));
+  const colW = Math.min(...wts);
+  T.layoutInfo.column_widths = wts.map(x => Math.round(x));
+  const labs = V.map((v, i) => label(i, v, colX[i] + 2 * G, wts[i] - 4 * G, 'center'));
+  const labH = Math.max(...labs.map(l => l.h));
+  const boxTop = y, boxBot = bottom - labH - 3 * G, boxH = boxBot - boxTop;
+  // one shared scale: the largest variant must fit its column
+  const s = Math.min(...V.map(v => { const e = ext(rotPts(T.asset(v.asset), deg)); return Math.min((colW - 6 * G) / (e.x1 - e.x0), boxH / (e.y1 - e.y0)); }), cap);
+  V.forEach((v, i) => {
+    const si = s * lenScale(v), a = T.asset(v.asset), e = ext(rotPts(a, deg));
+    const cxCol = colX[i] + wts[i] / 2;
+    const cx = cxCol - (e.x0 + e.x1) / 2 * si, cy = boxBot - e.y1 * si;     // bottom-aligned on a shared baseline
+    placeRot('v' + (i + 1) + '_img', v.asset, si, deg, cx, cy);
+    labs[i].place(boxBot + 3 * G);
+  });
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

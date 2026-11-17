@@ -1,0 +1,292 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T10",
+ "status": "blocked_by_evidence",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-040",
+   "role": "information_structure",
+   "adopted_rules": [
+    "one connection relationship per row",
+    "consistent direction and generous whitespace"
+   ],
+   "excluded_elements": [
+    "M22 / 28 MPa fit claims",
+    "'NOT INCLUDED' parts",
+    "arrows drawn without connection evidence"
+   ]
+  },
+  {
+   "ref_id": "AMZ-039",
+   "role": "composition",
+   "adopted_rules": [
+    "round close-up window showing the original interface region",
+    "connection view and parameter area kept in separate layers"
+   ],
+   "excluded_elements": [
+    "3/8 in, 4000 PSI, 140 °F specs",
+    "inferring left/right compatibility from looks"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F3F4F5",
+   "text": "#1D2125",
+   "muted": "#5C646B",
+   "accent": "#D0612A"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 84,
+   "link_name": 50,
+   "link_body": 42,
+   "part_name": 50,
+   "caption": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.1557,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Connections",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.4813,
+    0.1165
+   ],
+   "allow_overlap_with": [],
+   "text": "How the units join — to be confirmed",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k1_chip",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4793,
+    0.5377,
+    0.2775,
+    0.036
+   ],
+   "allow_overlap_with": [],
+   "text": "Pending confirmation",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k1_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.466,
+    0.5843,
+    0.1,
+    0.0373
+   ],
+   "allow_overlap_with": [],
+   "text": "A on B",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k1_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.466,
+    0.6323,
+    0.4644,
+    0.105
+   ],
+   "allow_overlap_with": [],
+   "text": "Close-up: metal buckle seen in a source inset. Whether it joins A and B is not confirmed.",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k2_chip",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4793,
+    0.764,
+    0.2775,
+    0.036
+   ],
+   "allow_overlap_with": [],
+   "text": "Pending confirmation",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k2_name",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.466,
+    0.8107,
+    0.098,
+    0.0373
+   ],
+   "allow_overlap_with": [],
+   "text": "B on C",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "k2_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.466,
+    0.8587,
+    0.4626,
+    0.07
+   ],
+   "allow_overlap_with": [],
+   "text": "No close-up of this interface. Connection method not confirmed.",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "win_cap",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.5222,
+    0.4385,
+    0.3656,
+    0.0672
+   ],
+   "allow_overlap_with": [],
+   "text": "Metal buckle, source inset (BAG-128)",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "win_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.6153,
+    0.2445,
+    0.1793,
+    0.1793
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "assembled",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.056,
+    0.3518,
+    0.3727,
+    0.5795
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "mod_stack",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "links come only from a structured graph; status != approved -> dashed line, no arrow, 'Pending confirmation' chip",
+  "arrows only for approved links with a declared direction",
+  "close-up window = cover crop of the original visible region, scale <= 1.24; never redrawn",
+  "source IDs in captions never break across lines",
+  "max 3 chains per image; more -> split",
+  "hub (selected) for every ratio; chains mode explicit only"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T10/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T10/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T10/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T10/matrix/sel_hub_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T10/matrix/sel_hub_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T10/matrix/sel_hub_en_1500x1200.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T10/source/T10.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T10/source/jobs/sel_hub_en_1500.json",
+  "templates/T10/source/jobs/sel_hub_zh_1200x1500.json",
+  "templates/T10/source/jobs/sel_hub_en_1500x1200.json"
+ ],
+ "qa_report_path": "templates/T10/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

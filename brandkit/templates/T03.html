@@ -1,0 +1,142 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T03 · hero product + restrained detail rail */
+  #canvas{--bg:#F3EEE8;--text:#232323;--muted:#6A615B;--accent:#D0612A;--line:#CDC3BA;--rail:#26292D;--rail-text:#F4F2EF;--rail-muted:#BFC5CA;--wm:rgba(0,0,0,.045)}
+  .warm{position:absolute;inset:0;background:radial-gradient(110% 80% at 40% 62%, #FBF8F5 0%, var(--bg) 70%)}
+  .rail-bg{position:absolute;background:var(--rail)}
+  .headline.headline--long{font-size:80px}
+  #canvas[lang=zh] .headline.headline--long{font-size:76px}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 96px/1.02 "Noto Sans Display",sans-serif;letter-spacing:-.012em;color:var(--text);text-wrap:balance}
+  .sub{font:400 50px/1.28 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .c-no{font:700 26px/1 "Noto Sans Display",sans-serif;color:var(--accent);letter-spacing:.08em}
+  .c-title{font:700 52px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .c-body{font:400 42px/1.27 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .on-dark .c-title{color:var(--rail-text)} .on-dark .c-body{color:var(--rail-muted)}
+  #canvas[lang=zh] .headline{font:700 88px/1.16 "Noto Sans CJK SC",sans-serif;letter-spacing:.01em}
+  #canvas[lang=zh] .sub{font:400 50px/1.4 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .c-title{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .c-body{font:400 42px/1.42 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .eyebrow{letter-spacing:.12em}
+  .detail-frame.tile{border-radius:8px}
+  .detail-frame.tile.dark-edge{box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+  .detail-frame.tile.light-edge{box-shadow:0 0 0 1px rgba(0,0,0,.06)}
+  .tick{position:absolute;height:3px;background:var(--accent)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+T.el('div', {class:'warm'});
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
+const floor = H - bandH - m * 0.75;
+const hero = T.asset(job.hero);
+const dets = job.details.slice(0, 3);
+const ar = hero.width / hero.height;
+const mode = job.mode || (ar >= 1.0 ? 'strip' : 'rail');   // tall/narrow heroes -> side rail; wide -> bottom strip
+T.layoutInfo = {mode, hero_aspect: +ar.toFixed(3)};
+const scaleCap = job.max_detail_scale || 1.25;
+
+function caption(i, d, x, y, w, parent) {
+  const id = 'c' + (i + 1);
+  const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'c-no', {tier:'meta', parent});
+  const t = T.text(id + '_title', d.title, x, y + 26 + 2 * G, w, 'c-title', {tier:'important', maxLines: 2, parent});
+  let bottom = T.rect(t).y + T.rect(t).h, b = null;
+  if (d.body && !job.caption_title_only) { b = T.text(id + '_body', d.body, x, bottom + G, w, 'c-body', {tier:'secondary', maxLines: 2, parent}); bottom = T.rect(b).y + T.rect(b).h; }
+  const els = [no, t, b].filter(Boolean);
+  return {h: bottom - y, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+}
+function headBlock(x, y, w, opts = {}) {
+  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, x, y, w, 'eyebrow', {tier:'meta'}); y = T.rect(e).y + T.rect(e).h + 3 * G; }
+  const hl = T.text('headline', job.headline, x, y, w, 'headline', {tier:'headline', maxLines: opts.maxLines || 2});
+  { const rg = document.createRange(); rg.selectNodeContents(hl); const n = new Set([...rg.getClientRects()].map(q => Math.round(q.top))).size; if (n > (opts.maxLines || 2)) { hl.classList.add('headline--long'); T.notes.push('headline used the single long-headline step'); } }
+  y = T.rect(hl).y + T.rect(hl).h;
+  if (job.subhead && !opts.noSub) { const s = T.text('subhead', job.subhead, x, y + 2 * G, Math.min(w, opts.subW || w), 'sub', {tier:'important', maxLines: 2}); y = T.rect(s).y + T.rect(s).h; }
+  return y;
+}
+/* tile height so that frame scale never exceeds cap */
+function tileH(a, w, want) { const minScaleH = w / a.width; return Math.round(Math.min(want, a.height * scaleCap)); }
+
+if (mode === 'rail') {
+  /* ---- Direction A: tall hero in ~62% main column; 2–3 details in a right rail ---- */
+  let y0 = headBlock(m, m + 4, W - 2 * m);
+  const top = y0 + 7 * G;
+  const railW = Math.round((W - 2 * m) * 0.30), gut = 7 * G;
+  const mainW = W - 2 * m - railW - gut;
+  const r = T.contain(hero, m, top, mainW, floor - top, 0.5, 1);
+  T.img('hero', job.hero, r, {blend: 'multiply'});
+  const rx = W - m - railW;
+  // measure captions first, then share remaining height among tiles
+  const caps = dets.map((d, i) => caption(i, d, rx, 0, railW));
+  const capsH = caps.reduce((s, c) => s + c.h, 0);
+  const gapT = 3 * G, gapB = 7 * G;
+  const avail = floor - top - capsH - dets.length * gapT - (dets.length - 1) * gapB;
+  let y = top;
+  dets.forEach((d, i) => {
+    const a = T.asset(d.detail);
+    const th = Math.min(Math.round(avail / dets.length), Math.round(railW * 1.1), tileH(a, railW, 9999));
+    const f = T.detailFrame('detail' + (i + 1), d.detail, rx, y, railW, th, {class: 'tile light-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5});
+    caps[i].move(y + th + gapT);
+    y += th + gapT + caps[i].h + gapB;
+  });
+  T.layoutInfo.hero_rect = r; T.layoutInfo.rail = {x: rx, w: railW};
+} else if (mode === 'split') {
+  /* ---- Direction B: dark detail rail on the left (AMZ-006 logic) + light hero panel on the right ---- */
+  const railW = Math.round(W * 0.38);
+  const rb = T.el('div', {class:'rail-bg', 'data-qa':'rail_bg', 'data-kind':'shape', 'data-allow':'detail1_frame,detail2_frame,detail3_frame,c1_no,c1_title,c1_body,c2_no,c2_title,c2_body,c3_no,c3_title,c3_body'});
+  T.box(rb, 0, 0, railW, H - bandH);
+  const px = railW + 8 * G, pw = W - m - px;
+  let y0 = headBlock(px, m + 4, pw, {maxLines: 3, noSub: dets.length > 2});
+  const top = y0 + 6 * G;
+  const r = T.contain(hero, px, top, pw, floor - top, 0.5, 1);
+  T.img('hero', job.hero, r, {blend: 'multiply'});
+  const iw = railW - 2 * m + 24;      // inner rail width
+  const ix = m - 12;
+  const cont = T.el('div', {class:'on-dark'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+  const caps = dets.map((d, i) => caption(i, d, ix, 0, iw, cont));
+  const capsH = caps.reduce((s, c) => s + c.h, 0);
+  const gapT = 3 * G, gapB = 6 * G;
+  const avail = floor - m - capsH - dets.length * gapT - (dets.length - 1) * gapB;
+  let y = m;
+  dets.forEach((d, i) => {
+    const a = T.asset(d.detail);
+    const th = Math.min(Math.round(avail / dets.length), tileH(a, iw, 9999));
+    T.detailFrame('detail' + (i + 1), d.detail, ix, y, iw, th, {class: 'tile dark-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5, allow: ['rail_bg'], parent: cont});
+    caps[i].move(y + th + gapT);
+    y += th + gapT + caps[i].h + gapB;
+  });
+  T.layoutInfo.hero_rect = r;
+} else {
+  /* ---- Adaptation: wide hero on top, copy + 2 detail tiles in a bottom strip (BAG-113 logic) ---- */
+  let y0 = headBlock(m, m + 4, W - 2 * m, {noSub: true});
+  const n = Math.min(dets.length, 2);
+  const stripTileW = Math.round((W - 2 * m) * 0.25);
+  const tileHt = Math.round(stripTileW * 0.72);
+  const caps = dets.slice(0, n).map((d, i) => caption(i, d, 0, 0, stripTileW));
+  const capH = Math.max(...caps.map(c => c.h));
+  const stripTop = floor - tileHt - 3 * G - capH;
+  const top = y0 + 5 * G;
+  const r = T.contain(hero, m, top, W - 2 * m, stripTop - 7 * G - top, 0.5, 0.5);
+  T.img('hero', job.hero, r, {blend: 'multiply'});
+  // left: sub copy; right: tiles
+  const tilesX0 = W - m - n * stripTileW - (n - 1) * 5 * G;
+  if (job.subhead) { const s = T.text('subhead', job.subhead, m, stripTop, tilesX0 - m - 7 * G, 'sub', {tier:'important', maxLines: 4}); }
+  T.el('div', {class:'tick', 'data-qa':'tick', 'data-kind':'shape'}).style.cssText += `left:${m}px;top:${stripTop - 4 * G}px;width:72px`;
+  dets.slice(0, n).forEach((d, i) => {
+    const x = tilesX0 + i * (stripTileW + 5 * G);
+    T.detailFrame('detail' + (i + 1), d.detail, x, stripTop, stripTileW, tileHt, {class: 'tile light-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5});
+    for (const e of caps[i].els) e.style.left = x + 'px';
+    caps[i].move(stripTop + tileHt + 3 * G);
+  });
+  if (dets.length > 2) T.notes.push('strip mode shows max 2 details; extra details dropped by rule');
+  T.layoutInfo.hero_rect = r;
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

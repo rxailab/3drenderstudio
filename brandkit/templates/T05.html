@@ -1,0 +1,108 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T05 · kit / in-the-box inventory */
+  #canvas{--bg:#FFFFFF;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#D9DCDF;--top:#1F2327;--top-text:#F5F4F1;--wm:rgba(0,0,0,.045)}
+  .topbar{position:absolute;background:var(--top)}
+  .title{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--top-text);text-wrap:balance}
+  .title.dark{color:var(--text)}
+  .k-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .k-role{font:700 26px/1 "Noto Sans Display",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  .k-qty{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--text)}
+  .k-qty.pending{color:#8A6D1F}
+  .note{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
+  #canvas[lang=zh] .title{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .k-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .k-qty,#canvas[lang=zh] .note{font:500 42px/1.3 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .k-role{letter-spacing:.08em}
+  .hr{position:absolute;background:var(--line)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const items = job.items.slice(0, 8);
+const mode = job.mode || (items.length <= 3 ? 'hero' : 'grid');
+T.layoutInfo = {mode};
+const L = job.labels || {};
+/* qty text: only from the approved inventory field; otherwise an explicit pending marker */
+const qtyText = it => it.qty != null ? (L.qty_prefix ?? 'Qty ') + it.qty : (L.qty_pending ?? 'Qty pending');
+function label(i, it, x, y, w, align) {
+  const id = 'k' + (i + 1), els = [];
+  if (it.role_label) { const r = T.text(id + '_role', it.role_label, x, y, w, 'k-role', {tier:'meta', align}); els.push(r); y = T.rect(r).y + T.rect(r).h + 2 * G; }
+  const n = T.text(id + '_name', it.name, x, y, w, 'k-name', {tier:'important', maxLines: 2, align}); els.push(n); y = T.rect(n).y + T.rect(n).h + G;
+  const q = T.text(id + '_qty', qtyText(it), x, y, w, 'k-qty' + (it.qty == null ? ' pending' : ''), {tier:'secondary', maxLines: 1, align}); els.push(q); y = T.rect(q).y + T.rect(q).h;
+  const y0 = parseFloat(els[0].style.top);
+  return {h: y - y0, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+}
+function place(i, it, bx, by, bw, bh, alignY) {
+  const a = T.asset(it.asset);
+  // never upscale beyond cap; small accessories may be enlarged moderately but not implied to scale (note rendered)
+  let r = T.contain(a, bx, by, bw, bh, 0.5, alignY ?? 1);
+  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s}; r.x = bx + (bw - r.w) / 2; r.y = by + (bh - r.h) * (alignY ?? 1); }
+  T.img('item' + (i + 1), it.asset, r, {blend: 'multiply'});
+  return r;
+}
+
+let y;
+if (mode === 'grid') {
+  /* ---- Direction A (AMZ-044): dark title bar + equal cells with hairline dividers, shared baseline ---- */
+  const bar = T.el('div', {class:'topbar', 'data-qa':'topbar', 'data-kind':'shape', 'data-allow':'title'});
+  const t = T.text('title', job.headline, m, m * 0.8, W - 2 * m, 'title', {tier:'headline', maxLines: 2});
+  const barH = T.rect(t).y + T.rect(t).h + m * 0.8;
+  T.box(bar, 0, 0, W, barH); T.root.insertBefore(bar, t);
+  const n = items.length;
+  const cols = n <= 3 ? n : n <= 4 ? 2 : n <= 6 ? 3 : 4, rows = Math.ceil(n / cols);
+  const top = barH, bottom = floor - (job.note ? 90 : 0);
+  const cw = W / cols, ch = (bottom - top) / rows;
+  const labs = items.map((it, i) => label(i, it, 0, 0, cw - 2 * 6 * G, 'center'));
+  const labH = Math.max(...labs.map(l => l.h));
+  items.forEach((it, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    const x0 = c * cw, y0 = top + r * ch;
+    const pad = 6 * G;
+    place(i, it, x0 + pad, y0 + pad, cw - 2 * pad, ch - 2 * pad - labH - 3 * G, 0.75);
+    labs[i].els.forEach(e => e.style.left = (x0 + pad) + 'px');
+    labs[i].move(y0 + ch - pad - labH);
+  });
+  for (let c = 1; c < cols; c++) T.box(T.el('div', {class:'hr'}), c * cw, top, 2, bottom - top);
+  for (let r = 1; r < rows; r++) T.box(T.el('div', {class:'hr'}), 0, top + r * ch, W, 2);
+  T.box(T.el('div', {class:'hr'}), 0, bottom, W, 2);
+  if (job.note) T.text('note', job.note, m, bottom + 2 * G, W - 2 * m, 'note', {tier:'secondary', maxLines: 1, align: 'center'});
+} else {
+  /* ---- Direction B: main item large + accessories column, light ground ---- */
+  y = m + 4;
+  const t = T.text('title', job.headline, m, y, W - 2 * m, 'title dark', {tier:'headline', maxLines: 2});
+  y = T.rect(t).y + T.rect(t).h + 6 * G;
+  const main = items[0], acc = items.slice(1);
+  const colW = acc.length ? Math.round((W - 2 * m) * 0.32) : 0, gut = acc.length ? 7 * G : 0;
+  const mw = W - 2 * m - colW - gut;
+  const ml = label(0, main, m, 0, mw, 'left');
+  const bottom = floor - (job.note ? 90 : 0);
+  place(0, main, m, y, mw, bottom - ml.h - 4 * G - y, 1);
+  ml.move(bottom - ml.h);
+  if (acc.length) {
+    const cx = W - m - colW;
+    T.box(T.el('div', {class:'hr'}), cx - gut / 2, y, 2, bottom - y);
+    const labs = acc.map((it, k) => label(k + 1, it, cx, 0, colW, 'left'));
+    const each = (bottom - y) / acc.length;
+    acc.forEach((it, k) => {
+      const y0 = y + k * each;
+      place(k + 1, it, cx, y0 + (k ? 4 * G : 0), colW, each - labs[k].h - 6 * G - (k ? 4 * G : 0), 1);
+      labs[k].move(y0 + each - labs[k].h - 2 * G);
+      if (k) T.box(T.el('div', {class:'hr'}), cx, y0, colW, 2);
+    });
+  }
+  if (job.note) T.text('note', job.note, m, bottom + 2 * G, W - 2 * m, 'note', {tier:'secondary', maxLines: 1});
+}
+if (items.length < job.items.length) T.notes.push('more than 8 components: split into another image');
+T.watermark();
+T.finish();
+})();
+</script></body></html>
