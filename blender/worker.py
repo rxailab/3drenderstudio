@@ -807,9 +807,19 @@ def render(req,objects,meshes):
         scene.render.film_transparent=False;bpy.ops.wm.save_as_mainfile(filepath=str(blend));scene.render.film_transparent=reflect_white
     reflection=None
     if reflect_white:
-        event('正在加入地面倒影')
-        from blender.reflection import finish_white
-        reflection=finish_white(png,jpg,kind=reflect_ground)
+        event('正在渲染地面倒影',sample_target=max(16,scene.cycles.samples//2),
+              render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+        from blender.reflection import finish_white,mirror_pass
+        mirrored=out/(stem+'.mirror.png');rendered=False
+        try:
+            report_render_progress()
+            rendered=mirror_pass(scene,mirrored,checks.get('ground_contact',0.0) or 0.0,max(16,scene.cycles.samples//2))
+        except Exception as exc:
+            event('倒影渲染失败，改用平面倒影',error=str(exc)[:200])
+        try:
+            reflection=finish_white(png,jpg,kind=reflect_ground,mirror=mirrored if rendered and mirrored.is_file() else None)
+        finally:
+            mirrored.unlink(missing_ok=True)
         scene.render.image_settings.color_mode='RGB'
     else:
         scene.render.image_settings.file_format='JPEG';scene.render.image_settings.quality=95

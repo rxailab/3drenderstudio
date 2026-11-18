@@ -404,7 +404,7 @@ test('choosing a preset also replaces a still-blocked independent vision draft w
 
 test('initial screen explains the next step and disables project actions',async t=>{
   const h=await setup(t);
-  assert.equal(h.node('inspectorReviewTab').getAttribute('aria-selected'),'true');
+  assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');   // 套图 is the tab a project opens on
   assert.equal(h.node('previewButton').disabled,true);assert.equal(h.node('renderButton').disabled,true);
   assert.equal(h.node('renderReason').hidden,true);
 });
@@ -2239,8 +2239,8 @@ test('the last inspector tab is reachable from the keyboard',async t=>{
   first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'End',bubbles:true}));await tick();
   assert.equal(h.node('inspectorEcommerceTab').getAttribute('aria-selected'),'true');assert.equal(h.w.document.activeElement,h.node('inspectorEcommerceTab'));
   h.node('inspectorEcommerceTab').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-  assert.equal(h.node('inspectorReviewTab').getAttribute('aria-selected'),'true');
-  h.node('inspectorReviewTab').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+  assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');            // wraps round to the first tab
+  h.node('inspectorListingTab').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
   assert.equal(h.node('inspectorEcommerceTab').getAttribute('aria-selected'),'true');
   await tick();await tick();await tick();
 });
@@ -2601,7 +2601,7 @@ test('scene and pose tasks show the stage they are in with its percentage',async
 
 test('电商出图 is the last inspector tab and asks the server only once it is opened',async t=>{
   const h=await setup(t,{projects:[rendered('a',512)]});await h.run("openProject('a')");
-  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['review','material','plan','listing','ecommerce']);
+  assert.deepEqual([...h.w.document.querySelectorAll('[data-inspector]')].map(tab=>tab.dataset.inspector),['listing','review','material','plan','ecommerce']);
   assert.deepEqual(ecommerceCalls(h),[],'opening a project does not load marketplace data');
   h.node('inspectorEcommerceTab').click();await tick();await tick();
   assert.equal(h.node('inspectorEcommerce').hidden,false);assert.equal(h.node('inspectorReview').hidden,true);
@@ -2677,12 +2677,13 @@ test('components chosen with a new project are sent with it, each with its name,
   assert.equal(h.node('chosenComponents').children.length,0,'the list is cleared for the next project');
 });
 
-test('the 套图 tab replaces 图文: it summarises what was built and opens the workspace',async t=>{
+test('the 套图 tab is first, open when a project opens, and holds the whole workspace',async t=>{
   const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");
-  assert.equal(h.node('inspectorOverlayTab'),null);assert.equal(h.node('layerStage'),null);
+  assert.equal(h.node('inspectorOverlayTab'),null);assert.equal(h.node('layerStage'),null);assert.equal(h.node('listingDialog'),null);
   assert.equal(h.node('inspectorListingTab').textContent,'套图');
-  assert.match(h.node('inspectorListing').textContent,/主图（产品与组件一起渲染）/);
-  assert.ok(h.node('listingOpenPanel'));
-  h.node('inspectorListingTab').click();await tick();
   assert.equal(h.node('inspectorListing').hidden,false);assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');
+  assert.equal(h.w.document.body.classList.contains('listing-wide'),true);                    // the panel is widened for it
+  for(const id of ['listingPanel','listingBuild','listingPlan','listingPages'])assert.ok(h.node('inspectorListing').querySelector('#'+id),id);
+  h.node('inspectorReviewTab').click();await tick();
+  assert.equal(h.node('inspectorListing').hidden,true);assert.equal(h.w.document.body.classList.contains('listing-wide'),false);
 });

@@ -3,21 +3,37 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T05 · kit / in-the-box inventory */
-  #canvas{--bg:#FFFFFF;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#D9DCDF;--top:#1F2327;--top-text:#F5F4F1;--wm:rgba(0,0,0,.045)}
-  .topbar{position:absolute;background:var(--top)}
-  .title{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--top-text);text-wrap:balance}
-  .title.dark{color:var(--text)}
-  .k-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .k-role{font:700 26px/1 "Noto Sans Display",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
-  .k-qty{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--text)}
-  .k-qty.pending{color:#8A6D1F}
-  .note{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
-  #canvas[lang=zh] .title{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .k-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .k-qty,#canvas[lang=zh] .note{font:500 42px/1.3 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .k-role{letter-spacing:.08em}
-  .hr{position:absolute;background:var(--line)}
+  /* T05 · kit chart ("KIT INCLUDES"): dark header band + accent rule, white hairline grid, footer disclaimer.
+     Alternate knolling mode: the same frame, items packed at a shared visual mass with short captions, no hairlines. */
+  #canvas{--bg:#FFFFFF;--text:#1A1A1A;--muted:#5E666D;--accent:#F2B01E;--grid:#BDBDBD;--wm:rgba(0,0,0,.045)}
+  .band{position:absolute;background:var(--dark)}
+  .rule{position:absolute;background:var(--accent)}
+  .foot{position:absolute;background:var(--dark)}
+  .hair{position:absolute;background:var(--grid)}
+  .kit-title{font-family:var(--f-display);font-weight:900;font-stretch:116%;font-size:78px;line-height:1;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--cream);white-space:nowrap}
+  .kit-title.wrap{white-space:pre-line;text-wrap:balance;line-height:.98}
+  .kit-code{font-family:var(--f-text);font-weight:700;font-size:42px;line-height:1.12;letter-spacing:.005em;text-transform:uppercase;
+    color:var(--text);text-wrap:balance}
+  .kit-desc{font-family:var(--f-text);font-weight:400;font-size:28px;line-height:1.18;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--ink-2,#3A3A3A);text-wrap:balance}
+  .kit-badge{font-family:var(--f-cond);font-weight:800;font-size:46px;line-height:1;color:var(--accent-ink,#111);background:var(--accent);
+    border-radius:50%;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-variant-numeric:tabular-nums;
+    box-shadow:0 0 0 5px #fff}
+  .kit-badge .x{font-size:.78em;margin-right:.02em;font-weight:700}
+  .disclaimer{font-family:var(--f-text);font-weight:500;font-size:26px;line-height:1.25;color:#E8E3DA;white-space:nowrap;letter-spacing:.01em}
+  .vb{position:absolute;background:var(--accent)}
+  .vb-value{font-family:var(--f-display);font-weight:900;font-stretch:112%;font-size:58px;line-height:1;color:var(--accent-ink,#111);white-space:nowrap;
+    text-transform:uppercase;letter-spacing:-.005em}
+  .vb-sub{font-family:var(--f-text);font-weight:700;font-size:19px;line-height:1;letter-spacing:.09em;color:var(--accent-ink,#111);white-space:nowrap;
+    text-transform:uppercase}
+  #canvas[lang=zh] .kit-title{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:76px;line-height:1.12;text-transform:none;letter-spacing:.02em}
+  #canvas[lang=zh] .kit-code{font-family:var(--f-cjk);font-weight:700;font-size:42px;line-height:1.24;text-transform:none;letter-spacing:.01em;text-wrap:wrap}
+  #canvas[lang=zh] .kit-desc{font-family:var(--f-cjk);font-weight:400;font-size:28px;line-height:1.3;text-transform:none;letter-spacing:.02em;text-wrap:wrap}
+  #canvas[lang=zh] .kit-badge{font-family:var(--f-cond)}
+  #canvas[lang=zh] .disclaimer{font-family:var(--f-cjk);letter-spacing:.04em}
+  #canvas[lang=zh] .vb-value{font-family:var(--f-cjk);font-stretch:100%;text-transform:none}
+  #canvas[lang=zh] .vb-sub{font-family:var(--f-cjk);letter-spacing:.04em}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -25,83 +41,244 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
-const floor = H - bandH - m * 0.75;
-const items = job.items.slice(0, 8);
-const mode = job.mode || (items.length <= 3 ? 'hero' : 'grid');
-T.layoutInfo = {mode};
+const zh = (job.lang || 'en') === 'zh';
+const m = Math.min(job.safe_margin || 72, 72), G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
 const L = job.labels || {};
-/* qty text: only from the approved inventory field; otherwise an explicit pending marker */
-const qtyText = it => it.qty != null ? (L.qty_prefix ?? 'Qty ') + it.qty : (L.qty_pending ?? 'Qty pending');
-function label(i, it, x, y, w, align) {
-  const id = 'k' + (i + 1), els = [];
-  if (it.role_label) { const r = T.text(id + '_role', it.role_label, x, y, w, 'k-role', {tier:'meta', align}); els.push(r); y = T.rect(r).y + T.rect(r).h + 2 * G; }
-  const n = T.text(id + '_name', it.name, x, y, w, 'k-name', {tier:'important', maxLines: 2, align}); els.push(n); y = T.rect(n).y + T.rect(n).h + G;
-  const q = T.text(id + '_qty', qtyText(it), x, y, w, 'k-qty' + (it.qty == null ? ' pending' : ''), {tier:'secondary', maxLines: 1, align}); els.push(q); y = T.rect(q).y + T.rect(q).h;
-  const y0 = parseFloat(els[0].style.top);
-  return {h: y - y0, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+/* Modes: 'grid' (kit chart, default) or 'knolling' (the same frame; items packed at one visual mass with short captions).
+   The old 'hero' mode is the 1-over-2 / 1-over-n grid now, so a saved job that asks for it still renders. */
+let mode = job.mode === 'knolling' ? 'knolling' : 'grid';
+const qtyOf = it => { const q = Number(it.qty); return Number.isFinite(q) && q > 1 ? Math.round(q) : null; };   // qty 1 / null: omitted
+/* qty is shown once: 'prefix' -> "(2) NAME" (DeWalt), 'badge' -> accent "x2" circle pinned to the product's corner.
+   The older 'both' reads as 'badge'. */
+const qtyStyle = job.qty_style === 'badge' || job.qty_style === 'both' ? 'badge' : 'prefix';
+const qtyFmt = L.qty_format || (zh ? '（%d）' : '(%d) ');
+
+/* ---- the item list: drop slots without a picture, merge true duplicates, flag pictures that look cropped ---- */
+const hasAsset = it => it && it.asset && (job.assets || {})[it.asset];
+const items = [];
+(job.items || []).forEach((it, i) => {
+  if (!hasAsset(it)) { T.notes.push(`item ${i + 1} (${T.plain(it && it.name)}): no picture, slot left out (supply a cut-out)`); return; }
+  const key = it.asset + '|' + T.plain(it.code || it.name).trim().toLowerCase();
+  const twin = items.find(o => o._key === key);
+  if (twin) {
+    twin.qty = (qtyOf(twin) || 1) + (qtyOf(it) || 1);
+    T.notes.push(`item ${i + 1}: same picture and name as "${T.plain(twin.name)}", merged into one cell with a quantity`);
+    return;
+  }
+  const same = items.find(o => o.asset === it.asset);
+  if (same) T.notes.push(`item ${i + 1} reuses the picture of "${T.plain(same.name)}": every kit item needs its own cut-out`);
+  const b = job.assets[it.asset].content_bbox;
+  if (b && (b[0] < .004 || b[1] < .004 || b[2] > .996 || b[3] > .996))
+    T.notes.push(`item ${i + 1}: picture touches its frame edge, it may be a crop rather than a whole object`);
+  items.push({...it, _key: key});
+});
+if (items.length > 8) T.notes.push('more than 8 components: split into another image');
+items.length = Math.min(items.length, 8);
+/* knolling needs room: on a portrait canvas more than 6 items would shrink to thumbnails, so the kit chart takes over */
+if (mode === 'knolling' && H > W * 1.1 && items.length > 6) { mode = 'grid'; T.notes.push('knolling: more than 6 items on a portrait canvas, drawn as the kit chart'); }
+T.layoutInfo = {mode, items: items.length};
+
+function content(a) {
+  const b = a.content_bbox || [0, 0, 1, 1];
+  return {bx: b[0], by: b[1], bw: Math.max(.01, b[2] - b[0]), bh: Math.max(.01, b[3] - b[1])};
 }
-function place(i, it, bx, by, bw, bh, alignY) {
-  const a = T.asset(it.asset);
-  // never upscale beyond cap; small accessories may be enlarged moderately but not implied to scale (note rendered)
-  let r = T.contain(a, bx, by, bw, bh, 0.5, alignY ?? 1);
-  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s}; r.x = bx + (bw - r.w) / 2; r.y = by + (bh - r.h) * (alignY ?? 1); }
-  T.img('item' + (i + 1), it.asset, r, {blend: 'multiply'});
-  return r;
+/* place the visible content in a box: contained, at most `fill` of the box area (one visual mass per page), centred */
+function fit(a, x, y, w, h, fill = 1, ax = .5, ay = .5) {
+  const c = content(a), cw = a.width * c.bw, ch = a.height * c.bh;
+  let s = Math.min(w / cw, h / ch, Math.sqrt(fill * w * h / (cw * ch)), cap);
+  for (let k = 0; ; k++) {
+    const vw = cw * s, vh = ch * s, vx = x + (w - vw) * ax, vy = y + (h - vh) * ay;
+    const img = {x: vx - a.width * c.bx * s, y: vy - a.height * c.by * s, ...snap(a, s)};
+    /* the picture's own frame (its white margin) must stay on the canvas too */
+    if (k > 40 || (img.x >= 0 && img.y >= 0 && img.x + img.w <= W && img.y + img.h <= H)) return {img, vis: {x: vx, y: vy, w: vw, h: vh}, scale: s};
+    s *= 0.97;
+  }
+}
+/* an image size whose rounded pixels keep the aspect (the QA reads integer offsets) */
+function snap(a, s) {
+  let best = null;
+  for (let w = Math.floor(a.width * s), k = 0; k < 24 && w > 1; k++, w--) {
+    const h = w * a.height / a.width, err = Math.abs((w / Math.round(h)) / (a.width / a.height) - 1);
+    if (!best || err < best.err - 1e-6) best = {w, h: Math.round(h), err};
+    if (err < 0.0015) break;
+  }
+  return {w: best.w, h: best.h};
+}
+function fitText(e, sizes, maxLines) {
+  for (const s of sizes) {
+    e.style.fontSize = s + 'px';
+    const lh = parseFloat(getComputedStyle(e).lineHeight) || s * 1.2;
+    if (e.scrollWidth <= e.clientWidth + 1 && T.rect(e).h <= lh * maxLines + 2) return s;
+  }
+  return sizes[sizes.length - 1];
+}
+function badge(id, q, cx, cy, d, allow) {
+  const b = T.text(id, '', cx - d / 2, cy - d / 2, d, 'kit-badge', {tier:'secondary', maxLines: 1, allow});
+  b.style.height = d + 'px';
+  const x = document.createElement('span'); x.className = 'x'; x.textContent = '×'; b.appendChild(x);
+  b.appendChild(document.createTextNode(String(q)));
+  b.style.fontSize = Math.round(d * 0.52) + 'px';
+  return b;
+}
+/* pin a badge to the visible product's top-right corner, kept inside its cell */
+function pinBadge(i, q, vis, cell, d) {
+  const cx = Math.min(vis.x + vis.w + d * 0.18, cell.x + cell.w - d / 2 - 12), cy = Math.max(vis.y - d * 0.18, cell.y + d / 2 + 12);
+  badge('k' + (i + 1) + '_qty', q, cx, cy, d, ['item' + (i + 1)]);
+}
+/* caption of one item: bold line (code, else name) and an optional regular descriptor */
+function caption(id, it, capW) {
+  const q = qtyOf(it), head = it.code || it.name, desc = it.code ? (it.desc ?? it.name) : it.desc;
+  const prefix = q && qtyStyle === 'prefix' ? qtyFmt.replace('%d', q) : '';
+  const c = {};
+  c.code = T.text(id + '_name', prefix + T.plain(head), 0, 0, capW, 'kit-code', {tier:'secondary', maxLines: 2, align:'center'});
+  if (desc) c.desc = T.text(id + '_desc', T.plain(desc), 0, 0, capW, 'kit-desc', {tier:'meta', maxLines: 2, align:'center'});
+  return c;
 }
 
-let y;
-if (mode === 'grid') {
-  /* ---- Direction A (AMZ-044): dark title bar + equal cells with hairline dividers, shared baseline ---- */
-  const bar = T.el('div', {class:'topbar', 'data-qa':'topbar', 'data-kind':'shape', 'data-allow':'title'});
-  const t = T.text('title', job.headline, m, m * 0.8, W - 2 * m, 'title', {tier:'headline', maxLines: 2});
-  const barH = T.rect(t).y + T.rect(t).h + m * 0.8;
-  T.box(bar, 0, 0, W, barH); T.root.insertBefore(bar, t);
-  const n = items.length;
-  const cols = n <= 3 ? n : n <= 4 ? 2 : n <= 6 ? 3 : 4, rows = Math.ceil(n / cols);
-  const top = barH, bottom = floor - (job.note ? 90 : 0);
-  const cw = W / cols, ch = (bottom - top) / rows;
-  const labs = items.map((it, i) => label(i, it, 0, 0, cw - 2 * 6 * G, 'center'));
-  const labH = Math.max(...labs.map(l => l.h));
-  items.forEach((it, i) => {
-    const c = i % cols, r = Math.floor(i / cols);
-    const x0 = c * cw, y0 = top + r * ch;
-    const pad = 6 * G;
-    place(i, it, x0 + pad, y0 + pad, cw - 2 * pad, ch - 2 * pad - labH - 3 * G, 0.75);
-    labs[i].els.forEach(e => e.style.left = (x0 + pad) + 'px');
-    labs[i].move(y0 + ch - pad - labH);
-  });
-  for (let c = 1; c < cols; c++) T.box(T.el('div', {class:'hr'}), c * cw, top, 2, bottom - top);
-  for (let r = 1; r < rows; r++) T.box(T.el('div', {class:'hr'}), 0, top + r * ch, W, 2);
-  T.box(T.el('div', {class:'hr'}), 0, bottom, W, 2);
-  if (job.note) T.text('note', job.note, m, bottom + 2 * G, W - 2 * m, 'note', {tier:'secondary', maxLines: 1, align: 'center'});
-} else {
-  /* ---- Direction B: main item large + accessories column, light ground ---- */
-  y = m + 4;
-  const t = T.text('title', job.headline, m, y, W - 2 * m, 'title dark', {tier:'headline', maxLines: 2});
-  y = T.rect(t).y + T.rect(t).h + 6 * G;
-  const main = items[0], acc = items.slice(1);
-  const colW = acc.length ? Math.round((W - 2 * m) * 0.32) : 0, gut = acc.length ? 7 * G : 0;
-  const mw = W - 2 * m - colW - gut;
-  const ml = label(0, main, m, 0, mw, 'left');
-  const bottom = floor - (job.note ? 90 : 0);
-  place(0, main, m, y, mw, bottom - ml.h - 4 * G - y, 1);
-  ml.move(bottom - ml.h);
-  if (acc.length) {
-    const cx = W - m - colW;
-    T.box(T.el('div', {class:'hr'}), cx - gut / 2, y, 2, bottom - y);
-    const labs = acc.map((it, k) => label(k + 1, it, cx, 0, colW, 'left'));
-    const each = (bottom - y) / acc.length;
-    acc.forEach((it, k) => {
-      const y0 = y + k * each;
-      place(k + 1, it, cx, y0 + (k ? 4 * G : 0), colW, each - labs[k].h - 6 * G - (k ? 4 * G : 0), 1);
-      labs[k].move(y0 + each - labs[k].h - 2 * G);
-      if (k) T.box(T.el('div', {class:'hr'}), cx, y0, colW, 2);
-    });
-  }
-  if (job.note) T.text('note', job.note, m, bottom + 2 * G, W - 2 * m, 'note', {tier:'secondary', maxLines: 1});
+/* ---------------- frame: header band, accent rule, footer ---------------- */
+const headH = 200, ruleH = 14, footH = 80;
+T.box(T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'title,vb,vb_value,vb_sub'}), 0, 0, W, headH);
+T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), 0, headH, W, ruleH);
+T.box(T.el('div', {class:'foot', 'data-qa':'footer', 'data-kind':'shape', 'data-allow':'note'}), 0, H - footH - bandH, W, footH);
+/* optional value badge: inside the band, right-aligned to the margin, centred on the title's line */
+const vc = job.value_claim;
+let titleW = W - 2 * m;
+if (vc && typeof vc === 'object' && vc.approved === true && (vc.text || vc.value)) {
+  const padX = 26, padY = 20, gapV = 10;
+  const vv = T.text('vb_value', vc.text || vc.value, 0, 0, 900, 'vb-value', {tier:'important', maxLines: 1, allow:['vb', 'band']});
+  vv.style.width = 'auto';
+  const sub = vc.sub || L.value_sub || (zh ? '' : 'IF PURCHASED SEPARATELY');
+  let vs = null;
+  if (sub) { vs = T.text('vb_sub', sub, 0, 0, 900, 'vb-sub', {tier:'meta', maxLines: 1, allow:['vb', 'band']}); vs.style.width = 'auto'; }
+  /* keep the badge within ~36% of the width */
+  for (const s of [58, 54, 50, 46]) { vv.style.fontSize = s + 'px'; if (T.rect(vv).w + 2 * padX <= W * 0.36) break; }
+  const tw = Math.ceil(Math.max(T.rect(vv).w, vs ? T.rect(vs).w : 0)), bw = tw + 2 * padX;
+  const bh = Math.ceil(T.rect(vv).h + (vs ? gapV + T.rect(vs).h : 0) + 2 * padY), x0 = W - m - bw, y0 = Math.round((headH - bh) / 2);
+  const vbox = T.box(T.el('div', {class:'vb', 'data-qa':'vb', 'data-kind':'shape', 'data-allow':'band,vb_value,vb_sub'}), x0, y0, bw, bh);
+  T.root.insertBefore(vbox, vv);
+  vv.style.left = (x0 + padX) + 'px'; vv.style.top = (y0 + padY) + 'px';
+  if (vs) { vs.style.left = (x0 + padX) + 'px'; vs.style.top = (y0 + padY + T.rect(vv).h + gapV) + 'px'; }
+  titleW = x0 - m - 5 * G;
+  T.layoutInfo.value_banner = true;
 }
-if (items.length < job.items.length) T.notes.push('more than 8 components: split into another image');
+/* header title: one line, shrinking from 78 (zh 76) to 64; else two balanced lines */
+{
+  const t = T.text('title', job.headline, m, 0, titleW, 'kit-title', {tier:'headline', maxLines: zh ? Math.max(1, String(job.headline || '').split('\n').length) : 2});
+  let ok = false;
+  for (const s of zh ? [76, 72, 68, 64] : [78, 74, 70, 66, 64]) { t.style.fontSize = s + 'px'; if (t.scrollWidth <= t.clientWidth + 1) { ok = true; break; } }
+  if (!ok) { t.classList.add('wrap'); fitText(t, zh ? [66, 62, 58, 54] : [66, 62, 58, 54], 2); }
+  t.style.top = Math.round((headH - T.rect(t).h) / 2) + 'px';
+}
+/* footer disclaimer (job.note), centred in the band */
+if (job.note) {
+  const n = T.text('note', job.note, m, 0, W - 2 * m, 'disclaimer', {tier:'meta', maxLines: 1, allow:['footer']});
+  for (const s of [26, 25, 24, 23, 22]) { n.style.fontSize = s + 'px'; if (n.scrollWidth <= n.clientWidth + 1) break; }
+  n.style.top = Math.round(H - bandH - footH + (footH - T.rect(n).h) / 2) + 'px';
+}
+const top = headH + ruleH, bottom = H - bandH - footH;
+
+if (mode === 'grid') {
+  /* ---------------- kit chart: rows of cells, the main item first ---------------- */
+  const n = items.length, portrait = H > W * 1.1;
+  /* portrait canvases stay at 3 columns at most (cells too small otherwise) */
+  const rowsOf = (portrait || job.dense_rows !== 'wide' ? {1: [1], 2: [2], 3: [1, 2], 4: [2, 2], 5: [2, 3], 6: [3, 3], 7: [1, 3, 3], 8: [2, 3, 3]}
+                           : {1: [1], 2: [2], 3: [1, 2], 4: [2, 2], 5: [2, 3], 6: [3, 3], 7: [3, 4], 8: [4, 4]})[n] || [n];
+  const maxCols = Math.max(...rowsOf), wts = rowsOf.map(c => Math.pow(maxCols / c, 0.25)), wSum = wts.reduce((s, v) => s + v, 0);
+  const rowHs = wts.map(v => (bottom - top) * v / wSum);
+  /* pass 1: captions at the largest size every item on the page fits, so all captions share one size */
+  const rowsData = []; let k = 0;
+  rowsOf.forEach(cols => {
+    const cw = W / cols, wide = cw > 900, side = Math.max(32, Math.min(60, cw * 0.1)), capW = Math.min(cw - 2 * side, 900);
+    const row = items.slice(k, k + cols).map((it, j) => ({it, i: k + j, x0: j * cw}));
+    k += cols;
+    for (const c of row) {
+      Object.assign(c, caption('k' + (c.i + 1), c.it, capW));
+      c.codeSize = fitText(c.code, zh ? [42, 40, 38, 36, 34, 32] : [42], 1);
+      const lh1 = parseFloat(getComputedStyle(c.code).lineHeight);
+      if (c.code.scrollWidth > c.code.clientWidth + 1 || T.rect(c.code).h > lh1 * 1.5) c.codeSize = fitText(c.code, [42, 40, 38, 36, 34, 32], 2);
+      if (c.desc) c.descSize = fitText(c.desc, [28, 26, 24, 22], 2);
+    }
+    rowsData.push({cols, cw, wide, capW, row});
+  });
+  const all = rowsData.flatMap(d => d.row);
+  const codeSize = Math.min(...all.map(c => c.codeSize)), descSize = Math.min(...all.filter(c => c.desc).map(c => c.descSize), 28);
+  for (const c of all) { c.code.style.fontSize = codeSize + 'px'; c.capH = T.rect(c.code).h; if (c.desc) { c.desc.style.fontSize = descSize + 'px'; c.capH += G * 0.75 + T.rect(c.desc).h; } }
+  T.layoutInfo.caption_px = [codeSize, descSize];
+  /* every row reserves one label box (its tallest caption); labels top-align in it so first lines share a baseline */
+  const pad = 3 * G;
+  let yRow = top;
+  rowsData.forEach(({cols, cw, wide, capW, row}, r) => {
+    const rowH = rowHs[r], y0 = yRow; yRow += rowH;
+    const capMax = Math.max(...row.map(c => c.capH));
+    const capTop = Math.round(Math.min(y0 + rowH - pad - capMax - G, y0 + rowH * 0.80));
+    const zoneTop = y0 + pad + 3 * G, zoneBot = capTop - 4 * G;
+    for (const c of row) {
+      const it = c.it, q = qtyOf(it), useBadge = q && qtyStyle === 'badge';
+      const a = T.asset(it.asset);
+      const zw = cw * (wide ? 0.62 : 0.78) - (useBadge ? 48 : 0), zh_ = zoneBot - zoneTop - (useBadge ? 24 : 0);
+      const zx = c.x0 + (cw - zw) / 2, zy = zoneTop + (useBadge ? 24 : 0);
+      /* one visual mass: the content fills at most ~46% of its zone's area, centred in the zone */
+      const f = fit(a, zx, zy, zw, zh_, wide ? 0.42 : 0.46);
+      T.img('item' + (c.i + 1), it.asset, f.img, {blend: 'multiply'});
+      if (f.scale >= cap - 1e-6) T.notes.push(`item${c.i + 1}: held at the ${cap}x upscale cap (supply a larger cut-out)`);
+      const capX = c.x0 + (cw - capW) / 2;
+      c.code.style.left = capX + 'px'; c.code.style.top = capTop + 'px';
+      if (c.desc) { c.desc.style.left = capX + 'px'; c.desc.style.top = (capTop + T.rect(c.code).h + G * 0.75) + 'px'; }
+      if (useBadge) pinBadge(c.i, q, f.vis, {x: c.x0, y: y0, w: cw, h: rowH}, Math.round(W * 0.056));
+    }
+    for (let j = 1; j < cols; j++) T.box(T.el('div', {class:'hair'}), Math.round(j * cw), y0, 2, rowH);
+    if (r) T.box(T.el('div', {class:'hair'}), 0, Math.round(y0) - 1, W, 2);
+  });
+  T.layoutInfo.rows = rowsOf;
+} else {
+  /* ---------------- knolling: items in packed rows at one visual mass (or items[].rel_size), each captioned ---------------- */
+  const g = 6 * G, AX = m, AW = W - 2 * m, AY = top + 5 * G, AH = bottom - 5 * G - AY;
+  const ar = items.map(it => { const a = T.asset(it.asset), c = content(a); return (a.width * c.bw) / (a.height * c.bh); });
+  const rel = items.every(it => Number(it.rel_size) > 0) ? items.map(it => Number(it.rel_size)) : null;
+  const mass = items.map((it, i) => rel ? (rel[i] / Math.max(...rel)) ** 2 : (i ? 1 : 1.8));   // the main item reads larger
+  const minSlot = zh ? 340 : 400, minCap = Math.ceil(W / 36 + 0.3);   // captions stay readable on a phone (>= 10px at 360 wide)
+  /* captions are sized once (one size per page) for the narrowest slot */
+  const caps = items.map((it, i) => caption('k' + (i + 1), it, minSlot));
+  const capSize = Math.min(...caps.map(c => fitText(c.code, [42, 40, 38, 36, 34, 32].filter(v => v >= minCap).concat(zh ? [] : [32]), 2)));
+  caps.forEach(c => { c.code.style.fontSize = capSize + 'px'; if (c.desc) c.desc.style.fontSize = Math.round(capSize * 0.7) + 'px'; });
+  const capLH = parseFloat(getComputedStyle(caps[0].code).lineHeight) || capSize * 1.15;
+  const capH = 2 * capLH + (caps.some(c => c.desc) ? G + 2 * capSize * 0.7 * 1.2 : 0), capGap = 2 * G;
+  T.layoutInfo.caption_px = [capSize];
+  /* item box for an area A: w = sqrt(A*ar), h = sqrt(A/ar); slots at least minSlot wide for the caption */
+  const dims = A => items.map((it, i) => { const a = A * mass[i]; let w = Math.sqrt(a * ar[i]), h = Math.sqrt(a / ar[i]);
+    const wMax = AW * 0.42; if (w > wMax) { h *= wMax / w; w = wMax; } return {w, h, slot: Math.max(w, minSlot)}; });
+  const pack = A => {
+    const d = dims(A), rows = [[]]; let x = 0;
+    d.forEach((b, i) => { const need = (rows[rows.length - 1].length ? g : 0) + b.slot;
+      if (x + need > AW && rows[rows.length - 1].length) { rows.push([]); x = 0; }
+      rows[rows.length - 1].push(i); x += (rows[rows.length - 1].length > 1 ? g : 0) + b.slot; });
+    const hs = rows.map(rw => Math.max(...rw.map(i => d[i].h)) + capGap + capH);
+    return {d, rows, hs, total: hs.reduce((s, v) => s + v, 0) + g * (rows.length - 1)};
+  };
+  let lo = 1000, hi = AW * AH, best = pack(lo);
+  for (let it = 0; it < 40; it++) { const mid = (lo + hi) / 2, p = pack(mid); if (p.total <= AH) { lo = mid; best = p; } else hi = mid; }
+  /* the rows share the spare height evenly; items in a row spread evenly and centre on the row's picture band */
+  const spare = (AH - best.total) / (best.rows.length + 1);
+  let y = AY + spare;
+  best.rows.forEach((rw, ri) => {
+    const bandHgt = best.hs[ri] - capGap - capH, used = rw.reduce((s, i) => s + best.d[i].slot, 0);
+    const gx = (AW - used) / (rw.length + 1);
+    let x = AX + gx;
+    for (const i of rw) {
+      const b = best.d[i], it = items[i], a = T.asset(it.asset);
+      const f = fit(a, x + (b.slot - b.w) / 2, y + (bandHgt - b.h), b.w, b.h, 1, .5, 1);
+      T.img('item' + (i + 1), it.asset, f.img, {blend: 'multiply'});
+      const c = caps[i], cwid = Math.min(b.slot + gx * 0.8, AW);
+      c.code.style.width = cwid + 'px'; c.code.style.left = (x + b.slot / 2 - cwid / 2) + 'px'; c.code.style.top = (y + bandHgt + capGap) + 'px';
+      if (c.desc) { c.desc.style.width = cwid + 'px'; c.desc.style.left = c.code.style.left; c.desc.style.top = (y + bandHgt + capGap + T.rect(c.code).h + G * 0.5) + 'px'; }
+      const q = qtyOf(it);
+      if (q && qtyStyle === 'badge') pinBadge(i, q, f.vis, {x, y, w: b.slot, h: bandHgt + capGap}, Math.round(W * 0.056));
+      x += b.slot + gx;
+    }
+    y += best.hs[ri] + g + spare;
+  });
+  T.layoutInfo.rows = best.rows.map(r => r.length);
+}
 T.watermark();
 T.finish();
 })();

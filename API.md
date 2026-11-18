@@ -125,6 +125,7 @@
 
 - `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。
 - `POST /api/projects/{id}/listing/logo`（`multipart/form-data` 的 `file`，PNG / JPG / WebP，不超过 8 MB）与 `DELETE` 同一地址。
+- `POST /api/projects/{id}/listing/extract`：`{text, language?}`。把粘贴的产品介绍（最多 8000 字）由文本模型分到产品信息各栏：`title`、`model`、`size_mm`（介绍写明的最长边，换算成毫米）、`headline`、`subline`、`features`（含对应部件）、`specs`、`figures`。只采用介绍里写到的内容：数字不在介绍里的条目被略去，写进 `drafted.notes`；`drafted.source` 为 `extracted`。提取到的栏目替换原内容，其余保留；`language` 不给时按介绍的文字判断。原文存为产品信息的 `source`（也可经 `PUT …/listing/product` 修改）。没有配置文本模型时返回错误。
 - `POST /api/projects/{id}/listing/draft`：`{hint, language, replace}`。按模型部件名称和 `hint` 起草标题、卖点、规格；配置了 AI 时由文案模型撰写。`replace` 不为 `true` 时只填空着的内容。模型给出而 `hint` 里没有的数字会被去掉。
 - `POST /api/projects/{id}/listing/build`：开始生成，返回 202 和任务；同一项目已有生成在进行时返回 409。
 - `POST /api/projects/{id}/listing/{task_id}/cancel`。

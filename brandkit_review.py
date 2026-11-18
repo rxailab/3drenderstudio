@@ -37,7 +37,7 @@ TEXT_FIELDS = ('eyebrow', 'headline', 'support', 'subhead', 'table_note', 'note'
 LISTS = {'T01': ('features', 2), 'T02': ('features', 1), 'T03': ('details', 2), 'T04': ('specs', 2), 'T05': ('items', 1), 'T08': ('items', 2)}
 ITEM_TEXT = ('title', 'body', 'name', 'label', 'text')
 COPY_KINDS = ('T01', 'T02', 'T03', 'T04', 'T08')
-COPY_LIMITS = {'zh': {'eyebrow': 6, 'headline': 14}, 'en': {'eyebrow': 18, 'headline': 34}}
+COPY_LIMITS = {'zh': {'eyebrow': 6, 'headline': 16}, 'en': {'eyebrow': 22, 'headline': 44}}
 _LOCK = threading.Lock()
 _BRIEFS = None
 
@@ -66,10 +66,11 @@ ART_DIRECTOR = (
     'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '
-    'its selling points and specs. Each page has one job (goal): its headline names the concrete thing that page shows, taken from the '
-    'selling points (a part, a material, a use), never vague praise (no "处处讲究", "品质之选", "premium quality") and never a benefit the '
-    'facts do not state (no capacity, comfort or durability claims the selling points do not make). No numbers or units at all: figures '
-    'are printed elsewhere on the page. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
+    'its selling points and specs. Each page has one job (goal): its headline says what the buyer gets from the concrete thing that '
+    'page shows, as a selling headline on an Amazon listing would ("Rolled handles that stay comfortable", not "Every key part, clearly '
+    'shown"), never a description of the picture itself, never vague praise (no "处处讲究", "品质之选", "premium quality") and never a '
+    'benefit the facts do not state (no capacity, comfort or durability claims the selling points do not make). A number may lead a headline only when '
+    'the facts give it (a size, a count, a capacity), written as the facts write it; never a number the facts do not contain. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
     '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
     '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
     'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently.')
@@ -187,6 +188,11 @@ def grounded(text, facts):
 
 # ---- copywriter ----
 
+def _numbers_in(text):
+    """The numbers in a text, by value ("2.0" is "2")."""
+    return {('%f' % float(match)).rstrip('0').rstrip('.') for match in re.findall(r'\d+(?:\.\d+)?', str(text or ''))}
+
+
 def write_copy(product, kinds):
     """{kind: {'eyebrow', 'headline'}} written for this product, or {} when no text model answers.
     Returns (copy, note)."""
@@ -208,8 +214,9 @@ def write_copy(product, kinds):
         answer = _ask(text, COPYWRITER, request, schema)
     except Exception as exc:
         return {}, '文案模型没有回应（%s），各页使用默认标题。' % str(exc)[:80]
-    written = {}; refused = 0
+    written = {}; refused = 0; why_refused = []
     titles = [' '.join(str(row.get('title', '')).split()) for row in product.get('features') or []]
+    stated = _numbers_in(json.dumps(facts, ensure_ascii=False))
     for row in answer.get('pages', []):
         kind = row.get('template')
         eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
@@ -219,14 +226,16 @@ def write_copy(product, kinds):
         too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
         # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
         repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
-        if (len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or too_many_lines
-                or re.search(r'\d', headline + eyebrow) or eyebrow and eyebrow in headline or repeats):
-            refused += 1; continue
+        reasons = [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
+                                        ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
+                                        ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
+        if reasons:
+            refused += 1; why_refused.extend(reasons); continue
         written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题超长、行数不对、含数字、眉题与标题重复或照抄卖点标题，已改用默认标题。' % refused) if refused else None
+    return written, ('有 %d 条模型写的标题没有采用（%s），已改用默认标题。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
 
 
-_LINES = {'T01': 2, 'T02': 2, 'T03': 1, 'T04': 1, 'T08': 2}
+_LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2}
 _SHOWS = {'T01': 'the whole product with callout lines to its parts', 'T02': 'dark close-ups of one or two parts',
           'T03': 'the product with a column of part close-ups (headline is the product name; only the eyebrow is used)',
           'T04': 'a usage scene above a band of up to three key figures', 'T08': 'two or three usage scenes side by side'}

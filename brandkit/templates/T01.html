@@ -3,23 +3,49 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T01 · light precision callouts. Tokens come from job.palette */
-  #canvas{--bg:#F4F4F1;--text:#1F2329;--muted:#5D666E;--line:#8E969D;--accent:#B3261E;--ring-fill:rgba(255,255,255,.9)}
-  .bgwash{position:absolute;inset:0;background:radial-gradient(120% 90% at 62% 58%, #FBFBF9 0%, var(--bg) 62%)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 100px/1.02 "Noto Sans Display",sans-serif;letter-spacing:-.012em;color:var(--text);text-wrap:balance}
-  #canvas[lang=zh] .headline{font:700 92px/1.16 "Noto Sans CJK SC",sans-serif;letter-spacing:.01em}
-  #canvas[lang=zh] .eyebrow{letter-spacing:.12em}
-  .headline.headline--long{font-size:80px}
+  /* T01 · callouts. Amazon tool-listing pattern: product large, heavy uppercase labels in the margins,
+     accent elbow leaders ending in square nodes. Frames: light (accent strip, white over split grey), band (dark header +
+     accent rule + footer), plain (studio ground). Tokens come from job.palette. */
+  #canvas{--bg:#FFFFFF;--text:#1A1A1A;--muted:#5D666E;--line:#8E969D;--accent:#B3261E;--paper:#FFFFFF;--split:#DCDDDE;
+    --leader:var(--accent);--leader-w:4;--node-stroke:#FFFFFF;--ring-gap:#FFFFFF;background:var(--paper)}
+  .ground-studio{position:absolute;inset:0;background:radial-gradient(120% 90% at 60% 55%, #FFFFFF 0%, #ECECEA 70%)}
+  .ground-split{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(to bottom, color-mix(in srgb, var(--split) 0%, var(--paper)) 0, var(--split) var(--sweep,160px), var(--split) 100%)}
+  /* anchor marker: an open accent square around the part (the part stays visible inside), white halo for dark and light grounds */
+  .mk-halo{fill:none;stroke:#FFFFFF;stroke-width:7.5;stroke-linejoin:miter;opacity:.92}
+  .mk-ring{fill:none;stroke:var(--accent);stroke-width:4;stroke-linejoin:miter}
+  .strip{position:absolute;left:0;top:0;background:var(--accent)}
+  .hdr{position:absolute;left:0;top:0;background:var(--dark)}
+  .hdr-rule{position:absolute;left:0;background:var(--accent)}
+  .ftr{position:absolute;left:0;background:var(--dark)}
+  .shadow{position:absolute;border-radius:50%;background:rgba(0,0,0,.16);filter:blur(28px)}
+
+  .eyebrow{font:700 24px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  .headline{font-family:var(--f-display);font-weight:850;font-stretch:112%;font-size:88px;line-height:.95;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--text)}
+  .headline.headline--long{font-size:72px}
+  .hdr-title{font-family:var(--f-display);font-weight:850;font-stretch:112%;line-height:1;letter-spacing:-.005em;text-transform:uppercase;
+    color:var(--cream);white-space:nowrap}
+  .lbl-title{font-family:var(--f-display);font-weight:720;font-stretch:108%;font-size:44px;line-height:1;letter-spacing:.005em;
+    text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .lbl-body{font:500 30px/1.22 var(--f-text);color:color-mix(in srgb, var(--text) 84%, transparent);text-wrap:pretty}
+  .disclaimer{font:400 22px/1.3 var(--f-text);color:var(--text);opacity:.7}
+  .ftr-text{font:400 22px/1.3 var(--f-text);color:var(--cream);opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* header badge (band frame): outlined box, big numeral + accent unit + sub, all in the display face (one family per page) */
+  .badge{position:absolute;border:5px solid rgba(244,239,227,.82)}
+  .badge-v{font-family:var(--f-display);font-weight:900;font-stretch:112%;font-size:120px;line-height:.84;letter-spacing:-.02em;color:var(--cream);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge-u{font-family:var(--f-display);font-weight:900;font-stretch:112%;font-size:46px;line-height:1;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+  .badge-s{font-family:var(--f-display);font-weight:700;font-stretch:108%;font-size:30px;line-height:1;color:var(--cream);letter-spacing:.02em;text-transform:uppercase;white-space:nowrap}
+
+  #canvas[lang=zh] .eyebrow{letter-spacing:.12em;font-weight:700}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:0;text-transform:none}
   #canvas[lang=zh] .headline.headline--long{font-size:76px}
-  .lbl-no{font:700 28px/1 "Noto Sans Display",sans-serif;color:var(--accent);letter-spacing:.06em}
-  .lbl-title{font:700 52px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .lbl-body{font:400 42px/1.24 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  #canvas[lang=zh] .lbl-title{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .lbl-body{font:400 42px/1.38 "Noto Sans CJK SC",sans-serif}
-  .rule{position:absolute;height:2px;background:var(--line)}
-  .rule-dot{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--accent)}
-  .hero{filter:none}
+  #canvas[lang=zh] .headline.headline--short{font-size:120px;line-height:1.1}
+  #canvas[lang=zh] .hdr-title{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;text-transform:none;letter-spacing:.02em}
+  #canvas[lang=zh] .lbl-title{font-family:var(--f-cjk);font-weight:700;font-stretch:100%;font-size:44px;line-height:1.18;letter-spacing:.01em;text-transform:none}
+  #canvas[lang=zh] .lbl-body{font-weight:500;font-size:30px;line-height:1.36}
+  #canvas[lang=zh] .badge-u,#canvas[lang=zh] .badge-s{font-family:var(--f-cjk);text-transform:none;letter-spacing:0}
+  .hero{}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -27,226 +53,402 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-T.el('div', {class:'bgwash'});
-const m = job.safe_margin || 84;            // safe margin (60–90 range)
-const bandH = job.demo ? 40 : 0;            // demo watermark band
-const G = 8;                                // 8px spacing unit
+const zh = (job.lang || 'en') === 'zh';
+const G = 8;
+const m = job.safe_margin ?? 72;                         // text margin
+const demoH = job.demo ? 40 : 0;
+const frame = ['light', 'band', 'plain'].includes(job.frame) ? job.frame : 'light';
 const hero = T.asset(job.hero);
-const feats = job.features.slice(0, 4);
-// auto rule: wide/horizontal silhouettes -> band rows; slender-diagonal or tall silhouettes -> free-slot (diagonal) placement
-const mode = job.mode || (hero.hull || hero.width / hero.height < 0.8 ? 'diagonal' : 'band');
-T.layoutInfo = {mode};
+const feats = (job.features || []).slice(0, 4);
+if ((job.features || []).length > 4) T.notes.push('more than 4 features: only the first 4 are called out (split the rest onto another image)');
+const plain = s => T.plain(s);
+const lineRects = e => { const rg = document.createRange(); rg.selectNodeContents(e); return [...rg.getClientRects()].filter(q => q.width > 0 && q.height > 0); };
+const lineCount = e => { let n = 0, bottom = -1e9; for (const q of lineRects(e).sort((a, b) => a.top - b.top)) { const mid = (q.top + q.bottom) / 2; if (mid > bottom) { n++; bottom = q.bottom; } else bottom = Math.max(bottom, q.bottom); } return n; };
+const inkBox = e => { const qs = lineRects(e); const b = T.rect(e); if (!qs.length) return b; const x0 = Math.min(...qs.map(q => q.left)), x1 = Math.max(...qs.map(q => q.right)); return {x: x0, y: b.y, w: x1 - x0, h: b.h}; };
+T.layoutInfo = {mode: job.mode || 'auto', frame};
 
-/* ---------- headline block (shared) ---------- */
-const headW = mode === 'diagonal' ? Math.min(W * 0.62, 900) : W - 2 * m;
-let y = m + 4;
-if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, headW, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
-const hl = T.text('headline', job.headline, m, y, headW, 'headline', {tier:'headline', maxLines: 2});
-(function lines(){ const rg = document.createRange(); rg.selectNodeContents(hl); const n = new Set([...rg.getClientRects()].map(q => Math.round(q.top))).size; if (n > 2) { hl.classList.add('headline--long'); T.notes.push('headline used the single long-headline step'); } })();
-const headBottom = T.rect(hl).y + T.rect(hl).h;
-
-/* build a label (number + title + body + hairline) at (x,y) width w; returns parts */
-function makeLabel(i, f, x, y, w, align) {
-  const id = 'lbl' + (i + 1);
-  const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'lbl-no', {tier:'meta', align});
-  const t = T.text(id + '_title', f.title, x, y + 28 + 2 * G, w, 'lbl-title', {tier:'important', maxLines: 2, align});
-  const tr = T.rect(t);
-  let bottom = tr.y + tr.h;
-  let body = null;
-  if (f.body) { body = T.text(id + '_body', f.body, x, bottom + G, w, 'lbl-body', {tier:'secondary', maxLines: 3, align}); const br = T.rect(body); bottom = br.y + br.h; }
-  return {id, no, t, body, x, y, w, h: bottom - y};
-}
-function moveLabel(L, dy) { for (const e of [L.no, L.t, L.body]) if (e) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; L.y += dy; }
-function removeLabel(L) { for (const e of [L.no, L.t, L.body]) if (e) e.remove(); }
-
-if (mode === 'diagonal') {
-  /* ---- Direction A: large rotated-diagonal product, labels in the two free triangles ---- */
-  const theta = (job.hero_rotate_deg || 0) * Math.PI / 180;
-  const cb = hero.content_bbox || [0, 0, 1, 1];
-  const top = headBottom + 4 * G;
-  const box = {x: m + (job.hero_box_left ?? 0.08) * W, y: top, w: 0, h: 0};
-  box.w = W - m - box.x; box.h = H - bandH - m * 0.7 - box.y;
-  // rotated content bbox at scale 1 (relative to image centre)
-  const rot = (x, y) => [x * Math.cos(theta) - y * Math.sin(theta), x * Math.sin(theta) + y * Math.cos(theta)];
-  const hullN = hero.hull || [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
-  const cc = hullN.map(([u, v]) => rot((u - 0.5) * hero.width, (v - 0.5) * hero.height));
-  const bx0 = Math.min(...cc.map(p => p[0])), bx1 = Math.max(...cc.map(p => p[0])), by0 = Math.min(...cc.map(p => p[1])), by1 = Math.max(...cc.map(p => p[1]));
-  const s = Math.min(box.w / (bx1 - bx0), box.h / (by1 - by0)) * (job.hero_fill ?? 1);
-  // align rotated content bbox to bottom-right of box
-  const alX = job.hero_align?.[0] ?? 1, alY = job.hero_align?.[1] ?? 1;
-  const cX = box.x + (box.w - (bx1 - bx0) * s) * alX - bx0 * s, cY = box.y + (box.h - (by1 - by0) * s) * alY - by0 * s;
-  const r = {w: hero.width * s, h: hero.height * s}; r.x = cX - r.w / 2; r.y = cY - r.h / 2; r.scale = s;
-  const im = T.img('hero', job.hero, r, {class:'hero', blend:'multiply'});
-  im.style.transform = `rotate(${job.hero_rotate_deg || 0}deg)`; im.setAttribute('data-rotate', job.hero_rotate_deg || 0);
-  const P = (u, v) => { const q = rot((u - 0.5) * r.w, (v - 0.5) * r.h); return [cX + q[0], cY + q[1]]; };
-  const axisN = hero.axis || (hero.width >= hero.height ? [[0, 0.5], [1, 0.5]] : [[0.5, 0], [0.5, 1]]);
-  const ax = axisN.map(p => P(p[0], p[1]));
-  const half = (hero.half_width || 0.25) * r.w;
-  const dir = [ax[1][0] - ax[0][0], ax[1][1] - ax[0][1]]; const len = Math.hypot(dir[0], dir[1]);
-  const nrm = [-dir[1] / len, dir[0] / len];
-  const sd = p => ((p[0] - ax[0][0]) * nrm[0] + (p[1] - ax[0][1]) * nrm[1]);
-  const along = p => ((p[0] - ax[0][0]) * dir[0] + (p[1] - ax[0][1]) * dir[1]) / len;
-  const hullP = hullN.map(([u, v]) => P(u, v));
-  const inPoly = (p) => { let c = false; for (let i = 0, j = hullP.length - 1; i < hullP.length; j = i++) { const a = hullP[i], b = hullP[j]; if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
-  const dSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
-  const dPoly = (p) => { let d = 1e9; for (let i = 0, j = hullP.length - 1; i < hullP.length; j = i++) d = Math.min(d, dSeg(p, hullP[j], hullP[i])); return d; };
-  const inStrip = (rx, ry, rw, rh, pad) => {
-    for (let a = 0; a <= 8; a++) for (let b = 0; b <= 8; b++) {
-      const p = [rx + rw * a / 8, ry + rh * b / 8];
-      if (inPoly(p) || dPoly(p) < pad) return true;
-    }
-    return false;
-  };
-  const anchors = feats.map(f => P(f.anchor[0], f.anchor[1]));
-  const lw = Math.round(Math.min(430, W * 0.29));
-  const hr = (() => { const rg = document.createRange(); rg.selectNodeContents(hl); let x1 = 0; for (const q of rg.getClientRects()) x1 = Math.max(x1, q.right); const b = T.rect(hl); return {x: b.x, y: b.y, w: x1 - b.x, h: b.h}; })();
-  const floor = H - bandH - m * 0.75;
-  const occupied = [];
-  const free = (x, y, w, h) => {
-    if (y + h > floor || y < m) return false;
-    if (x < hr.x + hr.w + 32 && y < hr.y + hr.h + 40) return false;
-    if (inStrip(x - 12, y - 12, w + 24, h + 24, 28)) return false;
-    for (const o of occupied) if (x < o.x + o.w + 24 && x + w > o.x - 24 && y < o.y + o.h + 40 && y + h > o.y - 40) return false;
-    return true;
-  };
-  // ---- scored slot search: every placement order is tried; leaders must not cross labels/headline/other leaders
-  const built = feats.map((f, i) => { const L = makeLabel(i, f, 0, 0, lw, 'left'); return L; });
-  const lineW = built.map(L => { let mx = 0; for (const e of [L.t, L.body]) { if (!e) continue; const rg = document.createRange(); rg.selectNodeContents(e); for (const q of rg.getClientRects()) mx = Math.max(mx, q.right - parseFloat(e.style.left)); } return Math.min(lw, mx); });
-  const titleOff = 28 + 2 * G + 30;          // y offset of the title's first line centre within a label
-  const xs = []; for (let k = 0; k <= 4; k++) xs.push(Math.round(m + (W - 2 * m - lw) * k / 4));
-  function portFor(i, x, y) {
-    const a = anchors[i], h = built[i].h, w = lineW[i];
-    if (a[0] > x + w + 30) return [x + w + 22, y + titleOff];
-    if (a[0] < x - 30) return [x - 22, y + titleOff];
-    return a[1] > y + h ? [Math.min(Math.max(a[0], x + 10), x + w - 10), y + h + 18] : [Math.min(Math.max(a[0], x + 10), x + w - 10), y - 18];
+/* ---------------- frame ---------------- */
+let bodyTop, bodyBottom, notch = null, footTop = H - demoH;
+if (frame === 'plain') T.el('div', {class: 'ground-studio'});
+const split = frame === 'light' ? T.el('div', {class: 'ground-split', 'data-exempt': '1'}) : null;
+if (frame === 'light') {
+  const s = T.el('div', {class: 'strip', 'data-qa': 'accent_strip', 'data-kind': 'shape', 'data-exempt': '1'}); T.box(s, 0, 0, W, 8);
+  bodyTop = 8; bodyBottom = H - demoH;
+} else if (frame === 'band') {
+  const hh = job.header_h ?? (job.badge ? 232 : 200), rule = 14, fh = 72;   // a badge gets a deeper band so it clears the 60px edge zone
+  const h0 = T.el('div', {class: 'hdr', 'data-qa': 'header_band', 'data-kind': 'shape', 'data-exempt': '1'}); T.box(h0, 0, 0, W, hh);
+  const r0 = T.el('div', {class: 'hdr-rule', 'data-qa': 'header_rule', 'data-kind': 'shape', 'data-exempt': '1'}); T.box(r0, 0, hh, W, rule);
+  footTop = H - demoH - fh;
+  const f0 = T.el('div', {class: 'ftr', 'data-qa': 'footer_band', 'data-kind': 'shape', 'data-exempt': '1'}); T.box(f0, 0, footTop, W, fh);
+  if (job.disclaimer) {
+    const d = T.text('disclaimer', plain(job.disclaimer), m, 0, W - 2 * m, 'ftr-text', {tier: 'meta', maxLines: 1});
+    d.setAttribute('data-exempt', '1');   // sits in the footer band like the frame itself (inside the 60px edge zone by design)
+    d.style.top = (footTop + (fh - T.rect(d).h) / 2) + 'px';
   }
-  function tryOrder(order) {
-    const occ = [], segs = []; let total = 0; const pos = [];
-    for (const i of order) {
-      const h = built[i].h; let best = null;
-      for (const x of xs) for (let y = m; y + h <= floor; y += 2 * G) {
-        if (!free2(x, y, lineW[i], h, occ)) continue;
-        const pt = portFor(i, x, y), a = anchors[i];
-        const seg = [pt, a];
-        let bad = false;
-        for (const o of occ) if (T.segRect(pt, a, o, 10)) { bad = true; break; }
-        if (!bad && T.segRect(pt, a, hr, 10)) bad = true;
-        if (!bad) for (const sg of segs) if (T.segIntersect(pt, a, sg[0], sg[1])) { bad = true; break; }
-        if (bad) continue;
-        const len = Math.hypot(a[0] - pt[0], a[1] - pt[1]);
-        // leaders running across the product body are allowed but penalised
-        let across = 0; for (let k = 1; k < 10; k++) { const q = [pt[0] + (a[0] - pt[0]) * k / 10, pt[1] + (a[1] - pt[1]) * k / 10]; if (inPoly(q)) across++; }
-        const score = len + across * 70 + (len < 90 ? 400 : 0);
-        if (!best || score < best.score) best = {x, y, score, pt};
+  bodyTop = hh + rule; bodyBottom = footTop;
+  // header content: a badge (job.badge) or, without one, the headline set as one cream line
+  const hdrMid = hh / 2;
+  if (job.badge) {
+    const b = typeof job.badge === 'object' ? job.badge : {value: String(job.badge)};
+    const box = T.el('div', {class: 'badge', 'data-qa': 'badge', 'data-kind': 'shape', 'data-allow': 'badge_v,badge_u,badge_s'});
+    const v = T.text('badge_v', String(b.value ?? b.text ?? ''), 0, 0, null, 'badge-v', {tier: 'headline', maxLines: 1, allow: ['badge']});
+    v.style.width = 'auto';
+    const vr = T.rect(v), padX = 26, gap = 12;
+    const bh = Math.min(136, hh - 40), by = hdrMid - bh / 2, bx = m;
+    v.style.left = (bx + padX) + 'px'; v.style.top = (by + (bh - vr.h) / 2 + 2) + 'px';
+    let right = bx + padX + vr.w;
+    if (b.unit) { const u = T.text('badge_u', String(b.unit), right + gap, by + 20, null, 'badge-u', {tier: 'important', maxLines: 1, allow: ['badge']}); u.style.width = 'auto'; right = Math.max(right, right + gap + T.rect(u).w); }
+    if (b.sub) { const s = T.text('badge_s', String(b.sub), bx + padX + vr.w + gap, 0, null, 'badge-s', {tier: 'secondary', maxLines: 1, allow: ['badge']}); s.style.width = 'auto'; s.style.top = (by + bh - 20 - T.rect(s).h) + 'px'; right = Math.max(right, bx + padX + vr.w + gap + T.rect(s).w); }
+    T.box(box, bx, by, right + padX - bx, bh);
+    // the rest of the band carries the headline, right-aligned on one line, when it fits at 40px or more
+    if (job.headline && job.show_headline !== false && job.badge_headline !== false) {
+      const x0 = right + padX + 56, wAv = W - m - x0;
+      let txt = String(job.headline); if (zh) txt = txt.replace(/[，、；：,;:]\s*\n/g, '\n');
+      if (wAv > 300) {
+        // one line from 60px down to 40px; else the written two lines (white-space: pre-line) from 52px down to 40px
+        const one = txt.replace(/\s*\n\s*/g, zh ? '' : ' ');
+        let e = T.text('headline', one, x0, 0, wAv, 'hdr-title', {tier: 'headline', maxLines: 1, align: 'right'});
+        const fits = () => e.scrollWidth <= e.clientWidth + 1 && T.rect(e).h <= hh - 2 * m + 24;
+        let fs = 60; e.style.fontSize = fs + 'px';
+        while (!fits() && fs > 40) { fs -= 4; e.style.fontSize = fs + 'px'; }
+        if (!fits() && /\n/.test(txt)) {
+          e.remove(); e = T.text('headline', txt.trim(), x0, 0, wAv, 'hdr-title', {tier: 'headline', maxLines: 2, align: 'right'});
+          e.style.whiteSpace = 'pre-line'; e.style.lineHeight = '1.05';
+          fs = 52; e.style.fontSize = fs + 'px';
+          while (!fits() && fs > 40) { fs -= 4; e.style.fontSize = fs + 'px'; }
+        }
+        if (!fits()) { e.remove(); T.notes.push('headline does not fit beside the badge; band shows the badge only'); }
+        else e.style.top = (hdrMid - T.rect(e).h / 2) + 'px';
       }
-      if (!best) return null;
-      pos[i] = best; total += best.score;
-      occ.push({x: best.x, y: best.y, w: lineW[i], h: built[i].h}); segs.push([best.pt, anchors[i]]);
     }
-    return {pos, total};
+  } else if (job.headline && job.show_headline !== false) {
+    const txt = String(job.headline).replace(/\s*\n\s*/g, zh ? '' : ' ');
+    const e = T.text('headline', txt, m, 0, W - 2 * m, 'hdr-title', {tier: 'headline', maxLines: 1});
+    let fs = 72; e.style.fontSize = fs + 'px';
+    while (e.scrollWidth > e.clientWidth + 1 && fs > 44) { fs -= 4; e.style.fontSize = fs + 'px'; }
+    e.style.top = (hdrMid - T.rect(e).h / 2) + 'px';
   }
-  function free2(x, y, w, h, occ) {
-    if (y + h > floor || y < m) return false;
-    if (x < hr.x + hr.w + 32 && y < hr.y + hr.h + 40) return false;
-    if (inStrip(x - 12, y - 12, w + 24, h + 24, 28)) return false;
-    for (const o of occ) if (x < o.x + o.w + 40 && x + w > o.x - 40 && y < o.y + o.h + 48 && y + h > o.y - 48) return false;
-    return true;
-  }
-  let bestAll = null;
-  for (const ord of T.permutations(feats.map((f, i) => i))) { const r_ = tryOrder(ord); if (r_ && (!bestAll || r_.total < bestAll.total)) bestAll = r_; }
-  const labels = [], zones = [];
-  if (!bestAll) T.notes.push('no collision-free label arrangement; split features across images or switch to band mode');
-  feats.forEach((f, i) => {
-    const L = built[i]; const ps = bestAll ? bestAll.pos[i] : {x: m, y: floor - L.h, pt: [m, floor]};
-    for (const e of [L.no, L.t, L.body]) if (e) e.style.left = ps.x + 'px';
-    L.x = ps.x; moveLabel(L, ps.y - L.y); labels[i] = L; zones[i] = ps.x + lw / 2 < W / 2 ? 'L' : 'R';
-    T.leader('ldr' + (i + 1), [ps.pt, anchors[i]], L.id, 'a' + (i + 1));
-    T.svgEl('circle', {cx: ps.pt[0], cy: ps.pt[1], r: 5, class: 'anchor-dot'});
-    T.anchorDot('a' + (i + 1), anchors[i][0], anchors[i][1]);
-  });
-  function measureLine(L) {
-    let mx = 0; for (const e of [L.t, L.body]) { if (!e) continue; const rg = document.createRange(); rg.selectNodeContents(e); for (const q of rg.getClientRects()) mx = Math.max(mx, q.right - L.x); }
-    return mx;
-  }
-  const hp = hullP;
-  T.layoutInfo.zones = zones; T.layoutInfo.hero_rect = r; T.layoutInfo.hero_rotate_deg = job.hero_rotate_deg || 0; T.layoutInfo.hero_content_quad = hp;
-} else {
-  /* ---- Direction B: complete product in a central band; labels in rows above/below ---- */
-  const rowGap = 7 * G;
-  // provisional label height to reserve rows
-  const n = feats.length;
-  const prodTop0 = headBottom + 10 * G;
-  const r0 = T.contain(hero, m, 0, W - 2 * m, 10, 0.5, 0.5); // just for aspect
-  const anchorsN = feats.map(f => f.anchor);
-  // assign rows: anchors in the upper half of the product go above, lower half below; balance
-  let rows = anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below');
-  const maxPerRow = Math.ceil(n / 2);
-  for (const R of ['above', 'below']) {
-    let idx = rows.map((z, i) => z === R ? i : -1).filter(i => i >= 0);
-    while (idx.length > maxPerRow) { idx.sort((a, b) => Math.abs(anchorsN[a][1] - 0.5) - Math.abs(anchorsN[b][1] - 0.5)); const k = idx.shift(); rows[k] = R === 'above' ? 'below' : 'above'; }
-  }
-  // revision r2: with <=2 labels whose anchors sit on the same side, use one row so the product keeps its height
-  if (n <= 2 && new Set(anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below')).size === 1) rows = anchorsN.map(a => a[1] < 0.5 ? 'above' : 'below');
-  const perRow = Math.max(rows.filter(z => z === 'above').length, rows.filter(z => z === 'below').length, 1);
-  const lw = Math.round(Math.min(perRow <= 2 ? 560 : 420, (W - 2 * m - (perRow - 1) * 6 * G) / perRow));
-  // build labels at temp positions to measure heights
-  const labels = feats.map((f, i) => makeLabel(i, f, m, 0, lw, 'left'));
-  const hAbove = Math.max(0, ...labels.filter((L, i) => rows[i] === 'above').map(L => L.h));
-  const hBelow = Math.max(0, ...labels.filter((L, i) => rows[i] === 'below').map(L => L.h));
-  const aboveTop = prodTop0;
-  const bottomLimit = H - bandH - m * 0.75;
-  const prodTop = aboveTop + (hAbove ? hAbove + rowGap : 0);
-  const prodBottom = bottomLimit - (hBelow ? hBelow + rowGap : 0);
-  const r = T.contain(hero, m, prodTop, W - 2 * m, prodBottom - prodTop, 0.5, 0.5);
-  T.img('hero', job.hero, r, {class:'hero', blend:'multiply'});
-  // distribute labels horizontally near their anchors, no overlap
-  for (const R of ['above', 'below']) {
-    const idx = rows.map((z, i) => z === R ? i : -1).filter(i => i >= 0).sort((a, b) => anchorsN[a][0] - anchorsN[b][0]);
-    const gap = 6 * G;
-    // revision r1: snap label columns to a shared grid so both rows align with the headline edge
-    const steps = Math.max(1, Math.floor((W - 2 * m - lw) / (lw * 0.5 + gap)));
-    const grid = []; for (let k = 0; k <= steps; k++) grid.push(Math.round(m + (W - 2 * m - lw) * k / steps));
-    let xs = [], last = -1e9;
-    idx.forEach((i, k) => {
-      const want = r.x + anchorsN[i][0] * r.w - lw * 0.3;
-      const remaining = idx.length - k - 1;
-      const ok = grid.filter(g => g >= last + lw + gap && g <= W - m - lw - remaining * (lw + gap) + 0.5);
-      const pick = ok.length ? ok.reduce((a, b) => Math.abs(b - want) < Math.abs(a - want) ? b : a) : Math.max(last + lw + gap, m);
-      xs.push(pick); last = pick;
-    });
-    idx.forEach((i, k) => {
-      const L = labels[i];
-      const yTarget = R === 'above' ? (r.y - rowGap - hAbove) : (r.y + r.h + rowGap);
-      for (const e of [L.no, L.t, L.body]) if (e) e.style.left = xs[k] + 'px';
-      L.x = xs[k]; moveLabel(L, yTarget - L.y);
-    });
-  }
-  // orthogonal leaders: vertical from label edge, elbow at mid gap
-  feats.forEach((f, i) => {
-    const L = labels[i];
-    const a = [r.x + f.anchor[0] * r.w, r.y + f.anchor[1] * r.h];
-    const px = Math.min(Math.max(a[0], L.x + 14), L.x + lw - 14);
-    let pts;
-    if (rows[i] === 'above') {
-      const py = L.y + L.h + 3 * G; const ey = (py + r.y) / 2;
-      pts = Math.abs(px - a[0]) < 1 ? [[px, py], a] : [[px, py], [px, ey], [a[0], ey], a];
-    } else {
-      const py = L.y - 3 * G; const ey = r.y + r.h + rowGap / 2;
-      pts = Math.abs(px - a[0]) < 1 ? [[px, py], a] : [[px, py], [px, ey], [a[0], ey], a];
-    }
-    T.leader('ldr' + (i + 1), pts, L.id, 'a' + (i + 1));
-    T.svgEl('circle', {cx: pts[0][0], cy: pts[0][1], r: 5, class: 'anchor-dot'});
-    T.anchorDot('a' + (i + 1), a[0], a[1]);
-  });
-  T.layoutInfo.rows = rows; T.layoutInfo.hero_rect = r;
 }
-// number labels in reading order (top-to-bottom, then left-to-right)
-(function renumber(){
-  const ls = [...document.querySelectorAll('.lbl-no')].map(e => ({e, x: parseFloat(e.style.left), y: parseFloat(e.style.top)}));
-  const rowTol = 160;
-  ls.sort((a, b) => Math.abs(a.y - b.y) < rowTol ? a.x - b.x : a.y - b.y);
-  ls.forEach((o, k) => o.e.textContent = String(k + 1).padStart(2, '0'));
-})();
+if (frame !== 'band') {
+  bodyTop = frame === 'light' ? 8 : 0; bodyBottom = H - demoH;
+  // headline notch, top-left: eyebrow + h1
+  const headW = Math.round(W * (zh ? 0.56 : 0.62));
+  let y = m;
+  const parts = [];
+  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, headW, 'eyebrow', {tier: 'meta', maxLines: 1}); parts.push(e); y += T.rect(e).h + 3 * G; }
+  if (job.headline && job.show_headline !== false) {
+    // two-tone (P5): without markup of its own, a written two-line headline sets its first line in the accent
+    let htxt = String(job.headline);
+    if (zh) htxt = htxt.replace(/[，、；：,;:]\s*\n/g, '\n');     // a clause mark does not hang at a line break
+    if (job.two_tone !== false && !/\[\[|\{/.test(htxt) && /\n/.test(htxt.trim())) { const k = htxt.indexOf('\n'); htxt = '[[' + htxt.slice(0, k).trim() + ']]\n' + htxt.slice(k + 1).trim(); }
+    const hl = T.text('headline', htxt, m, y, headW, 'headline', {tier: 'headline', maxLines: 2});
+    if (lineCount(hl) > 2) { hl.classList.add('headline--long'); T.notes.push('headline used the compact step (72px)'); }
+    else if (zh && Math.max(...T.plain(htxt).split('\n').map(l => l.trim().length)) <= 6) {
+      hl.classList.add('headline--short');               // a short zh headline is set larger so it holds its corner
+      if (lineCount(hl) > 2 || hl.scrollWidth > hl.clientWidth + 1) hl.classList.remove('headline--short');
+    }
+    parts.push(hl);
+    if (job._lines === 'stock') T.notes.push('headline is a stock line (fallback copy); a product-data headline reads stronger');
+  }
+  if (parts.length) {
+    const bs = parts.map(inkBox);
+    const x1 = Math.max(...bs.map(b => b.x + b.w)), y1 = Math.max(...bs.map(b => b.y + b.h));
+    notch = {x: m, y: m, w: x1 - m, h: y1 - m};
+  }
+}
+// disclaimer on light / plain frames: one or two small lines on the bottom edge
+let discTop = bodyBottom;
+if (frame !== 'band' && job.disclaimer) {
+  const d = T.text('disclaimer', plain(job.disclaimer), m, 0, W - 2 * m, 'disclaimer', {tier: 'meta', maxLines: 2});
+  const dh = T.rect(d).h; d.style.top = (H - demoH - 62 - dh) + 'px'; discTop = H - demoH - 62 - dh;
+}
+
+/* ---------------- labels: build once, measure ---------------- */
+const lw = Math.round(job.label_width ?? Math.min(420, W * 0.35));    // wide enough that a two-word title stays on one line
+const lwMax = Math.round(Math.min(500, W * 0.38));
+const insetR = Math.round(job.inset_r ?? (W >= 1400 ? 140 : 124));
+const ringPad = 12;
+let insetsLeft = 2;
+const labels = feats.map((f, i) => {
+  const id = 'lbl' + (i + 1);
+  const inset = !!(f.detail_asset && (job.assets || {})[f.detail_asset] && insetsLeft-- > 0);
+  const top0 = inset ? 2 * insetR + 2 * ringPad + 3 * G : 0;
+  const t = T.text(id + '_title', f.title, m, top0, lw, 'lbl-title', {tier: 'important', maxLines: 3});
+  // a title that would stack 3+ lines gets a wider column (up to lwMax) when that saves a line
+  let lwi = lw;
+  if (job.label_width == null && lineCount(t) >= 3) { t.style.width = lwMax + 'px'; if (lineCount(t) < 3) lwi = lwMax; else t.style.width = lw + 'px'; }
+  let bottom = T.rect(t).y + T.rect(t).h, body = null; const hT = bottom;
+  let wT = 0; for (const q of lineRects(t)) wT = Math.max(wT, q.right - m);
+  if (f.body && !inset) { body = T.text(id + '_body', zh ? f.body : String(f.body).replace(/(\w)-(\w)/g, '$1\u2011$2'), m, bottom + 1.5 * G, lwi, 'lbl-body', {tier: 'secondary', maxLines: 2}); bottom = T.rect(body).y + T.rect(body).h; }
+  const firstLine = lineRects(t).sort((a, b) => a.top - b.top)[0];
+  const tOff = firstLine ? (firstLine.top + firstLine.bottom) / 2 : top0 + 22;
+  let textW = 0; for (const e of [t, body]) if (e) for (const q of lineRects(e)) textW = Math.max(textW, q.right - m);
+  const wInk = Math.max(Math.min(lwi, Math.ceil(textW)), inset ? 2 * insetR + 2 * ringPad : 0);
+  if (lineCount(t) > 3 || (body && lineCount(body) > 2)) T.notes.push(id + ' copy is longer than the label budget');
+  // the leader stops just short of the first title line's ink (ragged edge), not of the block's widest line
+  const fw = firstLine ? Math.ceil(firstLine.right - firstLine.left) : wInk;
+  const wTi = Math.max(Math.min(lwi, Math.ceil(wT)), inset ? 2 * insetR + 2 * ringPad : 0);
+  return {id, f, i, t, body, lw: lwi, inset, top0, h: bottom, tOff, w: wInk, fw: inset ? wInk : Math.min(wInk, fw), hFull: bottom, wFull: wInk, hT, wT: wTi};
+});
+
+/* ---------------- product geometry ---------------- */
+const theta = (job.hero_rotate_deg || 0) * Math.PI / 180;
+const cb = hero.content_bbox || [0, 0, 1, 1];
+const hullN = hero.hull || [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
+const rot = (x, y) => [x * Math.cos(theta) - y * Math.sin(theta), x * Math.sin(theta) + y * Math.cos(theta)];
+const cc = hullN.map(([u, v]) => rot((u - 0.5) * hero.width, (v - 0.5) * hero.height));
+const bx0 = Math.min(...cc.map(p => p[0])), bx1 = Math.max(...cc.map(p => p[0])), by0 = Math.min(...cc.map(p => p[1])), by1 = Math.max(...cc.map(p => p[1]));
+const cW = bx1 - bx0, cH = by1 - by0;
+const inPoly = (poly, p) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+const rectHitsPoly = (poly, r, pad) => {
+  const x0 = r.x - pad, y0 = r.y - pad, x1 = r.x + r.w + pad, y1 = r.y + r.h + pad;
+  for (const p of poly) if (p[0] > x0 && p[0] < x1 && p[1] > y0 && p[1] < y1) return true;
+  if (inPoly(poly, [x0, y0]) || inPoly(poly, [x1, y0]) || inPoly(poly, [x1, y1]) || inPoly(poly, [x0, y1])) return true;
+  const rr = {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) if (T.segRect(poly[j], poly[i], rr, 0)) return true;
+  return false;
+};
+const overPoly = (poly, a, b) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 8)); let k = 0; for (let s = 0; s < n; s++) { const t = (s + 0.5) / n; if (inPoly(poly, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])) k++; } return L * k / n; };
+const distSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+const rectsHit = (a, b, gx, gy) => a.x < b.x + b.w + gx && a.x + a.w > b.x - gx && a.y < b.y + b.h + gy && a.y + a.h > b.y - gy;
+
+// the box the product may use (edges at m/2), the bottom kept clear of the disclaimer / footer
+const px0 = m * 0.5, px1 = W - m * 0.5;
+const py0 = bodyTop + (frame === 'band' ? 3 * G : m * 0.5);
+const py1 = Math.min(bodyBottom, discTop) - (frame === 'band' ? 4 * G : m * 0.5);
+const fill = job.hero_fill ?? 1.15;
+const targetH = Math.min(py1 - py0, H * 0.62 * fill);
+const s0 = Math.min(targetH / cH, (px1 - px0) / cW, 1.25);
+const labTop = (frame === 'band' ? bodyTop + 6 * G : m);
+const labBot = Math.min(bodyBottom - (frame === 'band' ? 5 * G : m), discTop - 3 * G) ;
+
+function placement(sf, ax, ay) {
+  const s = s0 * sf, w = cW * s, h = cH * s;
+  const cX = px0 + (px1 - px0 - w) * ax - bx0 * s, cY = py0 + (py1 - py0 - h) * ay - by0 * s;
+  const P = (u, v) => { const q = rot((u - 0.5) * hero.width * s, (v - 0.5) * hero.height * s); return [cX + q[0], cY + q[1]]; };
+  const hull = hullN.map(([u, v]) => P(u, v));
+  return {s, sf, ax, ay, cX, cY, P, hull, cbox: {x: cX + bx0 * s, y: cY + by0 * s, w, h}, anchors: feats.map(f => P(f.anchor[0], f.anchor[1]))};
+}
+
+/* ---------------- label slot search ---------------- */
+function solve(pl) {
+  if (notch && rectHitsPoly(pl.hull, notch, 28)) return null;
+    const sideOK = {};          // cache label rect vs product per (label, side, y)
+  const candidates = labels.map((L, i) => {
+    const out = [], a = pl.anchors[i];
+    const ys = []; for (let y = labTop; y + L.h <= labBot; y += G) ys.push(y);
+    const yA = Math.round((a[1] - L.tOff) * 10) / 10; if (yA >= labTop && yA + L.h <= labBot) ys.push(yA);
+    for (const side of ['L', 'R']) for (const y of ys) {
+      const x = side === 'L' ? m : W - m - L.w;
+      const rect = {x, y, w: L.w, h: L.h};
+      if (rectHitsPoly(pl.hull, rect, 28)) continue;
+      if (notch && rectsHit(rect, notch, 64, 56)) continue;     // clear of the headline; beside it is allowed
+      const ty = y + L.tOff;
+      const inner = side === 'L' ? x + L.w : x;          // inner edge of the text block
+      const innerT = side === 'L' ? m + L.fw : W - m - L.fw;   // inner edge of the first title line
+      const dir = side === 'L' ? 1 : -1;
+      // side port, at the first title line
+      const ps = [innerT + dir * 22, ty];
+      if ((a[0] - ps[0]) * dir > 24) {
+        const straight = Math.abs(a[1] - ty) < 0.5;
+        const pts = straight ? [ps, a] : [ps, [a[0], ps[1]], a];
+        out.push({side, y, rect, pts, end: a, bends: straight ? 0 : 1});
+      }
+      // top / bottom port, near the inner end of the label: vertical run then horizontal into the part
+      const rx = inner - dir * 30;
+      if ((a[0] - rx) * dir > 40) {
+        if (a[1] < y - 40) out.push({side, y, rect, pts: [[rx, y - 20], [rx, a[1]], a], end: a, bends: 1, vport: true});
+        if (a[1] > y + L.h + 40) out.push({side, y, rect, pts: [[rx, y + L.h + 20], [rx, a[1]], a], end: a, bends: 1, vport: true});
+      }
+    }
+    // cost of each candidate in isolation
+    for (const c of out) {
+      let len = 0, over = 0;
+      for (let k = 0; k + 1 < c.pts.length; k++) { len += Math.hypot(c.pts[k + 1][0] - c.pts[k][0], c.pts[k + 1][1] - c.pts[k][1]); over += overPoly(pl.hull, c.pts[k], c.pts[k + 1]); }
+      let bad = notch && c.pts.some((p, k) => k + 1 < c.pts.length && T.segRect(p, c.pts[k + 1], notch, 14));
+      // a line must not run back across its own label
+      if (!bad) for (let k = 1; k + 1 < c.pts.length; k++) if (T.segRect(c.pts[k], c.pts[k + 1], c.rect, 10)) bad = true;
+      if (c.vport && T.segRect(c.pts[0], c.pts[1], c.rect, -2)) bad = true;
+      c.bad = bad;
+      c.len = len; c.over = over;
+      c.cost = len + (len > 0.25 * W ? 600 : 0) + c.bends * 70 + over * 1.6 + (c.vport ? 120 : 0) + (len < 80 ? 300 : 0)
+        + (c.vport && Math.abs(c.pts[1][1] - c.pts[0][1]) < 72 ? 420 : 0);   // a short hook under a label reads as a stray tick
+    }
+    return out.filter(c => !c.bad).sort((p, q) => p.cost - q.cost);
+  });
+  if (candidates.some(c => !c.length)) return null;
+  let best = null;
+  for (const order of T.permutations(labels.map((L, i) => i))) {
+    const pos = [], segs = []; let total = 0, ok = true;
+    for (const i of order) {
+      let pick = null;
+      for (const c of candidates[i]) {
+        if (best && total + c.cost >= best.total) break;
+        let bad = false;
+        for (const j of order) { const q = pos[j]; if (!q) continue;
+          if (rectsHit(c.rect, q.rect, 24, 60)) { bad = true; break; }
+          for (let k = 0; k + 1 < c.pts.length && !bad; k++) if (T.segRect(c.pts[k], c.pts[k + 1], q.rect, 12)) bad = true;
+          for (let k = 0; k + 1 < q.pts.length && !bad; k++) if (T.segRect(q.pts[k], q.pts[k + 1], c.rect, 12)) bad = true;
+          if (bad) break;
+        }
+        if (!bad) for (const sg of segs) { for (let k = 0; k + 1 < c.pts.length; k++) if (T.segIntersect(c.pts[k], c.pts[k + 1], sg[0], sg[1]) || (Math.abs(sg[0][1] - sg[1][1]) < 1 && Math.abs(c.pts[k][1] - c.pts[k + 1][1]) < 1 && Math.abs(sg[0][1] - c.pts[k][1]) < 14 && Math.min(Math.max(sg[0][0], sg[1][0]), Math.max(c.pts[k][0], c.pts[k + 1][0])) > Math.max(Math.min(sg[0][0], sg[1][0]), Math.min(c.pts[k][0], c.pts[k + 1][0])))) { bad = true; break; } if (bad) break; }
+        // keep lines clear of the other nodes
+        if (!bad) for (const j of order) { if (j === i) continue; const an = pl.anchors[j];
+          for (let k = 0; k + 1 < c.pts.length; k++) if (distSeg(an, c.pts[k], c.pts[k + 1]) < 22) { bad = true; break; } if (bad) break; }
+        if (!bad) for (const j of order) { const q = pos[j]; if (!q) continue; for (let k = 0; k + 1 < q.pts.length; k++) if (distSeg(c.end, q.pts[k], q.pts[k + 1]) < 22) { bad = true; break; } if (bad) break; }
+        if (bad) continue;
+        pick = c; break;
+      }
+      if (!pick) { ok = false; break; }
+      pos[i] = pick; total += pick.cost; for (let k = 0; k + 1 < pick.pts.length; k++) segs.push([pick.pts[k], pick.pts[k + 1]]);
+    }
+    if (ok && (!best || total < best.total)) best = {pos, total};
+  }
+  return best;
+}
+// The floor starts at the product's base: the lowest front edge of its footprint (hull points in the bottom 18% of the
+// box, the highest of those), so the product stands on the grey instead of being cut by a stripe. A soft sweep blends it in.
+function footprint(pl) {
+  const b = pl.cbox, low = pl.hull.filter(p => p[1] > b.y + b.h * 0.82);
+  const ys = low.map(p => p[1]), xs = low.map(p => p[0]);
+  return {top: Math.min(...ys), bottom: b.y + b.h, x0: Math.min(...xs), x1: Math.max(...xs)};
+}
+const sweep = Math.round(job.floor_sweep ?? 0.11 * H);
+function splitFor(pl) {
+  const y = footprint(pl).top - sweep * 0.55;
+  return Math.round(Math.max(H * 0.42, Math.min(H * 0.86, y)));
+}
+
+const wantAlign = job.hero_align;            // optional [ax, ay] override
+const axs = wantAlign ? [wantAlign[0]] : (job.mode === 'band' ? [0.5, 0.6, 0.4, 0.72, 0.28, 0.86, 0.14, 1, 0] : [0.5, 0.64, 0.36, 0.78, 0.22, 0.9, 0.1, 1, 0]);
+// vertical: the preferred spot puts the product's top about 60px under the headline (no dead band between them);
+// lower spots are still tried so the labels can find room
+const ayTop = sf => { if (!notch) return 0; const h = cH * s0 * sf, room = py1 - py0 - h; return room <= 0 ? 0 : Math.max(0, Math.min(1, (notch.y + notch.h + 60 - py0) / room)); };
+const aysFor = sf => { if (wantAlign) return [wantAlign[1]]; const a = ayTop(sf), out = [a, a + (1 - a) * 0.33, a + (1 - a) * 0.66, 1, 0.7, 0.4];
+  return out.filter((v, k) => out.findIndex(w => Math.abs(w - v) < 0.04) === k); };
+// A size is accepted only when its leaders read cleanly: none longer than maxLen, none running over more of the product
+// than overMax of its width (the renderer flags 45%). Otherwise a smaller product is tried; the best messy layout is the fallback.
+const maxLen = (job.leader_max ?? 0.45) * W, overMax = 0.42;
+const clean = (sol, pl) => sol.pos.every(p => !p || p.len == null || (p.len <= maxLen && p.over <= overMax * pl.cbox.w));
+function search() {
+  let fallback = null;
+  for (const sf of [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6]) {
+    let best = null;
+    const ays = aysFor(sf), aPref = ays[0];
+    for (const ax of axs) for (const ay of ays) {
+      const pl = placement(sf, ax, ay);
+      const pen = Math.abs(ax - 0.5) * 500 + Math.abs(ay - aPref) * 260 + (1 - sf) * 3000;
+      if (best && pen >= best.score) continue;
+      const sol = feats.length ? solve(pl) : {pos: [], total: 0};
+      if (!sol) continue;
+      const score = sol.total + pen;
+      if (!fallback || (fallback.pl.sf === sf && score < fallback.score)) fallback = {pl, sol, score};
+      if (!clean(sol, pl)) continue;
+      if (!best || score < best.score) best = {pl, sol, score};
+    }
+    if (best) return {chosen: best};      // largest product size whose labels all fit with clean leaders wins
+  }
+  return {chosen: fallback, messy: !!fallback};
+}
+// Label bodies are optional (job.label_body: 'auto' | true | false). In auto, a page whose product would shrink below
+// 86% of its target size with the bodies is laid out again with titles only, and keeps whichever gives the larger product.
+const setBodies = on => { for (const L of labels) { const use = on && L.body; L.h = use ? L.hFull : L.hT; L.w = use ? L.wFull : L.wT; } };
+const bodyMode = job.label_body ?? 'auto';
+setBodies(bodyMode !== false);
+let res = search(), bodiesOff = bodyMode === false;
+if (bodyMode === 'auto' && labels.some(L => L.body) && (!res.chosen || res.messy || res.chosen.pl.sf < 0.86)) {
+  setBodies(false);
+  const r2 = search();
+  const better = r2.chosen && (!res.chosen || (res.messy && !r2.messy) || (r2.messy === !!res.messy && r2.chosen.pl.sf > res.chosen.pl.sf + 0.01));
+  if (better) { res = r2; bodiesOff = true; T.notes.push('label bodies dropped so the product keeps ' + Math.round(r2.chosen.pl.sf * 100) + '% of its size'); }
+  else setBodies(true);
+}
+if (bodiesOff) for (const L of labels) if (L.body) { L.body.remove(); L.body = null; }
+let chosen = res.chosen;
+if (res.messy) T.notes.push('no layout with short leaders; kept the largest product that fits every label');
+if (!chosen) {
+  T.notes.push('no collision-free label arrangement; split features across images');
+  const pl = placement(0.65, 1, 1);
+  let y = labTop; const pos = labels.map((L, i) => { const p = {side: 'L', y, rect: {x: m, y, w: L.w, h: L.h}, pts: [[m + L.w + 26, y + L.tOff], pl.anchors[i]]}; y += L.h + 60; return p; });
+  chosen = {pl, sol: {pos, total: 0}, score: 0};
+}
+const pl = chosen.pl;
+if (pl.sf < 1) T.notes.push('product reduced to ' + Math.round(pl.sf * 100) + '% of its target size so every label fits');
+
+/* ---------------- place everything ---------------- */
+if (split) { const sy = splitFor(pl); T.box(split, 0, sy, W, H - sy); split.style.setProperty('--sweep', sweep + 'px'); T.layoutInfo.split_y = sy; }
+if (job.contact_shadow !== false && !theta) {
+  // seated on the footprint: spans the base's front edge, centred a little above the lowest point
+  // an ellipse laid along the base's long front edge (leftmost low point to lowest point, or lowest to rightmost)
+  const sh = T.el('div', {class: 'shadow', 'data-exempt': '1'});
+  const b = pl.cbox, low = pl.hull.filter(p => p[1] > b.y + b.h * 0.8);
+  const lo = low.reduce((u, p) => p[1] > u[1] ? p : u), lf = low.reduce((u, p) => p[0] < u[0] ? p : u), rt = low.reduce((u, p) => p[0] > u[0] ? p : u);
+  const [e0, e1] = Math.hypot(lo[0] - lf[0], lo[1] - lf[1]) >= Math.hypot(rt[0] - lo[0], rt[1] - lo[1]) ? [lf, lo] : [lo, rt];
+  const len = Math.hypot(e1[0] - e0[0], e1[1] - e0[1]), ang = Math.atan2(e1[1] - e0[1], e1[0] - e0[0]) * 180 / Math.PI;
+  const sw = Math.max(b.w * 0.5, len * 1.08), shH = 44, mx = (e0[0] + e1[0]) / 2, my = (e0[1] + e1[1]) / 2 - 6;
+  T.box(sh, mx - sw / 2, my - shH / 2, sw, shH); sh.style.transform = `rotate(${ang.toFixed(2)}deg)`;
+}
+const r = {w: hero.width * pl.s, h: hero.height * pl.s}; r.x = pl.cX - r.w / 2; r.y = pl.cY - r.h / 2; r.scale = pl.s;
+// The hero is a render on white (RGB). On the split / studio grounds a multiply blend would tint the product where it
+// crosses the grey, so the white backdrop is keyed out instead (alpha from luminance; anything below ~93% stays opaque).
+const keyed = frame !== 'band' && job.hero_key !== false && !hero.alpha;
+if (keyed) {
+  const k = job.hero_key_gain ?? 14;
+  const ns = 'http://www.w3.org/2000/svg', holder = document.createElementNS(ns, 'svg');
+  holder.setAttribute('width', 0); holder.setAttribute('height', 0); holder.style.position = 'absolute';
+  const defs = document.createElementNS(ns, 'defs'); holder.appendChild(defs); T.root.appendChild(holder);
+  const flt = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+  flt.setAttribute('id', 'whiteKey'); flt.setAttribute('color-interpolation-filters', 'sRGB');
+  const cm = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+  cm.setAttribute('type', 'matrix');
+  cm.setAttribute('values', `1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ${-k / 3} ${-k / 3} ${-k / 3} 0 ${k}`);
+  for (const [k2, v] of [['x', 0], ['y', 0], ['width', 1], ['height', 1]]) flt.setAttribute(k2, v);
+  cm.setAttribute('in', 'SourceGraphic'); cm.setAttribute('result', 'keyed');
+  const cp = document.createElementNS(ns, 'feComposite');      // keep transparent input transparent
+  cp.setAttribute('in', 'keyed'); cp.setAttribute('in2', 'SourceAlpha'); cp.setAttribute('operator', 'in');
+  flt.appendChild(cm); flt.appendChild(cp); defs.appendChild(flt);
+}
+const im = T.img('hero', job.hero, r, {class: 'hero', blend: keyed ? '' : 'multiply'});
+if (keyed) im.style.filter = 'url(#whiteKey)';
+if (theta) { im.style.transform = `rotate(${job.hero_rotate_deg}deg)`; im.setAttribute('data-rotate', job.hero_rotate_deg); }
+T.layoutInfo.hero_rect = r; T.layoutInfo.hero_content_quad = pl.hull; T.layoutInfo.hero_fill_factor = pl.sf; T.layoutInfo.hero_align = [pl.ax, pl.ay];
+
+const zones = [];
+labels.forEach((L, i) => {
+  const p = chosen.sol.pos[i];
+  const right = p.side === 'R';
+  for (const e of [L.t, L.body]) if (e) {
+    e.style.top = (parseFloat(e.style.top) + p.y) + 'px';
+    if (right) { e.style.left = (W - m - L.lw) + 'px'; e.style.textAlign = 'right'; }
+  }
+  if (L.inset) {
+    const f = L.f, cx = right ? W - m - ringPad - insetR : m + ringPad + insetR, cy = p.y + ringPad + insetR;
+    const fr = T.circleInset('inset' + (i + 1), f.detail_asset, cx, cy, insetR, {fx: (f.focus || [0.5, 0.5])[0], fy: (f.focus || [0.5, 0.5])[1]});
+    fr.frame.setAttribute('data-allow', [L.id + '_title'].join(','));
+  }
+  zones[i] = p.side;
+  const pts = p.pts;
+  const a = p.end || pts[pts.length - 1];
+  const prefer = p.vport ? 'vh' : 'hv';
+  const drawn = T.elbowLeader('ldr' + (i + 1), pts[0], a, L.id, 'a' + (i + 1), prefer);
+  marker('ldr' + (i + 1), drawn, a);
+});
+// One marker style for every anchor: an open accent square (with a white halo) framing the part, so a small part such as
+// a rivet stays visible inside it; the drawn line stops at the square's edge (the QA geometry keeps the full line).
+function marker(id, pts, a) {
+  const svg = T.svg(), R = Math.round(job.marker_r ?? 19);
+  for (const n of [...svg.querySelectorAll('rect.node-square')]) if (Math.abs(+n.getAttribute('x') + 9 - a[0]) < 0.5 && Math.abs(+n.getAttribute('y') + 9 - a[1]) < 0.5) n.remove();
+  const path = svg.querySelector(`path[data-qa-line="${id}"]`);
+  if (path && pts.length >= 2) {
+    const q = pts.map(p => p.slice()), p0 = q[q.length - 2], p1 = q[q.length - 1];
+    const dx = p1[0] - p0[0], dy = p1[1] - p0[1], L = Math.hypot(dx, dy) || 1, cut = Math.min(R, L - 4);
+    // the last run is horizontal or vertical, so stopping R short lands on the square's edge
+    q[q.length - 1] = [p1[0] - dx / L * cut, p1[1] - dy / L * cut];
+    path.setAttribute('d', q.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' '));
+  }
+  for (const cls of ['mk-halo', 'mk-ring']) T.svgEl('rect', {x: a[0] - R, y: a[1] - R, width: 2 * R, height: 2 * R, class: cls});
+}
+T.layoutInfo.zones = zones;
 T.watermark();
 T.finish();
 })();

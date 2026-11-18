@@ -1,379 +1,457 @@
 {
- "schema_version": "1.0",
- "template_id": "T01",
- "status": "rendered",
- "publishability": "demo_only",
- "reference_map": [
-  {
-   "ref_id": "AMZ-045",
-   "role": "composition",
-   "adopted_rules": [
-    "complete product centred in a horizontal band",
-    "labels outside the product silhouette, rows above/below",
-    "orthogonal elbow leaders ending on the part"
-   ],
-   "excluded_elements": [
-    "20V/2-speed/LED facts",
-    "yellow-black brand palette and logo",
-    "top/bottom brand bars and footnote"
-   ]
+  "schema_version": "1.0",
+  "template_id": "T01",
+  "status": "rendered",
+  "publishability": "demo_only",
+  "reference_map": [
+    {
+      "ref_id": "AMZ-045",
+      "role": "composition",
+      "adopted_rules": [
+        "complete product centred in a horizontal band",
+        "labels outside the product silhouette, rows above/below",
+        "orthogonal elbow leaders ending on the part"
+      ],
+      "excluded_elements": [
+        "20V/2-speed/LED facts",
+        "yellow-black brand palette and logo",
+        "top/bottom brand bars and footnote"
+      ]
+    },
+    {
+      "ref_id": "AMZ-002",
+      "role": "detail_organization",
+      "adopted_rules": [
+        "thin leader lines with dot endpoints",
+        "short bold label title + one supporting line",
+        "generous outer whitespace for labels"
+      ],
+      "excluded_elements": [
+        "1922°F / 57–64 HRC claims",
+        "cropped macro as default hero",
+        "WORKPRO copy"
+      ]
+    },
+    {
+      "ref_id": "HW-186",
+      "role": "information_structure",
+      "adopted_rules": [
+        "one anchor = one visible part"
+      ],
+      "excluded_elements": [
+        "circular magnifier (not used: no higher-res source of same part)",
+        "wire-stripping performance claim"
+      ]
+    }
+  ],
+  "canvas": {
+    "width": 1500,
+    "height": 1500
   },
-  {
-   "ref_id": "AMZ-002",
-   "role": "detail_organization",
-   "adopted_rules": [
-    "thin leader lines with dot endpoints",
-    "short bold label title + one supporting line",
-    "generous outer whitespace for labels"
-   ],
-   "excluded_elements": [
-    "1922°F / 57–64 HRC claims",
-    "cropped macro as default hero",
-    "WORKPRO copy"
-   ]
+  "tokens": {
+    "palette": {
+      "bg": "#F4F4F1",
+      "text": "#1F2329",
+      "muted": "#5D666E",
+      "line": "#8E969D",
+      "accent": "#B3261E"
+    },
+    "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+    "spacing_unit": 8,
+    "safe_margin": 72,
+    "min_margin": 60,
+    "fonts": {
+      "display": "Archivo 800/850 wdth 112 (uppercase)",
+      "numbers": "Barlow Condensed 800 (header badge)",
+      "text": "Inter 500",
+      "zh": "Noto Sans SC 500/900"
+    },
+    "type_scale_px_at_1500": {
+      "headline": 88,
+      "headline_compact": 72,
+      "headline_zh": 92,
+      "eyebrow": 24,
+      "label_title": 44,
+      "label_body": 30,
+      "disclaimer": 22,
+      "badge_value": 96
+    },
+    "strokes": {
+      "leader": "4px var(--accent), miter, orthogonal, <=1 elbow",
+      "node": "18px accent square on the anchor",
+      "port": "r5 accent dot 22px off the first title line"
+    },
+    "label_title": {
+      "family": "display",
+      "weight": 720,
+      "stretch": "108%",
+      "size": 44,
+      "zh": {
+        "family": "cjk",
+        "weight": 700
+      }
+    },
+    "label_body": {
+      "size": 30,
+      "color": "text at 84%"
+    },
+    "label_width": {
+      "default": "min(420, 0.35W)",
+      "max": "min(500, 0.38W), used when it saves a title line"
+    },
+    "marker": {
+      "shape": "open square",
+      "half_size": 19,
+      "stroke": "accent 4px",
+      "halo": "white 7.5px",
+      "leader_stops_at_edge": true
+    },
+    "badge": {
+      "family": "display 900/112%",
+      "value_size": 120,
+      "unit_size": 46,
+      "sub_size": 30,
+      "box_h": 136,
+      "header_h_with_badge": 232
+    },
+    "floor": {
+      "top": "footprint top - 0.55*sweep",
+      "sweep": "0.11H soft gradient white->split"
+    },
+    "zh_headline_short": {
+      "size": 120,
+      "when": "<=6 chars per line and fits"
+    }
   },
-  {
-   "ref_id": "HW-186",
-   "role": "information_structure",
-   "adopted_rules": [
-    "one anchor = one visible part"
-   ],
-   "excluded_elements": [
-    "circular magnifier (not used: no higher-res source of same part)",
-    "wire-stripping performance claim"
-   ]
+  "elements": [
+    {
+      "element_id": "eyebrow",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.0587,
+        0.1685,
+        0.0173
+      ],
+      "allow_overlap_with": [],
+      "text": "Part overview",
+      "style_token": "meta",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "headline",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.092,
+        0.4553,
+        0.136
+      ],
+      "allow_overlap_with": [],
+      "text": "Every control, clearly located",
+      "style_token": "headline",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl1_no",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.2813,
+        0.0225,
+        0.0187
+      ],
+      "allow_overlap_with": [],
+      "text": "01",
+      "style_token": "meta",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl1_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.3107,
+        0.1647,
+        0.0375
+      ],
+      "allow_overlap_with": [],
+      "text": "Blade exit",
+      "style_token": "important",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl1_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.3534,
+        0.3562,
+        0.0695
+      ],
+      "allow_overlap_with": [],
+      "text": "Opening at the nose; blade shown retracted",
+      "style_token": "secondary",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl2_no",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.2813,
+        0.0225,
+        0.0187
+      ],
+      "allow_overlap_with": [],
+      "text": "02",
+      "style_token": "meta",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl2_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.3107,
+        0.1591,
+        0.0375
+      ],
+      "allow_overlap_with": [],
+      "text": "Top slider",
+      "style_token": "important",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl2_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.3534,
+        0.3592,
+        0.0695
+      ],
+      "allow_overlap_with": [],
+      "text": "Ridged thumb slider on the upper body",
+      "style_token": "secondary",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl3_no",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.7898,
+        0.0225,
+        0.0187
+      ],
+      "allow_overlap_with": [],
+      "text": "03",
+      "style_token": "meta",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl3_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.8191,
+        0.1912,
+        0.0375
+      ],
+      "allow_overlap_with": [],
+      "text": "Side button",
+      "style_token": "important",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl3_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.056,
+        0.8619,
+        0.3149,
+        0.0695
+      ],
+      "allow_overlap_with": [],
+      "text": "Dark button set into the nose section",
+      "style_token": "secondary",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl4_no",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.7898,
+        0.0225,
+        0.0187
+      ],
+      "allow_overlap_with": [],
+      "text": "04",
+      "style_token": "meta",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl4_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.8191,
+        0.2705,
+        0.0375
+      ],
+      "allow_overlap_with": [],
+      "text": "Handle-end hole",
+      "style_token": "important",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "lbl4_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.5707,
+        0.8619,
+        0.3577,
+        0.0695
+      ],
+      "allow_overlap_with": [],
+      "text": "Through-hole at the rear of the grip",
+      "style_token": "secondary",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "hero",
+      "kind": "product_image",
+      "box_normalized_xywh": [
+        0.1353,
+        0.4602,
+        0.7294,
+        0.2923
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "asset_id": "hero_knife_h",
+      "crop_policy": "contain"
+    },
+    {
+      "element_id": "demo_band",
+      "kind": "shape",
+      "box_normalized_xywh": [
+        0.0,
+        0.9733,
+        1.0,
+        0.0267
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    }
+  ],
+  "adaptation_rules": [
+    "frames: light (8px accent strip, white sweeping into #DCDDDE; the floor starts at the product's base footprint with a soft 0.11H gradient, contact shadow is an ellipse laid along the base's front edge), band (dark header 200, 232 with a badge, + 14px accent rule + 72px footer with disclaimer; header holds job.badge plus the headline right-aligned in 1-2 lines (60->40px) if it fits, or the headline alone), plain (studio radial ground)",
+    "anchor marker: one style for every anchor, an open accent square (half-size 19, white halo) framing the part so small parts (rivets) stay visible; the drawn line stops at the square's edge",
+    "vertical placement prefers the product top ~60px under the headline (no dead band), lower spots are tried after; size steps 1..0.6 in 0.05",
+    "labels may sit beside the headline when clear of its ink box by 64/56px; label column 420 (min(420,0.35W)), widened to min(500,0.38W) when that saves a title line; hyphenated compounds in en bodies use a non-breaking hyphen",
+    "zh: a clause mark at a headline line break is dropped; a short headline (<=6 chars/line) is set at 120px",
+    "hero keyed off its white backdrop with an SVG luminance key (job.hero_key, default on except band) so the split ground passes behind the product without tinting it; multiply blend only when the key is off",
+    "headline notch top-left: eyebrow + h1 88px (72px compact step), max 2 lines; a written two-line headline without markup is two-tone (first line accent; job.two_tone=false turns it off)",
+    "labels in the side margins, flush to m (left ragged-right, right ragged-left), width <= min(400, 0.3W), >= 60px vertical gap; title 44 display 800 uppercase, optional body 30 Inter 500 at 72% ink",
+    "leaders: horizontal from a port 22px off the first title line then one elbow to the anchor, or a vertical port above/below the label; short hooks (<72px vertical) penalised",
+    "size search: the largest product (100% down to 60% of target) whose leaders are all <= job.leader_max*W (default 0.45) and run over <= 42% of the product width; otherwise the largest collision-free layout is kept and noted",
+    "job.label_body 'auto' (default): if the product would drop below 86% with bodies, titles-only is tried and kept when it gives a larger product",
+    "detail insets: features with detail_asset get a circle inset (r 140 @1500, 124 below) above the title, max 2",
+    "max 4 labels; more -> split image (no font shrinking)",
+    "zh: Noto Sans SC, no uppercase, author line breaks kept"
+  ],
+  "render_outputs": [
+    {
+      "path": "templates/T01/preview_1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/preview_360.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/preview_adapted.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/matrix/r1_band_knife_en_1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/matrix/r1_band_bag_en_1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/matrix/r1_band_knife_zh_1200x1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/matrix/r1_band_knife_en_long2_1500x1200.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T01/matrix/r1_freeslot_stack_en_1500.png",
+      "actual_render_completed": true
+    }
+  ],
+  "source_files": [
+    "templates/T01/source/T01.html",
+    "engine/runtime.js",
+    "engine/base.css",
+    "engine/render.py",
+    "engine/build_jobs.py",
+    "engine/prep_assets.py",
+    "assets/demo/assets_manifest.json",
+    "templates/T01/source/jobs/sel_r1_band_knife_en_1500.json",
+    "templates/T01/source/jobs/sel_r1_band_bag_en_1500.json",
+    "templates/T01/source/jobs/sel_r1_band_knife_zh_1200x1500.json",
+    "templates/T01/source/jobs/sel_r1_band_knife_en_long2_1500x1200.json",
+    "templates/T01/source/jobs/sel_r1_freeslot_stack_en_1500.json"
+  ],
+  "qa_report_path": "templates/T01/qa_report.json",
+  "limitations": [
+    "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+    "all copy is neutral visual description, not approved product claims",
+    "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+    "no SAM mask used",
+    "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)",
+    "numbers in feature copy are not checked against the render (e.g. \"4 rivets\" vs one visible rivet per tab); the set builder must keep copy true to the image"
+  ],
+  "optional_job_fields": {
+    "frame": "'light'|'band'|'plain' (default light)",
+    "badge": "{value,unit,sub} or string, band frame header",
+    "disclaimer": "string",
+    "show_headline": "bool",
+    "two_tone": "bool, default true",
+    "label_body": "'auto'|true|false",
+    "leader_max": "fraction of W, default 0.45",
+    "hero_key": "bool, default true",
+    "hero_key_gain": "number, default 14",
+    "hero_align": "[ax,ay]",
+    "hero_fill": "default 1.15",
+    "label_width": "px",
+    "inset_r": "px",
+    "contact_shadow": "bool",
+    "badge_headline": "bool, default true: in band with a badge, also set the headline in the band if it fits",
+    "marker_r": "anchor square half-size, default 19",
+    "floor_sweep": "floor gradient height in px, default 0.11*H"
   }
- ],
- "canvas": {
-  "width": 1500,
-  "height": 1500
- },
- "tokens": {
-  "palette": {
-   "bg": "#F4F4F1",
-   "text": "#1F2329",
-   "muted": "#5D666E",
-   "line": "#8E969D",
-   "accent": "#B3261E"
-  },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
-  "spacing_unit": 8,
-  "safe_margin": 84,
-  "min_margin": 60,
-  "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
-  },
-  "type_scale_px_at_1500": {
-   "headline": 100,
-   "label_title": 52,
-   "label_body": 42
-  }
- },
- "elements": [
-  {
-   "element_id": "eyebrow",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.0587,
-    0.1685,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Part overview",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "headline",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.092,
-    0.4553,
-    0.136
-   ],
-   "allow_overlap_with": [],
-   "text": "Every control, clearly located",
-   "style_token": "headline",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl1_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.2813,
-    0.0225,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "01",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl1_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.3107,
-    0.1647,
-    0.0375
-   ],
-   "allow_overlap_with": [],
-   "text": "Blade exit",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl1_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.3534,
-    0.3562,
-    0.0695
-   ],
-   "allow_overlap_with": [],
-   "text": "Opening at the nose; blade shown retracted",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl2_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.2813,
-    0.0225,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "02",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl2_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.3107,
-    0.1591,
-    0.0375
-   ],
-   "allow_overlap_with": [],
-   "text": "Top slider",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl2_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.3534,
-    0.3592,
-    0.0695
-   ],
-   "allow_overlap_with": [],
-   "text": "Ridged thumb slider on the upper body",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl3_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.7898,
-    0.0225,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "03",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl3_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.8191,
-    0.1912,
-    0.0375
-   ],
-   "allow_overlap_with": [],
-   "text": "Side button",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl3_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.8619,
-    0.3149,
-    0.0695
-   ],
-   "allow_overlap_with": [],
-   "text": "Dark button set into the nose section",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl4_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.7898,
-    0.0225,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "04",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl4_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.8191,
-    0.2705,
-    0.0375
-   ],
-   "allow_overlap_with": [],
-   "text": "Handle-end hole",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "lbl4_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.5707,
-    0.8619,
-    0.3577,
-    0.0695
-   ],
-   "allow_overlap_with": [],
-   "text": "Through-hole at the rear of the grip",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "hero",
-   "kind": "product_image",
-   "box_normalized_xywh": [
-    0.1353,
-    0.4602,
-    0.7294,
-    0.2923
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "asset_id": "hero_knife_h",
-   "crop_policy": "contain"
-  },
-  {
-   "element_id": "demo_band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.9733,
-    1.0,
-    0.0267
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  }
- ],
- "adaptation_rules": [
-  "auto mode: hull/slender-diagonal or tall (aspect<0.8) -> free-slot placement; otherwise band rows",
-  "band: anchors in upper half -> row above, lower half -> row below, balanced to ceil(n/2) per row",
-  "band: <=2 labels on the same side -> single row (product keeps height); label width 560 when <=2 per row else 420",
-  "label x snapped to a shared column grid aligned with the headline edge",
-  "free-slot: all placement orders tried; rejects slots touching the product hull (28px pad), headline, other labels, or leaders crossing labels/leaders",
-  "max 4 labels; more -> split image (no font shrinking)",
-  "headline: max 2 lines, one defined long-headline step (100->80px), then QA fail",
-  "zh copy may carry \\n at approved phrase boundaries"
- ],
- "render_outputs": [
-  {
-   "path": "templates/T01/preview_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/preview_360.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/preview_adapted.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/matrix/r1_band_knife_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/matrix/r1_band_bag_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/matrix/r1_band_knife_zh_1200x1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/matrix/r1_band_knife_en_long2_1500x1200.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T01/matrix/r1_freeslot_stack_en_1500.png",
-   "actual_render_completed": true
-  }
- ],
- "source_files": [
-  "templates/T01/source/T01.html",
-  "engine/runtime.js",
-  "engine/base.css",
-  "engine/render.py",
-  "engine/build_jobs.py",
-  "engine/prep_assets.py",
-  "assets/demo/assets_manifest.json",
-  "templates/T01/source/jobs/sel_r1_band_knife_en_1500.json",
-  "templates/T01/source/jobs/sel_r1_band_bag_en_1500.json",
-  "templates/T01/source/jobs/sel_r1_band_knife_zh_1200x1500.json",
-  "templates/T01/source/jobs/sel_r1_band_knife_en_long2_1500x1200.json",
-  "templates/T01/source/jobs/sel_r1_freeslot_stack_en_1500.json"
- ],
- "qa_report_path": "templates/T01/qa_report.json",
- "limitations": [
-  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
-  "all copy is neutral visual description, not approved product claims",
-  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
-  "no SAM mask used",
-  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
- ]
 }

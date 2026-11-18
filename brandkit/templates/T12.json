@@ -1,259 +1,298 @@
 {
- "schema_version": "1.0",
- "template_id": "T12",
- "status": "rendered",
- "publishability": "demo_only",
- "reference_map": [
-  {
-   "ref_id": "AMZ-065",
-   "role": "composition",
-   "adopted_rules": [
-    "scene carries the story, solid band carries the words",
-    "no text on scene texture"
-   ],
-   "excluded_elements": [
-    "brushless-motor claims, badges",
-    "work posture/safety implications"
-   ]
+  "schema_version": "1.0",
+  "template_id": "T12",
+  "status": "rendered",
+  "publishability": "demo_only",
+  "reference_map": [
+    {
+      "ref_id": "AMZ-065",
+      "role": "composition",
+      "adopted_rules": [
+        "scene carries the story, solid band carries the words",
+        "no text on scene texture"
+      ],
+      "excluded_elements": [
+        "brushless-motor claims, badges",
+        "work posture/safety implications"
+      ]
+    },
+    {
+      "ref_id": "AMZ-038",
+      "role": "typography_hierarchy",
+      "adopted_rules": [
+        "one large headline in a quiet zone + one supporting line"
+      ],
+      "excluded_elements": [
+        "icon row with performance claims",
+        "using the original scene as our ground"
+      ]
+    },
+    {
+      "ref_id": "AMZ-081",
+      "role": "style",
+      "adopted_rules": [
+        "headline placed where the image is quiet"
+      ],
+      "excluded_elements": [
+        "reusing people/scene",
+        "assuming every scene has a quiet area"
+      ]
+    },
+    {
+      "ref_id": "BAG-137",
+      "role": "information_structure",
+      "adopted_rules": [
+        "product shown as its own silhouette in a real setting"
+      ],
+      "excluded_elements": [
+        "scene as size calibration"
+      ]
+    }
+  ],
+  "canvas": {
+    "width": 1500,
+    "height": 1500
   },
-  {
-   "ref_id": "AMZ-038",
-   "role": "typography_hierarchy",
-   "adopted_rules": [
-    "one large headline in a quiet zone + one supporting line"
-   ],
-   "excluded_elements": [
-    "icon row with performance claims",
-    "using the original scene as our ground"
-   ]
+  "tokens": {
+    "palette": {
+      "bg": "#E9E6E0",
+      "text": "#1C1F22",
+      "muted": "#4F575E",
+      "accent": "#D0612A"
+    },
+    "palette_note": "accent comes from the job (brand_input_required); on the warm-dark band words use --accent-hi (accent lifted toward cream to luminance ≥.30), on the scrimmed photo --accent-photo (≥.40); band colour --band #211915 (warm dark taken from wood/leather scenes), job.band_color overrides",
+    "spacing_unit": 8,
+    "safe_margin": 72,
+    "min_margin": 60,
+    "fonts": {
+      "display": "Archivo 900, wdth 116% (heavy extended caps headline)",
+      "support": "Archivo 500, wdth 100%, sentence case (contrast with the caps headline; no trailing full stop)",
+      "numbers": "Barlow Condensed 800 (stat, chip values, badge)",
+      "text": "Inter 700 tracked caps .14em (chip/badge captions)",
+      "zh": "Noto Sans SC 900/500 (no uppercase; phrase-safe breaks; no line-end punctuation in headlines)"
+    },
+    "type_scale_px_at_1500": {
+      "hero_xl_band": "148→64 when the band's right half is free (longest line aims at ≥68% of the band width), 124→64 beside a stat/slot/inset; lh .92",
+      "hero_xl_band_zh": "184→92 × 0.84 (≈155→77px); the two phrases may run on one line, phrase 2 in the accent",
+      "hero_xl_overlay": "116→72, lh .92, ≤3 lines, 0.84W column",
+      "h1_solid": "104→60 square, 112→66 portrait, full width on top (compact: 88/96 start); zh 176→88 × 0.84",
+      "zh_headline": "0.84 × the en step",
+      "support": "52→44 (≈3.3% H) Archivo 500 sentence case, overlay 48→44; zh 48→42 Noto 500; ≤2 lines, balanced",
+      "headline_support_gap": "0.34 × headline px (≈ half the cap height) on every layout",
+      "stat_value": "128→72, column only as wide as the figure",
+      "chip": "h136, equal widths in a row, value 64 cond 800 (uppercase for text values), label 23 Inter 700 caps .14em (meta)",
+      "badge": "value 96 cond 800 + 22px caption"
+    }
   },
-  {
-   "ref_id": "AMZ-081",
-   "role": "style",
-   "adopted_rules": [
-    "headline placed where the image is quiet"
-   ],
-   "excluded_elements": [
-    "reusing people/scene",
-    "assuming every scene has a quiet area"
-   ]
+  "elements": [
+    {
+      "element_id": "scene_frame",
+      "kind": "shape",
+      "box_normalized_xywh": [
+        0.0,
+        0.0,
+        1.0,
+        0.7
+      ],
+      "allow_overlap_with": [
+        "badge",
+        "badge_v",
+        "badge_l",
+        "inset_frame"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "scene cover, product kept whole"
+    },
+    {
+      "element_id": "band",
+      "kind": "shape",
+      "box_normalized_xywh": [
+        0.0,
+        0.7,
+        1.0,
+        0.3
+      ],
+      "allow_overlap_with": [
+        "headline",
+        "support",
+        "brand_slot",
+        "brand_slot_t",
+        "stat_v",
+        "stat_l",
+        "badge",
+        "badge_v",
+        "badge_l",
+        "inset_frame"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "headline",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.0427,
+        0.746,
+        0.8783,
+        0.1325
+      ],
+      "allow_overlap_with": [],
+      "text": "Canvas tote with leather trim",
+      "style_token": "hero_xl_band",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "support",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.0427,
+        0.8971,
+        0.6318,
+        0.0331
+      ],
+      "allow_overlap_with": [],
+      "text": "Heavy canvas body with leather handles and base.",
+      "style_token": "support",
+      "anchor_ref": null,
+      "crop_policy": "not_applicable"
+    },
+    {
+      "element_id": "inset_frame",
+      "kind": "shape",
+      "box_normalized_xywh": null,
+      "allow_overlap_with": [
+        "band",
+        "scene_frame"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "explicit_detail_crop (job.inset only)",
+      "note": "band mode right half when job.inset is given: r = min(0.135W, 0.47 band), centre (W-m-r, band top + 0.36 band)"
+    },
+    {
+      "element_id": "stat_v / stat_l",
+      "kind": "text",
+      "box_normalized_xywh": null,
+      "allow_overlap_with": [
+        "band"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable",
+      "note": "band right 36% column, top-aligned with the headline"
+    },
+    {
+      "element_id": "chip1..3",
+      "kind": "shape",
+      "box_normalized_xywh": null,
+      "allow_overlap_with": [
+        "scene_frame"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable",
+      "note": "overlay: row at y = H-m-112, 24px apart"
+    },
+    {
+      "element_id": "badge",
+      "kind": "shape",
+      "box_normalized_xywh": null,
+      "allow_overlap_with": [
+        "badge_v",
+        "badge_l",
+        "scene_frame"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable",
+      "note": "top-left at (m, m-20)"
+    }
+  ],
+  "adaptation_rules": [
+    "one headline + one supporting line (+ optional figures/stat/badge/brand slot/inset); no CTA/price/badges (ignored with note)",
+    "designed headline breaks (en): the copy's \\n wins; otherwise every split into ≤maxLines is scored — a line never ends on a function word (with/and/for/of/the/to…), a break before one is preferred, a break between two content words costs 12, a lone last word 30, 3 lines 8; each size step down costs 4, so the type shrinks before a worse split is taken; the browser's own wrap is a last resort (score 200)",
+    "two-tone: [[words]] mark the accent words; unmarked copy: first designed line cream/ink, the rest accent",
+    "zh: no uppercase, CJK font, the copy's \\n wins and line-end ，、；：。 are dropped; an unsplit line breaks only after punctuation, else between Intl.Segmenter words; band/solid may run two phrases on one line (phrase 2 accent) when that fills the width better",
+    "support: sentence case, no trailing full stop (en . / zh 。), text-wrap balance",
+    "overlay never puts words on the product when product_box is known: scene shift → smaller headline → band fallback; text contrast ≥4.5:1 via the flat scrim plateau",
+    "band ≤ 30% H (4:5: 27%); the right side is never left empty (stat / brand slot / inset / headline scaled to ≥68% width)",
+    "inset only from a close-up asset (macro/detail that fills the frame, ideally warm-lit); a crop of the scene would cut the product (scene_product_cropped)",
+    "scene cover scale ≤ 1.25 of source px; the inset obeys the same cap",
+    "en pages drop any Han-bearing headline/support/figure/platform/brand text",
+    "solid: whole product in frame by default (no accidental crop), centred under the words",
+    "chip and stat captions are meta tier, values important/headline tier; chips in a row share one width"
+  ],
+  "render_outputs": [
+    {
+      "path": "templates/T12/preview_1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/preview_360.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/preview_adapted.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/matrix/sel_band_en_1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/matrix/sel_band_zh_1200x1500.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/matrix/sel_band_jh030_en_1500x1000.png",
+      "actual_render_completed": true
+    },
+    {
+      "path": "templates/T12/matrix/sel_solid_fallback_en_1500.png",
+      "actual_render_completed": true
+    }
+  ],
+  "source_files": [
+    "templates/T12/source/T12.html",
+    "engine/runtime.js",
+    "engine/base.css",
+    "engine/render.py",
+    "engine/build_jobs.py",
+    "engine/prep_assets.py",
+    "assets/demo/assets_manifest.json",
+    "templates/T12/source/jobs/sel_band_en_1500.json",
+    "templates/T12/source/jobs/sel_band_zh_1200x1500.json",
+    "templates/T12/source/jobs/sel_band_jh030_en_1500x1000.json",
+    "templates/T12/source/jobs/sel_solid_fallback_en_1500.json"
+  ],
+  "qa_report_path": "templates/T12/qa_report.json",
+  "limitations": [
+    "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+    "all copy is neutral visual description, not approved product claims",
+    "no SAM mask used",
+    "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)",
+    "elements above are the measured layout of the en band render (tote fixture, 1500x1500); the real layout is computed by the template rules for each job",
+    "render_outputs list the earlier demo renders; the current previews were made with scripts/brandkit_preview.py on the tote fixtures",
+    "product asset issues (piping cord floating off the body, gingham texture resolution, MORA patch missing on some scene renders) are in the 3D assets, not the template",
+    "landscape band (1500x1000) is too narrow for 'WITH LEATHER TRIM' on one line at the 60px floor and may take 3 lines"
+  ],
+  "modes": {
+    "overlay": "default when job.scene: full-bleed scene at scene_zoom (1.3) toward job.focus; text_zone top/bottom (figures → bottom; else the larger free band from job.product_box; else focus_y); a warm-dark scrim (rgba(30,22,17), 80%, 88% where the words cross the product) is flat behind every text line and fades over 200px into the photo (measured cream-on-scrim ≈10:1); with job.product_box the scene is shifted (and the headline stepped down) until the product clears the text block; if it still cannot, the page falls back to band (job.overlay_fallback=false keeps overlay)",
+    "band": "DeWalt variant: scene on the top 70% (4:5: 73% with a tighter 1.3 crop so the product keeps its size), hard-edged warm-dark band below with a 56px feather into the photo at the seam; stack optically centred; right side = key-figure stat (only as wide as the figure), else brand slot, else a ringed close-up (job.inset, r = 0.11W, wholly inside the band) — dropped when it would push the headline past 2 lines; with none the headline is scaled to fill ≥68% of the band (zh: both phrases on one line); landscape: dark panel left 46%",
+    "solid": "studio light ground with a warm floor gradient; every canvas: full-width text block on top (designed break), optional equal-width chip row, then the whole product centred below with ≥6% side and 5.5% bottom margin and a contact shadow (landscape: text left 56%, product right); job.hero_bleed>0 lets it run off the bottom; job.solid_layout='column' restores the old 0.42W text column"
   },
-  {
-   "ref_id": "BAG-137",
-   "role": "information_structure",
-   "adopted_rules": [
-    "product shown as its own silhouette in a real setting"
-   ],
-   "excluded_elements": [
-    "scene as size calibration"
-   ]
+  "optional_job_fields": {
+    "product_box": "[x0,y0,x1,y1] normalised product box in the scene (the renderer strips the asset's _product, so it must be sent as a job field or asset.product_box); enables product-aware overlay placement, the band fallback and whole-product band crops",
+    "figures": "≤3 {icon,value,unit,label} or {icon,text,label}: overlay chip row, solid chip column/row, first numeric one → band stat",
+    "stat": "{value,unit,label} key figure for the band's right half (else the first numeric figure)",
+    "platform": "string or {value,sup,label}: badge top-left",
+    "inset": "asset id (in job.assets) of a frame-filling close-up (e.g. macro1: strap rivet on canvas); shown as a ringed circle r=0.11W inside the band",
+    "inset_focus": "[fx,fy] focus inside the inset asset (default centre)",
+    "inset_zoom": "zoom over cover for the inset (default 1.25, capped at 1.25x source)",
+    "text_zone": "'top'|'bottom' to force the overlay text side",
+    "scrim_alpha": "overlay scrim strength (default .62)",
+    "overlay_fallback": "false keeps overlay even when the words would sit on the product",
+    "two_tone": "false keeps the whole headline in the base colour",
+    "band_color": "#RRGGBB band colour (default #211915 warm dark)",
+    "hero_bleed": "fraction of the product height allowed off the bottom in solid mode (default 0: whole product in frame)",
+    "hero_fill": "scale over the fit of the product region in solid mode (default 1; 1.15 in the column layout)",
+    "solid_layout": "'column' restores the 0.42W text column with the product beside it (default: text block on top)"
   }
- ],
- "canvas": {
-  "width": 1500,
-  "height": 1500
- },
- "tokens": {
-  "palette": {
-   "bg": "#E9E6E0",
-   "text": "#1C1F22",
-   "muted": "#4F575E",
-   "accent": "#D0612A"
-  },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
-  "spacing_unit": 8,
-  "safe_margin": 84,
-  "min_margin": 60,
-  "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
-  },
-  "type_scale_px_at_1500": {
-   "headline": 128,
-   "headline_compact": 100,
-   "support": 50
-  }
- },
- "elements": [
-  {
-   "element_id": "band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.6027,
-    1.0,
-    0.3706
-   ],
-   "allow_overlap_with": [
-    "headline",
-    "support",
-    "rule",
-    "brand_slot",
-    "brand_slot_t"
-   ],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "scene_frame",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.0,
-    1.0,
-    0.6027
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "headline",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.6347,
-    0.4453,
-    0.1673
-   ],
-   "allow_overlap_with": [],
-   "text": "Four boxes, one stack",
-   "style_token": "headline",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "rule",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.056,
-    0.818,
-    0.08,
-    0.0053
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "support",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.8447,
-    0.6066,
-    0.0867
-   ],
-   "allow_overlap_with": [],
-   "text": "Shown closed and stacked on a garage floor.",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "brand_slot",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.7707,
-    0.6347,
-    0.1733,
-    0.048
-   ],
-   "allow_overlap_with": [
-    "brand_slot_t"
-   ],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "brand_slot_t",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7918,
-    0.6501,
-    0.131,
-    0.0173
-   ],
-   "allow_overlap_with": [
-    "brand_slot"
-   ],
-   "text": "Brand slot",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "demo_band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.9733,
-    1.0,
-    0.0267
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  }
- ],
- "adaptation_rules": [
-  "one headline + one supporting line; no CTA/price/badges (ignored with note)",
-  "square/portrait: scene top, solid band below; landscape: solid panel left, scene right, compact headline 100px",
-  "scene cover scale <= 1.25 (band grows instead)",
-  "no scene -> solid editorial: text column 40% and product column never overlap",
-  "brand area = replaceable slot; source logos never placed in it",
-  "zh headlines may carry \\n at phrase boundaries"
- ],
- "render_outputs": [
-  {
-   "path": "templates/T12/preview_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/preview_360.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/preview_adapted.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/matrix/sel_band_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/matrix/sel_band_zh_1200x1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/matrix/sel_band_jh030_en_1500x1000.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T12/matrix/sel_solid_fallback_en_1500.png",
-   "actual_render_completed": true
-  }
- ],
- "source_files": [
-  "templates/T12/source/T12.html",
-  "engine/runtime.js",
-  "engine/base.css",
-  "engine/render.py",
-  "engine/build_jobs.py",
-  "engine/prep_assets.py",
-  "assets/demo/assets_manifest.json",
-  "templates/T12/source/jobs/sel_band_en_1500.json",
-  "templates/T12/source/jobs/sel_band_zh_1200x1500.json",
-  "templates/T12/source/jobs/sel_band_jh030_en_1500x1000.json",
-  "templates/T12/source/jobs/sel_solid_fallback_en_1500.json"
- ],
- "qa_report_path": "templates/T12/qa_report.json",
- "limitations": [
-  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
-  "all copy is neutral visual description, not approved product claims",
-  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
-  "no SAM mask used",
-  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
- ]
 }

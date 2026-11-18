@@ -806,10 +806,6 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 
 
 /* Listing workspace (套图): product record, components, brand kit and the built set of images */
-.listing-dialog { width: min(1320px, calc(100vw - 32px)); height: calc(100dvh - 40px); max-height: calc(100dvh - 40px); padding: 16px 18px; display: none; flex-direction: column; overflow: hidden; }
-.listing-dialog[open] { display: flex; }
-.listing-dialog .dialog-header { margin-bottom: 12px; }
-.listing-dialog .dialog-header p { color: var(--muted); max-width: 820px; }
 .listing-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); gap: 16px; }
 .listing-side, .listing-main { min-height: 0; display: flex; flex-direction: column; }
 .listing-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
@@ -885,5 +881,22 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .chosen-component { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 52px auto; gap: 6px; align-items: center; }
 .chosen-component-file { grid-column: 1 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: -2px; }
 .chosen-component .icon-button { grid-row: 1; grid-column: 4; }
-.listing-summary-pages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 12px; }
-.listing-summary-pages img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--line); }
+
+/* ------------------------------------------------------------ 套图 in the inspector */
+body.listing-wide { --inspector: 440px; }
+@media (max-width: 1180px) { body.listing-wide { --inspector: 380px; } }
+.listing-inspector .listing-intro { margin: 0 0 10px; }
+.listing-inspector .listing-body { display: flex; flex-direction: column; gap: 14px; }
+.listing-inspector .listing-side, .listing-inspector .listing-main { display: block; }
+.listing-inspector .listing-tabs { position: sticky; top: 0; z-index: 2; background: var(--panel); margin: 0 0 10px; }
+.listing-inspector .listing-tabs button { padding: 6px 8px; }
+.listing-inspector .listing-panel { overflow: visible; padding-right: 0; }
+.listing-inspector .listing-main { border-top: 1px solid var(--line); padding-top: 12px; }
+.listing-inspector .listing-pages { overflow: visible; padding-right: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.listing-inspector .listing-page figcaption { flex-wrap: wrap; }
+.listing-inspector .listing-scenes img { height: 96px; }
+.listing-inspector .listing-save { bottom: 0; }
+.listing-source { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); }
+.listing-source textarea { width: 100%; min-height: 120px; resize: vertical; font: inherit; font-size: 12px; line-height: 1.5; }
+.listing-source-actions { display: flex; gap: 8px; align-items: center; }
+.listing-source .field-help { margin: 0; }

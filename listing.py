@@ -11,6 +11,7 @@ A page prints only numbers the user entered or that were measured on the model.
 """
 import concurrent.futures
 import copy
+import hashlib
 import io
 import math
 import json
@@ -18,6 +19,7 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
@@ -34,6 +36,7 @@ KIND = 'listing_task'
 MAX_FEATURES = 8
 MAX_SPECS = 10
 MAX_FIGURES = 3
+MAX_SOURCE = 8000
 MAX_PAGES = len(brandkit_set.KINDS)
 LANGUAGES = ('en', 'zh')
 WORKPIECES = ('pipe', 'rod', 'board', 'sheet', 'block')
@@ -159,6 +162,15 @@ def validate_product(body, project, current=None):
               'subline': _text(body['subline'], 120, '副标题') if 'subline' in body else current['subline'],
               'size_mm': _number(body['size_mm'], 1, 100000, '最长边尺寸') if 'size_mm' in body else current.get('size_mm'),
               'drafted': current.get('drafted')}
+    if 'source' in body:            # the product description the user pasted, kept so it is there next time
+        source = body['source']
+        if source is not None and not isinstance(source, str):
+            raise ValueError('产品介绍必须是文字')
+        if source and len(source) > MAX_SOURCE:
+            raise ValueError('产品介绍不能超过 %d 个字符' % MAX_SOURCE)
+        record['source'] = (source or '').strip()
+    else:
+        record['source'] = current.get('source', '')
     language = body.get('language', current.get('language', 'en'))
     if language not in LANGUAGES:
         raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
@@ -207,6 +219,14 @@ def validate_product(body, project, current=None):
     return record
 
 
+def _view_key(project):
+    """The model and the way the main picture shows it: points found on that picture hold while this stays the same."""
+    plan = project.get('plan') or {}
+    shot = next((row for row in plan.get('shots', []) if row.get('id') == 'hero'), {})
+    return hashlib.sha256(json.dumps([project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')],
+                                     sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def stored(project):
     """(product record, brand record, listing dict) of a project, with defaults filled in."""
     listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
@@ -214,6 +234,18 @@ def stored(project):
         product = validate_product({}, project, listing.get('product') if isinstance(listing.get('product'), dict) else None)
     except ValueError:
         product = default_product(project)
+    # Every part of the model: a selling point that names them all is about the whole product (brandkit_set.anchored).
+    product['_model_parts'] = part_names(project)
+    # Where the last build found selling points on the main picture, while the product is still shown the same way.
+    placed = listing.get('placed') if isinstance(listing.get('placed'), dict) else {}
+    if placed.get('view') == _view_key(project):
+        whole = set(product['_model_parts'])
+        for row in product['features']:
+            found = (placed.get('features') or {}).get(row['title'])
+            if found and not (row.get('parts') and not set(row['parts']) >= whole):
+                row['point'] = found['point']
+                if found.get('parts'):
+                    row['parts'] = found['parts']
     try:
         brand = brand_kit.validate(listing.get('brand') if isinstance(listing.get('brand'), dict) else {})
     except ValueError:
@@ -369,6 +401,148 @@ def draft(project_id, body):
     return state(project_id)
 
 
+EXTRACTOR = (
+    'You read a product description a seller pasted (a product page, a spec sheet, notes) and sort what it says into the fields of '
+    'a product record. Extract; do not write new copy. Use only what the text states: never add a feature, number, unit, material, '
+    'certification or claim it does not contain. Keep the text\'s own words where they fit the length limits, shortened if needed; '
+    'write every field in the output language (translate faithfully when the text is in another language). '
+    'title: the product\'s short name as a listing headline prints it, 2 to 5 words ("Digital Caliper", "Cordless Angle Grinder"), '
+    'without sizes, materials or slogans. model: the model or SKU code if given, else "". '
+    'longest_side: the overall size along the WHOLE product\'s longest side as written in the text (value and unit, and quote: the '
+    'exact words of the text you took it from), or empty strings when the text gives no overall size; the size of a part (a disc '
+    'diameter, a jaw opening, a blade, a measuring range, a cutting capacity) is never the product\'s size. headline: the text\'s main selling sentence, shortened; subline: a second line that supports it. '
+    'features: the distinct selling points, each a short title of 2 to 4 words that fits a callout label and a one-line detail, most important first; for each, parts lists '
+    'the names from model_parts that show it (exact names, may be empty). specs: label/value pairs of technical data, value with '
+    'its unit. figures: up to three numbers worth showing large (value, unit, label), each also present in specs or the text. '
+    'notes: anything in the text you could not place, briefly (or nothing).')
+
+
+def _numbers(text):
+    """The numbers a piece of text contains, by value: full-width digits read as ordinary ones, a comma counted as a
+    thousands separator only between groups of three ("1,200"; "16,20,25" is three numbers), "2.0" the same as "2"."""
+    text = unicodedata.normalize('NFKC', str(text or ''))
+    found = set()
+    for match in re.findall(r'\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?', text):
+        value = float(match.replace(',', ''))
+        found.add(('%f' % value).rstrip('0').rstrip('.'))
+    return found
+
+
+def _language_of(text):
+    """'zh' for text that is mostly Chinese, else 'en'."""
+    han = len(re.findall(r'[\u4e00-\u9fff]', text)); latin = len(re.findall(r'[A-Za-z]', text))
+    return 'zh' if han >= latin / 3 else 'en'
+
+
+UNIT_MM = {'mm': 1, '毫米': 1, 'cm': 10, '厘米': 10, '公分': 10, 'm': 1000, '米': 1000, 'in': 25.4, 'inch': 25.4, 'inches': 25.4, '"': 25.4,
+           '″': 25.4, '英寸': 25.4, 'ft': 304.8, 'feet': 304.8, 'foot': 304.8, '英尺': 304.8}
+
+
+def extract(project_id, body):
+    """Sort a pasted product description into the product record by the text model, keeping only what the text says:
+    a field with a number the text does not contain is left out. Fields the text fills replace what was there; the
+    others are kept. Returns the listing state."""
+    import brandkit_review
+    if not isinstance(body, dict):
+        raise ValueError('请求格式无效')
+    text = body.get('text')
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError('请先粘贴一段产品介绍')
+    text = text.strip()
+    if len(text) > MAX_SOURCE:
+        raise ValueError('产品介绍不能超过 %d 个字符' % MAX_SOURCE)
+    config, _ = brandkit_review._configs()
+    if not config:
+        raise ValueError('没有配置文本模型，无法从介绍中提取。请在「AI 设置」里配置，或手动填写各栏。')
+    project = get('project', project_id)
+    product, _, _ = stored(project)
+    # A language the user chose (the record already has words in it) is kept; a new record takes the text's own.
+    chosen = product['title'] or product['headline'] or product['features']
+    language = body.get('language') or (product['language'] if chosen else _language_of(text))
+    if language not in LANGUAGES:
+        raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
+    names = part_names(project)
+    row = lambda fields: {'type': 'object', 'additionalProperties': False, 'required': list(fields), 'properties': {key: {'type': 'string'} for key in fields}}
+    schema = {'type': 'object', 'additionalProperties': False,
+              'required': ['title', 'model', 'longest_side', 'headline', 'subline', 'features', 'specs', 'figures', 'notes'],
+              'properties': {'title': {'type': 'string'}, 'model': {'type': 'string'}, 'headline': {'type': 'string'}, 'subline': {'type': 'string'},
+                             'longest_side': {'type': 'object', 'additionalProperties': False, 'required': ['value', 'unit', 'quote'],
+                                              'properties': {'value': {'type': 'string'}, 'unit': {'type': 'string'}, 'quote': {'type': 'string'}}},
+                             'features': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['title', 'detail', 'parts'],
+                                                                     'properties': {'title': {'type': 'string'}, 'detail': {'type': 'string'},
+                                                                                    'parts': {'type': 'array', 'items': {'type': 'string'}}}}},
+                             'specs': {'type': 'array', 'items': row(('label', 'value'))},
+                             'figures': {'type': 'array', 'items': row(('value', 'unit', 'label'))},
+                             'notes': {'type': 'array', 'items': {'type': 'string'}}}}
+    request = {'text': text, 'output_language': 'Simplified Chinese' if language == 'zh' else 'English', 'model_parts': names[:200],
+               'limits_in_characters': {'title': 32, 'model': 40, 'headline': 60, 'subline': 120, 'feature_title': 24, 'feature_detail': 90,
+                                        'spec_label': 30, 'spec_value': 30, 'figure_value': 12, 'figure_unit': 8, 'figure_label': 30},
+               'most': {'features': MAX_FEATURES, 'specs': MAX_SPECS, 'figures': MAX_FIGURES}}
+    try:
+        answer = brandkit_review._ask(config, EXTRACTOR, request, schema)
+    except Exception as exc:
+        raise ValueError('文本模型没有完成提取：%s' % str(exc)[:160]) from None
+    known = _numbers(text); dropped = []; notes = []
+
+    def grounded(*values):
+        return _numbers(' '.join(str(value) for value in values)) <= known
+
+    def keep(label, *values):
+        if grounded(*values):
+            return True
+        dropped.append(label); return False
+    update = {'language': language, 'source': text}
+    for key, limit in (('title', 60), ('model', 40), ('headline', 60), ('subline', 120)):
+        value = whole(answer.get(key), limit)
+        if value and keep(key, value):
+            update[key] = value
+    features = [{'title': whole(item.get('title'), 40), 'detail': whole(item.get('detail'), 90),
+                 'parts': list(dict.fromkeys(name for name in item.get('parts') or [] if name in names))[:40]}
+                for item in answer.get('features') or [] if isinstance(item, dict)]
+    features = [item for item in features if item['title'] and keep('卖点「%s」' % item['title'], item['title'], item['detail'])][:MAX_FEATURES]
+    specs = [{'label': whole(item.get('label'), 30), 'value': whole(item.get('value'), 30)} for item in answer.get('specs') or [] if isinstance(item, dict)]
+    specs = [item for item in specs if item['label'] and item['value'] and keep('规格「%s」' % item['label'], item['label'], item['value'])][:MAX_SPECS]
+    figures = [{'value': whole(item.get('value'), 12), 'unit': whole(item.get('unit'), 8), 'label': whole(item.get('label'), 30)}
+               for item in answer.get('figures') or [] if isinstance(item, dict)]
+    figures = [item for item in figures if item['value'] and item['label'] and keep('指标「%s」' % item['label'], item['value'], item['label'])][:MAX_FIGURES]
+    for key, rows in (('features', features), ('specs', specs), ('figures', figures)):
+        if rows:
+            update[key] = rows
+    side = answer.get('longest_side') or {}
+    if isinstance(side, dict) and side.get('value'):
+        unit = str(side.get('unit', '')).strip().lower(); value = str(side['value']).replace(',', '').strip()
+        try:
+            number = float(value)
+        except ValueError:
+            number = None
+        unit = unicodedata.normalize('NFKC', unit) if unit not in UNIT_MM else unit
+        quote = ' '.join(str(side.get('quote', '')).split())
+        overall = re.search(r'overall|total|length|long|size|dimension|整机|总长|全长|长度|尺寸|外形|长', quote, re.I)
+        part = re.search(r'disc|disk|blade|jaw|range|capacity|diameter|opening|cut|thread|片|口|径|范围|容量|行程', quote, re.I)
+        if number and (not quote or quote not in ' '.join(text.split()) or not overall or (part and not re.search(r'overall|total|整机|总长|全长', quote, re.I))):
+            notes.append('介绍里没有写明整件产品的长度，最长边尺寸请手动填写。')
+        elif number and not _numbers(value) <= known:
+            dropped.append('最长边尺寸')
+        elif number and unit not in UNIT_MM:
+            notes.append('最长边尺寸的单位「%s」无法识别，请手动填写毫米数。' % str(side.get('unit', ''))[:12])
+        elif number and 1 <= number * UNIT_MM[unit] <= 100000:
+            update['size_mm'] = round(number * UNIT_MM[unit], 1)
+        elif number:
+            notes.append('提取到的最长边尺寸超出范围，没有采用。')
+    model_notes = [str(note)[:200] for note in answer.get('notes') or [] if str(note).strip()][:3]
+    if dropped:
+        notes.insert(0, '以下内容含有介绍里没有的数字，已略去：%s。' % '、'.join(dropped[:6]))
+    notes += model_notes
+
+    def change(project, listing):
+        current = validate_product({}, project, listing.get('product') if isinstance(listing.get('product'), dict) else None)
+        record = validate_product(update, project, current)
+        record['drafted'] = {'source': 'extracted', 'at': time.time(), 'notes': notes[:6]}
+        listing['product'] = record
+    _update(project_id, change)
+    return state(project_id)
+
+
 # ---- tasks ----
 
 def _task_update(task_id, **changes):
@@ -509,6 +683,23 @@ def _focus_features(product, limit):
     return [(index, product['features'][index]['parts']) for index in brandkit_set.anchored(product)][:limit]
 
 
+def _light_share(path):
+    """The share of a cut-out render's product pixels that are near white (bright steel, white plastic)."""
+    from PIL import Image
+    try:
+        with Image.open(path) as opened:
+            image = opened.convert('RGBA'); image.thumbnail((360, 360))
+    except OSError:
+        return 0.0
+    pixels = [pixel for pixel in image.getdata() if pixel[3] > 200]
+    return sum(1 for pixel in pixels if min(pixel[:3]) > 185) / max(1, len(pixels))
+
+
+def _flat(dims):
+    """A product lying flat: its height well under the shorter of its two sides on the ground."""
+    return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
+
+
 def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
@@ -519,13 +710,20 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         import orientation
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
         dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
+        # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
+        elevation = 89 if _flat(dims) else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
-                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': 0, 'projection': 'orthographic', 'margin': .06},
+                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
+    # Selling points found on the main picture are shown close up by cropping round the spot in the same view at twice the size.
+    if kinds & {'T03', 'T02'} and any(product['features'][index].get('point') for index, _ in _focus_features(product, 6)):
+        requests['zoom'] = components.cutout_request(model, plan, size_mm, azimuth, elevation, 3600)
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
     for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
         if kind in kinds:
             for index, names in _focus_features(product, limit):
+                if product['features'][index].get('point'):
+                    continue
                 requests['%s%d' % (key, index)] = {
                     'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                     'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': focal, 'margin': margin, 'focus': names,
@@ -598,7 +796,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     waiting = [row.get('name') for row in components.components(project) if row.get('status') in ('queued', 'processing')]
     if waiting:
         notes.append('有 %d 个组件还在处理，本次套图没有包含：%s。' % (len(waiting), '、'.join(str(name) for name in waiting[:4])))
-    for index, name in enumerate(names):
+    located = listing.get('located') if isinstance(listing.get('located'), dict) else {}
+    refused = False                  # the AI service refused (quota, key): nothing more is asked of it in this build
+    index = 0
+    while index < len(names):
+        name = names[index]
         if cancelled():
             raise ListingCancelled()
         progress('pictures', index / len(names), '渲染第 %d / %d 张素材' % (index + 1, len(names)))
@@ -609,6 +811,19 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             raise ListingCancelled() from None
         picture = info_layer.Picture(result['probe'], result['path']) if info_layer._valid_probe(result.get('probe')) else None
         shots[name] = {'result': result, 'path': result['path'], 'picture': picture}
+        index += 1
+        if name == 'hero':
+            # Selling points the model's part names do not place are found on the main picture; the pages are planned again.
+            features, found = brandkit_set.locate(result['path'], picture, product, located)
+            refused = any(re.search(r'HTTP 40[123]', note) for note in found)
+            if features != product['features']:
+                product = {**product, 'features': features}; notes += found
+                rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
+                kinds = {row['kind'] for row in rows}
+                requests = {**picture_requests(project, product, size_mm, rows, parts), 'hero': requests['hero']}
+                names = ['hero'] + [key for key in requests if key != 'hero']
+            elif found:
+                notes += found
     product_color = brand_kit.dominant_color(shots['hero']['path'])
     brand = brand_kit.Brand(brand_record, product_color)
     brand.logo_path = components.path_of(project_id, brand_record.get('logo'))
@@ -642,7 +857,16 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         hero, crop = brandkit_set.flatten(shots['hero']['path'], assets_folder / 'hero.png')
         assets['hero'] = hero
         picture = shots['hero']['picture']
+        for index in brandkit_set.pointed(product):          # found on the picture by the vision model, no part of its own
+            point = brandkit_set.remap(product['features'][index]['point'], crop)
+            if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                anchors.append((index, point))
         for index in brandkit_set.anchored(product):
+            if product['features'][index].get('point'):     # found on the picture: the spot itself, not the middle of its mesh
+                point = brandkit_set.remap(product['features'][index]['point'], crop)
+                if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                    anchors.append((index, point))
+                continue
             found, share = picture.anchor(product['features'][index]['parts']) if picture else (None, 0)
             if found and share > .0003:          # a small part (a rivet, a button) still gets its line
                 point = brandkit_set.remap(found, crop)
@@ -650,7 +874,29 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                     others = [brandkit_set.remap(other, crop) for other in picture.other_anchors(product['features'][index]['parts'])]
                     alternatives[index] = [other for other in others if 0 <= other[0] <= 1 and 0 <= other[1] <= 1]
                     anchors.append((index, point))
+        # In selling-point order; two points on the same spot (a model in one piece) would stack their callouts: one is kept.
+        kept = []
+        for index, point in sorted(anchors):
+            if all(math.hypot(point[0] - other[0], point[1] - other[1]) >= .05 for _, other in kept):
+                kept.append((index, point))
+        anchors = kept
         for index, names in _focus_features(product, 6):
+            point = product['features'][index].get('point')
+            if point and 'zoom' in shots:
+                zoom = shots['zoom']['result']
+                for key, side, kind_list, ground in (('detail', .3, details, (38, 41, 45)), ('macro', .22, macros, (22, 24, 27))):
+                    if key == 'macro' and len(macros) >= 2:
+                        continue
+                    name = '%s%d' % (key, index)
+                    half = side / 2; x = min(max(point[0], half), 1 - half); y = min(max(point[1], half), 1 - half)
+                    region = (round(x - half, 4), round(y - half, 4), round(x + half, 4), round(y + half, 4))
+                    assets[name], _ = brandkit_set.flatten(shots['zoom']['path'], assets_folder / (name + '.png'), ground=ground, dark=True,
+                                                           trim=False, region=region)
+                    assets[name]['_parts'] = brandkit_set.part_map(zoom, region)
+                    focus[name] = [round((point[0] - region[0]) / side, 3), round((point[1] - region[1]) / side, 3)]
+                    assets[name]['_part_box'] = [max(0, focus[name][0] - .25), max(0, focus[name][1] - .25), min(1, focus[name][0] + .25), min(1, focus[name][1] + .25)]
+                    kind_list.append((index, name))
+                continue
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
                 region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25, inset=.04)
@@ -658,6 +904,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(38, 41, 45), dark=True,
                                                        trim=False, region=region)
                 assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
+                assets[name]['_part_box'] = brandkit_set.part_box(shots[name]['result'], names, region)
                 focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
                 details.append((index, name))
             if 'macro%d' % index in shots:
@@ -677,9 +924,16 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             product_box = brandkit_set.scene_box(scene)
             if product_box:
                 assets['scene%d' % (index + 1)]['_product'] = product_box
+        # The record's own words in the language the pages are printed in (translated once, kept with the project).
+        translations = listing.get('translations') if isinstance(listing.get('translations'), dict) else {}
+        written, made_scenes = product, scenes          # kept as the user wrote them; only the pages use the translation
+        product, scenes, parts, localised = brandkit_set.localise(product, scenes, parts, translations)
+        notes += localised
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
                'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
+        ctx['flat'] = bool(ctx['dims_mm']) and _flat(ctx['dims_mm'])
+        ctx['light_product'] = _light_share(shots['hero']['path']) > .35
         ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes))
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
@@ -697,6 +951,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if copy_note:
                 notes.append(copy_note)
         ctx['review'] = vision_ready
+        if refused:
+            ctx['review_refused'] = '额度或密钥被拒绝'
         if not vision_ready:
             notes.append('视觉模型未配置：各页只做了版式测量，没有经过视觉审核。')
         laid = {}; done = [0]; lock = threading.Lock()
@@ -753,14 +1009,18 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box')}
-                  for row in scenes if row['role'] not in ('workpiece', 'earlier')]
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
+                   'captions': row.get('captions') or {}}
+                  for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
-        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name)
+        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations,
+                       located=located, placed={'view': _view_key(project),
+                                                'features': {row['title']: {'point': row['point'], 'parts': row.get('parts') or []}
+                                                             for row in product['features'] if row.get('point')}})
         if scene_key:
             listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
-        listing.setdefault('product', product); listing.setdefault('brand', brand_record)
+        listing.setdefault('product', written); listing.setdefault('brand', brand_record)
         kept_scenes = scene_key or (scene_store or {}).get('key')
         keep = {folder.name} | ({'scenes-' + kept_scenes} if kept_scenes else set())
         for stale in list((DATA / project_id / 'listing').glob('build-*')) + list((DATA / project_id / 'listing').glob('scenes-*')):

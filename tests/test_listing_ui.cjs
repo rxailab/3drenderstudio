@@ -4,7 +4,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM}=require(process.env.UI_TEST_JSDOM_PATH || 'jsdom');
 const html=fs.readFileSync('static/index.html','utf8'),script=fs.readFileSync('static/listing.js','utf8');
-const dialog=html.slice(html.indexOf('<dialog id="listingDialog"'),html.indexOf('<dialog id="aiSettingsDialog"'));
+// The workspace is the inspector's 套图 tab; here it starts hidden, as if another tab were showing.
+const panel=html.slice(html.indexOf('<section id="inspectorListing"'),html.indexOf('<section id="inspectorEcommerce"')).replace('<section id="inspectorListing"','<section id="inspectorListing" hidden');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 // Values made inside the page belong to its own realm: compare what they hold, not whose Object made them.
 const plain=value=>JSON.parse(JSON.stringify(value ?? null));
@@ -26,11 +27,12 @@ function state(changes={}) {
     elements:{},...changes};
 }
 async function setup(t,initial=state()) {
-  const dom=new JSDOM(`<!doctype html><body><button id="listingOpen"></button><div id="toast" hidden></div>${dialog}</body>`,{runScripts:'outside-only',pretendToBeVisual:true});
+  const dom=new JSDOM(`<!doctype html><body><button id="listingOpen"></button><div id="toast" hidden></div>${panel}</body>`,{runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;t.after(()=>w.close());
   const h={w,calls:[],state:initial,toasts:[],respond:null};
-  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
-  w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
+  // The inspector's tab switch as app.js does it: showing the tab activates the workspace, leaving it deactivates it.
+  w.setInspectorTab=tab=>{const node=w.document.getElementById('inspectorListing'),was=!node.hidden;node.hidden=tab!=='listing';
+    if(was && tab!=='listing')w.listingDeactivate();if(tab==='listing')w.listingActivate(true);};
   w.$=id=>w.document.getElementById(id);
   w.esc=value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   w.toast=(message,error=false)=>h.toasts.push([message,error]);
@@ -48,6 +50,7 @@ async function setup(t,initial=state()) {
   h.type=(node,value)=>{node.value=value;node.dispatchEvent(new w.Event('input',{bubbles:true}));};
   h.change=(node,value)=>{if(value!==undefined){if(node.type==='checkbox')node.checked=value;else node.value=value;}node.dispatchEvent(new w.Event('change',{bubbles:true}));};
   h.open=async()=>{h.node('listingOpen').click();await tick();await tick();};
+  h.leave=async()=>{w.setInspectorTab('review');await tick();await tick();};
   h.tab=async name=>{w.document.querySelector(`[data-listing-tab="${name}"]`).click();await tick();};
   h.field=(scope,key)=>h.node('listingPanel').querySelector(`[data-scope="${scope}"][data-key="${key}"]`);
   return h;
@@ -55,7 +58,7 @@ async function setup(t,initial=state()) {
 
 test('opening shows the product record, the planned images in order and what cannot be made yet',async t=>{
   const h=await setup(t);await h.open();
-  assert.equal(h.node('listingDialog').hasAttribute('open'),true);
+  assert.equal(h.node('inspectorListing').hidden,false);
   assert.deepEqual(h.calls.map(call=>call.path),['/api/projects/a/listing']);
   assert.equal(h.field('product','title').value,'Ratchet Pipe Cutter');assert.equal(h.field('product','model').value,'PC-22');
   assert.match(h.field('product','size_mm').placeholder,/按模型估计约 215/);
@@ -102,7 +105,7 @@ test('built images are shown with their notes and downloads, and nothing a user 
   assert.match(figures[0].querySelector('img').getAttribute('src'),/^\/files\/a\/listing\/build-1\/01-main\.png\?t=1700000000000$/);
   assert.equal(figures[0].querySelector('figcaption a').getAttribute('download'),'01-main.png');
   assert.match(figures[1].textContent,/02 · 功能标注/);assert.match(figures[1].textContent,/有 1 个卖点没有对应到部件 <img src=x onerror=alert\(1\)>/);
-  assert.equal(h.node('listingDialog').querySelectorAll('script').length,0);assert.equal(h.node('listingDialog').querySelectorAll('img[onerror]').length,0);
+  assert.equal(h.node('inspectorListing').querySelectorAll('script').length,0);assert.equal(h.node('inspectorListing').querySelectorAll('img[onerror]').length,0);
   assert.equal(h.field('product','title').value,'<img src=x onerror=alert(2)>');
   assert.equal(h.node('listingBuild').textContent,'重新生成套图');
   assert.equal(h.node('listingDownload').hidden,false);assert.equal(h.node('listingDownload').getAttribute('href'),'/api/projects/a/listing/download');
@@ -178,16 +181,16 @@ test('the use case is set by workpiece, place and size, with only the fields tha
   assert.equal(use.kind,'board');assert.equal(use.mode,'front');assert.equal(use.diameter_mm,22);assert.deepEqual(plain(use.offset_mm),[0,0,-12.5]);assert.equal(use.headline,'Drills hardwood');
 });
 
-test('a draft fills the form from the server, and unsaved words are saved when the window closes',async t=>{
+test('a draft fills the form from the server, and unsaved words are saved when the tab is left',async t=>{
   const h=await setup(t);await h.open();
-  h.node('listingHint').value='6-22 mm';
+  h.node('listingSource').value='6-22 mm';
   h.respond=call=>{if(call.path.endsWith('/listing/draft')){h.state={...h.state,product:{...h.state.product,headline:'Clean, square cuts',drafted:{source:'rules',at:1,notes:[]}}};}};
   h.node('listingPanel').querySelector('[data-action="draft"]').click();await tick();await tick();await tick();
   const draft=h.calls.find(call=>call.path.endsWith('/listing/draft'));
   assert.deepEqual(plain(draft.body),{hint:'6-22 mm',language:'en'});
-  assert.equal(h.field('product','headline').value,'Clean, square cuts');assert.match(h.node('listingPanel').textContent,/按部件名称规则生成/);
+  assert.equal(h.field('product','headline').value,'Clean, square cuts');assert.match(h.node('listingPanel').textContent,/按部件名称起草/);
   h.respond=null;h.type(h.field('product','subline'),'Typed and not yet saved');
-  h.node('listingDialog').close();await tick();await tick();
+  await h.leave();
   const last=h.calls.filter(call=>call.method==='PUT').at(-1);
   assert.equal(last.path,'/api/projects/a/listing/product');assert.equal(last.body.subline,'Typed and not yet saved');
 });
@@ -200,4 +203,46 @@ test('a server that refuses is reported and the workspace stays usable',async t=
   failing.respond=call=>{if(call.method==='POST')throw new Error('这个项目的套图正在生成，请等待完成或先取消。');};
   failing.node('listingBuild').click();await tick();await tick();await tick();
   assert.deepEqual(failing.toasts.at(-1),['这个项目的套图正在生成，请等待完成或先取消。',true]);assert.equal(failing.node('listingBuild').disabled,false);
+});
+
+test('a pasted description is sent for extraction, the fields fill from the answer and the text is kept',async t=>{
+  const h=await setup(t);await h.open();
+  h.node('listingPanel').querySelector('[data-action="extract"]').click();await tick();
+  assert.deepEqual(h.toasts.at(-1),['请先粘贴一段产品介绍',true]);assert.equal(h.calls.some(call=>call.path.endsWith('/listing/extract')),false);   // nothing to send
+  const text='Ratchet Pipe Cutter PC-22. Cuts 6 - 22 mm copper and PVC.';
+  h.type(h.node('listingSource'),text);
+  h.respond=call=>{if(call.path.endsWith('/listing/extract')){h.state={...h.state,product:{...h.state.product,source:call.body.text,headline:'Cuts 6 - 22 mm pipe',
+    specs:[{label:'Capacity',value:'6 - 22 mm'}],drafted:{source:'extracted',at:1,notes:['以下内容含有介绍里没有的数字，已略去：指标「Weight」。']}}};}};
+  h.node('listingPanel').querySelector('[data-action="extract"]').click();await tick();await tick();await tick();await tick();
+  const sent=h.calls.filter(call=>call.method!=='GET');
+  assert.equal(sent[0].path,'/api/projects/a/listing/product');assert.equal(sent[0].body.source,text);    // the typed text is saved first
+  assert.deepEqual(plain(sent[1]),{path:'/api/projects/a/listing/extract',method:'POST',body:{text}});
+  assert.equal(h.field('product','headline').value,'Cuts 6 - 22 mm pipe');assert.equal(h.node('listingSource').value,text);
+  assert.match(h.node('listingPanel').textContent,/从介绍中提取/);assert.match(h.node('listingPanel').textContent,/已略去：指标「Weight」/);
+  assert.deepEqual(h.toasts.at(-1),['已从介绍中提取',false]);
+});
+
+test('the tab loads once per project, polls only while shown and reloads when shown again',async t=>{
+  const h=await setup(t);await h.open();
+  assert.equal(h.calls.length,1);
+  h.w.listingActivate(false);await tick();assert.equal(h.calls.length,1);                     // an ordinary redraw does not reload
+  await h.leave();h.w.setInspectorTab('listing');await tick();await tick();
+  assert.equal(h.calls.filter(call=>call.path==='/api/projects/a/listing').length,2);          // shown again: fresh state
+  h.w.current={id:'b'};h.w.listingActivate(false);await tick();await tick();
+  assert.equal(h.calls.at(-1).path,'/api/projects/b/listing');                                  // another project: its own record
+});
+
+test('extracting saves brand edits first, and an answer that arrives after another project opened is not applied to it',async t=>{
+  const h=await setup(t);await h.open();
+  await h.tab('brand');h.type(h.field('brand','name'),'NEWBRAND');assert.equal(h.w.listingUnsaved(),true);   // a reload would ask first
+  await h.tab('product');h.type(h.node('listingSource'),'Cuts 6 - 22 mm pipe.');
+  let release;const late=new Promise(resolve=>{release=resolve;});
+  h.respond=async call=>{if(call.path.endsWith('/listing/extract')){await late;return {...JSON.parse(JSON.stringify(h.state)),product:{...h.state.product,title:'From A'}};}};
+  h.node('listingPanel').querySelector('[data-action="extract"]').click();await tick();await tick();await tick();
+  assert.ok(h.calls.some(call=>call.method==='PUT' && call.path==='/api/projects/a/listing/brand' && call.body.name==='NEWBRAND'));   // not dropped by the reset
+  h.respond=null;h.w.current={id:'b'};h.w.listingActivate(false);h.w.listingActivate(true);await tick();await tick();await tick();
+  assert.equal(h.calls.filter(call=>call.path==='/api/projects/b/listing').length,1);           // two callers, one switch
+  release();await tick();await tick();await tick();
+  assert.notEqual(h.field('product','title').value,'From A');                                    // A's answer stays with A
+  assert.equal(h.w.listingUnsaved(),false);
 });

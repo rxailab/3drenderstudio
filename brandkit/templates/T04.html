@@ -3,29 +3,95 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T04 · real use scene + spec/info band */
-  #canvas{--bg:#F2F1EE;--text:#1E2226;--muted:#5E666D;--accent:#D0612A;--line:#C9CDD1;--band:#1F2327;--band-text:#F5F4F1;--band-muted:#B9C0C6;--wm:rgba(0,0,0,.05)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .on-band .headline{color:var(--band-text);font-size:64px}
-  .s-label{font:700 42px/1.1 "Noto Sans Display",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-  .on-band .s-label{color:var(--band-muted)}
-  .s-value{font:700 128px/1 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);white-space:nowrap}
-  .s-value.compact{font-size:100px} .s-value.compact .u{font-size:44px}
-  .s-value .u{font-size:52px;font-weight:700;letter-spacing:0;margin-left:10px;color:var(--accent)}
-  .on-band .s-value{color:var(--band-text)}
-  .s-alt{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
-  .on-band .s-alt{color:var(--band-muted)}
-  .s-text{font:700 54px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .on-band .s-text{color:var(--band-text)}
-  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .on-band .headline{font-size:62px}
-  #canvas[lang=zh] .s-label{font:700 42px/1.2 "Noto Sans CJK SC",sans-serif;letter-spacing:.04em}
-  #canvas[lang=zh] .s-text{font:700 52px/1.25 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .s-alt{font:500 42px/1.3 "Noto Sans CJK SC",sans-serif}
-  .band{position:absolute;background:var(--band)}
-  .vrule{position:absolute;width:2px;background:rgba(255,255,255,.18)}
-  .light .vrule{background:var(--line)}
+  /* T04 · real use scene + spec row.
+     overlay (default): full-bleed scene, bottom scrim, a row of icon + value chips.
+     band: scene over a dark stat band (only when every spec is a number).
+     glass: full-bleed scene with a tinted spec panel and a dashed leader to the part.
+     stack / side: legacy light stack and landscape side panel. */
+  #canvas{--bg:#F2F1EE;--text:#1E2226;--muted:#5E666D;--accent:#D0612A;--line:#C9CDD1;--wm:rgba(0,0,0,.05)}
+  #canvas.dark-ground{background:var(--dark)}
+
+  /* overlay headline (optional) + eyebrow */
+  .t4-eyebrow{font:700 24px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--cream);white-space:nowrap}
+  .t4-h1{font-family:var(--f-display);font-weight:850;font-stretch:114%;font-size:88px;line-height:.95;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--cream);text-wrap:balance;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  .t4-h1.compact{font-size:72px}
+  .t4-h1 .hi{color:var(--accent-hi,var(--accent))}
+  .t4-rule{position:absolute;height:8px;background:var(--accent)}
+  /* the scene picture fades into the dark ground where it stops short of the canvas bottom (product lifted clear of the chips) */
+  .t4fade{position:absolute;background:linear-gradient(to bottom,rgba(30,27,25,0) 0%,var(--dark) 100%)}
+  /* optional single display family: T04_face 'cond' sets the headline in the stat face */
+  #canvas.face-cond .t4-h1,#canvas.face-cond .b-tag{font-family:var(--f-cond);font-weight:800;font-stretch:100%;font-size:104px;line-height:.92;letter-spacing:0}
+  #canvas.face-cond .t4-h1.compact{font-size:88px}
+  #canvas[lang=zh] .t4-h1{font-family:var(--f-cjk);font-weight:900;font-size:92px;line-height:1.12;letter-spacing:0;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .t4-h1.compact{font-size:76px}
+  #canvas[lang=zh] .t4-eyebrow{font-weight:700;letter-spacing:.12em;font-size:26px}
+
+  /* spec chips */
+  .t4chip{position:absolute;border-radius:8px;overflow:hidden;color:var(--accent-ink,#fff);box-shadow:0 12px 30px rgba(0,0,0,.30)}
+  .t4chip.dark{color:var(--cream);box-shadow:inset 0 0 0 2px rgba(255,255,255,.12),0 12px 30px rgba(0,0,0,.30);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .t4chip .ci{position:absolute;left:0;top:0;bottom:0;color:var(--accent-ink,#fff)}
+  .t4chip .cv{position:absolute;font-family:var(--f-cond);font-weight:800;font-size:56px;line-height:.92;letter-spacing:.005em;
+    font-variant-numeric:tabular-nums;white-space:nowrap;text-transform:uppercase}
+  .t4chip .cv .u{font-size:.5em;font-weight:700;margin-left:.1em;letter-spacing:.02em}
+  .t4chip .cl{position:absolute;font-family:var(--f-text);font-weight:600;font-size:24px;line-height:1.1;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;opacity:.88}
+  #canvas[lang=zh] .t4chip .cv{font-family:var(--f-cjk);font-weight:900;font-size:50px;line-height:1;text-transform:none;letter-spacing:.02em}
+  #canvas[lang=zh] .t4chip .cv.num{font-family:var(--f-cond),var(--f-cjk);font-weight:800;line-height:.92;letter-spacing:.005em}
+  #canvas[lang=zh] .t4chip .cl{font-weight:500;letter-spacing:.04em;text-transform:none}
+
+  /* stat band (all-numeric specs) */
+  .t4band{position:absolute;background:var(--dark);border-top:10px solid var(--accent)}
+  .b-label{font-family:var(--f-cond);font-weight:600;font-size:42px;line-height:1;letter-spacing:.03em;text-transform:uppercase;color:rgba(244,239,227,.74);white-space:nowrap}
+  .b-num{font-family:var(--f-cond);font-weight:800;font-size:128px;line-height:.9;color:var(--cream);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .b-num.compact{font-size:104px}
+  .b-unit{font-family:var(--f-cond);font-weight:700;font-size:48px;line-height:1;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
+  .b-alt{font:500 26px/1.2 var(--f-text);color:rgba(244,239,227,.62);white-space:nowrap}
+  .b-tag{font-family:var(--f-display);font-weight:850;font-stretch:112%;font-size:52px;line-height:1;text-transform:uppercase;color:var(--cream)}
+  .t4div{position:absolute;width:2px;background:var(--accent);opacity:.6}
+  #canvas[lang=zh] .b-label{font-weight:500;font-size:38px;letter-spacing:.04em;text-transform:none}
+  #canvas[lang=zh] .b-unit{font-family:var(--f-cond),var(--f-cjk);text-transform:none}
+  /* zh keeps the Latin numeral face of the en page (Barlow digits, Noto only for Han) */
+  #canvas[lang=zh] .b-num,#canvas[lang=zh] .s-value{font-family:var(--f-cond),var(--f-cjk)}
+  #canvas[lang=zh] .b-tag{font-weight:900;font-size:52px;line-height:1.15}
+
+  /* glass spec panel */
+  .t4glass{position:absolute;-webkit-backdrop-filter:blur(18px) saturate(.8);backdrop-filter:blur(18px) saturate(.8);box-shadow:inset 0 2px 0 rgba(255,255,255,.16)}
+  .g-v{font-family:var(--f-cond);font-weight:800;font-size:110px;line-height:.9;color:var(--cream);white-space:nowrap;text-transform:uppercase;font-variant-numeric:tabular-nums}
+  .g-v .u{font-size:.45em;font-weight:700;margin-left:.08em;color:var(--cream)}
+  .g-l{font-family:var(--f-cond);font-weight:600;font-size:50px;line-height:1;letter-spacing:.03em;text-transform:uppercase;color:rgba(244,239,227,.82);white-space:nowrap}
+  .g-div{position:absolute;height:0;border-top:2px dotted rgba(244,239,227,.6)}
+  .t4dash{fill:none;stroke:var(--cream);stroke-width:2.5;stroke-dasharray:9 7}
+  .t4node{fill:var(--accent);stroke:#fff;stroke-width:3;filter:drop-shadow(0 0 9px var(--accent)) drop-shadow(0 0 3px rgba(255,255,255,.9))}
+  .t4port{fill:var(--cream)}
+  .t4dim{fill:none;stroke:var(--cream);stroke-width:3;stroke-linecap:square}
+  .t4ext{fill:none;stroke:rgba(244,239,227,.55);stroke-width:1.5;stroke-dasharray:4 5}
+  #canvas[lang=zh] .g-v{font-family:var(--f-cjk);font-weight:900;font-size:88px;line-height:1.05;text-transform:none}
+  #canvas[lang=zh] .g-v.num{font-family:var(--f-cond),var(--f-cjk);font-weight:800;font-size:110px;line-height:.9}
+  #canvas[lang=zh] .g-l{font-family:var(--f-cjk);font-weight:500;font-size:40px;line-height:1.1;text-transform:none;letter-spacing:.04em}
+
+  /* legacy cells (stack on light ground, landscape side panel) */
+  .headline{font-family:var(--f-display);font-weight:850;font-stretch:112%;font-size:72px;line-height:.95;text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .on-band .headline{color:var(--cream);font-size:60px}
+  .eyebrow{font:700 24px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  .s-label{font-family:var(--f-cond);font-weight:600;font-size:40px;line-height:1.05;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+  .on-band .s-label{color:rgba(244,239,227,.72)}
+  .s-value{font-family:var(--f-cond);font-weight:800;font-size:128px;line-height:.92;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .s-value.compact{font-size:100px}
+  .s-value .u{font-size:.4em;font-weight:700;margin-left:.08em;color:var(--accent)}
+  .on-band .s-value{color:var(--cream)}
+  .s-alt{font:500 30px/1.2 var(--f-text);color:var(--muted)}
+  .on-band .s-alt{color:rgba(244,239,227,.62)}
+  .s-text{font-family:var(--f-display);font-weight:800;font-stretch:112%;font-size:52px;line-height:1.02;text-transform:uppercase;color:var(--text)}
+  .on-band .s-text{color:var(--cream)}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-size:76px;line-height:1.15;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .on-band .headline{font-size:60px}
+  #canvas[lang=zh] .s-label{font-family:var(--f-cjk);font-weight:500;font-size:38px;line-height:1.2;text-transform:none;letter-spacing:.04em}
+  #canvas[lang=zh] .s-text{font-family:var(--f-cjk);font-weight:900;font-size:52px;line-height:1.2;text-transform:none}
+  #canvas[lang=zh] .s-alt{font-family:var(--f-cjk)}
+  #canvas[lang=zh] .eyebrow{letter-spacing:.1em}
+  .band{position:absolute;background:var(--dark)}
+  .vrule{position:absolute;width:2px;background:var(--accent);opacity:.55}
+  .light .vrule{background:var(--line);opacity:1}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -33,81 +99,377 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = job.max_detail_scale || 1.25;
-const floor = H - bandH - m * 0.75;
+const zh = (job.lang || 'en') === 'zh';
+/* text margin: the shared token m=72 (an older job may carry safe_margin 84; the larger of the two never goes below 72) */
+const m = job.text_margin || Math.min(job.safe_margin || 72, 72), G = 8, bandH = job.demo ? 40 : 0, cap = job.max_detail_scale || 1.25;
+const floor = H - bandH - m;
 const sc = T.asset(job.scene);
-const specs = job.specs.slice(0, 3);
-const mode = job.mode || (W / H > 1.2 ? 'side' : 'band');
+const han = /[㐀-鿿]/;
+const clean = s => (zh || !han.test(T.plain(s))) ? s : null;      // en pages never show Han text
+const specs = (job.specs || []).filter(s => s && (s.value != null && s.value !== '' || s.text)).map(s => ({...s, label: clean(s.label) || '', text: s.text != null ? clean(s.text) : s.text}))
+  .filter(s => s.value != null && s.value !== '' || s.text).slice(0, job.max_specs || 3);
+const isNum = s => s.value != null && s.value !== '';
+const allNumeric = specs.length > 0 && specs.every(isNum);
+
+/* ---- colours: accent-ink (when the palette predates it), a darker accent, a tinted glass ---- */
+const cs0 = getComputedStyle(T.root);
+function rgbOf(c) {
+  c = (c || '').trim();
+  let mm = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (mm) { let h = mm[1]; if (h.length === 3) h = h.split('').map(x => x + x).join(''); return [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16)); }
+  mm = c.match(/rgba?\(([^)]+)\)/); if (mm) return mm[1].split(',').slice(0, 3).map(x => parseFloat(x));
+  return [208, 97, 42];
+}
+const acc = rgbOf(cs0.getPropertyValue('--accent'));
+const lum = rgb => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(rgb[0]) + .7152 * f(rgb[1]) + .0722 * f(rgb[2]); };
+const rgba = (rgb, a) => `rgba(${rgb.map(v => Math.round(v)).join(',')},${a})`;
+const shade = (rgb, k) => rgb.map(v => v * (1 - k));
+if (!(job.palette || {})['accent-ink']) T.root.style.setProperty('--accent-ink', lum(acc) > .3 ? '#111111' : '#FFFFFF');
+T.root.style.setProperty('--accent-dark', rgba(shade(acc, .18), 1));
+T.root.style.setProperty('--accent-glass', rgba(shade(acc, .45), job.glass_alpha ?? .88));
+/* the headline keyword on a dark scrim: the accent lifted toward cream until it reads (contrast >= 4.5 on #1E1B19) */
+let hi = acc.slice(); for (let k = 0; k < 12 && (lum(hi) + .05) / (.0122 + .05) < 6; k++) hi = hi.map((v, i) => v + ([244, 239, 227][i] - v) * .18);
+T.root.style.setProperty('--accent-hi', rgba(hi, 1));
+
+/* ---- headline: on by default (a listing image leads with a claim). T04_headline overrides job.headline;
+   T04_headline:false or show_headline:false turns it off. Stock lines are kept but logged (P3). ---- */
+let mode = job.mode || (W / H > 1.2 ? 'side' : 'overlay');
+if (mode === 'band' && !allNumeric) { T.notes.push('band mode needs every spec to be a number: switched to overlay chips'); mode = 'overlay'; }
+const STOCK = /^(key figures|made for the job|核心参数|参数|近看细节)$/i;
+const hlText = (job.T04_headline === false || job.show_headline === false) ? null : clean(job.T04_headline || job.headline || null);
+if (hlText && STOCK.test(T.plain(hlText).trim())) T.notes.push('headline is a stock line: pass T04_headline with product-data copy');
+const eyebrowText = hlText && job.show_eyebrow !== false ? clean(job.eyebrow) : null;
+if ((job.T04_face || 'display') === 'cond') T.root.classList.add('face-cond');
 T.layoutInfo = {mode};
-const fmt = s => s.value != null ? s.value : null;
-/* spec cell: label / value+unit / converted line, or qualitative text */
+const fx = job.focus?.[0] ?? 0.5, fy = job.focus?.[1] ?? 0.5;
+/* scene_product comes from brandkit_set.scene_box, which widens the locked box by 15% of its size per side (slack);
+   the layout works on the un-widened box (scene_product_slack, default 0.15; 0 when the box is already tight). */
+// half the slack stays under the base: the drawn product often sits a little lower than its locked box (floor contact, shadow)
+const unslack = (bx, k) => { const dx = (bx[2] - bx[0]) * k / (1 + 2 * k), dy = (bx[3] - bx[1]) * k / (1 + 2 * k); return [bx[0] + dx, bx[1] + dy, bx[2] - dx, bx[3] - dy / 2]; };
+const rawBox = Array.isArray(job.scene_product) && job.scene_product.length === 4 ? job.scene_product : null;
+const prodBox = rawBox ? unslack(rawBox, job.scene_product_slack ?? 0.15) : null;
+/* Without scene_product the product is assumed centred on the focus (generated scenes are framed that way),
+   at product_guess [w,h] of the picture, so the layout can still keep it clear of the type. */
+const pg = job.product_guess || [0.42, 0.56];
+const guessBox = [fx - pg[0] / 2, fy - pg[1] / 2, fx + pg[0] / 2, fy + pg[1] / 2].map(v => Math.max(0, Math.min(1, v)));
+const guessRaw = (() => { const k = .15, dx = (guessBox[2] - guessBox[0]) * k, dy = (guessBox[3] - guessBox[1]) * k; return [guessBox[0] - dx, guessBox[1] - dy, guessBox[2] + dx, guessBox[3] + dy].map(v => Math.max(0, Math.min(1, v))); })();
+
+/* Scene: a frame (bleed) whose picture is zoomed toward the focus (scene_zoom, default 1.3), capped at the upscale limit.
+   With scene_product (the product's box in the scene, 0-1) the zoom is the largest that keeps the whole product inside
+   `region` (canvas px), and the product is centred there: type sits around the product, never on it. */
+function makeScene(x, y, w, h) { return {f: T.detailFrame('scene', job.scene, x, y, w, h, {bleed: true, fx, fy}), x, y, w, h}; }
+function fitScene(S, region, opt = {}) {
+  const cover = Math.max(S.w / sc.width, S.h / sc.height), hi = Math.max(cover, cap);
+  let s = Math.min(cover * (job.scene_zoom ?? 1.3), hi), x, y;
+  const box = prodBox || (opt.guess ? guessBox : null), rawB = rawBox || (opt.guess ? guessRaw : null);
+  if (box && region && region.w > 0 && region.h > 0) {
+    const pw = (box[2] - box[0]) * sc.width, ph = (box[3] - box[1]) * sc.height;
+    // the whole product fits the free region (never below cover, never below scene_min_zoom x cover)
+    const floorS = Math.max(cover, cover * (job.scene_min_zoom ?? 1));
+    let sMax = Math.min(s, region.w / pw, region.h / ph);
+    if (rawB) sMax = Math.min(sMax, S.w / ((rawB[2] - rawB[0]) * sc.width), S.h / ((rawB[3] - rawB[1]) * sc.height));
+    s = Math.max(floorS, sMax);
+    const w = sc.width * s, h = sc.height * s;
+    x = region.x + region.w / 2 - S.x - (box[0] + box[2]) / 2 * w;
+    const phs = (box[3] - box[1]) * h;
+    // too tall for the region: the base keeps its clearance above the type below, the top gives way
+    y = (phs > region.h ? region.y + region.h - phs : region.y + (region.h - phs) / 2) - S.y - box[1] * h;
+    // the frame keeps the whole slack box when it can (QA: >= 95% of scene_product inside the frame)
+    if (rawB) {
+      const lo = -rawB[1] * h, hiY = S.h - rawB[3] * h; if (lo <= hiY) y = Math.min(hiY, Math.max(lo, y));
+      const lx = -rawB[0] * w, hx = S.w - rawB[2] * w; if (lx <= hx) x = Math.min(hx, Math.max(lx, x));
+    }
+  } else {
+    x = -(sc.width * s - S.w) * fx; y = -(sc.height * s - S.h) * fy;
+  }
+  const w = sc.width * s, h = sc.height * s;
+  // opt.rise: the picture may stop short of the frame bottom by up to this many px (it then fades into the dark ground)
+  x = Math.min(0, Math.max(S.w - w, x)); y = Math.min(0, Math.max(S.h - h - (opt.rise || 0), y));
+  T.box(S.f.img, x, y, w, h);
+  const gapB = S.h - (y + h);
+  if (gapB > 0.5) {
+    const fd = T.el('div', {class: 't4fade', 'data-exempt': '1'});
+    S.f.frame.after(fd);
+    const fh = Math.round(Math.min(220, gapB + 160));
+    T.box(fd, S.x, S.y + y + h - fh + 2, S.w, fh + gapB);
+    T.layoutInfo.scene_rise = Math.round(gapB);
+  }
+  T.layoutInfo.scene_scale = +s.toFixed(3);
+  if (box) {
+    const pb = {x: S.x + x + box[0] * w, y: S.y + y + box[1] * h, w: (box[2] - box[0]) * w, h: (box[3] - box[1]) * h, real: !!prodBox};
+    T.layoutInfo.product_box = [pb.x, pb.y, pb.w, pb.h].map(v => Math.round(v));
+    if (!prodBox) T.layoutInfo.product_box_guessed = true;
+    return pb;
+  }
+  return null;
+}
+const allowAll = (el, extra) => { const ids = [...T.root.querySelectorAll('[data-kind=text]')].map(e => e.dataset.qa).concat(extra || []); el.setAttribute('data-allow', ids.join(',')); };
+
+/* Optional overlay headline at the top (h1 88 cream on a scrim), flush-left. Returns its bottom edge. */
+function topHeadline() {
+  if (!hlText) return 0;
+  let y = m;
+  const els = [];
+  if (eyebrowText) {
+    const rule = T.el('div', {class: 't4-rule', 'data-exempt': '1'}); T.box(rule, m, y + 8, 48, 8);
+    const e = T.text('eyebrow', eyebrowText, m + 64, y, W - 2 * m - 64, 't4-eyebrow', {tier: 'meta', maxLines: 1});
+    y += T.rect(e).h + 3 * G; els.push(e);
+  }
+  const hw = W - 2 * m;
+  let hl = T.text('headline', hlText, m, y, hw, 't4-h1', {tier: 'headline', maxLines: 2});
+  // step down (h1 -> compact -> small) until it fits: en <= 2 lines, zh only at the author's \n breaks (phrase-safe)
+  const want = zh ? Math.min(2, String(hlText).split('\n').length) : 2;
+  const lines = () => { const cs = getComputedStyle(hl); return Math.round(T.rect(hl).h / (parseFloat(cs.lineHeight) || parseFloat(cs.fontSize))); };
+  if (lines() > want) hl.classList.add('compact');
+  if (lines() > want) { const cs = getComputedStyle(hl); hl.style.fontSize = Math.round(parseFloat(cs.fontSize) * .86) + 'px'; }
+  if (lines() > want) T.notes.push('headline too long for ' + want + ' line(s): shorten T04_headline');
+  return T.rect(hl).y + T.rect(hl).h;
+}
+
+/* ---- spec chip: icon cell (job row 'icon') + value (56 cond, unit at half size) over a 24px label ---- */
+const chipDark = (job.chip_style || 'accent') === 'dark';
+const STY = [{h: 108, v: 56, l: 24, padL: 24, padR: 30, padT: 14}, {h: 100, v: 48, l: 22, padL: 20, padR: 24, padT: 13}];
+function buildChip(i, s, st, parent) {
+  const id = 's' + (i + 1), num = isNum(s), vid = id + (num ? '_value' : '_text'), lid = id + '_label';
+  const box = T.el('div', {class: 't4chip' + (chipDark ? ' dark' : ''), 'data-qa': id, 'data-kind': 'shape', 'data-allow': [vid, lid].join(',')}, parent);
+  box.style.background = chipDark ? 'rgba(24,21,19,.74)' : rgba(acc, .93);
+  box.style.height = st.h + 'px'; box.style.left = '0px'; box.style.top = '0px';
+  const hasIcon = s.icon && (job.icons || {})[s.icon];
+  const iw = hasIcon ? st.h : 0;
+  if (hasIcon) {
+    const c = T.el('div', {class: 'ci', 'data-exempt': '1'}, box); c.style.width = iw + 'px';
+    c.style.background = chipDark ? 'var(--accent)' : 'var(--accent-dark)';
+    T.icon(s.icon, Math.round(iw * .24), Math.round(st.h * .24), Math.round(iw * .52), null, c);
+  }
+  const v = T.el('div', {class: 'txt cv' + (num ? ' num' : ''), 'data-qa': vid, 'data-kind': 'text', 'data-tier': 'important', 'data-maxlines': '1', 'data-allow': id}, box);
+  v.style.fontSize = st.v + 'px';
+  if (num) { v.textContent = String(s.value); if (s.unit) { const u = document.createElement('span'); u.className = 'u'; u.textContent = s.unit; v.appendChild(u); } }
+  else v.textContent = T.plain(s.text);
+  let l = null;
+  if (s.label) { l = T.el('div', {class: 'txt cl', 'data-qa': lid, 'data-kind': 'text', 'data-tier': 'secondary', 'data-maxlines': '1', 'data-allow': id}, box, T.plain(s.label)); l.style.fontSize = st.l + 'px'; }
+  const vr = v.getBoundingClientRect(), lr = l ? l.getBoundingClientRect() : {width: 0, height: 0};
+  const tx = iw + st.padL;
+  v.style.left = tx + 'px';
+  if (l) {   // the value/label pair is centred as one block (CJK line boxes are taller than the Latin ones)
+    const mid = 3, top = Math.max(4, Math.min(st.padT, (st.h - vr.height - lr.height - mid) / 2));
+    v.style.top = top + 'px'; l.style.left = tx + 'px'; l.style.top = Math.max(top + vr.height + mid, st.h - top - lr.height) + 'px';
+  }
+  else v.style.top = ((st.h - vr.height) / 2) + 'px';
+  const w = Math.ceil(tx + Math.max(vr.width, lr.width) + st.padR);
+  box.style.width = w + 'px';
+  return {el: box, w, h: st.h, setW(nw) { box.style.width = nw + 'px'; this.w = nw; }, move(x, y) { box.style.left = x + 'px'; box.style.top = y + 'px'; }};
+}
+/* chips in one row (equal widths when they fit), compact step, then wrap into rows that stack upward */
+function chipRows(bottom, avail) {
+  if (!specs.length) return {top: bottom, chips: []};
+  const gap = 3 * G;
+  let chips = [], st = STY[0];
+  for (const s0 of STY) {
+    chips.forEach(c => c.el.remove());
+    st = s0; chips = specs.map((s, i) => buildChip(i, s, st));
+    if (chips.reduce((a, c) => a + c.w, 0) + gap * (chips.length - 1) <= avail) break;
+  }
+  const rows = [[]]; let used = 0;
+  for (const c of chips) {
+    const need = (rows[rows.length - 1].length ? gap : 0) + c.w;
+    if (rows[rows.length - 1].length && used + need > avail) { rows.push([c]); used = c.w; } else { rows[rows.length - 1].push(c); used += need; }
+  }
+  const per = Math.max(...rows.map(r => r.length));
+  const maxW = Math.max(...chips.map(c => c.w));
+  // one rhythm: equal cells that span the full text measure (m to W-m) whatever the count or language;
+  // chip_stretch (optional) caps the stretch at that multiple of the widest chip, and the row is then centred
+  const full = Math.floor((avail - gap * (per - 1)) / per);
+  const eq = (job.chip_fill ?? true) ? (job.chip_stretch ? Math.min(full, Math.round(maxW * job.chip_stretch)) : full) : maxW;
+  if (eq * per + gap * (per - 1) <= avail + 0.5) chips.forEach(c => c.setW(Math.max(c.w, eq)));
+  const rg = 2 * G;
+  rows.forEach((r, ri) => {
+    const y = bottom - st.h - (rows.length - 1 - ri) * (st.h + rg);
+    const rw = r.reduce((a, c) => a + c.w, 0) + gap * (r.length - 1);
+    let x = m + Math.max(0, (avail - rw) / 2); r.forEach(c => { c.move(x, y); x += c.w + gap; });
+  });
+  T.layoutInfo.chip_rows = rows.length; T.layoutInfo.chip_style = st === STY[0] ? 'full' : 'compact';
+  return {top: bottom - rows.length * st.h - (rows.length - 1) * rg, chips};
+}
+
+/* legacy cell: label / value+unit / converted line, or qualitative text */
 function cell(i, s, x, y, w, parent, align) {
   const id = 's' + (i + 1); const els = [];
-  const lab = T.text(id + '_label', s.label, x, y, w, 's-label', {tier:'secondary', maxLines: 2, parent, align}); els.push(lab);
+  const lab = T.text(id + '_label', s.label, x, y, w, 's-label', {tier: 'secondary', maxLines: 2, parent, align}); els.push(lab);
   let yy = T.rect(lab).y + T.rect(lab).h + 2 * G;
-  if (s.value != null) {
-    const v = T.text(id + '_value', '', x, yy, w, 's-value' + (w < 380 ? ' compact' : ''), {tier:'headline', maxLines: 1, parent, align});   // narrow columns use the defined compact value size
-    v.textContent = String(s.value); const u = document.createElement('span'); u.className = 'u'; u.textContent = s.unit; v.appendChild(u); els.push(v);
+  if (isNum(s)) {
+    const v = T.text(id + '_value', '', x, yy, w, 's-value' + (w < 380 ? ' compact' : ''), {tier: 'headline', maxLines: 1, parent, align});
+    v.textContent = String(s.value); if (s.unit) { const u = document.createElement('span'); u.className = 'u'; u.textContent = s.unit; v.appendChild(u); } els.push(v);
     yy = T.rect(v).y + T.rect(v).h + G;
-    if (s.alt) { const a = T.text(id + '_alt', s.alt, x, yy, w, 's-alt', {tier:'secondary', maxLines: 1, parent, align}); els.push(a); yy = T.rect(a).y + T.rect(a).h; }
+    if (s.alt && clean(s.alt)) { const a = T.text(id + '_alt', s.alt, x, yy, w, 's-alt', {tier: 'secondary', maxLines: 1, parent, align}); els.push(a); yy = T.rect(a).y + T.rect(a).h; }
   } else {
-    const t = T.text(id + '_text', s.text, x, yy, w, 's-text', {tier:'important', maxLines: 3, parent, align}); els.push(t); yy = T.rect(t).y + T.rect(t).h;
+    const t = T.text(id + '_text', s.text, x, yy, w, 's-text', {tier: 'important', maxLines: 3, parent, align}); els.push(t); yy = T.rect(t).y + T.rect(t).h;
   }
   return {h: yy - y, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
 }
 
-if (mode === 'band') {
-  /* ---- Direction A (AMZ-024): scene ~72% on top, dark info band with 3 columns + one headline line ---- */
+if (mode === 'overlay') {
+  /* ---- full-bleed scene, bottom scrim, chip row at H-72-h ---- */
+  T.root.classList.add('dark-ground');
+  const S = makeScene(0, 0, W, H);
+  const scrimB = T.scrim('scrim_bottom', 0, 0, W, 0, 'up', job.scrim_alpha ?? 0.62);
+  const scrimT = hlText ? T.scrim('scrim_top', 0, 0, W, 0, 'down', 0.66) : null;
+  const hlBottom = topHeadline();
+  const row = chipRows(floor, W - 2 * m);
+  const sh = Math.max(Math.round(H * .38), H - row.top + 150);
+  T.box(scrimB, 0, H - sh, W, sh);
+  if (scrimT) T.box(scrimT, 0, 0, W, Math.round(hlBottom + 220));
+  // the product sits in the free band: >= hl_gap (60) under the headline, >= chip_gap (48) above the chip row
+  const top = hlText ? hlBottom + (job.hl_gap ?? 60) : 5 * G;
+  const bottom = specs.length ? row.top - (job.chip_gap ?? 40) : H - 5 * G;
+  const pb = fitScene(S, {x: 3 * G, y: top, w: W - 6 * G, h: bottom - top}, {guess: true, rise: specs.length ? H - row.top : 0});
+  if (pb && hlText && pb.y < hlBottom + 3 * G) T.notes.push('product top reaches the headline zone: shorten T04_headline');
+  allowAll(S.f.frame, specs.map((s, i) => 's' + (i + 1)));
+} else if (mode === 'band') {
+  /* ---- stat band (Greenworks 04): label 40 / number 128 / unit 48 per column, accent-tinted dividers, tagline ---- */
+  T.root.classList.add('dark-ground');
   const n = specs.length;
-  // build band content first (measure), then give the scene everything above it
-  const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+  const cont = T.el('div', {}); cont.style.position = 'absolute'; cont.style.inset = '0';
   const colGap = 6 * G, colW = (W - 2 * m - (n - 1) * colGap) / n;
-  const cells = specs.map((s, i) => cell(i, s, m + i * (colW + colGap), 0, colW, cont, 'center'));
-  const cellH = Math.max(...cells.map(c => c.h));
-  let hl = null, hlH = 0;
-  if (job.headline) { hl = T.text('headline', job.headline, m, 0, W - 2 * m, 'headline', {tier:'headline', maxLines: 1, parent: cont, align:'center'}); hlH = T.rect(hl).h + 5 * G; }
-  const bandPad = 7 * G;
-  let bandTop = floor - cellH - hlH - bandPad;   // content ends on the safe floor
-  // scene height capped by pixel budget
-  const maxScene = Math.round(Math.min(sc.height * cap, sc.height * W / sc.width * cap));
-  if (bandTop > maxScene) bandTop = maxScene;
-  const bandBox = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow': cells.flatMap(c => c.els.map(e => e.dataset.qa)).concat(hl ? ['headline'] : []).join(',')});
-  T.box(bandBox, 0, bandTop, W, H - bandH - bandTop);
-  T.root.insertBefore(bandBox, cont);
-  T.detailFrame('scene', job.scene, 0, 0, W, bandTop, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
-  T.root.appendChild(cont);
-  let y = bandTop + bandPad;
-  if (hl) { hl.style.top = y + 'px'; y += hlH; }
-  cells.forEach(c => c.move(y));   // labels share one line (project change: centring each cell put a figure's label above the others)
-  for (let i = 1; i < n; i++) { const r = T.el('div', {class:'vrule'}, cont); T.box(r, m + i * (colW + colGap) - colGap / 2, y, 2, cellH); }
+  const cols = specs.map((s, i) => {
+    const id = 's' + (i + 1), x = m + i * (colW + colGap), els = [];
+    let y = 0;
+    if (s.label) { const l = T.text(id + '_label', T.plain(s.label), x, y, colW, 'b-label', {tier: 'secondary', maxLines: 1, parent: cont, align: 'center'}); els.push(l); y += T.rect(l).h + 2 * G; }
+    const v = T.text(id + '_value', String(s.value), x, y, colW, 'b-num' + (colW < 380 ? ' compact' : ''), {tier: 'headline', maxLines: 1, parent: cont, align: 'center'}); els.push(v); y += T.rect(v).h + 2 * G;
+    if (s.unit) { const u = T.text(id + '_unit', s.unit, x, y, colW, 'b-unit', {tier: 'secondary', maxLines: 1, parent: cont, align: 'center'}); els.push(u); y += T.rect(u).h; }
+    if (s.alt && clean(s.alt)) { y += G; const a = T.text(id + '_alt', s.alt, x, y, colW, 'b-alt', {tier: 'meta', maxLines: 1, parent: cont, align: 'center'}); els.push(a); y += T.rect(a).h; }
+    return {h: y, els};
+  });
+  const cellH = Math.max(...cols.map(c => c.h));
+  // the band's one line of copy leads the band (above the stats), in the headline face; it is dropped when it would wrap
+  const tagText = clean(job.tagline) || hlText;
+  let tag = null, tagH = 0;
+  if (tagText) {
+    tag = T.text('headline', tagText, m, 0, W - 2 * m, 'b-tag', {tier: 'important', maxLines: 1, parent: cont, align: 'center'});
+    if (T.rect(tag).h > 52 * 1.25 * 1.5) { tag.remove(); tag = null; T.notes.push('band: tagline dropped (would wrap)'); }
+    else tagH = T.rect(tag).h + 5 * G;
+  }
+  const pad = 6 * G, padB = Math.max(pad, m), bandTop = Math.round(H - bandH - (10 + pad + tagH + cellH + padB));
+  const band = T.el('div', {class: 't4band', 'data-qa': 'band', 'data-kind': 'shape'});
+  T.box(band, 0, bandTop, W, H - bandH - bandTop);
+  T.root.insertBefore(band, cont);
+  const S = makeScene(0, 0, W, bandTop);
+  T.root.insertBefore(S.f.frame, band);
+  // the crop ends on tabletop: >= band_gap (48) of scene under the product base before the accent rule
+  fitScene(S, {x: 3 * G, y: 4 * G, w: W - 6 * G, h: bandTop - 4 * G - (job.band_gap ?? 48)}, {guess: true});
+  let y = bandTop + 10 + pad;
+  if (tag) { tag.style.top = y + 'px'; y += tagH; }
+  cols.forEach((c, i) => { c.els.forEach(e => e.style.top = (parseFloat(e.style.top) + y) + 'px'); });
+  for (let i = 1; i < n; i++) { const r = T.el('div', {class: 't4div', 'data-exempt': '1'}, cont); T.box(r, Math.round(m + i * (colW + colGap) - colGap / 2 - 1), y + 4, 2, cellH - 8); }
+  allowAll(band);
   T.layoutInfo.scene_h = bandTop;
+} else if (mode === 'glass') {
+  /* ---- spec glass panel (SEESII 02): tinted panel, dotted dividers, 110/50 type, dashed leader to the part ---- */
+  T.root.classList.add('dark-ground');
+  const S = makeScene(0, 0, W, H);
+  const scrimT = hlText ? T.scrim('scrim_top', 0, 0, W, 0, 'down', 0.66) : null;
+  const hlBottom = topHeadline();
+  if (scrimT) T.box(scrimT, 0, 0, W, Math.round(hlBottom + 220));
+  const panel = T.el('div', {class: 't4glass', 'data-qa': 'panel', 'data-kind': 'shape'});
+  panel.style.background = 'var(--accent-glass)';
+  const gp = 5 * G, rowsEl = [];
+  let y = gp, pw = 0;
+  specs.forEach((s, i) => {
+    const id = 's' + (i + 1), num = isNum(s);
+    if (i) { const d = T.el('div', {class: 'g-div', 'data-exempt': '1'}, panel); rowsEl.push({div: d, y: y + 3 * G}); y += 6 * G; }
+    const v = T.text(id + (num ? '_value' : '_text'), '', gp, y, null, 'g-v' + (num ? ' num' : ''), {tier: 'headline', maxLines: 1, parent: panel});
+    v.style.whiteSpace = 'nowrap';
+    if (num) { v.textContent = String(s.value); if (s.unit) { const u = document.createElement('span'); u.className = 'u'; u.textContent = s.unit; v.appendChild(u); } }
+    else v.textContent = T.plain(s.text);
+    const rowTop = y;
+    y += T.rect(v).h + G; pw = Math.max(pw, T.rect(v).w);
+    if (s.label) { const l = T.text(id + '_label', T.plain(s.label), gp, y, null, 'g-l', {tier: 'secondary', maxLines: 1, parent: panel}); l.style.whiteSpace = 'nowrap'; y += T.rect(l).h; pw = Math.max(pw, T.rect(l).w); }
+    rowsEl.push({spec: s, top: rowTop, bottom: y});
+  });
+  // the panel is flush with the canvas edge on the side away from the product (text keeps the margin m)
+  const prodRight = prodBox ? (prodBox[0] + prodBox[2]) / 2 < 0.5 : false;
+  const PW = Math.ceil(m + pw + gp), PH = Math.ceil(y + gp);
+  const inner = prodRight ? gp : m;
+  panel.querySelectorAll('[data-kind=text]').forEach(e => { e.style.left = inner + 'px'; if (prodRight) { e.style.left = ''; e.style.right = m + 'px'; e.style.textAlign = 'right'; } });
+  rowsEl.forEach(r => { if (r.div) T.box(r.div, inner, r.y, PW - m - gp, 0); });
+  const px = prodRight ? W - PW : 0, py = floor - PH;
+  T.box(panel, px, py, PW, PH);
+  const top = hlText ? hlBottom + (job.hl_gap ?? 60) : 5 * G;
+  /* Height dimension line (same in every language): drawn only from a tight product outline, dim_box [x0,y0,x1,y1]
+     in the scene picture (or scene_product with scene_product_tight:true), since the slack box would float the ticks
+     off the product. It stands beside the product on the panel side, ticks at the top (handle apex) and the floor contact. */
+  const dimBox = Array.isArray(job.dim_box) && job.dim_box.length === 4 ? job.dim_box : (job.scene_product_tight && rawBox ? rawBox : null);
+  const LEN = /^(mm|cm|m|in|inch|inches|ft|"|毫米|厘米|米)$/i, HGT = /height|tall|高/i;
+  const di = dimBox ? specs.findIndex(s => isNum(s) && LEN.test(String(s.unit || '').trim()) && HGT.test(String(s.label || ''))) : -1;
+  const gut = di >= 0 ? 12 * G : 0;
+  const reg = prodRight ? {x: 3 * G, y: top, w: px - 6 * G - gut, h: H - 5 * G - top} : {x: px + PW + 3 * G + gut, y: top, w: W - px - PW - 6 * G - gut, h: H - 5 * G - top};
+  const pb = fitScene(S, reg, {guess: true});
+  const img = S.f.img, ix = parseFloat(img.style.left), iy = parseFloat(img.style.top), iw = parseFloat(img.style.width), ih = parseFloat(img.style.height);
+  const rowOf = k => rowsEl.filter(q => q.spec)[k];
+  const pathD = pts => pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  let dimOK = di >= 0;
+  const bx0 = dimOK ? ix + dimBox[0] * iw : 0, bx1 = dimOK ? ix + dimBox[2] * iw : 0;
+  let lx = prodRight ? bx1 + 5 * G : bx0 - 5 * G;
+  if (dimOK) {   // the line keeps >= 24px off the panel edge and >= 20px off the product, else it is left out (both languages alike)
+    lx = prodRight ? Math.min(lx, px - 5 * G) : Math.max(lx, px + PW + 5 * G);
+    if (prodRight ? lx < bx1 + 20 || lx > W - 24 : lx > bx0 - 20) { dimOK = false; T.notes.push('glass: no room for the height dimension line beside the product'); }
+  }
+  if (dimOK) {
+    const y0 = iy + dimBox[1] * ih, y1 = iy + dimBox[3] * ih;
+    const ext = prodRight ? bx1 - 8 : bx0 + 8, tk = Math.min(16, Math.abs((prodRight ? bx1 : bx0) - lx) - 4);
+    T.svgEl('path', {d: pathD([[ext, y0], [lx, y0]]) + ' ' + pathD([[ext, y1], [lx, y1]]), class: 't4ext'});
+    T.svgEl('path', {d: pathD([[lx, y0], [lx, y1]]) + ' ' + pathD([[lx - tk, y0], [lx + tk, y0]]) + ' ' + pathD([[lx - tk, y1], [lx + tk, y1]]), class: 't4dim', 'data-qa-line': 'dim1'});
+    const r = rowOf(di), port = [prodRight ? px : px + PW, py + (r.top + r.bottom) / 2];
+    const jy = Math.min(y1 - 3 * G, Math.max(y0 + 3 * G, port[1]));
+    const pts = Math.abs(jy - port[1]) < 2 ? [port, [lx, jy]] : [port, [(port[0] + lx) / 2, port[1]], [(port[0] + lx) / 2, jy], [lx, jy]];
+    T.svgEl('path', {d: pathD(pts), class: 't4dash', 'data-qa-line': 'ldr1'});
+    T.svgEl('circle', {cx: port[0], cy: port[1], r: 5, class: 't4port'});
+    T.svgEl('rect', {x: lx - 8, y: jy - 8, width: 16, height: 16, class: 't4node'});
+    T.leaders.push({id: 'ldr1', pts, label: 's' + (di + 1), anchor: 'scene'});
+    T.layoutInfo.dimension = {x: Math.round(lx), y0: Math.round(y0), y1: Math.round(y1)};
+  }
+  // dashed leader from the first row that names an anchor (row 'anchor' [x,y] in the scene picture, 0-1) or job.glass_anchor
+  const ai = specs.findIndex(s => Array.isArray(s.anchor));
+  const anc = dimOK ? null : ai >= 0 ? specs[ai].anchor : (Array.isArray(job.glass_anchor) ? job.glass_anchor : null);
+  if (anc) {
+    const ax = ix + anc[0] * iw, ay = iy + anc[1] * ih;
+    const r = rowsEl.filter(q => q.spec)[Math.max(0, ai)];
+    const port = [prodRight ? px : px + PW, py + (r.top + r.bottom) / 2];
+    const pts = Math.abs(ay - port[1]) < 2 ? [port, [ax, ay]] : [port, [ax, port[1]], [ax, ay]];
+    const d = pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    T.svgEl('path', {d, class: 't4dash', 'data-qa-line': 'ldr1'});
+    T.svgEl('circle', {cx: port[0], cy: port[1], r: 5, class: 't4port'});
+    T.svgEl('circle', {cx: ax, cy: ay, r: 11, class: 't4node'});
+    T.leaders.push({id: 'ldr1', pts, label: 's' + (Math.max(0, ai) + 1), anchor: 'scene'});
+  }
+  allowAll(panel); allowAll(S.f.frame, ['panel']);
 } else if (mode === 'stack') {
-  /* ---- Direction B: editorial stack on light ground — headline zone / native-scale scene / spec row ---- */
+  /* ---- legacy: editorial stack on light ground — headline / scene / spec row ---- */
   T.root.classList.add('light');
   let y = m + 4;
-  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
-  const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
-  y = T.rect(hl).y + T.rect(hl).h + 6 * G;
+  if (eyebrowText) { const e = T.text('eyebrow', eyebrowText, m, y, W - 2 * m, 'eyebrow', {tier: 'meta'}); y += T.rect(e).h + 3 * G; }
+  if (clean(job.headline)) { const hl = T.text('headline', clean(job.headline), m, y, W - 2 * m, 'headline', {tier: 'headline', maxLines: 2}); y = T.rect(hl).y + T.rect(hl).h + 6 * G; }
   const n = specs.length, colGap = 6 * G, colW = (W - 2 * m - (n - 1) * colGap) / n;
   const cells = specs.map((s, i) => cell(i, s, m + i * (colW + colGap), 0, colW, null, 'left'));
   const cellH = Math.max(...cells.map(c => c.h));
   const rowTop = floor - cellH;
-  const sh = Math.min(rowTop - 7 * G - y, Math.round(sc.height * cap * W / W));
-  T.detailFrame('scene', job.scene, 0, y, W, sh, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
+  const sh = rowTop - 7 * G - y;
+  const S = makeScene(0, y, W, sh); T.root.insertBefore(S.f.frame, T.root.firstChild);
+  fitScene(S, {x: 3 * G, y, w: W - 6 * G, h: sh}, {guess: true});
   cells.forEach(c => c.move(rowTop));
-  for (let i = 1; i < n; i++) { const r = T.el('div', {class:'vrule'}); T.box(r, m + i * (colW + colGap) - colGap / 2, rowTop, 2, cellH); }
+  for (let i = 1; i < n; i++) { const r = T.el('div', {class: 'vrule', 'data-exempt': '1'}); T.box(r, m + i * (colW + colGap) - colGap / 2, rowTop, 2, cellH); }
   T.layoutInfo.scene_h = sh;
 } else {
-  /* ---- Landscape adaptation: scene left, band becomes a dark side panel ---- */
-  const pw = Math.round(W * 0.36);
-  const sw = W - pw;
-  T.detailFrame('scene', job.scene, 0, 0, sw, H - bandH, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
-  const bandBox = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape'}); T.box(bandBox, sw, 0, pw, H - bandH);
-  const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
+  /* ---- landscape: scene left, dark side panel ---- */
+  const pw = Math.round(W * 0.36), sw = W - pw;
+  const S = makeScene(0, 0, sw, H - bandH);
+  fitScene(S, {x: 3 * G, y: 3 * G, w: sw - 6 * G, h: H - bandH - 6 * G}, {guess: true});
+  const bandBox = T.el('div', {class: 'band', 'data-qa': 'band', 'data-kind': 'shape'}); T.box(bandBox, sw, 0, pw, H - bandH);
+  const accentRule = T.el('div', {class: 't4-rule', 'data-exempt': '1'}); T.box(accentRule, sw, 0, 10, H - bandH); accentRule.style.height = (H - bandH) + 'px'; accentRule.style.width = '10px';
+  const cont = T.el('div', {class: 'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
   const ix = sw + 7 * G, iw = pw - 7 * G - m;
   const allow = [];
   let y = m;
-  if (job.headline) { const hl = T.text('headline', job.headline, ix, y, iw, 'headline', {tier:'headline', maxLines: 3, parent: cont}); y = T.rect(hl).y + T.rect(hl).h + 6 * G; allow.push('headline'); }
+  if (clean(job.headline)) { const hl = T.text('headline', clean(job.headline), ix, y, iw, 'headline', {tier: 'headline', maxLines: 3, parent: cont}); y = T.rect(hl).y + T.rect(hl).h + 6 * G; allow.push('headline'); }
   const cells = specs.map((s, i) => cell(i, s, ix, 0, iw, cont, 'left'));
   let total = cells.reduce((a, c) => a + c.h, 0);
   if (total + 3 * G * (cells.length - 1) > floor - y && allow.includes('headline')) {   // density rule: drop the panel headline before shrinking anything

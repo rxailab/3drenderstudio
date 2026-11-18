@@ -560,6 +560,17 @@ class RecordTests(StoreCase):
         legacy = store.get('project', 'fixture'); legacy['listing']['product']['pages'] = ['main', 'includes']; store.put('project', legacy)
         self.assertIsNone(listing.stored(legacy)[0]['pages'])                                  # page kinds from before the templates are dropped, not an error
 
+    def test_points_found_on_the_picture_are_kept_while_the_view_stays_the_same(self):
+        listing.save_product('fixture', {'features': [{'title': 'Side cutter', 'parts': []}, {'title': 'Grip', 'parts': [PARTS[1]]}]})
+        project = store.get('project', 'fixture')
+        listing._update('fixture', lambda record, lst: lst.__setitem__('placed', {'view': listing._view_key(record),
+                        'features': {'Side cutter': {'point': [.4, .5], 'parts': [PARTS[0]]}, 'Grip': {'point': [.6, .5], 'parts': []}}}))
+        features = listing.stored(store.get('project', 'fixture'))[0]['features']
+        self.assertEqual((features[0].get('point'), features[0]['parts']), ([.4, .5], [PARTS[0]]))
+        self.assertEqual(features[1]['parts'], [PARTS[1]])                       # a part the user chose stays
+        moved = store.get('project', 'fixture'); moved['plan'] = {**moved['plan'], 'rotation': [0, 0, 90]}; store.put('project', moved)
+        self.assertIsNone(listing.stored(store.get('project', 'fixture'))[0]['features'][0].get('point'))     # shown another way: found again
+
     def test_a_draft_fills_only_what_is_empty_and_prints_only_the_users_numbers(self):
         state = listing.draft('fixture', {'hint': '切割范围: 6-22 mm\n硬化钢切割轮'})
         product = state['product']
@@ -575,6 +586,51 @@ class RecordTests(StoreCase):
         self.assertNotEqual(replaced['headline'], 'My own headline')
         with self.assertRaises(ValueError):
             listing.draft('fixture', {'hint': 'x' * 401})
+
+    def test_a_pasted_description_is_sorted_into_the_record_keeping_only_what_it_says(self):
+        import brandkit_review
+        text = '棘轮割管器 PC-22\n切割范围 6-22 mm，整机长 215 mm，重 380 g。硬化钢刀轮可更换；双导向滚轮让切口平直。'
+        answer = {'title': '棘轮割管器', 'model': 'PC-22', 'longest_side': {'value': '215', 'unit': 'mm', 'quote': '整机长 215 mm'}, 'headline': '6-22 mm 管材一次切平',
+                  'subline': '硬化钢刀轮，双导向滚轮', 'notes': ['产地未写'],
+                  'features': [{'title': '硬化钢刀轮', 'detail': '可更换', 'parts': [PARTS[0], 'Not a part']},
+                               {'title': '双导向滚轮', 'detail': '切口平直，寿命 5000 次', 'parts': []}],          # a number the text never gave
+                  'specs': [{'label': '切割范围', 'value': '6-22 mm'}, {'label': '重量', 'value': '380 g'}, {'label': '功率', 'value': '12 W'}],
+                  'figures': [{'value': '22', 'unit': 'mm', 'label': '最大管径'}]}
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value=answer) as asked:
+            kept = listing.extract('fixture', {'text': text})['product']                   # a record with English words keeps English
+            self.assertEqual((kept['language'], asked.call_args.args[2]['output_language']), ('en', 'English'))
+            listing.save_product('fixture', {'title': '', 'headline': '', 'features': [], 'language': 'en'})
+            product = listing.extract('fixture', {'text': text})['product']                 # a blank one takes the text's language
+        request = asked.call_args.args[2]
+        self.assertEqual((request['text'], request['output_language']), (text, 'Simplified Chinese'))
+        self.assertIn(PARTS[0], request['model_parts'])
+        self.assertEqual((product['title'], product['model'], product['language'], product['size_mm']), ('棘轮割管器', 'PC-22', 'zh', 215.0))
+        self.assertEqual([(row['title'], row['parts']) for row in product['features']], [('硬化钢刀轮', [PARTS[0]])])        # the invented 5000 left out
+        self.assertEqual([row['label'] for row in product['specs']], ['切割范围', '重量'])                                     # 12 W was never written
+        self.assertEqual(product['figures'], [{'value': '22', 'unit': 'mm', 'label': '最大管径'}])
+        self.assertEqual((product['source'], product['drafted']['source']), (text, 'extracted'))
+        self.assertIn('双导向滚轮', product['drafted']['notes'][0]); self.assertIn('功率', product['drafted']['notes'][0])
+        self.assertIn('产地未写', product['drafted']['notes'])
+        self.assertNotIn('size_mm', [] if product['size_mm'] else ['size_mm'])
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '30', 'unit': 'cm', 'quote': '整机长 215 mm'}, 'features': [], 'specs': [], 'figures': []}):
+            again = listing.extract('fixture', {'text': text})['product']
+        self.assertEqual((again['size_mm'], [row['title'] for row in again['features']]), (215.0, ['硬化钢刀轮']))    # a size not in the text is not taken; empty lists keep what was there
+        with patch.object(brandkit_review, '_configs', return_value=(None, None)):
+            with self.assertRaisesRegex(ValueError, '没有配置文本模型'):
+                listing.extract('fixture', {'text': text})
+        self.assertEqual(listing._numbers('管径 16,20,25 mm，1,200 g，功率１２００W，2.0Ah'), {'16', '20', '25', '1200', '2'})
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '215', 'unit': 'm', 'quote': '整机长 215 mm'},
+                                                                    'features': [{'title': '刀轮', 'detail': '', 'parts': [PARTS[0]] * 60}]}):
+            far = listing.extract('fixture', {'text': text})['product']                   # 215 m is out of range, 60 parts are one
+        self.assertEqual((far['size_mm'], far['features'][0]['parts']), (215.0, [PARTS[0]]))
+        self.assertTrue(any('超出范围' in note for note in far['drafted']['notes']))
+        for body in ({'text': '  '}, {'text': 'x' * (listing.MAX_SOURCE + 1)}, {}):
+            with self.assertRaises(ValueError):
+                listing.extract('fixture', body)
+        self.assertEqual(listing.save_product('fixture', {'source': 'kept'})['product']['source'], 'kept')
 
 
 class BuildTests(StoreCase):
@@ -675,7 +731,7 @@ class BuildTests(StoreCase):
         self.assertEqual(len(self.scenes), 3)
         self.assertEqual([row['people'] for row in self.scenes][:2], [True, False])                         # at work, then set down where it is used
         poster = self.job('T12')
-        self.assertEqual((poster['mode'], poster['scene'], poster['focus']), ('band', 'scene1', [.5, .55]))
+        self.assertEqual((poster['mode'], poster['scene'], poster['focus']), ('overlay', 'scene1', [.5, .55]))
         self.assertEqual(len(self.job('T08')['items']), 3)
         state = listing.state('fixture')
         self.assertEqual(len(state['scenes']), 3); self.assertTrue(all(row['url'].startswith('/files/fixture/listing/scenes-') for row in state['scenes']))
@@ -766,7 +822,8 @@ class BuildTests(StoreCase):
                                                       {'title': 'E', 'parts': [PARTS[0]]}, {'title': 'F', 'parts': [PARTS[1]]}]})
         listing.build('fixture')
         callouts = [row['title'] for row in self.job('T01')['features']]; column = [row['title'] for row in self.job('T03')['details']]
-        self.assertEqual(callouts, ['A', 'B', 'C', 'D']); self.assertEqual(column[:2], ['E', 'F'])
+        # A, C and E name the same part: one callout per spot (stacked ones would overlap); the column shows the others.
+        self.assertEqual(callouts, ['A', 'B']); self.assertEqual(column[:2], ['C', 'D'])
         listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})
         listing.build('fixture')
         self.assertEqual([row['title'] for row in self.job('T03')['details']], ['A', 'B'])          # only two points: shown again rather than not at all

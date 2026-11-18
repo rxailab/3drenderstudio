@@ -12,12 +12,32 @@ function listingComponentsBusy() { return (listingState?.components || []).some(
 function listingTaskActive() { return ['queued','running'].includes(listingState?.task?.status); }
 function listingNumber(value) { const text=String(value ?? '').trim();if(!text)return null;const number=Number(text);return Number.isFinite(number)?number:text; }
 
-async function listingOpen() {
+// The workspace lives in the inspector's 套图 tab: it is shown, loaded and kept up to date while that tab is open.
+function listingUnsaved() { return !!(listingOpenFor() && (listingDirty.product || listingDirty.brand)); }
+function listingVisible() { const panel=$('inspectorListing');return !!panel && !panel.hidden; }
+function listingOpen() {
   if(!current)return;
-  listingProject=current.id;listingTab='product';listingDirty.product=listingDirty.brand=false;
-  $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';$('listingPages').innerHTML='';
-  if(!$('listingDialog').open)$('listingDialog').showModal();
+  if(typeof setInspectorTab==='function')setInspectorTab('listing');else listingActivate();
+}
+// Called whenever the 套图 tab is shown (and when another project is opened with it showing).
+let listingSwitching=null;
+async function listingActivate(refresh=true) {
+  if(!current || !listingVisible())return;
+  if(listingProject===current.id && (listingState || !refresh)){if(refresh)listingLoad(false).catch(()=>{});return;}
+  const target=current.id;
+  if(listingSwitching===target)return;            // already switching to this project (a redraw and the tab both asked)
+  listingSwitching=target;
+  try{if(listingProject && listingProject!==target)await listingSavePending().catch(error=>toast('上一个项目的套图设置没有保存：'+error.message,true));}
+  finally{listingSwitching=null;}
+  if(!current || current.id!==target)return;
+  listingProject=current.id;listingState=null;listingEdit=null;listingTab='product';listingDirty.product=listingDirty.brand=false;
+  $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';$('listingPages').innerHTML='';$('listingPlan').innerHTML='';$('listingNotes').innerHTML='';
   try{await listingLoad(true);}catch(error){$('listingPanel').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;}
+}
+// Called when the user leaves the tab: words still being typed are saved, polling stops.
+function listingDeactivate() {
+  clearTimeout(listingTimer);
+  if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
 async function listingLoad(reset) {
   const id=listingOpenFor();if(!id)return;
@@ -36,7 +56,7 @@ function listingAdopt(state,reset) {
 }
 function listingSchedule() {
   clearTimeout(listingTimer);
-  if($('listingDialog').open && (listingTaskActive() || listingComponentsBusy()))listingTimer=setTimeout(()=>listingLoad(false).catch(()=>listingSchedule()),1500);
+  if(listingVisible() && (listingTaskActive() || listingComponentsBusy()))listingTimer=setTimeout(()=>listingLoad(false).catch(()=>listingSchedule()),1500);
 }
 
 // ---- left side ----
@@ -61,13 +81,17 @@ function listingRenderProduct() {
   const p=listingEdit.product,size=listingState.size,drafted=p.drafted;
   const rows=(list,scope,cells)=>list.map((row,index)=>`<div class="listing-row" data-row="${scope}">${cells(row,index)}<button type="button" class="icon-button" data-action="remove-${scope}" data-index="${index}" aria-label="删除这一条" title="删除">×</button></div>`).join('');
   $('listingPanel').innerHTML=`
+    <div class="listing-source">
+      <label class="field-label" for="listingSource">产品介绍</label>
+      <textarea id="listingSource" data-scope="product" data-key="source" rows="7" maxlength="8000" placeholder="把商品详情、规格表或产品说明整段粘贴到这里，点「提取到各栏」，由文本模型分出名称、型号、尺寸、卖点、规格和指标。">${esc(p.source || '')}</textarea>
+      <div class="listing-source-actions"><button type="button" class="button primary" data-action="extract">提取到各栏</button><button type="button" class="button subtle" data-action="draft" title="没有介绍时，根据模型部件名称起草卖点">起草文案</button></div>
+      <p class="field-help">${drafted?`上次${drafted.source==='extracted'?'从介绍中提取':drafted.source==='ai'?'由 AI 起草':'按部件名称起草'}。`:''}提取只采用介绍里写到的内容，含有介绍里没有的数字的条目会被略去；提取到的栏目会替换原内容，其余保留。${(drafted?.notes || []).map(esc).join(' ')}</p>
+    </div>
     <div class="listing-grid2">${listingField('产品名称',listingInput('product','title',p.title,'maxlength="60"'))}${listingField('型号',listingInput('product','model',p.model,'maxlength="40" placeholder="如 AG-20X"'))}</div>
     <div class="listing-grid2">${listingField('图片文字语言',`<select data-scope="product" data-key="language"><option value="en" ${p.language==='en'?'selected':''}>English</option><option value="zh" ${p.language==='zh'?'selected':''}>中文</option></select>`)}
     ${listingField('最长边真实尺寸（mm）',listingInput('product','size_mm',p.size_mm ?? '',`inputmode="decimal" placeholder="按模型估计约 ${esc(Math.round(size.mm))}"`),size.known?'':'填写后才会画出产品尺寸线，套装里的大小比例也才准确。')}</div>
     ${listingField('主标题',listingInput('product','headline',p.headline,'maxlength="60" placeholder="一句话说清最重要的卖点"'))}
     ${listingField('副标题',listingInput('product','subline',p.subline,'maxlength="120"'))}
-    <div class="listing-draft"><input id="listingHint" type="text" maxlength="400" placeholder="可写下要强调的卖点和规格，如：20V 无刷电机，115 mm 磨片"><button type="button" class="button subtle" data-action="draft">起草文案</button></div>
-    <p class="field-help">${drafted?`上次起草：${drafted.source==='ai'?'由 AI 根据模型与说明撰写':'按部件名称规则生成'}。`:''}起草只填写空着的内容；数字只采用你写下的。${(drafted?.notes || []).map(esc).join(' ')}</p>
     <h3 class="listing-heading">卖点 <button type="button" class="button subtle" data-action="add-feature">添加</button></h3>
     ${rows(p.features,'feature',(row,index)=>`<div class="listing-feature"><input type="text" data-scope="feature" data-index="${index}" data-key="title" value="${esc(row.title)}" maxlength="40" placeholder="卖点标题" aria-label="卖点标题">
       <input type="text" data-scope="feature" data-index="${index}" data-key="detail" value="${esc(row.detail || '')}" maxlength="90" placeholder="一行说明（可不填）" aria-label="卖点说明">${listingPartsHTML(index,row.parts || [])}</div>`) || '<p class="field-help">还没有卖点。可点「起草文案」，或手动添加。</p>'}
@@ -238,7 +262,7 @@ async function listingOnChange(event) {
 }
 async function listingSaveProduct(quiet) {
   const p=listingEdit.product;
-  const body={title:p.title,model:p.model,headline:p.headline,subline:p.subline,language:p.language,size_mm:p.size_mm,features:p.features.filter(row=>row.title.trim()),
+  const body={title:p.title,model:p.model,headline:p.headline,subline:p.subline,source:p.source || '',language:p.language,size_mm:p.size_mm,features:p.features.filter(row=>row.title.trim()),
     specs:p.specs.filter(row=>row.label.trim() && row.value.trim()),figures:p.figures.filter(row=>row.value.trim() && row.label.trim()),pages:p.pages,usecase:p.usecase,scenes:p.scenes,aspect:p.aspect};
   const state=await api(`/api/projects/${listingProject}/listing/product`,{method:'PUT',body});
   listingDirty.product=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
@@ -271,10 +295,23 @@ async function listingOnClick(event) {
     else if(action==='save-product')await listingSaveProduct(false);
     else if(action==='save-brand')await listingSaveBrand(false);
     else if(action==='pages-auto'){p.pages=null;listingDirty.product=true;await listingSaveProduct(true);}
+    else if(action==='extract'){
+      const text=($('listingSource')?.value || '').trim();
+      if(!text){toast('请先粘贴一段产品介绍',true);$('listingSource')?.focus();return;}
+      button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='正在提取…';
+      const id=listingProject;
+      try{await listingSavePending();
+        const state=await api(`/api/projects/${id}/listing/extract`,{method:'POST',body:{text}});
+        if(listingOpenFor()!==id)return;                 // another project was opened while the model was reading
+        listingDirty.product=false;listingAdopt(state,true);toast('已从介绍中提取');}
+      finally{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='提取到各栏';}
+    }
     else if(action==='draft'){
       button.disabled=true;button.setAttribute('aria-busy','true');
-      try{if(listingDirty.product)await listingSaveProduct(true);
-        const state=await api(`/api/projects/${listingProject}/listing/draft`,{method:'POST',body:{hint:$('listingHint').value.trim(),language:p.language}});
+      const id=listingProject;
+      try{await listingSavePending();
+        const state=await api(`/api/projects/${id}/listing/draft`,{method:'POST',body:{hint:($('listingSource')?.value || '').trim().slice(0,400),language:p.language}});
+        if(listingOpenFor()!==id)return;
         listingDirty.product=false;listingAdopt(state,true);toast(state.product.drafted?.source==='ai'?'已由 AI 起草':'已按部件名称起草');}
       finally{button.disabled=false;button.removeAttribute('aria-busy');}
     }
@@ -284,32 +321,12 @@ async function listingOnClick(event) {
     else if(action==='logo-remove'){listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingRenderBrand();}
   }catch(error){toast(error.message,true);}
 }
-// The 套图 tab in the inspector: what has been built for this project, and the way into the workspace.
-let listingSummaryFor=null,listingSummaryState=null,listingSummaryLoading=false;
-async function listingRenderSummary(force=false) {
-  const node=$('listingSummary');if(!node || !current)return;
-  if(typeof inspectorTab!=='undefined' && inspectorTab!=='listing' && !force)return;
-  const id=current.id;
-  if((listingSummaryFor!==id || force) && !listingSummaryLoading){
-    listingSummaryLoading=true;
-    try{listingSummaryState=await api(`/api/projects/${id}/listing`);listingSummaryFor=id;}catch(_){listingSummaryState=null;listingSummaryFor=id;}
-    finally{listingSummaryLoading=false;}
-    if(!current || current.id!==id)return;
-  }
-  const state=listingSummaryFor===id?listingSummaryState:null,pages=state?.pages || [];
-  const parts=(state?.components || []).length,stamp=Math.round((state?.built_at || 0)*1000);
-  node.innerHTML=!state?'<p class="field-help">正在读取套图…</p>'
-    :`<p class="field-help">${pages.length?`已生成 ${pages.length} 张`:'还没有生成套图'}${parts?` · ${parts} 个组件`:''}${state.task && ['queued','running'].includes(state.task.status)?` · 正在生成 ${Math.round(state.task.progress || 0)}%`:''}</p>`
-     +(pages.length?`<div class="listing-summary-pages">${pages.slice(0,6).map(page=>`<img src="${esc(page.url)}?t=${stamp}" alt="${esc(state.kinds?.[page.kind]?.zh || page.kind)}" loading="lazy">`).join('')}</div>`:'');
-}
 function listingInit() {
-  const dialog=$('listingDialog');if(!dialog)return;
-  $('listingOpen').onclick=()=>listingOpen();
-  if($('listingOpenPanel'))$('listingOpenPanel').onclick=()=>listingOpen();
-  dialog.addEventListener('click',listingOnClick);
-  dialog.addEventListener('input',listingOnInput);
-  dialog.addEventListener('change',event=>{listingOnChange(event);});
-  dialog.addEventListener('close',()=>{clearTimeout(listingTimer);if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));listingRenderSummary(true);});
+  const panel=$('inspectorListing');if(!panel)return;
+  if($('listingOpen'))$('listingOpen').onclick=()=>listingOpen();
+  panel.addEventListener('click',listingOnClick);
+  panel.addEventListener('input',listingOnInput);
+  panel.addEventListener('change',event=>{listingOnChange(event);});
   $('listingBuild').onclick=()=>listingBuildNow();
   $('listingCancel').onclick=async()=>{const task=listingState?.task;if(!task)return;try{await api(`/api/projects/${listingProject}/listing/${task.id}/cancel`,{method:'POST'});await listingLoad(false);}catch(error){toast(error.message,true);}};
 }

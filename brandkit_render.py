@@ -19,6 +19,8 @@ import subprocess
 import uuid
 from pathlib import Path
 
+import brandkit_assets
+
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent / 'brandkit'
@@ -27,7 +29,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'frame_cuts_part', 'scene_product_cropped', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('lang_mismatch', 'phrase_break', 'leader_over_product', 'frame_cuts_part', 'scene_product_cropped', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -72,12 +74,36 @@ def asset(path, **extra):
     return {'file': path.as_uri(), 'path': str(path), 'width': width, 'height': height, **extra}
 
 
+def _icons(job):
+    """The SVG markup of every icon the job names (``icon`` on its rows, ``icons`` at the top), fetched if missing."""
+    names = set(job.get('icons') or []) if isinstance(job.get('icons'), list) else set()
+    for value in job.values():
+        rows = value if isinstance(value, list) else []
+        names.update(row['icon'] for row in rows if isinstance(row, dict) and isinstance(row.get('icon'), str) and row['icon'])
+    found = {}
+    for name in sorted(names):
+        markup = brandkit_assets.icon_markup(name)
+        if markup:
+            found[name] = markup
+    return found
+
+
 def compose(template_id, job):
     source = (TEMPLATES / (template_id + '.html')).read_text(encoding='utf-8')
-    public = {**job, 'assets': {key: {k: v for k, v in value.items() if k != 'path' and not k.startswith('_')} for key, value in (job.get('assets') or {}).items()}}
+    brandkit_assets.ensure_fonts(job.get('lang', 'en'))
+    # Private asset notes stay with the renderer, except the product's box in a scene, which the page frames by.
+    public = {**job, 'assets': {key: {**{k: v for k, v in value.items() if k != 'path' and not k.startswith('_')},
+                                      **({'product_box': value['_product']} if value.get('_product') else {})}
+                                for key, value in (job.get('assets') or {}).items()},
+              'icons': _icons(job)}
     data = json.dumps(public, ensure_ascii=False).replace('</', '<\\/')
-    inject = '<base href="%s/">\n<script>window.JOB = %s;</script>' % (ROOT.as_uri(), data)
-    return source.replace('<!--INJECT-->', inject)
+    fonts = '<link rel="stylesheet" href="vendor/fonts.css">\n' if (brandkit_assets.VENDOR / 'fonts.css').is_file() else ''
+    inject = '<base href="%s/">\n%s<script>window.JOB = %s;</script>' % (ROOT.as_uri(), fonts, data)
+    page = source.replace('<!--INJECT-->', inject)
+    # The layout runs once the web fonts are loaded (TPL.ready), so it measures the faces it is drawn in.
+    page = page.replace('\n(function(){', '\nTPL.ready(function(){', 1)
+    end = page.rfind('})();')
+    return page[:end] + '});' + page[end + len('})();'):] if end > 0 else page
 
 
 def _run(command):
@@ -235,7 +261,7 @@ def render(template_id, job, out, work=None):
     flags = [_headless(executable), *FLAGS, size]
     try:
         with cf.ThreadPoolExecutor(2) as pool:
-            shot = pool.submit(_run, [executable, *flags, '--screenshot=%s' % out, url])
+            shot = pool.submit(_run, [executable, *flags, '--virtual-time-budget=6000', '--screenshot=%s' % out, url])
             dump = pool.submit(_run, [executable, *flags, '--virtual-time-budget=6000', '--dump-dom', url])
             shot_result, dump_result = shot.result(), dump.result()
     finally:

@@ -3,20 +3,51 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T12 · editorial poster: one product story, ONE headline + ONE supporting line, replaceable brand slot.
-     No CTA / price / badges. Text never sits on scene texture: it lives in a solid band or a quiet ground. */
-  #canvas{--bg:#E9E6E0;--text:#1C1F22;--muted:#4F575E;--accent:#D0612A;--band:#16191C;--band-text:#F4F2EE;--band-muted:#B7BEC4;--wm:rgba(0,0,0,.045)}
-  .headline{font:800 128px/0.98 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);text-wrap:balance}
-  .on-band .headline{color:var(--band-text)}
-  .headline.compact{font-size:100px} #canvas[lang=zh] .headline.compact{font-size:92px}
-  .support{font:500 50px/1.3 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .on-band .support{color:var(--band-muted)}
+  /* T12 · hero poster. One product story: a heavy extended-caps headline (two-tone), one support line carrying the
+     number, optional figure chips / key stat / platform badge / brand slot / close-up inset. Three modes:
+       overlay – full-bleed scene, text on a gradient scrim in the quieter half (default when a scene is given); with
+                 job.product_box the scene is moved so the product clears the words, and a scene with no room for
+                 them falls back to band
+       band    – scene on the top 70%, hard-edged warm-dark band below (the DeWalt variant)
+       solid   – studio light ground, product large (may bleed right/bottom), text column top-left. */
+  #canvas{--bg:#E9E6E0;--text:#1C1F22;--muted:#4F575E;--accent:#D0612A;--wm:rgba(0,0,0,.045)}
+  #canvas.studio{background:linear-gradient(to bottom,rgba(150,112,72,0) 58%,rgba(150,112,72,.13) 100%),radial-gradient(120% 90% at 50% 62%,#FFFFFF 0%,#F7F4EF 40%,var(--bg) 100%)}
+  .hl{font-family:var(--f-display);font-weight:900;font-stretch:116%;text-transform:uppercase;letter-spacing:-.01em;line-height:.92;color:var(--ink);text-wrap:balance}
+  .on-dark .hl{color:var(--cream)}
+  .on-dark .txt .hi{color:var(--accent-hi,var(--accent))}
+  .on-photo .hl,.on-photo .sub{text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  .on-dark.on-photo .txt .hi{color:var(--accent-photo,var(--accent-hi,var(--accent)))}
+  .sub{font-family:var(--f-display);font-weight:500;font-stretch:100%;text-transform:none;letter-spacing:0;line-height:1.16;color:var(--ink-2,#3A3A3A);text-wrap:balance}
+  .on-dark .sub{color:rgba(244,239,227,.86)}
+  #canvas[lang=zh] .txt.hl{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;text-transform:none;letter-spacing:.01em;line-height:1.12;text-wrap:wrap}
+  #canvas[lang=zh] .txt.sub{font-family:var(--f-cjk);font-weight:500;text-transform:none;letter-spacing:.02em;line-height:1.36}
   .rule{position:absolute;background:var(--accent)}
-  .slot{position:absolute;border:2px dashed rgba(127,127,127,.65);border-radius:8px;display:flex;align-items:center;justify-content:center}
-  .slot-t{font:700 26px/1 "Noto Sans Display",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:rgba(127,127,127,.95);text-align:center}
-  #canvas[lang=zh] .headline{font:900 118px/1.12 "Noto Sans CJK SC",sans-serif;letter-spacing:0;text-wrap:wrap}
-  #canvas[lang=zh] .support{font:500 50px/1.42 "Noto Sans CJK SC",sans-serif}
-  .band{position:absolute;background:var(--band)}
+  .band{position:absolute;background:var(--band,#211915)}
+  .seam{position:absolute;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--band,#211915))}
+  .band-hair{position:absolute;background:rgba(255,255,255,.14)}
+  .shadow{position:absolute;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.20),rgba(0,0,0,.08) 60%,rgba(0,0,0,0));filter:blur(14px)}
+  .slot{position:absolute;border:3px solid rgba(127,127,127,.55);border-radius:8px}
+  .on-dark .slot{border-color:rgba(244,239,227,.38)}
+  .slot-t{font-family:var(--f-display);font-weight:800;font-stretch:112%;font-size:30px;line-height:1;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);white-space:nowrap;overflow:hidden}
+  .on-dark .slot-t{color:var(--cream)}
+  #canvas[lang=zh] .txt.slot-t{letter-spacing:.06em;font-weight:700}
+  .badge{position:absolute;border:4px solid rgba(204,204,204,.9);border-radius:6px;background:rgba(20,18,17,.55)}
+  .studio .badge{background:rgba(255,255,255,.7);border-color:#CCC}
+  .badge-v{font-family:var(--f-cond);font-weight:800;font-size:96px;line-height:1;color:var(--cream);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .studio .badge-v{color:var(--ink)}
+  .badge-v sup{font-size:.42em;color:var(--accent);vertical-align:top;position:relative;top:.12em;margin-left:.06em}
+  .badge-l{font-family:var(--f-text);font-weight:700;font-size:22px;line-height:1;letter-spacing:.14em;text-transform:uppercase;color:rgba(244,239,227,.86);white-space:nowrap}
+  .studio .badge-l{color:var(--muted)}
+  #canvas[lang=zh] .txt.badge-l{letter-spacing:.06em}
+  .stat .stat-value{white-space:nowrap}
+  .txt span.nb{white-space:nowrap}
+  #canvas .chip-label{font-family:var(--f-text);font-weight:700;font-size:23px;letter-spacing:.14em;text-transform:uppercase;opacity:.9}
+  #canvas .chip-value{text-transform:uppercase}
+  #canvas[lang=zh] .chip-label{font-size:25px;letter-spacing:.02em}
+  #canvas .chip-value{font-size:64px}
+  .on-dark .circle-inset{--ring-gap:var(--dark)}
+  .inset-ring{position:absolute;border-radius:50%;pointer-events:none}
+  #canvas[lang=zh] .stat .stat-label{text-transform:none;letter-spacing:.04em}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -24,71 +55,561 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
-const floor = H - bandH - m * 0.75;
-const mode = job.mode || (job.scene ? 'band' : 'solid');
+const zh = job.lang === 'zh', G = 8, cap = 1.25;
+const m = Math.max(job.min_margin ?? 60, 72);           // text margin (P2: one flush-left axis at x=m)
+const demoH = job.demo ? 40 : 0, floorY = H - demoH;
 const land = W / H > 1.2;
+let mode = job.mode || (job.scene ? 'overlay' : 'solid');
 T.layoutInfo = {mode, landscape: land};
-for (const k of ['cta', 'price', 'badges']) if (job[k]) T.notes.push(`'${k}' ignored: not part of the editorial template`);
-if (mode === 'band' && !job.scene) throw new Error('band mode needs a licensed scene; use solid mode');
-const slotW = 260, slotH = 72;
-function slot(x, y, parent) {   // replaceable brand area; never filled with a source logo
-  if (!job.brand_slot) return null;
-  const s = T.el('div', {class:'slot', 'data-qa':'brand_slot', 'data-kind':'shape', 'data-allow':'brand_slot_t'}, parent); T.box(s, x, y, slotW, slotH);
-  T.text('brand_slot_t', job.labels?.brand_slot || 'Brand slot', x, y + (slotH - 26) / 2, slotW, 'slot-t', {tier:'meta', maxLines: 1, align:'center', parent, allow:['brand_slot']});
-  return s;
+for (const k of ['cta', 'price', 'badges']) if (job[k]) T.notes.push(`'${k}' ignored: not part of the poster template`);
+if ((mode === 'band' || mode === 'overlay') && !job.scene) throw new Error(mode + ' mode needs a scene; use solid mode');
+
+/* accent for words on dark grounds and photos: a dark brand accent is lifted toward cream until it reads (P6) */
+if (job.band_color && /^#[0-9a-f]{6}$/i.test(job.band_color)) T.root.style.setProperty('--band', job.band_color);
+(function () {
+  const hex = String((job.palette || {}).accent || getComputedStyle(T.root).getPropertyValue('--accent') || '#D0612A').trim().replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return;
+  const rgb = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)), cream = [244, 239, 227];
+  const lum = c => { const l = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }; return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); };
+  const lift = target => { let t = 0, c = rgb; while (lum(c) < target && t < 0.7) { t += 0.05; c = rgb.map((v, i) => Math.round(v + (cream[i] - v) * t)); } return `rgb(${c.join(',')})`; };
+  T.root.style.setProperty('--accent-hi', lift(0.30));       // on the solid warm-dark band
+  T.root.style.setProperty('--accent-photo', lift(0.40));    // on a scrimmed photo, whose ground is lighter than the band
+})();
+
+/* ---------- optional data (never required; P10: Han text on an en page is dropped) ---------- */
+const han = s => /[㐀-鿿]/.test(String(s ?? ''));
+const okLang = s => zh || !han(s);
+const figs = (Array.isArray(job.figures) ? job.figures : []).filter(r => r && typeof r === 'object' && (r.value != null || r.text)
+  && okLang(r.value) && okLang(r.text) && okLang(r.label) && okLang(r.unit)).slice(0, 3);
+if (Array.isArray(job.figures) && job.figures.length > figs.length) T.notes.push('some figures dropped (more than 3, or wrong language)');
+const numeric = r => r && r.value != null && /^\s*[-+]?\d[\d.,/\-]*\s*$/.test(String(r.value)) && String(r.value).length <= 6;
+let stat = job.stat && okLang(job.stat.label) && job.stat.value != null ? job.stat : (figs.find(numeric) || null);
+const platform = (() => { const p = job.platform; if (!p) return null;
+  const o = typeof p === 'string' ? {value: p} : p; return okLang(o.value) && okLang(o.label) ? o : null; })();
+const brandName = job.brand_slot && okLang(job.labels?.brand_slot) ? (job.labels?.brand_slot || '') : '';
+const headline = okLang(job.headline) ? job.headline : (T.notes.push('headline has Han text on an en page: dropped'), '');
+const support = job.support && okLang(job.support) ? job.support : null;
+
+/* ---------- text measuring ---------- */
+function lineInfo(e) {
+  const rg = document.createRange(); rg.selectNodeContents(e);
+  const qs = [...rg.getClientRects()].filter(q => q.height > 0 && q.width > 0).sort((a, b) => a.top - b.top);
+  let lines = 0, cur = -1e9, right = -1e9, left = 1e9;
+  for (const q of qs) { const mid = (q.top + q.bottom) / 2; if (mid > cur) { lines++; cur = q.bottom; } else cur = Math.max(cur, q.bottom); right = Math.max(right, q.right); left = Math.min(left, q.left); }
+  return {lines, right, left};
 }
-function copy(x, y, w, parent, hlMax) {
-  const hl = T.text('headline', job.headline, x, y, w, 'headline' + ((land && mode === 'band') || job.compact ? ' compact' : ''), {tier:'headline', maxLines: hlMax, parent});   // r2: landscape panel uses the defined compact size
-  let yy = T.rect(hl).y + T.rect(hl).h + 3 * G;
-  const r = T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}, parent); T.box(r, x, yy, 120, 8);
-  yy += 8 + 4 * G;
-  let sp = null; if (job.support) { sp = T.text('support', job.support, x, yy, Math.min(w, 1040), 'support', {tier:'important', maxLines: 3, parent}); yy = T.rect(sp).y + T.rect(sp).h; }
-  return {hl, sp, rule: r, h: yy - y, move(dy) { for (const e of [hl, r, sp]) if (e) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+function fitsIn(e, maxLines) {
+  const li = lineInfo(e), r = e.getBoundingClientRect();
+  return li.lines <= maxLines && e.scrollWidth <= e.clientWidth + 1 && li.right <= r.right + 1;
+}
+const written = s => String(T.plain(s)).split('\n').length;
+/* textRect: union of the rendered line boxes (what QA and the pixel check measure) */
+function textRect(e) {
+  const rg = document.createRange(); rg.selectNodeContents(e);
+  const qs = [...rg.getClientRects()].filter(q => q.width > 0); const r = e.getBoundingClientRect();
+  if (!qs.length) return {x: r.left, y: r.top, w: 0, h: 0};
+  const x0 = Math.min(...qs.map(q => q.left)), x1 = Math.max(...qs.map(q => q.right));
+  return {x: x0, y: r.top, w: x1 - x0, h: r.height};
+}
+/* zh line breaks (phrase-safe): the copy's own clauses are kept whole (a break only after ，、；：。), else whole words
+   (Intl.Segmenter), else the browser's own CJK breaks. Each unit is a nowrap span; text a \n splits stays split. */
+const ZH_PUNCT = '，、；：。！？,;:!?）」』';
+function zhUnits(text, level) {
+  if (level === 'phrase') return text.match(new RegExp(`[^${ZH_PUNCT}]+[${ZH_PUNCT}]*|[${ZH_PUNCT}]+`, 'g')) || [text];
+  if (level === 'word' && typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const out = [];
+    for (const sg of new Intl.Segmenter('zh', {granularity: 'word'}).segment(text)) {
+      if (out.length && (!sg.isWordLike && /^[^\sA-Za-z0-9㐀-鿿]+$/.test(sg.segment) || /^[A-Za-z0-9.%+\-/]+$/.test(sg.segment) && /[A-Za-z0-9.%+\-/]$/.test(out[out.length - 1]))) out[out.length - 1] += sg.segment;
+      else out.push(sg.segment);
+    }
+    return out;
+  }
+  return [text];
+}
+function zhWrap(e, level) {
+  if (!zh) return;
+  e.querySelectorAll('span.nb').forEach(sp => sp.replaceWith(document.createTextNode(sp.textContent)));
+  e.normalize();
+  if (!level || level === 'none') return;
+  const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); const nodes = []; while (tw.nextNode()) nodes.push(tw.currentNode);
+  for (const n of nodes) {
+    const frag = document.createDocumentFragment();
+    String(n.textContent).split(/(\n)/).forEach(part => {
+      if (part === '\n' || !part) { if (part) frag.appendChild(document.createTextNode(part)); return; }
+      for (const u of zhUnits(part, level)) { const sp = document.createElement('span'); sp.className = 'nb'; sp.textContent = u; frag.appendChild(sp); }
+    });
+    n.replaceWith(frag);
+  }
+}
+/* Two-tone (P5): with no [[ ]] mark in the copy, the first rendered line stays in the base colour and the rest takes the accent. */
+function twoTone(e, str, level) {
+  if (job.two_tone === false || /\[\[|\{/.test(str)) return;
+  const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); const rg = document.createRange();
+  let top0 = null, cut = -1, off = 0;
+  outer: while (tw.nextNode()) {
+    const node = tw.currentNode, text = node.textContent;
+    for (let i = 0; i < text.length; i++) {
+      if (/\s/.test(text[i])) continue;
+      rg.setStart(node, i); rg.setEnd(node, i + 1); const q = rg.getClientRects()[0]; if (!q) continue;
+      if (top0 == null) top0 = q.top; else if (q.top > top0 + q.height * 0.5) { cut = off + i; break outer; }
+    }
+    off += text.length;
+  }
+  if (cut < 0) return;
+  const text = e.textContent;
+  T.markup(e, text.slice(0, cut) + '[[' + text.slice(cut) + ']]');
+  zhWrap(e, level);
+}
+/* Designed headline breaks (P5). The copy's own \n always wins. Otherwise an en headline is broken by meaning: every
+   split into 1..maxHl lines is scored – a line may never end on a function word ('with', 'and', 'for'…), a break
+   just before one is the natural place, a break between two content words may cut a noun phrase, a lone last word
+   is an orphan – and the type shrinks before a worse split is taken. zh: line-end punctuation is dropped (the break
+   already separates the phrases); a two-phrase headline may also run on one line, phrase 2 in the accent. */
+const FUNC = new Set(['with', 'and', 'for', 'of', 'the', 'a', 'an', 'to', 'in', 'on', 'at', 'by', 'from', 'or', 'into', 'your', 'our', 'its', '&', '+', '–', '-', 'that', 'than', 'via', 'per']);
+const bare = wd => T.plain(wd).toLowerCase().replace(/[^a-z&+\-–]/g, '');
+const ZH_END = /[，、；：。,;:.！!？?\s]+$/;
+function hlCandidates(o) {
+  const raw = String(headline || '');
+  if (zh) {
+    const lines = raw.split('\n').map(s => s.replace(ZH_END, '').trim()).filter(Boolean);
+    if (!lines.length) return [{str: '', k: 1, score: 0}];
+    const out = [{str: lines.join('\n'), k: lines.length > 1 ? lines.length : Math.min(o.maxHl, 2), score: 0, wrap: lines.length === 1}];
+    if (o.join && lines.length > 1 && !/\[\[|\{/.test(raw)) out.push({str: lines[0] + '\u2002[[' + lines.slice(1).join('\u2002') + ']]', k: 1, score: 2, joined: true});
+    return out;
+  }
+  if (raw.includes('\n')) return [{str: raw, k: written(raw), score: 0}];
+  const words = raw.trim().split(/\s+/);
+  if (words.length < 2 || words.length > 10) return [{str: raw, k: o.maxHl, score: 0, wrap: true}];
+  const out = [];
+  const rec = (start, lines) => {
+    if (start === words.length) {
+      const k = lines.length; if (k > o.maxHl) return;
+      let sc = k === 1 ? (words.length > 3 ? 4 : 0) : k === 2 ? 0 : 8;
+      for (let i = 0; i < k - 1; i++) {
+        const last = lines[i][lines[i].length - 1], next = lines[i + 1][0];
+        if (FUNC.has(bare(last))) sc += 100;            // never end a line on a preposition/article/conjunction
+        else if (!FUNC.has(bare(next))) sc += 12;       // two content words: may split a noun phrase
+      }
+      if (k > 1 && lines[k - 1].length === 1 && words.length >= 3) sc += 30;   // orphan last word
+      const lens = lines.map(l => l.join(' ').length); if (k > 1 && Math.min(...lens) / Math.max(...lens) < 0.3) sc += 6;
+      if (sc < 100) out.push({str: lines.map(l => l.join(' ')).join('\n'), k, score: sc});
+      return;
+    }
+    if (lines.length >= o.maxHl) return;
+    for (let e = start + 1; e <= words.length; e++) rec(e, lines.concat([words.slice(start, e)]));
+  };
+  rec(0, []);
+  out.sort((a, b) => a.score - b.score);
+  out.push({str: raw, k: o.maxHl, score: 200, wrap: true});   // last resort: the browser's own wrap (a too-narrow column)
+  return out;
+}
+const supportText = support ? String(support).replace(/[.。]\s*$/, '') : null;   // no full stop at the end of a display line
+/* Headline + support stack, fitted: among the designed splits, the one with the best score + size-step cost whose
+   lines, words and total height fit. */
+function stack(x, y, w, o) {
+  const parent = o.parent;
+  const hlSizes = o.hlSizes, maxHl = o.maxHl || 3;
+  const cands = hlCandidates({maxHl, join: !!o.join});
+  const hl = T.text('headline', cands[0].str, x, y, w, 'hl', {tier: 'headline', maxLines: zh ? Math.max(maxHl, written(headline)) : maxHl, parent, allow: o.allow});
+  let sp = null;
+  if (supportText) sp = T.text('support', supportText, x, y, Math.min(w, o.subW || w), 'sub', {tier: 'secondary', maxLines: 2, parent, allow: o.allow});
+  const levels = zh ? ['phrase', 'word', 'none'] : ['none'];
+  const subSizes = o.subSizes || (zh ? [48, 46, 44, 42] : [52, 50, 48, 46, 44]);   // ≈3.3% H, ≥ the 360px-thumbnail floor
+  const px = hs => zh ? Math.round(hs * (o.zhScale || 0.84)) : hs;
+  const gapOf = () => Math.round(parseFloat(hl.style.fontSize) * 0.34);             // ≈ half the cap height, on every layout
+  const fitSub = () => {                          // the support line: largest size and most phrase-safe break that fits 2 lines
+    for (const lv of levels) { zhWrap(sp, lv); for (const s of subSizes) { sp.style.fontSize = s + 'px'; if (fitsIn(sp, 2)) return s; } }
+    zhWrap(sp, 'none'); sp.style.fontSize = subSizes[subSizes.length - 1] + 'px'; return null;
+  };
+  if (sp) fitSub();
+  const subH = sp ? T.rect(sp).h : 0;
+  // try every candidate × level × size; cost = split score + 4 per size step below the largest size anything fits at
+  const trials = [];
+  for (const c of cands) {
+    T.markup(hl, c.str);
+    const lvls = zh && c.wrap ? levels : ['none'];
+    for (const lv of lvls) {
+      zhWrap(hl, lv);
+      for (let i = 0; i < hlSizes.length; i++) {
+        hl.style.fontSize = px(hlSizes[i]) + 'px';
+        if (!fitsIn(hl, c.k)) continue;
+        const total = T.rect(hl).h + (sp ? gapOf() + subH : 0);
+        if (o.hmax && total > o.hmax) continue;
+        const li = lineInfo(hl), fill = (li.right - li.left) / w;
+        trials.push({c, lv, i, fill, total, lvCost: lv === 'phrase' ? 0 : lv === 'word' ? 3 : lv === 'none' && zh && c.wrap ? 8 : 0});
+        break;    // the largest size this candidate fits at
+      }
+    }
+  }
+  let best = null, hlLevel = 'none';
+  if (trials.length) {
+    const i0 = Math.min(...trials.map(t => t.i));
+    for (const t of trials) t.cost = t.c.score + t.lvCost + 4 * (t.i - i0) + (o.fill && t.fill < o.fill ? (o.fill - t.fill) * 40 : 0) + (o.hcost ? t.total / H * o.hcost : 0);
+    const t = trials.sort((a, b) => a.cost - b.cost)[0];
+    T.markup(hl, t.c.str); zhWrap(hl, t.lv); hl.style.fontSize = px(hlSizes[t.i]) + 'px';
+    best = {hs: hlSizes[t.i], ok: true, cand: t.c}; hlLevel = t.lv;
+    T.layoutInfo.headline_split = t.c.str.split('\n').length + (t.c.joined ? ' (joined)' : '') + ' lines, score ' + t.c.score;
+  } else {
+    // nothing fits the height: the smallest step, with the best-scored split that at least fits its lines in the width
+    const hs = hlSizes[hlSizes.length - 1]; hl.style.fontSize = px(hs) + 'px';
+    let c = cands[0];
+    for (const k of cands) { T.markup(hl, k.str); zhWrap(hl, zh && k.wrap ? 'phrase' : 'none'); if (fitsIn(hl, k.k)) { c = k; break; } }
+    T.markup(hl, c.str); zhWrap(hl, zh && c.wrap ? 'phrase' : 'none');
+    best = {hs, ok: false, cand: c}; hlLevel = zh && c.wrap ? 'phrase' : 'none';
+    if (!o.trial) T.notes.push('headline at the smallest step');
+  }
+  best.gap = gapOf();
+  twoTone(hl, best.cand.str, hlLevel);
+  const place = top => { hl.style.top = top + 'px'; if (sp) sp.style.top = (top + T.rect(hl).h + best.gap) + 'px'; };
+  place(y);
+  T.layoutInfo.headline_px = parseFloat(hl.style.fontSize);
+  return {hl, sp, size: best.hs, ok: best.ok, remove() { hl.remove(); if (sp) sp.remove(); }, get h() { return T.rect(hl).h + (sp ? best.gap + T.rect(sp).h : 0); }, place,
+          rects() { return [textRect(hl)].concat(sp ? [textRect(sp)] : []); }};
 }
 
-if (mode === 'band') {
-  const sc = T.asset(job.scene);
-  if (!land) {
-    /* ---- Direction A (AMZ-065): scene on top, solid title band below — text never on texture ---- */
-    const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
-    const c = copy(m, 0, W - 2 * m - (job.brand_slot ? slotW + 6 * G : 0), cont, 2);   // r1: headline never runs under the brand slot
-    const bandPad = 6 * G;
-    let top = floor - c.h - bandPad;
-    // scene height is bounded by pixel budget (cover scale <= cap)
-    const maxScene = Math.floor(sc.height * cap);
-    if (W / sc.width > cap) T.notes.push('scene narrower than canvas/cap: scene upscaled beyond cap is not allowed -> use solid mode');
-    if (top > maxScene) top = maxScene;
-    const band = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'headline,support,rule,brand_slot,brand_slot_t'}); T.box(band, 0, top, W, H - bandH - top);
-    T.root.insertBefore(band, cont);
-    T.detailFrame('scene', job.scene, 0, 0, W, top, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
-    T.root.appendChild(cont);
-    c.move(top + bandPad);
-    slot(W - m - slotW, top + bandPad, cont);
-    T.layoutInfo.scene_h = top;
-  } else {
-    /* ---- landscape: scene right, solid panel left ---- */
-    const pw = Math.round(W * 0.40), sw = W - pw;
-    const band = T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'headline,support,rule,brand_slot,brand_slot_t'}); T.box(band, 0, 0, pw, H - bandH);
-    T.detailFrame('scene', job.scene, pw, 0, sw, H - bandH, {bleed: true, fx: job.focus?.[0] ?? 0.5, fy: job.focus?.[1] ?? 0.5});
-    const cont = T.el('div', {class:'on-band'}); cont.style.position = 'absolute'; cont.style.inset = '0';
-    const c = copy(m, 0, pw - m - 6 * G, cont, 3);
-    c.move(floor - c.h);
-    slot(m, m, cont);
+/* ---------- graphic pieces ---------- */
+function badge(x, y, parent) {      // platform / voltage badge: outlined box, big condensed numeral + small caps line
+  if (!platform) return null;
+  const b = T.el('div', {class: 'badge', 'data-qa': 'badge', 'data-kind': 'shape', 'data-allow': 'badge_v,badge_l'}, parent);
+  const v = T.el('div', {class: 'txt badge-v', 'data-qa': 'badge_v', 'data-kind': 'text', 'data-tier': 'important', 'data-maxlines': '1', 'data-allow': 'badge'}, b);
+  v.textContent = String(platform.value);
+  if (platform.sup) { const s = document.createElement('sup'); s.textContent = platform.sup; v.appendChild(s); }
+  T.box(v, 22, 14, null, null);
+  let lw = 0;
+  if (platform.label) { const l = T.el('div', {class: 'txt badge-l', 'data-qa': 'badge_l', 'data-kind': 'text', 'data-tier': 'meta', 'data-maxlines': '1', 'data-allow': 'badge'}, b, platform.label); T.box(l, 24, 14 + 96 + 4, null, null); lw = l.getBoundingClientRect().width; }
+  const bw = Math.ceil(Math.max(v.getBoundingClientRect().width, lw) + 48), bh = platform.label ? 14 + 96 + 4 + 22 + 20 : 96 + 28;
+  T.box(b, x, y, bw, bh);
+  return {x, y, w: bw, h: bh};
+}
+function brandSlot(x, y, align, parent) {   // replaceable brand area: the brand's own name set in the display face, never a source logo
+  if (!job.brand_slot) return null;
+  const h = 72, t = brandName || (job.labels?.brand_slot ?? '');
+  const s = T.el('div', {class: 'slot', 'data-qa': 'brand_slot', 'data-kind': 'shape', 'data-allow': 'brand_slot_t'}, parent);
+  const tx = T.text('brand_slot_t', t || ' ', 0, 0, null, 'slot-t', {tier: 'meta', maxLines: 1, parent, allow: ['brand_slot']});
+  tx.style.width = 'auto';
+  const tw = Math.min(Math.ceil(tx.getBoundingClientRect().width), 420), w = Math.max(220, tw + 56);
+  const bx = align === 'right' ? x - w : x;
+  T.box(s, bx, y, w, h); T.box(tx, bx + (w - tw) / 2, y + (h - 30) / 2, tw, null);
+  return {x: bx, y, w, h};
+}
+/* a chip's small caps line is a caption (chip-label 24px, P4 meta tier), not a secondary line held to the 42px floor */
+const CH = 136;   // chip height: the 64px condensed value over the 23px tracked caps label
+function metaLabel(c) {   // caption tier, and the value+label pair centred in the chip's height
+  const l = c.el.querySelector('.chip-label'), v = c.el.querySelector('.chip-value'); if (l) l.setAttribute('data-tier', 'meta');
+  if (l && v) { const vh = v.getBoundingClientRect().height, lh = l.getBoundingClientRect().height, t = Math.round((CH - vh - 6 - lh) / 2);
+    v.style.top = t + 'px'; l.style.top = (t + vh + 6) + 'px'; }
+}
+function sameWidth(made) { const w = Math.max(...made.map(c => c.w)); for (const c of made) { c.w = w; c.el.style.width = w + 'px'; } }
+function chipRow(x, y, dark, parent, allow) {    // up to 3 icon+value chips, 24px apart; the row shrinks to fit W-2m
+  if (!figs.length) return null;
+  const made = figs.map((f, i) => T.chip('chip' + (i + 1), x, y, {icon: f.icon, value: f.value, unit: f.unit, label: f.label, text: f.text}, {dark, h: CH, parent}));
+  for (const c of made) if (allow) c.el.setAttribute('data-allow', c.el.getAttribute('data-allow') + ',' + allow);
+  for (const c of made) metaLabel(c);
+  sameWidth(made);
+  let total = made.reduce((s, c) => s + c.w, 0) + 24 * (made.length - 1);
+  while (made.length > 1 && total > W - 2 * m) { const c = made.pop(); c.el.remove(); total = made.reduce((s, c) => s + c.w, 0) + 24 * (made.length - 1); T.notes.push('a figure chip dropped: row too wide'); }
+  let cx = x; for (const c of made) { c.move(cx, y); cx += c.w + 24; }
+  return {x, y, w: total, h: CH, n: made.length};
+}
+function chipColumn(x, y, maxW, parent) {         // solid mode: chips stacked in the text column
+  if (!figs.length) return null;
+  let cy = y, w = 0; const out = [];
+  for (let i = 0; i < figs.length; i++) {
+    const f = figs[i]; const c = T.chip('chip' + (i + 1), x, cy, {icon: f.icon, value: f.value, unit: f.unit, label: f.label, text: f.text}, {h: CH, parent});
+    metaLabel(c);
+    if (c.w > maxW) { c.el.remove(); T.notes.push('a figure chip dropped: wider than the column'); continue; }
+    out.push(c); w = Math.max(w, c.w); cy += CH + 16;
   }
-} else {
-  /* ---- Direction B (AMZ-038 headline zone): no scene — solid editorial ground, product large, headline in the quiet corner ---- */
+  if (out.length) sameWidth(out);
+  return out.length ? {x, y, w, h: cy - 16 - y, n: out.length} : null;
+}
+/* Scene placement: cover the frame, zoom toward the focus, keep the product box (when known) fully inside;
+   optionally push the product away from a text zone. Returns {z, ox, oy, iw, ih, pbox}. */
+const sceneAsset = job.scene ? T.asset(job.scene) : null;
+const pbOK = b => Array.isArray(b) && b.length === 4 && b.every(v => typeof v === 'number') && b[2] > b[0] && b[3] > b[1];
+const pbN = [job.product_box, sceneAsset?.product_box, sceneAsset?._product].find(pbOK) || null;   // normalised [x0,y0,x1,y1] of the product in the scene
+function placeScene(fw, fh, zMax, need) {
+  const a = sceneAsset, fx = job.focus?.[0] ?? 0.5, fy = job.focus?.[1] ?? 0.55;
+  const s0 = Math.max(fw / a.width, fh / a.height), zCap = Math.max(1, cap / s0);
+  const mg = Math.round(Math.min(fw, fh) * 0.03);
+  const tries = [];
+  for (let z = Math.min(zMax, zCap); z >= 0.999; z -= 0.025) tries.push(z);
+  if (!tries.length) tries.push(1);
+  let fallback = null;
+  for (const z of tries) {
+    const iw = a.width * s0 * z, ih = a.height * s0 * z;
+    let xlo = fw - iw, xhi = 0, ylo = fh - ih, yhi = 0;
+    if (pbN) {
+      // the whole product stays inside the frame with a small margin: left/top edges give lower bounds, right/bottom upper bounds
+      xlo = Math.max(xlo, mg - pbN[0] * iw); xhi = Math.min(xhi, fw - mg - pbN[2] * iw);
+      ylo = Math.max(ylo, mg - pbN[1] * ih); yhi = Math.min(yhi, fh - mg - pbN[3] * ih);
+      if (xlo > xhi + 0.5 || ylo > yhi + 0.5) continue;
+    }
+    const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const ox = cl(fw / 2 - fx * iw, xlo, xhi);
+    let oy = cl(fh / 2 - fy * ih, ylo, yhi);
+    const res = {z, ox, oy, iw, ih};
+    if (!fallback) fallback = {...res, viol: undefined};
+    if (!need || !pbN) return res;
+    if (need.zone === 'top') { const want = need.y - pbN[1] * ih; if (want <= yhi) { res.oy = Math.max(oy, want); return res; }
+      res.oy = yhi; res.viol = want - yhi; }
+    else { const want = need.y - pbN[3] * ih; if (want >= ylo) { res.oy = Math.min(oy, want); return res; }
+      res.oy = ylo; res.viol = ylo - want; }
+    // no free band at this zoom: remember the placement that leaves the least product under the text (ties: the larger zoom)
+    if (!fallback.viol && fallback.viol !== 0 || res.viol < fallback.viol - 24) fallback = res;
+  }
+  if (!fallback) { const iw = a.width * s0, ih = a.height * s0; fallback = {z: 1, ox: (fw - iw) / 2, oy: (fh - ih) / 2, iw, ih}; }
+  fallback.overlap = true;
+  return fallback;
+}
+function drawScene(x, y, fw, fh, pl, allow) {
+  const f = T.detailFrame('scene', job.scene, x, y, fw, fh, {bleed: true, allow});
+  T.box(f.img, pl.ox, pl.oy, pl.iw, pl.ih);
+  T.layoutInfo.scene_zoom = +pl.z.toFixed(3);
+  if (pbN) T.layoutInfo.scene_product = [pl.ox + pbN[0] * pl.iw, pl.oy + pbN[1] * pl.ih, pl.ox + pbN[2] * pl.iw, pl.oy + pbN[3] * pl.ih].map(v => Math.round(v + 0));
+  return f;
+}
+/* Band mode, right half: a circular close-up ringed in the accent, its centre a little below the band edge so it
+   breaks into the scene. Source: job.inset (a detail/macro asset), else the scene itself zoomed toward the product. */
+function insetCircle(sceneH, bandH, parent) {
+  // only a close-up asset of its own: a scene crop would cut the product (the renderer's scene_product_cropped check)
+  const own = job.inset && (job.assets || {})[job.inset] ? job.inset : null;
+  const id = own || (job.inset_from_scene && !pbN ? job.scene : null); if (!id) return null;
+  const a = T.asset(id);
+  // ~22% of the width across, wholly inside the band (a ring on the seam reads as pasted on)
+  const r = Math.round(Math.min(W * 0.11, bandH / 2 - 30));
+  const cx = W - m - r, cy = Math.round(sceneH + bandH / 2);
+  let fx, fy, sc;
+  if (own) { [fx, fy] = job.inset_focus || job.inset_zoom_focus || [0.5, 0.5]; sc = Math.max(2 * r / a.width, 2 * r / a.height) * (job.inset_zoom ?? 1.25); }
+  else {
+    const p = pbN || [0.3, 0.3, 0.7, 0.7];
+    [fx, fy] = job.inset_focus || [(p[0] + p[2]) / 2, p[1] + (p[3] - p[1]) * 0.42];
+    // show about 45% of the product's width across the circle, capped so the source is never blown up past 1.25x
+    sc = 2 * r / (a.width * (p[2] - p[0]) * 0.62);
+  }
+  sc = Math.min(sc, cap, Math.max(2 * r / a.width, 2 * r / a.height) * 6);
+  sc = Math.max(sc, 2 * r / a.width, 2 * r / a.height);
+  const iw = a.width * sc, ih = a.height * sc, cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const ix = cl(r - fx * iw, 2 * r - iw, 0), iy = cl(r - fy * ih, 2 * r - ih, 0);
+  const f = T.circleInset('inset', id, cx, cy, r, {allow: ['band'], parent});
+  T.box(f.img, ix, iy, iw, ih);
+  T.layoutInfo.inset = {asset: id, r, scale: +sc.toFixed(3)};
+  return {x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, el: f.frame};
+}
+function warmScrim(id, x, y, w, h, dir, a, solid) {
+  const e = T.el('div', {class: 'scrim', 'data-qa': id, 'data-kind': 'shape', 'data-exempt': '1'}, T.root);
+  T.box(e, x, y, w, h);
+  const c = v => `rgba(30,22,17,${v.toFixed(3)})`, sp = Math.max(0, Math.min(100, solid * 100)), mid = sp + (100 - sp) * 0.45;
+  e.style.background = `linear-gradient(to ${dir === 'up' ? 'top' : 'bottom'}, ${c(a)} 0%, ${c(a)} ${sp.toFixed(1)}%, ${c(a * 0.5)} ${mid.toFixed(1)}%, ${c(0)} 100%)`;
+  return e;
+}
+const textIds = ['headline', 'support', 'brand_slot', 'brand_slot_t', 'badge', 'badge_v', 'badge_l', 'chip1', 'chip2', 'chip3', 'chip1_v', 'chip1_l', 'chip2_v', 'chip2_l', 'chip3_v', 'chip3_l', 'stat_v', 'stat_l'];
+
+if (mode === 'overlay') {
+  /* ---- full-bleed scene, text on a scrim in the quieter half (P7) ---- */
+  T.root.classList.add('photo');
+  const cont = T.el('div', {class: 'on-dark on-photo'}); cont.style.position = 'absolute'; cont.style.inset = '0'; cont.style.zIndex = 2;
+  const fy = job.focus?.[1] ?? 0.55;
+  let zone = job.text_zone === 'top' || job.text_zone === 'bottom' ? job.text_zone : null;
+  if (!zone && figs.length) zone = 'bottom';                         // chips sit at the bottom; the headline moves above them
+  if (!zone && pbN) zone = pbN[1] >= 1 - pbN[3] ? 'top' : 'bottom';  // the larger free band of the scene
+  if (!zone) zone = fy < 0.45 ? 'bottom' : 'top';
+  const colW = Math.round(Math.min(W - 2 * m, W * (land ? 0.55 : 0.84)));
+  const bTop = m - 20;
+  const bd = (zone === 'top' && platform) ? badge(m, bTop, cont) : null;
+  const topY = bd ? bd.y + bd.h + 4 * G : m;
+  const chipsY = floorY - m - CH;
+  const chips = chipRow(m, chipsY, true, cont, 'scene_frame');
+  const bottomLimit = chips ? chipsY - 5 * G : floorY - m;
+  const gap = 6 * G;
+  // The words and the product share the frame: try the full headline first, then smaller steps, until the scene can be
+  // placed with the product clear of the text block (by at least gap/3); the scene placement pushes the product away.
+  const steps = [[116, 108, 100, 92, 84, 76, 72], [96, 92, 88, 84, 76, 72], [84, 80, 76, 72]];
+  let s = null, pl = null, tTop = 0, tBot = 0;
+  for (let k = 0; k < steps.length; k++) {
+    if (s) s.remove();
+    s = stack(m, topY, colW, {parent: cont, hlSizes: steps[k], maxHl: 3, hmax: Math.round(H * 0.36), subW: Math.min(colW, 1040), subSizes: zh ? [46, 44, 42] : [48, 46, 44], allow: ['scene_frame'], trial: k < steps.length - 1});
+    if (zone === 'bottom') s.place(bottomLimit - s.h);
+    tTop = zone === 'top' ? topY : bottomLimit - s.h; tBot = zone === 'top' ? topY + s.h : bottomLimit;
+    pl = placeScene(W, floorY, job.scene_zoom ?? 1.3, pbN ? (zone === 'top' ? {zone, y: tBot + gap} : {zone, y: tTop - gap}) : null);
+    if (!pbN || !pl.overlap || (pl.viol ?? 1e9) <= gap * 2 / 3) break;
+  }
+  if (pl.overlap && (pl.viol ?? 1e9) <= gap * 2 / 3) pl.overlap = false;      // only the breathing room is short, not the product
+  const bd2 = (zone === 'bottom' && platform) ? badge(m, bTop, cont) : null;
+  // a scene with no quiet band for the words (the product box is known and the text would sit on it): the poster
+  // takes the band layout instead, words on a solid ground (P7). job.overlay_fallback=false keeps the overlay.
+  if (pbN && pl.overlap && (pl.viol ?? 1e9) > H * 0.03 && job.overlay_fallback !== false) {
+    cont.remove(); T.root.classList.remove('photo'); mode = 'band';
+    T.layoutInfo = {mode, landscape: land, overlay_fallback: true};
+    T.notes.push('overlay: the scene has no free band for the words, band layout used');
+  } else {
+  const sc = drawScene(0, 0, W, floorY, pl, textIds);
+  T.root.insertBefore(sc.frame, cont);
+  const sa = job.scrim_alpha ?? (pl.overlap ? 0.88 : 0.80);   // stronger where the words cross the product
+  // warm-dark scrim (P7): flat at full strength behind every text line (≥4.5:1 for cream and the lifted accent),
+  // then a 200px fade into the photo
+  if (zone === 'top') { const sh = Math.min(floorY, tBot + 220); T.root.insertBefore(warmScrim('scrim', 0, 0, W, sh, 'down', sa, (tBot + 28) / sh), cont); }
+  else { const st = Math.max(0, tTop - 220); T.root.insertBefore(warmScrim('scrim', 0, st, W, floorY - st, 'up', sa, (floorY - tTop + 28) / (floorY - st)), cont); }
+  if (bd2) T.root.insertBefore(T.scrim('scrim_top', 0, 0, W, 260, 'down', 0.4, T.root), cont);
+  if (brandName || job.brand_slot) brandSlot(W - m, zone === 'top' && !chips ? floorY - m - 72 : m - 20, 'right', cont);
+  T.layoutInfo.text_zone = zone; T.layoutInfo.text_over_product = !!pl.overlap;
+  if (pl.overlap) T.notes.push('scene has no free band for the text at this zoom: the text sits on the scrim over the product');
+  }
+}
+if (mode === 'band') {
+  const cont = T.el('div', {class: 'on-dark'}); cont.style.position = 'absolute'; cont.style.inset = '0'; cont.style.zIndex = 2;
+  const bandAllow = 'headline,support,brand_slot,brand_slot_t,stat_v,stat_l,badge,badge_v,badge_l';
+  if (!land) {
+    /* ---- the DeWalt variant: scene on the top 70%, hard-edged warm-dark band (≤30% H) carrying the words ---- */
+    // 4:5: the band takes 27% and the photo is cropped tighter, so the product keeps its size against the 1:1 poster
+    const tall = H / W >= 1.15;
+    const sceneH = Math.round(floorY * (tall ? 0.73 : 0.70)), bandH = floorY - sceneH;
+    const band = T.el('div', {class: 'band', 'data-qa': 'band', 'data-kind': 'shape', 'data-allow': bandAllow});
+    T.box(band, 0, sceneH, W, bandH);
+    const pl = placeScene(W, sceneH, job.scene_zoom ?? (tall ? 1.3 : 1.12), null);
+    const sc = drawScene(0, 0, W, sceneH, pl, ['badge', 'badge_v', 'badge_l']);
+    T.root.insertBefore(sc.frame, band);
+    // the seam: the band's warm dark feathers 56px up into the photo, so the two read as one panel
+    const seam = T.el('div', {class: 'seam', 'data-exempt': '1'}); T.box(seam, 0, sceneH - 56, W, 56); T.root.insertBefore(seam, band);
+    T.root.appendChild(cont);
+    if (platform) { T.root.insertBefore(T.scrim('scrim_top', 0, 0, W, 300, 'down', 0.42, T.root), cont); badge(m - 12, m - 20, cont); }
+    const x = 64, padT = 36, padB = 64, top = sceneH + padT, hmax = floorY - padB - top;
+    // right half (never empty): key-figure stat, else the brand slot, else a circular close-up that breaks the band edge
+    const rightW = Math.round((W - 2 * m) * 0.36);
+    let colW = W - x - m;
+    let st = null, slot = null, ins = null;
+    if (stat) {
+      colW = W - x - m - rightW - 6 * G;
+      const sx = W - m - rightW;
+      st = T.stat('stat', sx, top + 6, rightW, {value: stat.value, unit: stat.unit, label: stat.label}, {dark: true, parent: cont});
+      const v = st.querySelector('.stat-value'); let fs = 128;
+      while (fs > 72 && (v.scrollWidth > v.clientWidth + 1 || st.getBoundingClientRect().height > hmax)) { fs -= 8; v.style.fontSize = fs + 'px'; }
+      const lab = st.querySelector('.stat-label'); lab.setAttribute('data-tier', 'meta');   // the figure's caption (P4 meta), like a chip label
+      if (lineInfo(lab).lines > 2) lab.style.fontSize = '22px';
+      // the figure takes only the width it uses; the words get the rest
+      const vw = Math.ceil(Math.max(v.scrollWidth, lab.scrollWidth > lab.clientWidth ? rightW : lineInfo(lab).right - lineInfo(lab).left, 64)) + 8;
+      const sw = Math.min(rightW, Math.max(vw, 200));
+      st.style.left = (W - m - sw) + 'px'; st.style.width = sw + 'px';
+      colW = W - x - m - sw - 8 * G;
+      if (brandName) slot = brandSlot(W - m, floorY - padB - 72, 'right', cont);
+    } else if (brandName) {
+      slot = brandSlot(W - m, top + 8, 'right', cont);
+      colW = W - x - m - (slot ? slot.w + 6 * G : 0);
+    } else if (job.inset !== false) {
+      ins = insetCircle(sceneH, bandH, cont);
+      if (ins) colW = Math.min(colW, ins.x - 6 * G - x);
+      else if (job.brand_slot) { slot = brandSlot(W - m, top + 8, 'right', cont); colW = W - x - m - (slot ? slot.w + 6 * G : 0); }
+    }
+    // nothing on the right: the headline itself spans the band (DeWalt scale), so the half is not left empty
+    const wide = !st && !slot && !ins;
+    // wide: the type is scaled until its longest line fills ~70% of the band (zh may run both phrases on one line)
+    const sizes = w => w ? (zh ? [184, 172, 160, 148, 136, 124, 116, 108, 100, 92] : [148, 140, 132, 124, 116, 108, 100, 92, 84, 76])
+      : [124, 116, 108, 100, 92, 84, 76, 70, 64];
+    let s = stack(x, top, colW, {parent: cont, hlSizes: sizes(wide), maxHl: 3, hmax, trial: !!ins, fill: wide ? 0.68 : 0, join: wide});
+    if (ins && (!s.ok || lineInfo(s.hl).lines > 2 && !zh)) {      // the close-up would cost the 2-line headline: the words win
+      s.remove(); ins.el.remove(); ins = null; delete T.layoutInfo.inset; T.notes.push('inset dropped: the headline needs the band width');
+      s = stack(x, top, W - x - m, {parent: cont, hlSizes: sizes(true), maxHl: 3, hmax, fill: 0.68, join: true});
+    }
+    // the stack sits in the optical middle of the band (a touch high), never above the top padding
+    const free = floorY - padB - top - s.h;
+    if (free > 0) s.place(Math.round(top + free * 0.42));
+    if (st) { const hl = T.rect(s.hl); st.style.top = Math.round(hl.y + 6) + 'px'; }
+    T.layoutInfo.scene_h = sceneH; T.layoutInfo.band_h = bandH;
+  } else {
+    /* ---- landscape: solid dark panel left (40%), scene right ---- */
+    const pw = Math.round(W * 0.46), sw = W - pw;
+    const band = T.el('div', {class: 'band', 'data-qa': 'band', 'data-kind': 'shape', 'data-allow': bandAllow}); T.box(band, 0, 0, pw, floorY);
+    const pl = placeScene(sw, floorY, job.scene_zoom ?? 1.12, null);
+    drawScene(pw, 0, sw, floorY, pl, []);
+    T.root.appendChild(cont);
+    let top = m;
+    const slot = job.brand_slot ? brandSlot(m, m, 'left', cont) : null;
+    if (slot) top = slot.y + slot.h + 5 * G;
+    const s = stack(m, top, pw - m - 6 * G, {parent: cont, hlSizes: [100, 92, 84, 76, 68, 60, 56], maxHl: 4, hmax: floorY - m - top});
+    s.place(floorY - m - s.h);
+    if (stat) { const sp = T.stat('stat', m, top, pw - 2 * m, {value: stat.value, unit: stat.unit, label: stat.label}, {dark: true, parent: cont});
+      sp.querySelector('.stat-label').setAttribute('data-tier', 'meta');
+      if (sp.getBoundingClientRect().bottom > T.rect(s.hl).y - 4 * G) { sp.remove(); T.notes.push('stat dropped: no room in the landscape panel'); } }
+  }
+} else if (mode !== 'overlay') {
+  /* ---- solid: studio light ground with a warm floor. 1:1 and 4:5: a full-width text block on top (designed 2-line
+     break), optional chip row, and the whole product below it, centred, ≥6% margin, contact shadow. Landscape: a
+     0.34W text column top-left and the product beside it. job.hero_bleed > 0 lets the product run off the bottom. ---- */
+  T.root.classList.add('studio');
   const a = T.asset(job.hero);
-  const portraitish = W / H < 1.2;
-  // r1: strict two-zone split — text column and product column never share pixels
-  const cw = W - 2 * m;
-  const textW = Math.round(cw * (land ? 0.42 : 0.40));
-  const c = copy(m, m + 4, textW, null, 4);
-  const sl = slot(m, floor - slotH);
-  const px0 = m + textW + 5 * G;
-  let r = T.contain(a, px0, m, W - m - px0, floor - m, 0.5, 1);
-  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s}; r.x = px0 + (W - m - px0 - r.w) / 2; r.y = floor - r.h; }
-  T.img('hero', job.hero, r, {blend:'multiply'});
+  const cb = a.content_bbox || [0, 0, 1, 1];
+  const hull = (Array.isArray(a.hull) && a.hull.length >= 3) ? a.hull : [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
+  // portrait (4:5): the spare height goes to a full-width text block on top and the product, larger, below it;
+  // square/landscape: a 0.36W text column top-left and the product beside it
+  const tall = H / W >= 1.15, top = job.solid_layout !== 'column';
+  const colW = top ? Math.round(land ? W * 0.56 : W - 2 * m) : Math.round(W * 0.42);
+  let y0 = m;
+  const bd = badge(m, m - 12, null);
+  if (bd) y0 = bd.y + bd.h + 5 * G;
+  const rule = T.el('div', {class: 'rule', 'data-qa': 'rule', 'data-kind': 'shape'}); T.box(rule, m, y0, 72, 10);
+  const sizesS = top ? (tall ? (job.compact ? [96, 88, 80, 72, 66] : [112, 104, 96, 88, 80, 72, 66]) : (job.compact ? [88, 80, 72, 66, 60] : [104, 96, 88, 80, 72, 66, 60]))
+    : job.compact ? [80, 72, 66, 60, 56] : [88, 80, 72, 66, 60, 56];
+  // zh: four-character phrases are short, so the scale runs larger and both phrases may share one line (two-tone)
+  const sizesZh = job.compact ? [152, 140, 128, 116, 104, 96, 88] : [176, 164, 152, 140, 128, 116, 104, 96];
+  const s = stack(m, y0 + 10 + 4 * G, colW, {hlSizes: top && zh ? sizesZh : sizesS, maxHl: top ? 3 : 4, subW: colW, hmax: top ? Math.round(H * (tall ? 0.30 : 0.27)) : 0,
+    fill: top && zh ? 0.6 : 0, join: top && zh, hcost: top ? 40 : 0});
+  let yy = T.rect(s.sp || s.hl).y + T.rect(s.sp || s.hl).h + 5 * G;
+  const chips = top ? chipRow(m, yy, false, null, null) : chipColumn(m, yy, colW + 120, null);
+  if (chips) yy = chips.y + chips.h;
+  const slotBox = job.brand_slot ? brandSlot(m, floorY - m - 72, 'left', null) : null;
+  // keep-out rectangles: every text block (line union) and chip, plus a gap
+  const gap = 36;
+  const keep = s.rects().concat([T.rect(rule)]).concat(chips ? [chips] : []).concat(slotBox ? [slotBox] : []).concat(bd ? [bd] : [])
+    .map(r => ({x: r.x - gap, y: r.y - gap, w: r.w + 2 * gap, h: r.h + 2 * gap}));
+  const cw0 = a.width * (cb[2] - cb[0]), ch0 = a.height * (cb[3] - cb[1]);
+  const mgX = Math.round(W * 0.06), mgB = Math.round(H * 0.055), regTop = land ? m : yy + 6 * G, regLeft = land ? Math.round(W * 0.60) : mgX;
+  const fill = job.hero_fill ?? (top ? 1 : 1.15);
+  const sFit = top ? Math.min((W - mgX - regLeft) / cw0, (floorY - mgB - regTop) / ch0) : Math.min((W - 2 * m) / cw0, (floorY - 2 * m) / ch0);
+  const sTarget = Math.min(cap, sFit * fill);
+  const inPoly = (p, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if (((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) c = !c; } return c; };
+  const clear = (poly) => keep.every(r => { for (let i = 0; i < poly.length; i++) if (T.segRect(poly[i], poly[(i + 1) % poly.length], r, 0)) return false;
+    return ![[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].some(p => inPoly(p, poly)); });
+  let pick = null;
+  for (let sc = sTarget; sc >= sTarget * 0.55 && !pick; sc *= 0.975) {
+    const cw = cw0 * sc, ch = ch0 * sc, iw = a.width * sc, ih = a.height * sc;
+    const bleedX = Math.round(cw * (job.hero_bleed ?? 0.03)), bleedY = Math.round(ch * (job.hero_bleed ?? 0.03) * 1.5);
+    const xs = [], ys = [];
+    if (top) {                                            // centred under the words, sitting on the floor; right-aligned if a slot needs the left
+      if (land) xs.push(W - mgX - cw); else xs.push((W - cw) / 2, W - mgX - cw);
+      const hb = job.hero_bleed ? Math.round(ch * job.hero_bleed) : 0;
+      ys.push(floorY - mgB - ch + hb);
+    } else {
+    const xr = W - m - cw;                                // flush right at the margin, then bleeding off the right edge
+    for (let d = 0; d <= bleedX + m; d += 12) xs.push(xr + d);
+    const ybase = Math.min(floorY - m - ch, Math.max(m, (floorY - ch) / 2 + 30));
+    for (let d = 0; ybase + d + ch <= floorY + bleedY; d += 12) ys.push(ybase + d);
+    if (!ys.length) ys.push(Math.max(m * 0.5, floorY - ch));
+    }
+    for (const cy of ys) { for (const cx of xs) {
+      if (cx < m * 0.5 || cy < m * 0.5) continue;
+      const ix = cx - cb[0] * iw, iy = cy - cb[1] * ih;
+      const poly = hull.map(([u, v]) => [ix + u * iw, iy + v * ih]);
+      if (clear(poly)) { pick = {sc, cx, cy, cw, ch, ix, iy, iw, ih}; break; }
+    } if (pick) break; }
+  }
+  if (!pick) {   // nothing clears the text: contain below/right of the column at a size that does
+    const sc = Math.min(cap, (W - m - (m + colW + 4 * G)) / cw0, (floorY - 2 * m) / ch0);
+    const cw = cw0 * sc, ch = ch0 * sc, iw = a.width * sc, ih = a.height * sc, cx = W - m - cw, cy = floorY - m - ch;
+    pick = {sc, cx, cy, cw, ch, ix: cx - cb[0] * iw, iy: cy - cb[1] * ih, iw, ih};
+    T.notes.push('product kept to the right column: no larger placement clears the text');
+  }
+  const bleeds = pick.ix < -0.5 || pick.iy < -0.5 || pick.ix + pick.iw > W + 0.5 || pick.iy + pick.ih > H + 0.5;
+  const contentBottom = pick.cy + pick.ch;
+  if (contentBottom < floorY - 8) {
+    const sh = T.el('div', {class: 'shadow', 'data-exempt': '1'}); const swd = pick.cw * 0.86;
+    T.box(sh, pick.cx + (pick.cw - swd) / 2, contentBottom - 46, swd, 60);
+  }
+  T.img('hero', job.hero, {x: pick.ix, y: pick.iy, w: pick.iw, h: pick.ih}, {blend: 'multiply', bleed: bleeds});
+  T.layoutInfo.hero_scale = +pick.sc.toFixed(3);
+  T.layoutInfo.hero_cover = +((pick.cw * pick.ch) / (W * H)).toFixed(3);
+  T.layoutInfo.hero_bbox = [pick.cx, pick.cy, pick.cw, pick.ch].map(Math.round);
+  // keep the text above the product image in paint order
+  for (const id of ['rule', 'headline', 'support', 'chip1', 'chip2', 'chip3', 'brand_slot', 'brand_slot_t', 'badge']) { const e = document.querySelector(`[data-qa="${id}"]`); if (e && e.parentNode === T.root) T.root.appendChild(e); }
 }
 T.watermark();
 T.finish();

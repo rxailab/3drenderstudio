@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=29">
+<link rel="stylesheet" href="/static/styles.css?v=31">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -206,14 +206,14 @@
 </main>
 <aside class="settings inspector">
 <div class="inspector-tabs" role="tablist" aria-label="工作台面板">
-<button id="inspectorReviewTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorReview" data-inspector="review">调整</button>
+<button id="inspectorListingTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorListing" data-inspector="listing">套图</button>
+<button id="inspectorReviewTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorReview" data-inspector="review">调整</button>
 <button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">材质</button>
 <button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">参数</button>
-<button id="inspectorListingTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorListing" data-inspector="listing">套图</button>
 <button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">导出</button>
 </div>
 <div id="inspectorBody" class="inspector-body">
-<section id="inspectorReview" role="tabpanel" aria-labelledby="inspectorReviewTab">
+<section id="inspectorReview" role="tabpanel" aria-labelledby="inspectorReviewTab" hidden>
 <form id="instructionForm" class="instruction-form">
 <label for="instructionInput" class="sr-only">调整要求</label><textarea id="instructionInput" rows="3" maxlength="2000" placeholder="描述想要的效果，例如：反光柔和一点，颜色和角度不变" aria-describedby="instructionContext instructionError"></textarea><p id="instructionContext" class="field-help" role="status" hidden></p>
 <p id="instructionError" class="error-text" role="alert" hidden></p>
@@ -627,11 +627,32 @@
 </div>
 </details>
 </section>
-<section id="inspectorListing" class="listing-panel-entry" role="tabpanel" aria-labelledby="inspectorListingTab" hidden>
+<section id="inspectorListing" class="listing-inspector" role="tabpanel" aria-labelledby="inspectorListingTab">
 <h2 class="sr-only">套图</h2>
-<p class="field-help">把产品、随箱组件和品牌风格排成一组电商图片：主图（产品与组件一起渲染）、套装清单、功能标注、使用场景标注、特写、标题横幅、规格。</p>
-<div id="listingSummary" class="listing-summary" role="status"></div>
-<button id="listingOpenPanel" class="button primary full-width" type="button">打开套图</button>
+<p class="field-help listing-intro">用品牌模板把产品、套装组件和品牌风格排成一组电商宣传图。先在「产品信息」里粘贴产品介绍并提取，再生成套图。</p>
+<div class="listing-body">
+<section class="listing-side" aria-label="套图设置">
+<div class="listing-tabs" role="tablist" aria-label="套图设置">
+<button type="button" role="tab" data-listing-tab="product" aria-selected="true">产品信息</button>
+<button type="button" role="tab" data-listing-tab="components" aria-selected="false">套装组件</button>
+<button type="button" role="tab" data-listing-tab="brand" aria-selected="false">品牌风格</button>
+<button type="button" role="tab" data-listing-tab="usecase" aria-selected="false">场景</button>
+</div>
+<div id="listingPanel" class="listing-panel" role="tabpanel"></div>
+</section>
+<section class="listing-main" aria-label="套图图片">
+<div class="listing-bar">
+<button id="listingBuild" class="button primary" type="button">生成套图</button>
+<button id="listingCancel" class="button subtle" type="button" hidden>取消</button>
+<a id="listingDownload" class="button secondary" href="#" hidden>下载全部（ZIP）</a>
+<span id="listingStatus" class="listing-status" role="status"></span>
+</div>
+<div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
+<div id="listingPlan" class="listing-plan" role="group" aria-label="要生成的图片"></div>
+<ul id="listingNotes" class="listing-notes"></ul>
+<div id="listingPages" class="listing-pages"></div>
+</section>
+</div>
 </section>
 <section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>
 <div class="prop-row">
@@ -795,38 +816,6 @@
 </div>
 </section>
 </dialog>
-<dialog id="listingDialog" class="listing-dialog" aria-labelledby="listingTitle">
-<div class="dialog-header">
-<div>
-<h2 id="listingTitle">套图</h2>
-<p id="listingIntro">用品牌模板把产品、套装组件和品牌风格排成一组电商宣传图：海报主图、功能标注、主体与细节、细节特写、场景参数、使用场景组图、尺寸图、包装清单。使用场景图由图像模型自动生成。</p>
-</div>
-<button type="button" class="icon-button close-dialog" aria-label="关闭套图窗口">×</button>
-</div>
-<div class="listing-body">
-<section class="listing-side" aria-label="套图设置">
-<div class="listing-tabs" role="tablist" aria-label="套图设置">
-<button type="button" role="tab" data-listing-tab="product" aria-selected="true">产品信息</button>
-<button type="button" role="tab" data-listing-tab="components" aria-selected="false">套装组件</button>
-<button type="button" role="tab" data-listing-tab="brand" aria-selected="false">品牌风格</button>
-<button type="button" role="tab" data-listing-tab="usecase" aria-selected="false">场景</button>
-</div>
-<div id="listingPanel" class="listing-panel" role="tabpanel"></div>
-</section>
-<section class="listing-main" aria-label="套图图片">
-<div class="listing-bar">
-<button id="listingBuild" class="button primary" type="button">生成套图</button>
-<button id="listingCancel" class="button subtle" type="button" hidden>取消</button>
-<a id="listingDownload" class="button secondary" href="#" hidden>下载全部（ZIP）</a>
-<span id="listingStatus" class="listing-status" role="status"></span>
-</div>
-<div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
-<div id="listingPlan" class="listing-plan" role="group" aria-label="要生成的图片"></div>
-<ul id="listingNotes" class="listing-notes"></ul>
-<div id="listingPages" class="listing-pages"></div>
-</section>
-</div>
-</dialog>
 <dialog id="aiSettingsDialog" class="ai-settings-dialog" aria-labelledby="aiSettingsTitle">
 <form id="aiSettingsForm">
 <div class="dialog-header">
@@ -900,8 +889,8 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=31" defer>
+<script src="/static/app.js?v=33" defer>
 </script>
-<script src="/static/listing.js?v=32" defer></script>
+<script src="/static/listing.js?v=34" defer></script>
 </body>
 </html>
