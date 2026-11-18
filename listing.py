@@ -674,6 +674,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             assets['part%d' % index], _ = brandkit_set.flatten(part['path'], assets_folder / ('part%d.png' % index), pad=.04)
         for index, scene in enumerate(scenes):
             assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
+            product_box = brandkit_set.scene_box(scene)
+            if product_box:
+                assets['scene%d' % (index + 1)]['_product'] = product_box
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
                'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
@@ -750,7 +753,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption')}
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box')}
                   for row in scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):

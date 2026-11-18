@@ -27,7 +27,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'frame_cuts_part', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'frame_cuts_part', 'scene_product_cropped', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -178,9 +178,21 @@ def frame_checks(qa, job):
     for row in elements:
         if row.get('kind') != 'detail_image' or not row.get('w') or not row.get('h'):
             continue
-        parts = ((job.get('assets') or {}).get(row.get('asset')) or {}).get('_parts') or []
+        record = (job.get('assets') or {}).get(row.get('asset')) or {}
+        parts = record.get('_parts') or []
         frame = frames.get(str(row.get('id')) + '_frame')
-        if not parts or not frame:
+        if not frame:
+            continue
+        product = record.get('_product')
+        if product:          # a scene shows the whole product: a frame may crop the room, not the product in it
+            seen = [(frame['x'] - row['x']) / row['w'], (frame['y'] - row['y']) / row['h'],
+                    (frame['x'] + frame['w'] - row['x']) / row['w'], (frame['y'] + frame['h'] - row['y']) / row['h']]
+            area = (product[2] - product[0]) * (product[3] - product[1])
+            inside = max(0, min(product[2], seen[2]) - max(product[0], seen[0])) * max(0, min(product[3], seen[3]) - max(product[1], seen[1]))
+            if area > 0 and inside / area < .95:
+                qa['issues'].append({'check': 'scene_product_cropped', 'id': row['id'],
+                                     'detail': '%.0f%% of the product inside the frame' % (inside / area * 100)})
+        if not parts:
             continue
         # A feathered edge hides the picture from about the middle of its fade: that is where a part looks cut.
         fade = {side: float(size) / 2 for side, size in (frame.get('feather') or {}).items()}

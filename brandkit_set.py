@@ -355,6 +355,27 @@ def remap(point, crop):
     return [round((point[0] - crop[0]) / (crop[2] - crop[0]), 4), round((point[1] - crop[1]) / (crop[3] - crop[1]), 4)]
 
 
+def scene_box(row, slack=.15):
+    """Where the product sits in a scene picture (fractions): where it was locked when the scene was made (as recorded,
+    else read off the scene's ``reference.png``, the product alone on white in its place), widened by ``slack`` of its
+    size on each side, since the image model may draw it a little larger (and a frame should leave it some air).
+    None when neither is there."""
+    box = row.get('box')
+    if not (isinstance(box, (list, tuple)) and len(box) == 4):
+        reference = Path(row.get('path', '')).parent / 'reference.png'
+        if not reference.is_file():
+            return None
+        with Image.open(reference) as opened:
+            grey = opened.convert('L')
+            found = grey.point(lambda value: 255 if value < 245 else 0).getbbox()
+            width, height = grey.size
+        if not found:
+            return None
+        box = [found[0] / width, found[1] / height, found[2] / width, found[3] / height]
+    dx = (box[2] - box[0]) * slack; dy = (box[3] - box[1]) * slack
+    return [round(max(0.0, box[0] - dx), 4), round(max(0.0, box[1] - dy), 4), round(min(1.0, box[2] + dx), 4), round(min(1.0, box[3] + dy), 4)]
+
+
 def scene_asset(source, target):
     """A scene picture as an opaque PNG for the templates."""
     with Image.open(source) as opened:
@@ -757,13 +778,16 @@ def _jobs_for(kind, ctx):
             # Captions under some tiles only would break the row's rhythm.
             items = [{**row, 'body': None} for row in items]
         out = []
+        default = 'columns' if CANVAS[ctx['aspect']][0] / CANVAS[ctx['aspect']][1] >= .95 else 'stagger'
         for count in (3, 2):
             if len(items) >= count:
                 use = items[:count]
-                out.append(_job(kind, ctx, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'], items=use,
-                                assets={row['asset']: assets[row['asset']] for row in use}))
-                out.append(_job(kind, ctx, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'],
-                                items=[{**row, 'body': None} for row in use], assets={row['asset']: assets[row['asset']] for row in use}))
+                # Tall columns, then wide rows: a wide product that the columns would cut off fits a row.
+                for mode in (default, 'stagger' if default == 'columns' else 'columns'):
+                    out.append(_job(kind, ctx, mode=mode, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'], items=use,
+                                    assets={row['asset']: assets[row['asset']] for row in use}))
+                    out.append(_job(kind, ctx, mode=mode, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'],
+                                    items=[{**row, 'body': None} for row in use], assets={row['asset']: assets[row['asset']] for row in use}))
         return out
     if kind == 'T06':
         side = assets['side']; box = side['content_bbox']

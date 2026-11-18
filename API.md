@@ -28,7 +28,7 @@
 - 评分：`score`、`first_score`、`scores`（产品 25、层级 20、构图 20、任务 15、色彩 10、适配 10）。
 - `vetoes`、`issues`、`applied`（采用的修改）、`rounds`、`summary`、`model`。
 
-整套检查的结论写在套图的 `notes` 里。`review.refuted` 是被复核推翻的审核意见数。`review.issues` 只在未通过（`failed`）或经过修改（`revised`）时经过复核；通过的页面上是审核模型未经复核的意见，仅供参考。版式检查新增 `leader_over_product`：引线压在产品上的长度超过产品宽度的 45%；以及 `frame_cuts_part`：特写框（含渐隐边）切过徽标、铆钉等小部件。后者只在同一版式的几种取景之间做选择，不算版式不通过（`checks.passed` 不受它影响），仍会出现在 `checks.issues` 和页面说明里。场景图记录新增 `caption`：`seen` 表示图注是看着图片写的。场景图记录新增 `check`（`passed` / `failed` / `unchecked`），用的场景图核对未通过的页面带 `scene_product_mismatch` 否决。版式检查新增 `phrase_break`：中文标题渲染出的行数比作者写的多。
+整套检查的结论写在套图的 `notes` 里。`review.refuted` 是被复核推翻的审核意见数。`review.issues` 只在未通过（`failed`）或经过修改（`revised`）时经过复核；通过的页面上是审核模型未经复核的意见，仅供参考。版式检查新增 `leader_over_product`：引线压在产品上的长度超过产品宽度的 45%；以及 `frame_cuts_part`：特写框（含渐隐边）切过徽标、铆钉等小部件。后者只在同一版式的几种取景之间做选择，不算版式不通过（`checks.passed` 不受它影响），仍会出现在 `checks.issues` 和页面说明里。场景图记录新增 `caption`（`seen` 表示图注是看着图片写的）和 `box`（产品在图中的位置）。版式检查新增 `scene_product_cropped`：场景框裁掉了产品。场景图记录新增 `check`（`passed` / `failed` / `unchecked`），用的场景图核对未通过的页面带 `scene_product_mismatch` 否决。版式检查新增 `phrase_break`：中文标题渲染出的行数比作者写的多。
 
 **生成过程**的阶段为 `pictures`（Blender 素材）→ `scenes`（图像模型场景图）→ `compose`（模板排版）。场景图保存在 `data/{id}/listing/scenes-{key}/`；人群、人物、说明、张数和模型都不变时沿用。
 

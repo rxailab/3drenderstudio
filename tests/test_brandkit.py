@@ -235,6 +235,21 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(brandkit_set._cuts(region, parts), [])
         self.assertTrue(region[0] <= .25 and region[1] <= .1 and region[2] >= .5 and region[3] >= .4, region)   # the handle still whole
 
+    def test_a_scene_tile_that_cuts_the_product_off_fails_and_its_box_is_read_off_the_reference(self):
+        import tempfile
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        reference = Image.new('RGB', (100, 100), 'white'); reference.paste((90, 60, 30), (20, 40, 80, 70)); reference.save(folder / 'reference.png')
+        self.assertEqual(brandkit_set.scene_box({'path': str(folder / 'scene1.png')}, slack=0), [.2, .4, .8, .7])
+        self.assertEqual(brandkit_set.scene_box({'path': 'x.png', 'box': [.2, .2, .6, .4]}), [.14, .17, .66, .43])     # some air round it
+        job = {'assets': {'scene1': {'_product': [.2, .4, .8, .7]}}}
+        def qa(frame_w):          # a 1000 px picture shown in a frame of this width, centred on the product
+            left = 500 - frame_w / 2
+            return {'issues': [], 'elements': [{'id': 'tile1_frame', 'kind': 'shape', 'x': left, 'y': 0, 'w': frame_w, 'h': 1000},
+                                               {'id': 'tile1', 'kind': 'detail_image', 'asset': 'scene1', 'x': 0, 'y': 0, 'w': 1000, 'h': 1000}]}
+        for frame_w, cut in ((420, True), (700, False)):
+            record = qa(frame_w); brandkit_render.frame_checks(record, job)
+            self.assertEqual([row['check'] for row in record['issues']], ['scene_product_cropped'] if cut else [], frame_w)
+
     def test_scenes_are_captioned_from_the_pictures_once(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': '办公随行', 'body': '伴随职场日常'}, {'path': 'b.png', 'title': '日常外出', 'body': ''}]
