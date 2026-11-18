@@ -47,6 +47,11 @@ def run(request_path):
 
     @persistent
     def render_pre(scene,*_):
+        if scene.get('studio_reflection_pass'):
+            # The floor reflection's own render (blender/reflection.py) uses mirrored copies of the lights already set:
+            # nothing to apply or verify, and the copies must not be read as a second key light.
+            print('EVENT:'+json.dumps({'stage':'正在渲染地面倒影'},ensure_ascii=False),flush=True)
+            return
         try:
             report=apply(scene)
             path=Path(bpy.path.abspath(scene.render.filepath)).resolve()
@@ -62,6 +67,7 @@ def run(request_path):
 
     @persistent
     def render_post(scene,*_):
+        if scene.get('studio_reflection_pass'):return
         pending=state['pending']
         if not pending:return
         try:

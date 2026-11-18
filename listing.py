@@ -18,6 +18,7 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
@@ -34,6 +35,7 @@ KIND = 'listing_task'
 MAX_FEATURES = 8
 MAX_SPECS = 10
 MAX_FIGURES = 3
+MAX_SOURCE = 8000
 MAX_PAGES = len(brandkit_set.KINDS)
 LANGUAGES = ('en', 'zh')
 WORKPIECES = ('pipe', 'rod', 'board', 'sheet', 'block')
@@ -159,6 +161,15 @@ def validate_product(body, project, current=None):
               'subline': _text(body['subline'], 120, '副标题') if 'subline' in body else current['subline'],
               'size_mm': _number(body['size_mm'], 1, 100000, '最长边尺寸') if 'size_mm' in body else current.get('size_mm'),
               'drafted': current.get('drafted')}
+    if 'source' in body:            # the product description the user pasted, kept so it is there next time
+        source = body['source']
+        if source is not None and not isinstance(source, str):
+            raise ValueError('产品介绍必须是文字')
+        if source and len(source) > MAX_SOURCE:
+            raise ValueError('产品介绍不能超过 %d 个字符' % MAX_SOURCE)
+        record['source'] = (source or '').strip()
+    else:
+        record['source'] = current.get('source', '')
     language = body.get('language', current.get('language', 'en'))
     if language not in LANGUAGES:
         raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
@@ -364,6 +375,141 @@ def draft(project_id, body):
         current = validate_product({}, project, listing.get('product') if isinstance(listing.get('product'), dict) else None)
         record = validate_product(update, project, current)
         record['drafted'] = {'source': source, 'at': time.time(), 'notes': [str(note)[:200] for note in notes][:6]}
+        listing['product'] = record
+    _update(project_id, change)
+    return state(project_id)
+
+
+EXTRACTOR = (
+    'You read a product description a seller pasted (a product page, a spec sheet, notes) and sort what it says into the fields of '
+    'a product record. Extract; do not write new copy. Use only what the text states: never add a feature, number, unit, material, '
+    'certification or claim it does not contain. Keep the text\'s own words where they fit the length limits, shortened if needed; '
+    'write every field in the output language (translate faithfully when the text is in another language). '
+    'title: the product\'s name (no brand slogan). model: the model or SKU code if given, else "". '
+    'longest_side: the overall size along the product\'s longest side as written in the text (value and unit), or empty strings when the '
+    'text gives no overall size. headline: the text\'s main selling sentence, shortened; subline: a second line that supports it. '
+    'features: the distinct selling points, each a short title and a one-line detail, most important first; for each, parts lists '
+    'the names from model_parts that show it (exact names, may be empty). specs: label/value pairs of technical data, value with '
+    'its unit. figures: up to three numbers worth showing large (value, unit, label), each also present in specs or the text. '
+    'notes: anything in the text you could not place, briefly (or nothing).')
+
+
+def _numbers(text):
+    """The numbers a piece of text contains, by value: full-width digits read as ordinary ones, a comma counted as a
+    thousands separator only between groups of three ("1,200"; "16,20,25" is three numbers), "2.0" the same as "2"."""
+    text = unicodedata.normalize('NFKC', str(text or ''))
+    found = set()
+    for match in re.findall(r'\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?', text):
+        value = float(match.replace(',', ''))
+        found.add(('%f' % value).rstrip('0').rstrip('.'))
+    return found
+
+
+def _language_of(text):
+    """'zh' for text that is mostly Chinese, else 'en'."""
+    han = len(re.findall(r'[\u4e00-\u9fff]', text)); latin = len(re.findall(r'[A-Za-z]', text))
+    return 'zh' if han >= latin / 3 else 'en'
+
+
+UNIT_MM = {'mm': 1, '毫米': 1, 'cm': 10, '厘米': 10, '公分': 10, 'm': 1000, '米': 1000, 'in': 25.4, 'inch': 25.4, 'inches': 25.4, '"': 25.4,
+           '″': 25.4, '英寸': 25.4, 'ft': 304.8, 'feet': 304.8, 'foot': 304.8, '英尺': 304.8}
+
+
+def extract(project_id, body):
+    """Sort a pasted product description into the product record by the text model, keeping only what the text says:
+    a field with a number the text does not contain is left out. Fields the text fills replace what was there; the
+    others are kept. Returns the listing state."""
+    import brandkit_review
+    if not isinstance(body, dict):
+        raise ValueError('请求格式无效')
+    text = body.get('text')
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError('请先粘贴一段产品介绍')
+    text = text.strip()
+    if len(text) > MAX_SOURCE:
+        raise ValueError('产品介绍不能超过 %d 个字符' % MAX_SOURCE)
+    config, _ = brandkit_review._configs()
+    if not config:
+        raise ValueError('没有配置文本模型，无法从介绍中提取。请在「AI 设置」里配置，或手动填写各栏。')
+    project = get('project', project_id)
+    product, _, _ = stored(project)
+    # A language the user chose (the record already has words in it) is kept; a new record takes the text's own.
+    chosen = product['title'] or product['headline'] or product['features']
+    language = body.get('language') or (product['language'] if chosen else _language_of(text))
+    if language not in LANGUAGES:
+        raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
+    names = part_names(project)
+    row = lambda fields: {'type': 'object', 'additionalProperties': False, 'required': list(fields), 'properties': {key: {'type': 'string'} for key in fields}}
+    schema = {'type': 'object', 'additionalProperties': False,
+              'required': ['title', 'model', 'longest_side', 'headline', 'subline', 'features', 'specs', 'figures', 'notes'],
+              'properties': {'title': {'type': 'string'}, 'model': {'type': 'string'}, 'headline': {'type': 'string'}, 'subline': {'type': 'string'},
+                             'longest_side': {'type': 'object', 'additionalProperties': False, 'required': ['value', 'unit'],
+                                              'properties': {'value': {'type': 'string'}, 'unit': {'type': 'string'}}},
+                             'features': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['title', 'detail', 'parts'],
+                                                                     'properties': {'title': {'type': 'string'}, 'detail': {'type': 'string'},
+                                                                                    'parts': {'type': 'array', 'items': {'type': 'string'}}}}},
+                             'specs': {'type': 'array', 'items': row(('label', 'value'))},
+                             'figures': {'type': 'array', 'items': row(('value', 'unit', 'label'))},
+                             'notes': {'type': 'array', 'items': {'type': 'string'}}}}
+    request = {'text': text, 'output_language': 'Simplified Chinese' if language == 'zh' else 'English', 'model_parts': names[:200],
+               'limits_in_characters': {'title': 60, 'model': 40, 'headline': 60, 'subline': 120, 'feature_title': 40, 'feature_detail': 90,
+                                        'spec_label': 30, 'spec_value': 30, 'figure_value': 12, 'figure_unit': 8, 'figure_label': 30},
+               'most': {'features': MAX_FEATURES, 'specs': MAX_SPECS, 'figures': MAX_FIGURES}}
+    try:
+        answer = brandkit_review._ask(config, EXTRACTOR, request, schema)
+    except Exception as exc:
+        raise ValueError('文本模型没有完成提取：%s' % str(exc)[:160]) from None
+    known = _numbers(text); dropped = []; notes = []
+
+    def grounded(*values):
+        return _numbers(' '.join(str(value) for value in values)) <= known
+
+    def keep(label, *values):
+        if grounded(*values):
+            return True
+        dropped.append(label); return False
+    update = {'language': language, 'source': text}
+    for key, limit in (('title', 60), ('model', 40), ('headline', 60), ('subline', 120)):
+        value = whole(answer.get(key), limit)
+        if value and keep(key, value):
+            update[key] = value
+    features = [{'title': whole(item.get('title'), 40), 'detail': whole(item.get('detail'), 90),
+                 'parts': list(dict.fromkeys(name for name in item.get('parts') or [] if name in names))[:40]}
+                for item in answer.get('features') or [] if isinstance(item, dict)]
+    features = [item for item in features if item['title'] and keep('卖点「%s」' % item['title'], item['title'], item['detail'])][:MAX_FEATURES]
+    specs = [{'label': whole(item.get('label'), 30), 'value': whole(item.get('value'), 30)} for item in answer.get('specs') or [] if isinstance(item, dict)]
+    specs = [item for item in specs if item['label'] and item['value'] and keep('规格「%s」' % item['label'], item['label'], item['value'])][:MAX_SPECS]
+    figures = [{'value': whole(item.get('value'), 12), 'unit': whole(item.get('unit'), 8), 'label': whole(item.get('label'), 30)}
+               for item in answer.get('figures') or [] if isinstance(item, dict)]
+    figures = [item for item in figures if item['value'] and item['label'] and keep('指标「%s」' % item['label'], item['value'], item['label'])][:MAX_FIGURES]
+    for key, rows in (('features', features), ('specs', specs), ('figures', figures)):
+        if rows:
+            update[key] = rows
+    side = answer.get('longest_side') or {}
+    if isinstance(side, dict) and side.get('value'):
+        unit = str(side.get('unit', '')).strip().lower(); value = str(side['value']).replace(',', '').strip()
+        try:
+            number = float(value)
+        except ValueError:
+            number = None
+        unit = unicodedata.normalize('NFKC', unit) if unit not in UNIT_MM else unit
+        if number and not _numbers(value) <= known:
+            dropped.append('最长边尺寸')
+        elif number and unit not in UNIT_MM:
+            notes.append('最长边尺寸的单位「%s」无法识别，请手动填写毫米数。' % str(side.get('unit', ''))[:12])
+        elif number and 1 <= number * UNIT_MM[unit] <= 100000:
+            update['size_mm'] = round(number * UNIT_MM[unit], 1)
+        elif number:
+            notes.append('提取到的最长边尺寸超出范围，没有采用。')
+    model_notes = [str(note)[:200] for note in answer.get('notes') or [] if str(note).strip()][:3]
+    if dropped:
+        notes.insert(0, '以下内容含有介绍里没有的数字，已略去：%s。' % '、'.join(dropped[:6]))
+    notes += model_notes
+
+    def change(project, listing):
+        current = validate_product({}, project, listing.get('product') if isinstance(listing.get('product'), dict) else None)
+        record = validate_product(update, project, current)
+        record['drafted'] = {'source': 'extracted', 'at': time.time(), 'notes': notes[:6]}
         listing['product'] = record
     _update(project_id, change)
     return state(project_id)

@@ -614,12 +614,12 @@ function renderActionState() {
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
   document.querySelectorAll('[data-example]').forEach(button=>button.disabled=!workerRenderReady());
-  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();if(typeof listingRenderSummary==='function')listingRenderSummary();
+  renderWorkflow();renderInstruction();renderReview();renderRenderActivity();renderLatestSceneDownloads();renderHeroOptimization();renderOrientation();renderSceneSet();renderRealtimeControls();renderEcommerce();if(typeof listingActivate==='function')listingActivate(false);
 }
 
 let comparePrevious=false, viewerLatestKey='', styleFocusNotice='', sceneHistorySelection='';
 let realtime={key:'',context:'',mode:'live',status:'idle',epoch:0,instance:null,changed:false,record:null,error:'',timer:null,abort:null,preservedView:null};
-let inspectorTab='review', materialAgentSubmitting=false, materialAgentProjectId='', materialAgentRenderedKey='';
+let inspectorTab='listing', materialAgentSubmitting=false, materialAgentProjectId='', materialAgentRenderedKey='';
 const inspectorScrollPositions={review:0,material:0,plan:0};
 const materialAgentRecords=new Map(), materialAgentDisclosures=new Map();
 let sceneExportSource = null, sceneExportSubmitting = false, sceneExportProjectId = null, sceneExportJobsSignature = '', sceneExportOptionsSignature = '';
@@ -1773,7 +1773,7 @@ async function openProject(id) {
     current=project;thumbnailAttempts.delete(id+':'+project.version);const savedShot=recalled('wuying-shot-'+id);
     activeShot=current.plan.shots.some(s=>s.id===savedShot)?savedShot:current.initial_preview && current.plan.shots.some(s=>s.id==='hero')?'hero':current.plan.style==='dark' && current.plan.shots.some(s=>s.id==='campaign')?'campaign':current.plan.shots[0]?.id;
     styleFocusNotice='';comparePrevious=false;viewerLatestKey='';selectedShots=new Set(activeShot?[activeShot]:[]);selectedMaterial=null;cameraShot=null;syncSignature='';
-    clearFeedback(true);syncSettings();renderProject();setInspectorTab('review');renderLibrary();remember('wuying-project',id);await refreshMaterialTasks(id);return true;
+    clearFeedback(true);syncSettings();renderProject();setInspectorTab('listing');renderLibrary();remember('wuying-project',id);await refreshMaterialTasks(id);return true;
   }catch(error){if(requestId===projectRequest)toast('无法打开项目：'+error.message,true);return false;}
   finally{if(requestId===projectRequest){projectLoading=false;renderProject();scheduleThumbnails();}}
 }
@@ -2053,7 +2053,7 @@ async function readEntry(entry,path='') {
   if (entry.isDirectory) {const reader=entry.createReader();let entries=[],batch;do {batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));entries.push(...batch);}while(batch.length);return (await Promise.all(entries.map(e=>readEntry(e,path+entry.name+'/')))).flat();}return [];
 }
 async function showUpload() {if(navigationBlocked())return toast('当前操作正在提交，完成后可新建项目。');if(!(await resolveUnsavedChanges()))return;ensureEcommerceCatalog().catch(()=>{});$('uploadError').textContent=uploadValidation() || (!workerRenderReady()?runtimeReason():'');$('uploadDialog').showModal();renderActionState();}
-const inspectorTabs=['review','material','plan','listing','ecommerce'];
+const inspectorTabs=['listing','review','material','plan','ecommerce'];
 function setInspectorTab(tab) {
   if(!inspectorTabs.includes(tab))return;
   if(tab!==inspectorTab){inspectorScrollPositions[inspectorTab]=$('inspectorBody').scrollTop || 0;$('inspectorBody').scrollTop=inspectorScrollPositions[tab] || 0;}
@@ -2065,7 +2065,9 @@ function setInspectorTab(tab) {
   }
   if(tab==='material' && currentOutput && !feedbackMode){feedbackMode=true;renderFeedback();}
   if(tab==='ecommerce'){renderEcommerce();refreshEcommerce(true);}
-  if(tab==='listing' && typeof listingRenderSummary==='function')listingRenderSummary();
+  document.body.classList.toggle('listing-wide',tab==='listing');
+  if(previousTab==='listing' && tab!=='listing' && typeof listingDeactivate==='function')listingDeactivate();
+  if(tab==='listing' && typeof listingActivate==='function')listingActivate(true);
 }
 function storeMaterialTask(projectId,task) {
   materialAgentRecords.set(projectId,[task,...(materialAgentRecords.get(projectId) || []).filter(item=>item.id!==task.id)]);
@@ -2294,7 +2296,7 @@ function installEvents() {
   $('materialAgentForm').onsubmit=submitMaterialAgent;
   $('materialAgentTasks').addEventListener('toggle',event=>{const target=event.target;if(target.tagName==='DETAILS' && target.dataset.materialDetail)materialAgentDisclosures.set(target.dataset.materialProject+':'+target.dataset.materialDetail,target.open);},true);
   $('materialAgentTasks').onclick=async event=>{const button=event.target.closest('[data-cancel-material]');if(!button || !current)return;button.disabled=true;try{const projectId=current.id,task=await api(`/api/projects/${projectId}/material-agent/tasks/${button.dataset.cancelMaterial}/cancel`,{method:'POST'});storeMaterialTask(projectId,task);if(current?.id===projectId)renderMaterialAgent();}catch(error){$('materialAgentError').textContent=error.message;button.disabled=false;}};
-  setInspectorTab('review');
+  setInspectorTab('listing');
   $('aiSettingsButton').onclick=showAiSettings;
   $('aiSettingsForm').onsubmit=e=>{e.preventDefault();saveAiSettings(false);};$('aiSaveTest').onclick=()=>saveAiSettings(true);$('visionSaveTest').onclick=()=>saveAiSettings('vision');
   $('aiModelPreset').onchange=selectAiPreset;
@@ -2377,7 +2379,7 @@ function installEvents() {
   $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};
   $('exampleList').onclick=async e=>{const b=e.target.closest('[data-example]');if(!b || !workerRenderReady() || navigationBlocked())return;if(!(await resolveUnsavedChanges()))return;b.disabled=true;try{const p=await api('/api/examples/'+b.dataset.example+'/import',{method:'POST'});await refreshList();await openProject(p.id);toast('验收模型已导入，正在进行真实分析。');}catch(error){toast(error.message,true);}finally{b.disabled=false;}};
   $('optimizeHeroButton').onclick=optimizeHero;
-  $('sceneOpenListing').onclick=()=>{if(typeof listingOpen==='function')listingOpen();};
+  $('sceneOpenListing').onclick=()=>setInspectorTab('listing');
   $('orientAuto').onclick=orientCheck;$('orientFlip').onclick=()=>orientApply({flip:true},'已上下翻转');
   $('orientTurnLeft').onclick=()=>orientApply({turn:90},'已转向');$('orientTurnRight').onclick=()=>orientApply({turn:-90},'已转向');
   $('orientPoses').addEventListener('click',event=>{const button=event.target.closest('[data-orient-pose]');if(button && !button.disabled)orientApply({candidate:button.dataset.orientPose},'已改用所选姿态');});
@@ -2437,13 +2439,13 @@ function installEvents() {
     try{await savePlan(true);const project=await api(`/api/projects/${projectId}/materials/import`,{method:'POST',body:form});if(current?.id===projectId){current=project;syncSettings();}for(const id of ['externalColor','externalRoughness','externalNormal'])$(id).value='';toast('贴图已保存，点击预览查看材质变化。');}
     catch(error){toast(error.message,true);}finally{busy=false;renderProject();}
   };
-  window.addEventListener('beforeunload',e=>{if(dirty || uploadSubmitting || planSavePromise){e.preventDefault();e.returnValue='';}});
+  window.addEventListener('beforeunload',e=>{if(dirty || uploadSubmitting || planSavePromise || (typeof listingUnsaved==='function' && listingUnsaved())){e.preventDefault();e.returnValue='';}});
 }
 async function start() {
   restoreInstructionPreflightDrafts();restoreInstructionJournal();
   restoreHeroOptimizationJournal();
   const presetOptions=Object.entries(presets).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-  $('materialPreset').insertAdjacentHTML('beforeend',presetOptions);$('partPreset').insertAdjacentHTML('beforeend',presetOptions);installEvents();setInspectorTab('review');renderActionState();
+  $('materialPreset').insertAdjacentHTML('beforeend',presetOptions);$('partPreset').insertAdjacentHTML('beforeend',presetOptions);installEvents();setInspectorTab('listing');renderActionState();
   const results=await Promise.allSettled([api('/api/system'),refreshList(),api('/api/examples')]);
   if(results[0].status==='fulfilled'){system=results[0].value;}else{serviceDisconnected=true;toast(results[0].reason.message,true);}updateSystemStatus();renderActionState();
   if(results[1].status==='rejected')toast(results[1].reason.message,true);

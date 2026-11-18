@@ -49,6 +49,12 @@ def run(request_path):
 
     @persistent
     def render_pre(scene,*_):
+        if scene.get('studio_reflection_pass'):
+            # The floor reflection's own render (blender/reflection.py): same camera, not a shot to verify or count.
+            try:apply(scene)
+            except Exception:pass
+            print('EVENT:'+json.dumps({'stage':'正在渲染地面倒影'},ensure_ascii=False),flush=True)
+            return
         try:
             actual=apply(scene);path=Path(bpy.path.abspath(scene.render.filepath)).resolve()
             state['pending']={'actual':actual,'paths':{str(path),str(path.with_suffix('.png')),str(Path(scene.render.frame_path()).resolve())}}
@@ -58,6 +64,7 @@ def run(request_path):
 
     @persistent
     def render_post(scene,*_):
+        if scene.get('studio_reflection_pass'):return
         pending=state['pending']
         if not pending:return
         try:

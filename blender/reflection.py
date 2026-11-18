@@ -8,13 +8,20 @@ glossy white floor would turn grey wherever it reflects the dim room. A light gr
 the same trouble: it reflects a room as dim as the product, so the reflection hardly shows.
 So white and grey renders are made on transparent film over a shadow-catching floor and
 finished here: laid on their ground (white, or the grey studio gradient) with their shadow,
-and each column of the product mirrored down from where it meets the floor, fading with
-distance. That is how a product on an acrylic sheet looks from a little above. Only numpy is needed, which
-Blender ships with; the image is read and written with bpy.
+and with the product's reflection under it, fading with distance from where it meets the floor.
+
+The reflection is rendered (``mirror_pass``): the product and its lights are copied and flipped
+about the floor, the originals and the floor are hidden, and the copies are rendered from the
+same camera on transparent film. That is what the floor would show, in true perspective. (The
+older stand-in, mirroring each pixel column down from the product's lowest pixel, is only used
+when that pass cannot be made: in a three-quarter view it flips the faces seen from above and its
+stepped contact line doubles thin lines such as stitching, which reads as a ghost image.) Only
+numpy is needed, which Blender ships with; the images are read and written with bpy.
 """
 import numpy
 
 STRENGTH = .5              # opacity of the reflection where it meets the product
+MIRROR_STRENGTH = .38      # opacity of a rendered (mirror-pass) reflection where it meets the product: acrylic, not a mirror
 LENGTH = .55               # how far it reaches, as a share of the product's height in that column
 SOLID = .97                # alpha above which a pixel is the product, not its shadow
 SMOOTH = 9                 # columns over which the product's lowest edge is smoothed
@@ -114,12 +121,46 @@ def onto_white(rgba, strength=STRENGTH, length=LENGTH, kind='white'):
     return out, report
 
 
-def finish_white(path, jpg=None, quality=95, kind='white'):
-    """Read a transparent-film PNG written by Blender, lay it on its ground with its reflection, and write it back as RGB.
+def _contact(solid):
+    """Per column, the row where the product meets the floor in the picture: its lowest pixel, smoothed, and carried
+    across columns with no product (a reflection may reach a little past the outline)."""
+    present, lowest, highest = _lowest(solid)
+    if not present.any():
+        return None, None
+    lowest = _smoothed(lowest, present, SMOOTH)
+    columns = numpy.arange(solid.shape[1]); known = numpy.nonzero(present)[0]
+    contact = numpy.interp(columns, known, lowest[known].astype(numpy.float32))
+    tall = numpy.interp(columns, known, (lowest - highest + 1)[known].astype(numpy.float32))
+    return contact, tall
 
-    ``jpg``, when given, is written from the same pixels. Returns the report. The pixels of an 8-bit PNG are read and
-    written as they are stored, so no colour transform is applied twice.
-    """
+
+def with_mirror(rgba, mirror, strength=MIRROR_STRENGTH, length=LENGTH, kind='white'):
+    """A float RGBA render laid on its ground with a rendered reflection (``mirror``: float RGBA of the flipped copies,
+    same camera) under it. The reflection shows only where the product does not, below where the product meets the
+    floor, fading over ``length`` of the product's height in that column. Returns (RGB array, report)."""
+    rgb = rgba[..., :3]; alpha = rgba[..., 3:4]
+    out = rgb * alpha + ground(kind, rgba.shape[0], rgba.shape[1]) * (1.0 - alpha)
+    solid = rgba[..., 3] > SOLID
+    contact, tall = _contact(solid)
+    report = {'ground': kind, 'method': 'mirror_pass', 'strength': strength, 'length': length}
+    if contact is None:
+        return out, report
+    rows = numpy.arange(rgba.shape[0], dtype=numpy.float32)[:, None]
+    below = rows - contact[None, :]
+    # It fades out before the frame's lower edge, so a product standing low never carries its reflection off the picture.
+    reach = numpy.maximum(numpy.minimum(tall * length, rgba.shape[0] - 1 - contact), 1.0)[None, :]
+    # Just above the contact line the reflection meets the product's own base: let it start a few pixels up, under the product.
+    fade = numpy.clip(1.0 - below / reach, 0, 1) ** 1.6 * (below > -3)
+    # Hidden behind the product only: a shadow darkens what the floor scatters, not what it mirrors.
+    clear = numpy.clip((SOLID - rgba[..., 3]) / (SOLID - .5), 0, 1)
+    weight = strength * fade * mirror[..., 3] * clear
+    weight = weight[..., None]
+    out = out * (1 - weight) + mirror[..., :3] * weight
+    report['reflected_pixels'] = int((weight[..., 0] > .02).sum())
+    return out, report
+
+
+def _read(path):
     import bpy
     source = bpy.data.images.load(str(path), check_existing=False)
     try:
@@ -127,8 +168,86 @@ def finish_white(path, jpg=None, quality=95, kind='white'):
         pixels = numpy.empty(width * height * 4, dtype=numpy.float32); source.pixels.foreach_get(pixels)
     finally:
         bpy.data.images.remove(source)
-    rgba = pixels.reshape(height, width, 4)[::-1]                 # Blender stores rows from the bottom
-    out, report = onto_white(rgba, kind=kind)
+    return pixels.reshape(height, width, 4)[::-1], width, height     # Blender stores rows from the bottom
+
+
+def mirror_pass(scene, target, floor_z=0.0, samples=None):
+    """Render what the floor reflects: every visible mesh (as it is evaluated, with its modifiers and any skinning
+    applied) and every light, flipped about the floor plane at ``floor_z``, with the originals and the floor hidden, on
+    transparent film, written to ``target`` (PNG). The scene is left as it was. Returns True when the picture was written.
+
+    The render takes at most a quarter of the main render's time limit; render hooks see ``studio_reflection_pass``
+    on the scene and leave it alone."""
+    import bpy
+    from mathutils import Matrix
+    flip = Matrix.Translation((0, 0, floor_z)) @ Matrix.Scale(-1, 4, (0, 0, 1)) @ Matrix.Translation((0, 0, -floor_z))
+    hidden = []; made = []; meshes = []
+    saved = (scene.render.filepath, scene.render.film_transparent, scene.cycles.samples, scene.render.image_settings.color_mode,
+             scene.cycles.time_limit, scene.camera)
+    try:
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        for ob in list(scene.objects):
+            if ob.hide_render or ob.type not in ('MESH', 'LIGHT'):
+                continue
+            if ob.name.startswith(('Studio floor', 'Glass negative fill')):
+                hidden.append(ob); ob.hide_render = True
+                continue
+            if ob.type == 'MESH':
+                # The mesh as it is drawn (armature skinning and other modifiers applied in its own space), then flipped:
+                # flipping a copy that still carries an armature modifier would deform it in the wrong space.
+                data = bpy.data.meshes.new_from_object(ob.evaluated_get(depsgraph), preserve_all_data_layers=True, depsgraph=depsgraph)
+                meshes.append(data)
+                copy = bpy.data.objects.new(ob.name + ' (reflection)', data)
+                for name in ('visible_camera', 'visible_shadow', 'visible_diffuse', 'visible_glossy', 'visible_transmission'):
+                    if hasattr(ob, name):
+                        setattr(copy, name, getattr(ob, name))
+            else:
+                copy = ob.copy()
+            for collection in ob.users_collection:          # the same light-linking receiver sets as the original
+                collection.objects.link(copy)
+            copy.matrix_world = flip @ ob.matrix_world
+            made.append(copy)
+            hidden.append(ob); ob.hide_render = True
+        if not any(copy.type == 'MESH' for copy in made):
+            return False
+        scene.render.film_transparent = True; scene.render.image_settings.color_mode = 'RGBA'
+        if samples:
+            scene.cycles.samples = samples
+        if scene.cycles.time_limit:
+            scene.cycles.time_limit = max(10.0, scene.cycles.time_limit / 4)
+        scene.render.filepath = str(target)
+        scene['studio_reflection_pass'] = True           # render hooks (blender/camera_entry.py, render_entry.py) leave this render alone
+        bpy.ops.render.render(write_still=True)
+        return True
+    finally:
+        if 'studio_reflection_pass' in scene:
+            del scene['studio_reflection_pass']
+        for copy in made:
+            bpy.data.objects.remove(copy, do_unlink=True)
+        for data in meshes:
+            bpy.data.meshes.remove(data)
+        for ob in hidden:
+            ob.hide_render = False
+        (scene.render.filepath, scene.render.film_transparent, scene.cycles.samples, scene.render.image_settings.color_mode,
+         scene.cycles.time_limit, scene.camera) = saved
+
+
+def finish_white(path, jpg=None, quality=95, kind='white', mirror=None):
+    """Read a transparent-film PNG written by Blender, lay it on its ground with its reflection, and write it back as RGB.
+
+    ``jpg``, when given, is written from the same pixels. Returns the report. The pixels of an 8-bit PNG are read and
+    written as they are stored, so no colour transform is applied twice.
+    """
+    import bpy
+    rgba, width, height = _read(path)
+    if mirror is not None:
+        reflected, mirror_width, mirror_height = _read(mirror)
+        if (mirror_width, mirror_height) == (width, height):
+            out, report = with_mirror(rgba, reflected, kind=kind)
+        else:
+            out, report = onto_white(rgba, kind=kind)
+    else:
+        out, report = onto_white(rgba, kind=kind)
     result = numpy.ones((height, width, 4), dtype=numpy.float32); result[..., :3] = numpy.clip(out, 0, 1)
     image = bpy.data.images.new('Studio reflection', width, height, alpha=False)
     try:

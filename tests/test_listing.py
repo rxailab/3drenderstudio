@@ -576,6 +576,51 @@ class RecordTests(StoreCase):
         with self.assertRaises(ValueError):
             listing.draft('fixture', {'hint': 'x' * 401})
 
+    def test_a_pasted_description_is_sorted_into_the_record_keeping_only_what_it_says(self):
+        import brandkit_review
+        text = '棘轮割管器 PC-22\n切割范围 6-22 mm，整机长 215 mm，重 380 g。硬化钢刀轮可更换；双导向滚轮让切口平直。'
+        answer = {'title': '棘轮割管器', 'model': 'PC-22', 'longest_side': {'value': '215', 'unit': 'mm'}, 'headline': '6-22 mm 管材一次切平',
+                  'subline': '硬化钢刀轮，双导向滚轮', 'notes': ['产地未写'],
+                  'features': [{'title': '硬化钢刀轮', 'detail': '可更换', 'parts': [PARTS[0], 'Not a part']},
+                               {'title': '双导向滚轮', 'detail': '切口平直，寿命 5000 次', 'parts': []}],          # a number the text never gave
+                  'specs': [{'label': '切割范围', 'value': '6-22 mm'}, {'label': '重量', 'value': '380 g'}, {'label': '功率', 'value': '12 W'}],
+                  'figures': [{'value': '22', 'unit': 'mm', 'label': '最大管径'}]}
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value=answer) as asked:
+            kept = listing.extract('fixture', {'text': text})['product']                   # a record with English words keeps English
+            self.assertEqual((kept['language'], asked.call_args.args[2]['output_language']), ('en', 'English'))
+            listing.save_product('fixture', {'title': '', 'headline': '', 'features': [], 'language': 'en'})
+            product = listing.extract('fixture', {'text': text})['product']                 # a blank one takes the text's language
+        request = asked.call_args.args[2]
+        self.assertEqual((request['text'], request['output_language']), (text, 'Simplified Chinese'))
+        self.assertIn(PARTS[0], request['model_parts'])
+        self.assertEqual((product['title'], product['model'], product['language'], product['size_mm']), ('棘轮割管器', 'PC-22', 'zh', 215.0))
+        self.assertEqual([(row['title'], row['parts']) for row in product['features']], [('硬化钢刀轮', [PARTS[0]])])        # the invented 5000 left out
+        self.assertEqual([row['label'] for row in product['specs']], ['切割范围', '重量'])                                     # 12 W was never written
+        self.assertEqual(product['figures'], [{'value': '22', 'unit': 'mm', 'label': '最大管径'}])
+        self.assertEqual((product['source'], product['drafted']['source']), (text, 'extracted'))
+        self.assertIn('双导向滚轮', product['drafted']['notes'][0]); self.assertIn('功率', product['drafted']['notes'][0])
+        self.assertIn('产地未写', product['drafted']['notes'])
+        self.assertNotIn('size_mm', [] if product['size_mm'] else ['size_mm'])
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '30', 'unit': 'cm'}, 'features': [], 'specs': [], 'figures': []}):
+            again = listing.extract('fixture', {'text': text})['product']
+        self.assertEqual((again['size_mm'], [row['title'] for row in again['features']]), (215.0, ['硬化钢刀轮']))    # a size not in the text is not taken; empty lists keep what was there
+        with patch.object(brandkit_review, '_configs', return_value=(None, None)):
+            with self.assertRaisesRegex(ValueError, '没有配置文本模型'):
+                listing.extract('fixture', {'text': text})
+        self.assertEqual(listing._numbers('管径 16,20,25 mm，1,200 g，功率１２００W，2.0Ah'), {'16', '20', '25', '1200', '2'})
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '215', 'unit': 'm'},
+                                                                    'features': [{'title': '刀轮', 'detail': '', 'parts': [PARTS[0]] * 60}]}):
+            far = listing.extract('fixture', {'text': text})['product']                   # 215 m is out of range, 60 parts are one
+        self.assertEqual((far['size_mm'], far['features'][0]['parts']), (215.0, [PARTS[0]]))
+        self.assertTrue(any('超出范围' in note for note in far['drafted']['notes']))
+        for body in ({'text': '  '}, {'text': 'x' * (listing.MAX_SOURCE + 1)}, {}):
+            with self.assertRaises(ValueError):
+                listing.extract('fixture', body)
+        self.assertEqual(listing.save_product('fixture', {'source': 'kept'})['product']['source'], 'kept')
+
 
 class BuildTests(StoreCase):
     def setUp(self):

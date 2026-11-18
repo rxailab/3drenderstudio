@@ -640,6 +640,12 @@ def listing_draft(ident):
     import listing
     return jsonify(listing.draft(ident,request.get_json(force=True)))
 
+@app.post('/api/projects/<ident>/listing/extract')
+def listing_extract(ident):
+    """Sort a pasted product description into the product record (by the text model, keeping only what it says)."""
+    import listing
+    return jsonify(listing.extract(ident,request.get_json(force=True)))
+
 @app.post('/api/projects/<ident>/listing/build')
 def listing_build(ident):
     import listing
