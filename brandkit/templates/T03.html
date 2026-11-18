@@ -3,138 +3,501 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T03 · hero product + restrained detail rail */
-  #canvas{--bg:#F3EEE8;--text:#232323;--muted:#6A615B;--accent:#D0612A;--line:#CDC3BA;--rail:#26292D;--rail-text:#F4F2EF;--rail-muted:#BFC5CA;--wm:rgba(0,0,0,.045)}
-  .warm{position:absolute;inset:0;background:radial-gradient(110% 80% at 40% 62%, #FBF8F5 0%, var(--bg) 70%)}
+  /* T03 · hero product + detail rail (split, default) · ring insets (ring) · legacy rail / strip */
+  #canvas{--bg:#F3EEE8;--text:#232323;--muted:#6A615B;--accent:#D0612A;--line:#CDC3BA;--rail:var(--dark,#1E1B19)}
+  .studio{position:absolute;background:radial-gradient(120% 90% at 60% 55%, #FFFFFF 0%, var(--bg) 72%)}
+  .studio.white{background:radial-gradient(120% 90% at 50% 50%, #FFFFFF 0%, #F4F4F2 78%)}
   .rail-bg{position:absolute;background:var(--rail)}
-  .headline.headline--long{font-size:80px}
-  #canvas[lang=zh] .headline.headline--long{font-size:76px}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 96px/1.02 "Noto Sans Display",sans-serif;letter-spacing:-.012em;color:var(--text);text-wrap:balance}
-  .sub{font:400 50px/1.28 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .c-no{font:700 26px/1 "Noto Sans Display",sans-serif;color:var(--accent);letter-spacing:.08em}
-  .c-title{font:700 52px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .c-body{font:400 42px/1.27 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .on-dark .c-title{color:var(--rail-text)} .on-dark .c-body{color:var(--rail-muted)}
-  #canvas[lang=zh] .headline{font:700 88px/1.16 "Noto Sans CJK SC",sans-serif;letter-spacing:.01em}
-  #canvas[lang=zh] .sub{font:400 50px/1.4 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .c-title{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .c-body{font:400 42px/1.42 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .eyebrow{letter-spacing:.12em}
+  .gap{position:absolute;background:var(--accent)}
+  .tick{position:absolute;height:8px;background:var(--accent)}
+  .floor{position:absolute;border-radius:50%;background:rgba(0,0,0,.16);filter:blur(28px)}
+  /* headline: heavy extended caps, two-tone via [[keyword]] */
+  .headline{font-family:var(--f-display);font-weight:850;font-stretch:115%;font-size:88px;line-height:.95;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--text);text-wrap:balance}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:0;text-transform:none}
+  .eyebrow{font:700 24px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  #canvas[lang=zh] .eyebrow{letter-spacing:.08em}
+  .sub{font:500 42px/1.15 var(--f-text);color:var(--muted);text-wrap:balance}
+  #canvas[lang=zh] .sub{font:500 42px/1.3 var(--f-cjk);text-wrap:pretty}
+  /* captions on a tile scrim: display caps, cream */
+  .cap-title{font-family:var(--f-display);font-weight:800;font-stretch:112%;font-size:44px;line-height:1.0;letter-spacing:.005em;
+    text-transform:uppercase;color:var(--cream);text-wrap:balance;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  #canvas[lang=zh] .cap-title{font-family:var(--f-cjk);font-weight:700;font-stretch:100%;line-height:1.2;text-transform:none;letter-spacing:.02em}
+  .cap-body{font:500 30px/1.22 var(--f-text);color:rgba(244,239,227,.82);text-wrap:pretty;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  #canvas[lang=zh] .cap-body{font:500 30px/1.35 var(--f-cjk)}
+  /* ring mode captions */
+  .ring-cap{font:600 42px/1.08 var(--f-text);color:var(--text);text-wrap:balance}
+  #canvas[lang=zh] .ring-cap{font:700 42px/1.2 var(--f-cjk)}
+  .circle-inset.ring-grey{box-shadow:0 0 0 3px #D0D0D0,0 10px 26px rgba(0,0,0,.14)}
+  /* legacy rail / strip captions */
+  .c-no{font:700 24px/1 var(--f-text);color:var(--accent);letter-spacing:.14em}
+  .c-title{font-family:var(--f-display);font-weight:800;font-stretch:100%;font-size:42px;line-height:1.0;text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .c-body{font:500 30px/1.22 var(--f-text);color:var(--muted);text-wrap:pretty}
+  #canvas[lang=zh] .c-title{font-family:var(--f-cjk);font-weight:700;font-stretch:100%;line-height:1.2;text-transform:none}
+  #canvas[lang=zh] .c-body{font:500 30px/1.35 var(--f-cjk)}
+  .tile-ext{position:absolute;inset:-60px;background-size:cover;background-position:center;filter:blur(36px) brightness(.5) saturate(.9)}
+  .cap-band{position:absolute;background:var(--accent);border-radius:0 2px 2px 0}
+  .tile-fade{position:absolute;pointer-events:none;background:linear-gradient(to top, var(--rail) 0%, rgba(0,0,0,0) 100%)}
+  .cap-badge{position:absolute;border-radius:50%;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 2px var(--accent)}
+  .cap-title.on-band,.cap-body.on-band{color:var(--accent-ink,#111);text-shadow:none}
+  .cap-body.on-band{opacity:.85}
   .detail-frame.tile{border-radius:8px}
-  .detail-frame.tile.dark-edge{box-shadow:0 0 0 1px rgba(255,255,255,.14)}
   .detail-frame.tile.light-edge{box-shadow:0 0 0 1px rgba(0,0,0,.06)}
-  .tick{position:absolute;height:3px;background:var(--accent)}
 </style></head>
 <body><div id="canvas"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="t03-knock" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+  <!-- white studio backdrop -> transparent, so the product can sit over the dark rail without a white box -->
+  <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  -2.2 -2.2 -2.2 0 6.6"/></filter></svg>
 <script src="engine/runtime.js"></script>
 <script>
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-T.el('div', {class:'warm'});
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
-const floor = H - bandH - m * 0.75;
+const zh = (job.lang || 'en') === 'zh';
+// --accent-ink fallback for jobs that predate it: dark ink on a light accent, cream on a dark one
+if (!(job.palette || {})['accent-ink']) {
+  const hx = String((job.palette || {}).accent || '').replace('#', '');
+  if (/^[0-9a-f]{6}$/i.test(hx)) {
+    const c = [0, 2, 4].map(i => parseInt(hx.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    T.root.style.setProperty('--accent-ink', (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#111111' : '#F4EFE3');
+  }
+}
+const k = W / 1500;                                   // horizontal scale against the 1500 design canvas
+const m = Math.min(job.safe_margin ?? 72, job.text_margin ?? 72), G = 8, bandH = job.demo ? 40 : 0;
 const hero = T.asset(job.hero);
-const dets = job.details.slice(0, 3);
-const ar = hero.width / hero.height;
-const mode = job.mode || (ar >= 1.0 ? 'strip' : 'rail');   // tall/narrow heroes -> side rail; wide -> bottom strip
-T.layoutInfo = {mode, hero_aspect: +ar.toFixed(3)};
-const scaleCap = job.max_detail_scale || 1.25;
+const cap = job.max_detail_scale || 1.25;
+const fill = job.hero_fill ?? 1.15;
+const bbox = hero.content_bbox || [0, 0, 1, 1];
+const lineCount = e => { const rg = document.createRange(); rg.selectNodeContents(e); const qs = [...rg.getClientRects()].filter(q => q.height > 0).sort((a, b) => a.top - b.top);
+  let n = 0, bottom = -1e9; for (const q of qs) { const mid = (q.top + q.bottom) / 2; if (mid > bottom) { n++; bottom = q.bottom; } else bottom = Math.max(bottom, q.bottom); } return n; };
+const minSec = Math.ceil(10 * W / 360);              // smallest size the QA accepts for a secondary line
+const bottomOf = e => { const r = T.rect(e); return r.y + r.h; };
 
-function caption(i, d, x, y, w, parent) {
-  const id = 'c' + (i + 1);
-  const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'c-no', {tier:'meta', parent});
-  const t = T.text(id + '_title', d.title, x, y + 26 + 2 * G, w, 'c-title', {tier:'important', maxLines: 2, parent});
-  let bottom = T.rect(t).y + T.rect(t).h, b = null;
-  if (d.body && !job.caption_title_only) { b = T.text(id + '_body', d.body, x, bottom + G, w, 'c-body', {tier:'secondary', maxLines: 2, parent}); bottom = T.rect(b).y + T.rect(b).h; }
-  const els = [no, t, b].filter(Boolean);
-  return {h: bottom - y, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+/* ---------- detail selection: drop crops that only repeat the hero (optional job geometry) ---------- */
+function validDetails(list) {
+  const iou = (a, b) => { const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    const i = ix * iy, u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - i; return u > 0 ? i / u : 0; };
+  const heroArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]);
+  const keep = [], dropped = [];
+  for (const d of list) {
+    const box = d.hero_box;                             // [x0,y0,x1,y1] of what the close-up shows, normalised in the hero picture
+    if (box && box.length === 4 && ((box[2] - box[0]) * (box[3] - box[1]) > 0.4 * heroArea || iou(box, bbox) > 0.5)) dropped.push(d); else keep.push(d);
+  }
+  if (keep.length < 2 && dropped.length) { while (keep.length < 2 && dropped.length) keep.push(dropped.shift()); }
+  else if (dropped.length) T.notes.push('dropped ' + dropped.length + ' close-up(s) that repeat the hero view');
+  return keep;
+}
+
+/* ---------- headline: en heavy caps 88 -> 80 -> 72 (2 lines, then 3 at 72); zh shrinks until the author's lines hold ---------- */
+function headlineText() {
+  let s = String(job.headline || '');
+  if (zh) {
+    // zh: accent the leading descriptor, keep the product noun (last 2-3 characters) dark; headline_accent = explicit count
+    const t = s.replace(/\s+/g, ''), len = [...t].length;
+    const auto = len >= 6 ? len - 3 : len >= 4 ? 2 : 0;
+    const n = job.headline_accent === false ? 0 : (+job.headline_accent || auto);
+    if (n > 0 && n < len && !/\[\[|\n/.test(s)) { const c = [...s]; s = '[[' + c.slice(0, n).join('') + ']]' + c.slice(n).join(''); }
+    return s;
+  }
+  if (job.headline_accent !== false && !/\[\[|\{/.test(s)) {
+    // the accent covers the descriptor as one unit and ends its line: "[[CANVAS LEATHER]] / TOTE BAG"
+    const words = s.trim().split(/\s+/);
+    const joiner = w => /^(&|and|\+|\/|x|with|-|–)$/i.test(w);
+    let auto = words.length >= 4 ? words.length - 2 : 1;
+    while (auto < words.length - 1 && (joiner(words[auto - 1]) || joiner(words[auto]))) auto++;   // "Canvas & Leather | Tote"
+    const n = Math.max(1, Math.min(words.length - 1, +job.headline_accent || auto));
+    if (words.length > 1) s = '[[' + words.slice(0, n).join(' ') + ']]' + (words.length >= 3 && !/\n/.test(s) ? '\n' : ' ') + words.slice(n).join(' ');
+  }
+  return s;
+}
+function headline(x, y, w, opts = {}) {
+  const hl = T.text('headline', headlineText(), x, y, w, 'headline', {tier:'headline', maxLines: 2});
+  if (zh) {
+    const written = String(job.headline || '').split('\n').length;
+    hl.dataset.maxlines = Math.max(written, 1);
+    let size = opts.zhSize || 92;
+    hl.style.fontSize = size + 'px';
+    while (lineCount(hl) > written && size > 56) { size -= 4; hl.style.fontSize = size + 'px'; }
+    if (size < 92) T.notes.push('zh headline set at ' + size + 'px to keep its phrases whole');
+  } else {
+    const steps = opts.steps || [88, 80, 72];
+    let ok = false;
+    for (const s of steps) { hl.style.fontSize = s + 'px'; if (lineCount(hl) <= 2) { ok = true; break; } }
+    if (!ok) {
+      const lim = opts.maxLines || 3; hl.dataset.maxlines = lim;
+      for (const s of (lim > 2 ? [80, 72, 64, 58] : [72, 64, 58])) { hl.style.fontSize = s + 'px'; if (lineCount(hl) <= lim) break; }
+      T.notes.push('headline needed ' + lineCount(hl) + ' lines at ' + hl.style.fontSize);
+    }
+  }
+  return hl;
 }
 function headBlock(x, y, w, opts = {}) {
-  if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, x, y, w, 'eyebrow', {tier:'meta'}); y = T.rect(e).y + T.rect(e).h + 3 * G; }
-  const hl = T.text('headline', job.headline, x, y, w, 'headline', {tier:'headline', maxLines: opts.maxLines || 2});
-  { const rg = document.createRange(); rg.selectNodeContents(hl); const n = new Set([...rg.getClientRects()].map(q => Math.round(q.top))).size; if (n > (opts.maxLines || 2)) { hl.classList.add('headline--long'); T.notes.push('headline used the single long-headline step'); } }
-  y = T.rect(hl).y + T.rect(hl).h;
-  if (job.subhead && !opts.noSub) { const s = T.text('subhead', job.subhead, x, y + 2 * G, Math.min(w, opts.subW || w), 'sub', {tier:'important', maxLines: 2}); y = T.rect(s).y + T.rect(s).h; }
+  if (job.show_eyebrow && job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, x, y, w, 'eyebrow', {tier:'meta'}); y = bottomOf(e) + 3 * G; }
+  else if (opts.tick !== false) { T.el('div', {class:'tick', 'data-qa':'tick', 'data-kind':'shape'}).style.cssText += `left:${x}px;top:${y}px;width:72px`; y += 8 + 4 * G; }
+  const hl = headline(x, y, w, opts);
+  y = bottomOf(hl);
+  if (job.subhead && !opts.noSub) {
+    const s = T.text('subhead', job.subhead, x, y + 3 * G, Math.min(w, opts.subW || w), 'sub', {tier:'secondary', maxLines: 2});
+    // zh: when the line wraps, break after the clause punctuation nearest the middle, never inside a word
+    if (zh && lineCount(s) > 1 && !/\n/.test(job.subhead)) {
+      const str = String(job.subhead), mid = str.length / 2; let best = -1;
+      for (let j = 0; j < str.length - 1; j++) if (/[，、；：,;]/.test(str[j]) && (best < 0 || Math.abs(j - mid) < Math.abs(best - mid))) best = j;
+      if (best > 0) { T.markup(s, str.slice(0, best + 1) + '\n' + str.slice(best + 1)); if (lineCount(s) > 2) T.markup(s, str); }
+    }
+    y = bottomOf(s);
+  }
   return y;
 }
-/* tile height so that frame scale never exceeds cap */
-function tileH(a, w, want) { const minScaleH = w / a.width; return Math.round(Math.min(want, a.height * scaleCap)); }
 
-if (mode === 'rail') {
-  /* ---- Direction A: tall hero in ~62% main column; 2–3 details in a right rail ---- */
-  let y0 = headBlock(m, m + 4, W - 2 * m);
-  const top = y0 + 7 * G;
-  const railW = Math.round((W - 2 * m) * 0.30), gut = 7 * G;
-  const mainW = W - 2 * m - railW - gut;
-  const r = T.contain(hero, m, top, mainW, floor - top, 0.5, 1);
-  T.img('hero', job.hero, r, {blend: 'multiply'});
-  const rx = W - m - railW;
-  // measure captions first, then share remaining height among tiles
-  const caps = dets.map((d, i) => caption(i, d, rx, 0, railW));
-  const capsH = caps.reduce((s, c) => s + c.h, 0);
-  const gapT = 3 * G, gapB = 7 * G;
-  const avail = floor - top - capsH - dets.length * gapT - (dets.length - 1) * gapB;
-  let y = top;
-  dets.forEach((d, i) => {
-    const a = T.asset(d.detail);
-    const th = Math.min(Math.round(avail / dets.length), Math.round(railW * 1.1), tileH(a, railW, 9999));
-    const f = T.detailFrame('detail' + (i + 1), d.detail, rx, y, railW, th, {class: 'tile light-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5});
-    caps[i].move(y + th + gapT);
-    y += th + gapT + caps[i].h + gapB;
-  });
-  T.layoutInfo.hero_rect = r; T.layoutInfo.rail = {x: rx, w: railW};
-} else if (mode === 'split') {
-  /* ---- Direction B: dark detail rail on the left (AMZ-006 logic) + light hero panel on the right ---- */
-  const railW = Math.round(W * 0.38);
-  const rb = T.el('div', {class:'rail-bg', 'data-qa':'rail_bg', 'data-kind':'shape', 'data-allow':'detail1_frame,detail2_frame,detail3_frame,c1_no,c1_title,c1_body,c2_no,c2_title,c2_body,c3_no,c3_title,c3_body'});
+/* ---------- hero: contain the product's content box (not the padded picture) into a box ---------- */
+function placeHero(bx, by, bw, bh, ax = 0.5, ay = 1, opts = {}) {
+  const cw = hero.width * (bbox[2] - bbox[0]), ch = hero.height * (bbox[3] - bbox[1]);
+  let s = Math.min(bw / cw, bh / ch) * (opts.fill || 1);
+  s = Math.min(s, bw / cw, bh / ch, cap);
+  const w = cw * s, h = ch * s;
+  const cx = bx + (bw - w) * ax, cy = by + (bh - h) * ay;          // content rect
+  const r = {x: Math.round(cx - bbox[0] * hero.width * s), y: Math.round(cy - bbox[1] * hero.height * s), w: Math.round(hero.width * s), h: Math.round(hero.height * s)};
+  if (opts.floor !== false) { const f = T.el('div', {class:'floor', 'data-exempt':'1'}); T.box(f, cx + w * 0.1, cy + h - h * 0.025, w * 0.8, Math.max(24, h * 0.05)); }
+  // only the white padding of the picture may leave the canvas; the product itself stays inside
+  const out = r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H;
+  const im = T.img('hero', job.hero, r, Object.assign(opts.knock === false ? {blend:'multiply'} : {}, {bleed: out && opts.knock !== false}));
+  if (out) T.layoutInfo.hero_padding_bleeds = true;
+  if (opts.knock !== false) { im.style.filter = 'url(#t03-knock)'; im.style.clipPath = 'inset(2px)'; }   // the inset drops resampled edge pixels the knock-out would turn dark
+  return {r, content: {x: cx, y: cy, w, h}};
+}
+
+/* leftmost product x (page px) over rows y0..y1, from the hull when the asset has one */
+function productLeft(r, y0, y1) {
+  const hull = hero.hull, sx = r.w, sy = r.h;
+  if (!hull || hull.length < 3) { const cy0 = r.y + bbox[1] * sy, cy1 = r.y + bbox[3] * sy; return (y1 < cy0 || y0 > cy1) ? 1e9 : r.x + bbox[0] * sx; }
+  let best = 1e9;
+  for (let t = 0; t <= 12; t++) {
+    const y = y0 + (y1 - y0) * t / 12, v = (y - r.y) / sy;
+    for (let j = 0; j < hull.length; j++) {
+      const p = hull[j], q = hull[(j + 1) % hull.length];
+      if ((p[1] - v) * (q[1] - v) <= 0 && p[1] !== q[1]) { const u = p[0] + (q[0] - p[0]) * (v - p[1]) / (q[1] - p[1]); best = Math.min(best, r.x + u * sx); }
+    }
+  }
+  return best;
+}
+
+/* ---------- close-up tile: cover crop, optional zoom, never past the upscale cap ---------- */
+function tile(i, d, x, y, w, h, opts = {}) {
+  const a = T.asset(d.detail);
+  const f = T.detailFrame('detail' + (i + 1), d.detail, x, y, w, h, {class: opts.class || '', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5, allow: opts.allow || [], parent: opts.parent});
+  let z = Math.max(1, +d.zoom || 1), fx = d.focus?.[0] ?? 0.5, fy = d.focus?.[1] ?? 0.5;
+  // optional part_box [x0,y0,x1,y1] (normalised in the close-up picture): frame that part so it fills ~45% of the tile
+  const pb = d.part_box;
+  if (Array.isArray(pb) && pb.length === 4 && pb[2] > pb[0] && pb[3] > pb[1]) {
+    const pw = (pb[2] - pb[0]) * a.width, ph = (pb[3] - pb[1]) * a.height;
+    const want = Math.min(w * 0.45 / pw, h * 0.45 / ph);
+    if (!d.zoom) z = Math.max(1, want / f.scale);
+    const s0 = Math.min(f.scale * z, cap), iw = a.width * s0, ih = a.height * s0;
+    const cxp = (pb[0] + pb[2]) / 2 * iw, cyp = (pb[1] + pb[3]) / 2 * ih;     // part centre in image px
+    fx = iw > w ? Math.max(0, Math.min(1, (cxp - w / 2) / (iw - w))) : 0.5;
+    fy = ih > h ? Math.max(0, Math.min(1, (cyp - h * (opts.partY ?? 0.42)) / (ih - h))) : 0.5;
+    if (z <= 1) T.box(f.img, -(iw - w) * fx, -(ih - h) * fy, iw, ih);
+  }
+  if (z > 1) {
+    const s = Math.min(f.scale * z, cap); const iw = Math.max(w, a.width * s), ih = Math.max(h, a.height * s);
+    T.box(f.img, -(iw - w) * fx, -(ih - h) * fy, iw, ih);
+  } else if (opts.maxAspect && h > w * opts.maxAspect && a.height / a.width < h / w) {
+    // a tile much taller than its picture: cover would slice the picture's sides, so the picture fills the width
+    // (up to maxAspect) and a blurred, darkened copy of itself extends it above and below, feathered in
+    const s = Math.min(cap, Math.max(w / a.width, w * opts.maxAspect / a.height)), iw = a.width * s, ih = a.height * s;
+    const ext = T.el('div', {class:'tile-ext', 'data-exempt':'1'}, f.frame);
+    ext.style.backgroundImage = `url("${a.file}")`;
+    f.frame.insertBefore(ext, f.img);
+    const ix = -(iw - w) * fx, iy = Math.round((h - ih) * (opts.extY ?? 0.3));
+    T.box(f.img, ix, iy, iw, ih);
+    const fe = Math.round(ih * 0.1);
+    f.img.style.webkitMaskImage = f.img.style.maskImage = `linear-gradient(to bottom, transparent 0, #000 ${fe}px, #000 ${ih - fe}px, transparent ${ih}px)`;
+  } else if (opts.minVisible && !(Array.isArray(pb) && pb.length === 4) && h / w < (a.height / a.width) * opts.minVisible) {
+    // a tile much wider than its picture: cover would slice off its top and bottom (and the small parts there),
+    // so keep minVisible of the picture's height and extend its sides with a blurred, darkened copy
+    const s = Math.min(cap, h / (a.height * opts.minVisible)), iw = a.width * s, ih = a.height * s;
+    const ext = T.el('div', {class:'tile-ext', 'data-exempt':'1'}, f.frame);
+    ext.style.backgroundImage = `url("${a.file}")`;
+    f.frame.insertBefore(ext, f.img);
+    T.box(f.img, Math.round((w - iw) / 2), -(ih - h) * fy, iw, ih);
+    const fe = Math.round(iw * 0.08);
+    f.img.style.webkitMaskImage = f.img.style.maskImage = `linear-gradient(to right, transparent 0, #000 ${fe}px, #000 ${iw - fe}px, transparent ${iw}px)`;
+  }
+  return f;
+}
+
+const dets = validDetails((job.details || []).slice(0, job.mode === 'ring' ? 6 : 3));
+const mode = job.mode || 'split';
+T.layoutInfo = {mode, hero_aspect: +(hero.width / hero.height).toFixed(3), details: dets.length};
+
+if (mode === 'split') {
+  /* ---- full-bleed close-up rail on the left, 6px accent gaps; each tile = picture + a caption strip
+          the picture never enters (the picture fades into it). Hero on a studio ground in the right
+          column, clear of the rail (hero_overlap > 0 restores the old break-over). ---- */
+  const railW = Math.round(W * (W < H ? 0.37 : 0.38));
+  const sK = Math.max(k, 0.9);
+  T.box(T.el('div', {class:'studio'}), railW, 0, W - railW, H);
+  const capAllow = [];
+  dets.forEach((d, i) => capAllow.push('detail' + (i + 1) + '_frame', 'c' + (i + 1) + '_title', 'c' + (i + 1) + '_body'));
+  const rb = T.el('div', {class:'rail-bg', 'data-qa':'rail_bg', 'data-kind':'shape', 'data-allow': capAllow.concat(['gap1', 'gap2', 'gap3']).join(',')});
   T.box(rb, 0, 0, railW, H - bandH);
-  const px = railW + 8 * G, pw = W - m - px;
-  let y0 = headBlock(px, m + 4, pw, {maxLines: 3, noSub: dets.length > 2});
-  const top = y0 + 6 * G;
-  const r = T.contain(hero, px, top, pw, floor - top, 0.5, 1);
-  T.img('hero', job.hero, r, {blend: 'multiply'});
-  const iw = railW - 2 * m + 24;      // inner rail width
-  const ix = m - 12;
-  const cont = T.el('div', {class:'on-dark'}); cont.style.position = 'absolute'; cont.style.inset = '0';
-  const caps = dets.map((d, i) => caption(i, d, ix, 0, iw, cont));
-  const capsH = caps.reduce((s, c) => s + c.h, 0);
-  const gapT = 3 * G, gapB = 6 * G;
-  const avail = floor - m - capsH - dets.length * gapT - (dets.length - 1) * gapB;
-  let y = m;
+  const capStyle = job.caption_style || 'scrim';               // 'scrim' (cream caps on the dark strip) | 'band' (solid accent tab)
+  const band = capStyle === 'band';
+  const px = railW + m, pw = W - m - px;
+  const textBottom = headBlock(px, m, pw, {maxLines: 3, subW: zh ? pw : Math.round(680 * Math.max(k, 0.82))});
+
+  // hero: centred in the column under the copy, >= 44px clear of the seam, >= 84px off the bottom edge
+  const gap = 6, over = Math.round((+job.hero_overlap || 0) * k);
+  const top = textBottom + 6 * G, floorY = H - bandH - (over > 0 ? Math.round(40 * k) : Math.round(84 * k));
+  const bx = over > 0 ? railW - over : railW + gap + Math.round(44 * k), bw = W - Math.round((over > 0 ? 28 : 44) * k) - bx;
+  const hr = placeHero(bx, top, bw, floorY - top, over > 0 ? 0 : 0.5, over > 0 ? 1 : 0.6, {fill});
+
+  // ---- captions first: one size for every title (en <= 2 lines, zh 1 line), so the stack reads evenly ----
+  const cont = T.el('div', {}); cont.style.cssText = 'position:absolute;inset:0';
+  const n = dets.length, cx = m, cw = railW - m - Math.round(28 * k);
+  const padX = band ? Math.round(22 * sK) : 0, padY = band ? Math.round(14 * sK) : 0;
+  const caps = dets.map((d, i) => {
+    const id = 'c' + (i + 1), allow = ['detail' + (i + 1) + '_frame', 'rail_bg', id + '_band'];
+    const t = T.text(id + '_title', d.title, cx, 0, cw - padX, 'cap-title' + (band ? ' on-band' : ''), {tier:'secondary', maxLines: 2, allow, parent: cont});
+    const b = (d.body && job.caption_title_only === false) ? T.text(id + '_body', d.body, cx, 0, cw - padX, 'cap-body' + (band ? ' on-band' : ''), {tier:'meta', maxLines: 2, allow, parent: cont}) : null;
+    return {id, t, b};
+  });
+  // en fits by narrowing the extended face first (stretch 112 -> 96), then by size; never below the QA's secondary minimum
+  const fits = zh ? [[48, 100], [44, 100], [40, 100], [36, 100]] : [[44, 112], [44, 104], [44, 96], [42, 96], [40, 96], [38, 96], [36, 96], [34, 96]];
+  const want = zh ? 1 : 2;
+  let fit = null;
+  for (const [s, st] of fits.filter(([s], j) => !j || s >= minSec)) {
+    for (const c of caps) { c.t.style.fontSize = s + 'px'; c.t.style.fontStretch = st + '%'; }
+    fit = [s, st]; if (caps.every(c => lineCount(c.t) <= want)) break;
+  }
+  for (const c of caps) { const lc = lineCount(c.t); if (lc > 2) c.t.dataset.maxlines = lc; }
+  if (caps.some(c => lineCount(c.t) > want)) T.notes.push('a rail caption needs more than ' + want + ' line(s) at ' + fit[0] + 'px');
+  const blockH = caps.map(c => T.rect(c.t).h + (c.b ? 10 + T.rect(c.b).h : 0));
+  const maxBlock = Math.max(...blockH);
+  // marker above the text: the row's icon in a dark badge when the job lists icons, else a short accent tab (none on bands)
+  const hasIcon = dets.some(d => d.icon && (job.icons || {})[d.icon]) && !band;
+  const badge = Math.round(88 * sK), markH = band ? 0 : hasIcon ? badge + 18 : 28;
+  const padT = Math.round(10 * sK);
+  const padBi = i => (i === n - 1 ? Math.max(m, 72) : Math.round(36 * sK));
+  const stripH = dets.map((_, i) => padT + markH + maxBlock + 2 * padY + padBi(i));
+
+  // ---- tile heights: share the rail; no picture may need more than the upscale cap (water-fill the rest) ----
+  const railH = H - bandH, avail = railH - gap * (n - 1);
+  const maxH = dets.map((d, i) => Math.floor(T.asset(d.detail).height * cap) + stripH[i]);
+  const tw = dets.map(d => Math.min(railW, Math.floor(T.asset(d.detail).width * cap)));
+  let hs = dets.map(() => 0), left = avail, open = dets.map((_, i) => i);
+  while (open.length && left > 1) {
+    const share = left / open.length; const next = [];
+    for (const i of open) { const add = Math.min(share, maxH[i] - hs[i]); hs[i] += add; left -= add; if (hs[i] < maxH[i] - 0.5) next.push(i); }
+    if (next.length === open.length) break; open = next;
+  }
+  hs = hs.map(Math.floor);
+  if (left > 2) T.notes.push('close-ups are too small to fill the rail without upscaling; ' + Math.round(left) + 'px left dark');
+
+  // band tabs share one width (the widest caption), flush to the rail's left edge
+  const textRight = e => { const rg = document.createRange(); rg.selectNodeContents(e); return Math.max(...[...rg.getClientRects()].map(q => q.right)); };
+  const bandW = band ? Math.min(railW - Math.round(20 * k), Math.ceil(Math.max(...caps.flatMap(c => [c.t, c.b].filter(Boolean)).map(textRight)) + padX)) : 0;
+
+  let y = 0;
   dets.forEach((d, i) => {
-    const a = T.asset(d.detail);
-    const th = Math.min(Math.round(avail / dets.length), tileH(a, iw, 9999));
-    T.detailFrame('detail' + (i + 1), d.detail, ix, y, iw, th, {class: 'tile dark-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5, allow: ['rail_bg'], parent: cont});
-    caps[i].move(y + th + gapT);
-    y += th + gapT + caps[i].h + gapB;
+    const th = hs[i], x0 = Math.round((railW - tw[i]) / 2), ih = Math.max(60, th - stripH[i]);
+    const {id, t, b} = caps[i];
+    const f = tile(i, d, x0, y, tw[i], ih, {maxAspect: job.tile_max_aspect ?? 1.4, minVisible: job.tile_min_visible ?? 0.85, partY: 0.5,
+      allow: ['rail_bg', id + '_fade'].concat(i ? ['gap' + i] : []).concat(i < n - 1 ? ['gap' + (i + 1)] : []), parent: cont});
+    // the picture fades into the caption strip, so the strip reads as part of the tile
+    const fh = Math.min(Math.round(ih * 0.22), Math.round(110 * sK));
+    const fade = T.el('div', {class:'tile-fade', 'data-qa': id + '_fade', 'data-kind':'shape', 'data-exempt':'1'}, cont);
+    T.box(fade, x0, y + ih - fh, tw[i], fh + 1);
+    // caption: bottom-aligned in the strip
+    const bot = y + th - padBi(i) - padY;
+    const h0 = blockH[i];
+    t.style.top = (bot - h0) + 'px'; if (b) b.style.top = (bot - T.rect(b).h) + 'px';
+    let marker = null;
+    if (band) {
+      marker = T.el('div', {class:'cap-band', 'data-qa': id + '_band', 'data-kind':'shape', 'data-exempt':'1'}, cont);
+      T.box(marker, 0, bot - h0 - padY, bandW, h0 + 2 * padY);
+    } else if (hasIcon && d.icon && (job.icons || {})[d.icon]) {
+      marker = T.el('div', {class:'cap-badge', 'data-exempt':'1'}, cont);
+      T.box(marker, cx, bot - h0 - 18 - badge, badge, badge);
+      const ic = T.icon(d.icon, Math.round(badge * 0.18), Math.round(badge * 0.18), Math.round(badge * 0.64), 'var(--accent)', marker);
+      if (ic) ic.querySelectorAll('[stroke-width]').forEach(e => e.setAttribute('stroke-width', '2'));
+    } else {
+      marker = T.el('div', {class:'tick', 'data-qa': id + '_tab', 'data-kind':'shape', 'data-exempt':'1'}, cont);
+      T.box(marker, cx, bot - h0 - 22 - 6, 56, 6);
+    }
+    for (const e of [fade, marker, t, b]) if (e) cont.appendChild(e);
+    y += th;
+    if (i < n - 1) { const g = T.el('div', {class:'gap', 'data-qa':'gap' + (i + 1), 'data-kind':'shape', 'data-allow':'rail_bg'}, cont); T.box(g, 0, y, railW, gap); y += gap; }
   });
-  T.layoutInfo.hero_rect = r;
+
+  // accent seam on the rail's edge ties the gaps into one frame
+  if (job.rail_seam !== false) { const se = T.el('div', {class:'gap', 'data-qa':'rail_seam', 'data-kind':'shape', 'data-exempt':'1'}); T.box(se, railW, 0, gap, H - bandH); }
+  if (over > 0) for (const e of [document.querySelector('.floor'), document.querySelector('[data-qa=hero]')]) if (e) T.root.appendChild(e);
+  T.layoutInfo.hero_rect = hr.r; T.layoutInfo.rail = {w: railW, tiles: hs, strip: stripH, caption_px: fit && fit[0]};
+  T.layoutInfo.hero_fill_ratio = +((hr.content.w * hr.content.h) / (W * H)).toFixed(3);
+} else if (mode === 'ring') {
+  /* ---- airaj H0082: circular close-ups around the product, short centred captions under each circle.
+          'rows': circles above and below a product lying across the middle (wide products);
+          'cols': circles in a column on each side of a standing product (tall products). 'auto' picks
+          whichever leaves the product larger. ---- */
+  T.box(T.el('div', {class:'studio white'}), 0, 0, W, H);
+  const n = dets.length;
+  const cwC = hero.width * (bbox[2] - bbox[0]), chC = hero.height * (bbox[3] - bbox[1]);
+  const heroScale = (bw, bh) => Math.min(bw / cwC, bh / chC, cap);
+  const ringCap = (i, d, cx, y, w) => {
+    let str = T.plain(d.caption || d.title);
+    if (!zh) str = str.replace(/[A-Za-z][\w'’-]*/g, (w, at) => (at && /^(a|an|and|for|of|on|or|the|to|with|in|at|by)$/i.test(w)) ? w.toLowerCase() : (w === w.toLowerCase() ? w[0].toUpperCase() + w.slice(1) : w));   // one casing for every callout
+    const t = T.text('c' + (i + 1) + '_title', str, cx - w / 2, y, w, 'ring-cap', {tier:'secondary', maxLines: 2, align: 'center'});
+    for (const s of [42, 38, 34].filter((s, j) => !j || s >= minSec)) { t.style.fontSize = s + 'px'; if (lineCount(t) <= 1) break; }
+    return t;
+  };
+  const inset = (i, d, cx, cy, r) => {
+    const f = T.circleInset('detail' + (i + 1), d.detail, cx, cy, r, {fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5});
+    // optional part_box: zoom so the named part fills ~62% of the circle, centred (never past the upscale cap)
+    const pb = d.part_box, a = T.asset(d.detail);
+    if (Array.isArray(pb) && pb.length === 4 && pb[2] > pb[0] && pb[3] > pb[1]) {
+      const D = 2 * r, s = Math.min(cap, Math.max(f.scale, 0.62 * D / Math.max((pb[2] - pb[0]) * a.width, (pb[3] - pb[1]) * a.height)));
+      const iw = a.width * s, ih = a.height * s, px0 = (pb[0] + pb[2]) / 2 * iw, py0 = (pb[1] + pb[3]) / 2 * ih;
+      T.box(f.img, Math.max(D - iw, Math.min(0, D / 2 - px0)), Math.max(D - ih, Math.min(0, D / 2 - py0)), iw, ih);
+    } else if (+d.zoom > 1) {
+      const D = 2 * r, s = Math.min(cap, f.scale * d.zoom), iw = a.width * s, ih = a.height * s;
+      T.box(f.img, -(iw - D) * (d.focus?.[0] ?? 0.5), -(ih - D) * (d.focus?.[1] ?? 0.5), iw, ih);
+    }
+    if (job.ring_style === 'grey') f.frame.classList.add('ring-grey'); else f.frame.style.setProperty('--ring-gap', '#fff');
+    return f;
+  };
+  const ringW = 11, capGap = 26, capH1 = 50, capH2 = 96;      // ring+gap outside r; caption: 1 or 2 lines
+  // headline only when there is a free band for it (3 or fewer insets, or columns layout)
+  // --- plan rows ---
+  const perRow = 3, gapX = 48 * k;
+  const rR = Math.floor(Math.min(W < H ? 136 : 160, (W - 2 * m - (perRow - 1) * gapX) / (2 * perRow)));
+  const topN = n > perRow ? Math.ceil(n / 2) : 0;
+  // --- plan cols ---
+  const perCol = Math.ceil(n / 2), colGap = Math.round(20 * k);
+  const showHeadCols = !!job.headline && job.ring_headline !== false && n <= 4;
+  const cR = Math.floor(Math.min(136, W * 0.088, (H - 2 * m - bandH - (showHeadCols ? 230 : 0) - perCol * (2 * ringW + capGap + capH2) - (perCol - 1) * 24) / (2 * perCol)));
+  const colW = 2 * cR + 2 * ringW;
+  const rowsHero = heroScale(W - 2 * m, (H - bandH - 2 * m) - (topN ? 2 : 1) * (2 * rR + 2 * ringW + capGap + capH1 + 40) - (topN ? 0 : (job.headline ? 220 : 0)));
+  const colsHero = n >= 4 && cR >= 84 ? heroScale(W - 2 * m - 2 * (colW + colGap), H - bandH - 2 * m - (showHeadCols ? 230 : 0)) : 0;
+  const layout = job.ring_layout && job.ring_layout !== 'auto' ? job.ring_layout : (colsHero > rowsHero * 1.12 ? 'cols' : 'rows');
+  T.layoutInfo.ring = {layout};
+
+  if (layout === 'cols') {
+    let y0 = m;
+    if (showHeadCols) y0 = headBlock(m, m, W - 2 * m, {maxLines: 2, noSub: true}) + 5 * G;
+    const yEnd = H - bandH - m;
+    const left = dets.slice(0, perCol), right = dets.slice(perCol);
+    const placed = [], mm = Math.max(job.min_margin ?? 60, m / 2) + 2;
+    const column = (list, offset, cx) => {
+      const slot = (yEnd - y0) / list.length;
+      list.forEach((d, j) => {
+        const i = offset + j, cy = y0 + slot * j + ringW + cR + Math.max(0, (slot - (2 * cR + 2 * ringW + capGap + capH2)) / 2);
+        inset(i, d, cx, cy, cR);
+        const t = ringCap(i, d, cx, cy + cR + ringW + capGap, Math.min(colW + 60, 2 * (cx < W / 2 ? cx - mm : W - mm - cx)));
+        placed.push(t);
+      });
+    };
+    column(left, 0, m + colW / 2);
+    column(right, perCol, W - m - colW / 2);
+    const hx = m + colW + colGap, hw = W - 2 * hx;
+    const hr = placeHero(hx, y0, hw, yEnd - y0, 0.5, 0.5, {fill, floor: false});
+    T.layoutInfo.hero_rect = hr.r; Object.assign(T.layoutInfo.ring, {r: cR, left: left.length, right: n - left.length});
+  } else {
+    const r = rR;
+    function row(list, offset, cy) {
+      const cnt = list.length, span = (W - 2 * m) / cnt, caps = [];
+      list.forEach((d, j) => {
+        const i = offset + j, ccx = m + span * (j + 0.5);
+        const f = inset(i, d, ccx, cy, r);
+        const w = Math.min(span - 16, 2 * r + 120);
+        caps.push({t: ringCap(i, d, ccx, cy + r + 30, w), f: f.frame});
+      });
+      return caps;
+    }
+    let topY = m;
+    if (topN) { const caps = row(dets.slice(0, topN), 0, m + 11 + r); topY = Math.max(...caps.map(c => bottomOf(c.t))); }
+    else if (job.headline) { topY = headBlock(m, m, W - 2 * m, {maxLines: 2, noSub: true}); }
+    // bottom row: sit the captions on the bottom margin, using their measured height
+    let botCy = H - bandH - m - capH2 - 30 - r - 11;
+    const bc = row(dets.slice(topN), topN, botCy);
+    const capMax = Math.max(...bc.map(c => T.rect(c.t).h));
+    const dy = Math.max(0, capH2 - capMax);
+    if (dy) { for (const c of bc) for (const e of [c.t, c.f]) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; botCy += dy; }
+    const hTop = topY + 5 * G, hBot = botCy - r - 11 - 5 * G;
+    // a headline across the top leaves a short band for the product; when a headline column on the left
+    // and the product on the right, full height above the row, gives a clearly larger product, use that
+    let hb = [m, hTop, W - 2 * m, hBot - hTop], side = false;
+    if (!topN && job.headline && job.ring_side_headline !== false) {
+      const colWL = Math.round((W - 2 * m) * 0.40), sx = m + colWL + Math.round(24 * k);
+      const sb = [sx, m, W - Math.round(40 * k) - sx, hBot - m];
+      if (heroScale(sb[2], sb[3]) > heroScale(hb[2], hb[3]) * 1.12) {
+        const heads = () => document.querySelectorAll('[data-qa=tick],[data-qa=eyebrow],[data-qa=headline],[data-qa=subhead]');
+        const keep = [...heads()], notes0 = T.notes.slice();
+        keep.forEach(e => e.remove());
+        T.notes.length = 0; notes0.filter(x => !/^headline needed/.test(x)).forEach(x => T.notes.push(x));
+        const yb = headBlock(m, m, colWL, {maxLines: 4, subW: colWL});
+        const bad = [...heads()].some(e => e.scrollWidth > e.clientWidth + 1 || (e.dataset.maxlines && lineCount(e) > +e.dataset.maxlines)) || yb > hBot;
+        if (bad) {         // the column is too narrow for this copy: back to the headline across the top
+          heads().forEach(e => e.remove()); keep.forEach(e => T.root.appendChild(e));
+          T.notes.length = 0; notes0.forEach(x => T.notes.push(x));
+        } else { hb = sb; side = true; }
+      }
+    }
+    const hr = placeHero(hb[0], hb[1], hb[2], hb[3], 0.5, side ? 1 : 0.5, {fill, floor: false});
+    T.layoutInfo.ring.side_headline = side;
+    T.layoutInfo.hero_rect = hr.r; Object.assign(T.layoutInfo.ring, {r, top: topN, bottom: n - topN});
+  }
 } else {
-  /* ---- Adaptation: wide hero on top, copy + 2 detail tiles in a bottom strip (BAG-113 logic) ---- */
-  let y0 = headBlock(m, m + 4, W - 2 * m, {noSub: true});
-  const n = Math.min(dets.length, 2);
-  const stripTileW = Math.round((W - 2 * m) * 0.25);
-  const tileHt = Math.round(stripTileW * 0.72);
-  const caps = dets.slice(0, n).map((d, i) => caption(i, d, 0, 0, stripTileW));
-  const capH = Math.max(...caps.map(c => c.h));
-  const stripTop = floor - tileHt - 3 * G - capH;
-  const top = y0 + 5 * G;
-  const r = T.contain(hero, m, top, W - 2 * m, stripTop - 7 * G - top, 0.5, 0.5);
-  T.img('hero', job.hero, r, {blend: 'multiply'});
-  // left: sub copy; right: tiles
-  const tilesX0 = W - m - n * stripTileW - (n - 1) * 5 * G;
-  if (job.subhead) { const s = T.text('subhead', job.subhead, m, stripTop, tilesX0 - m - 7 * G, 'sub', {tier:'important', maxLines: 4}); }
-  T.el('div', {class:'tick', 'data-qa':'tick', 'data-kind':'shape'}).style.cssText += `left:${m}px;top:${stripTop - 4 * G}px;width:72px`;
-  dets.slice(0, n).forEach((d, i) => {
-    const x = tilesX0 + i * (stripTileW + 5 * G);
-    T.detailFrame('detail' + (i + 1), d.detail, x, stripTop, stripTileW, tileHt, {class: 'tile light-edge', fx: d.focus?.[0] ?? 0.5, fy: d.focus?.[1] ?? 0.5});
-    for (const e of caps[i].els) e.style.left = x + 'px';
-    caps[i].move(stripTop + tileHt + 3 * G);
-  });
-  if (dets.length > 2) T.notes.push('strip mode shows max 2 details; extra details dropped by rule');
-  T.layoutInfo.hero_rect = r;
+  /* ---- legacy layouts kept for old jobs: 'rail' (details in a right column) and 'strip' (details under a wide hero) ---- */
+  T.box(T.el('div', {class:'studio'}), 0, 0, W, H);
+  const floor = H - bandH - m;
+  const caption = (i, d, x, y, w) => {
+    const id = 'c' + (i + 1);
+    const no = T.text(id + '_no', String(i + 1).padStart(2, '0'), x, y, w, 'c-no', {tier:'meta'});
+    const t = T.text(id + '_title', d.title, x, y + 24 + 2 * G, w, 'c-title', {tier:'secondary', maxLines: 3});
+    // a long single word must not overflow a narrow column: narrow the face, then the size (not below the QA minimum)
+    for (const [s, st] of [[42, 100], [42, 92], [40, 88], [36, 88], [34, 84]].filter(([s], j) => !j || s >= minSec)) {
+      t.style.fontSize = s + 'px'; t.style.fontStretch = st + '%'; if (t.scrollWidth <= t.clientWidth + 1 && lineCount(t) <= 3) break; }
+    let bottom = bottomOf(t), b = null;
+    if (d.body && job.caption_title_only === false) { b = T.text(id + '_body', d.body, x, bottom + G, w, 'c-body', {tier:'secondary', maxLines: 2}); bottom = bottomOf(b); }
+    const els = [no, t, b].filter(Boolean);
+    return {h: bottom - y, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+  };
+  if (mode === 'rail') {
+    const y0 = headBlock(m, m, W - 2 * m);
+    const top = y0 + 7 * G, railW = Math.round((W - 2 * m) * 0.30), gut = 7 * G, mainW = W - 2 * m - railW - gut;
+    const hr = placeHero(m, top, mainW, floor - top, 0.5, 1, {fill});
+    const rx = W - m - railW;
+    const caps = dets.map((d, i) => caption(i, d, rx, 0, railW));
+    const capsH = caps.reduce((s, c) => s + c.h, 0), gapT = 3 * G, gapB = 7 * G;
+    const avail = floor - top - capsH - dets.length * gapT - (dets.length - 1) * gapB;
+    let y = top;
+    dets.forEach((d, i) => {
+      const a = T.asset(d.detail);
+      const th = Math.min(Math.round(avail / dets.length), Math.round(railW * 1.1), Math.round(a.height * cap));
+      tile(i, d, rx, y, railW, th, {class: 'tile light-edge', minVisible: job.tile_min_visible ?? 0.85});
+      caps[i].move(y + th + gapT); y += th + gapT + caps[i].h + gapB;
+    });
+    T.layoutInfo.hero_rect = hr.r;
+  } else {
+    const y0 = headBlock(m, m, W - 2 * m, {noSub: true});
+    const n = Math.min(dets.length, 2), stripTileW = Math.round((W - 2 * m) * 0.25), tileHt = Math.round(stripTileW * 0.72);
+    const caps = dets.slice(0, n).map((d, i) => caption(i, d, 0, 0, stripTileW));
+    const capH = Math.max(...caps.map(c => c.h));
+    const stripTop = floor - tileHt - 3 * G - capH, top = y0 + 5 * G;
+    const hr = placeHero(m, top, W - 2 * m, stripTop - 7 * G - top, 0.5, 0.5, {fill});
+    const tilesX0 = W - m - n * stripTileW - (n - 1) * 5 * G;
+    if (job.subhead) T.text('subhead', job.subhead, m, stripTop, tilesX0 - m - 7 * G, 'sub', {tier:'secondary', maxLines: 4});
+    dets.slice(0, n).forEach((d, i) => {
+      const x = tilesX0 + i * (stripTileW + 5 * G);
+      tile(i, d, x, stripTop, stripTileW, tileHt, {class: 'tile light-edge', minVisible: job.tile_min_visible ?? 0.85});
+      for (const e of caps[i].els) e.style.left = x + 'px';
+      caps[i].move(stripTop + tileHt + 3 * G);
+    });
+    if (dets.length > 2) T.notes.push('strip mode shows max 2 details; extra details dropped by rule');
+    T.layoutInfo.hero_rect = hr.r;
+  }
 }
 T.watermark();
 T.finish();

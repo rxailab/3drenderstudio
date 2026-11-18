@@ -3,23 +3,60 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T06 · clean dimensions & spec */
-  #canvas{--bg:#F5F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#2C4C8C;--rule:#D6D9DC;--wm:rgba(0,0,0,.045)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .d-val{font:700 64px/1 "Noto Sans Display",sans-serif;color:var(--text);white-space:nowrap}
-  .d-alt{font:500 42px/1.15 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
-  .d-key{font:700 44px/1 "Noto Sans Display",sans-serif;color:#fff;background:var(--accent);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center}
-  .t-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text)}
-  .t-val{font:700 64px/1 "Noto Sans Display",sans-serif;color:var(--text);white-space:nowrap}
-  .t-alt{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
-  .t-note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .t-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .t-note,#canvas[lang=zh] .d-alt,#canvas[lang=zh] .t-alt{font-family:"Noto Sans CJK SC",sans-serif}
-  .dim{fill:none;stroke:var(--line);stroke-width:3;stroke-linecap:round}
-  .ext{fill:none;stroke:var(--line);stroke-width:2;stroke-dasharray:6 8;opacity:.55}
-  .hr{position:absolute;height:2px;background:var(--rule)}
+  /* T06 · dimensions: the product large on a studio-light ground, dimension lines in ink, each value in an accent pill;
+     the figures headline names its axes (W × D × H); depth gets a small box key of its own; optional light spec table;
+     one disclaimer microline. One display family (Archivo): extended for the headline, narrow for the figures. */
+  #canvas{--bg:#F5F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:var(--text);--wm:rgba(0,0,0,.045);
+    --acc-small:color-mix(in srgb,var(--accent) 70%,#000);
+    background:radial-gradient(120% 90% at 60% 55%,#FFFFFF 0%,var(--bg) 72%)}
+  .kick{position:absolute;background:var(--accent)}
+  #canvas.acc-light .eyebrow{color:var(--muted)}
+  .eyebrow{font:700 26px/1 var(--f-text);letter-spacing:.12em;text-transform:uppercase;color:var(--acc-small);white-space:nowrap}
+  .headline{font-family:var(--f-display);font-weight:850;font-stretch:114%;font-size:88px;line-height:.95;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .headline.compact{font-size:72px}
+  /* axis names under the headline figures */
+  .hlkey{font:700 22px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  /* value pill: the figure in narrow Archivo, the other unit lighter; .stack puts the other unit under it (vertical lines, depth key) */
+  .d-lab{font-family:var(--f-display);font-weight:800;font-stretch:90%;font-size:52px;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums;
+    letter-spacing:-.005em;background:var(--accent);color:var(--accent-ink,#fff);border-radius:999px;padding:11px 26px 10px;transform-origin:50% 50%}
+  .d-lab.sm{font-size:50px;padding:9px 22px 8px}
+  .d-lab .alt{font-weight:600;font-size:.6em;opacity:.88;letter-spacing:0}
+  .d-lab.stack{display:flex;flex-direction:column;align-items:center;border-radius:20px;padding:14px 22px 12px}
+  .d-lab.stack .alt{font-size:.58em;margin-top:7px}
+  .d-lab .nm{font-family:var(--f-text);font-weight:700;font-size:20px;letter-spacing:.12em;text-transform:uppercase;margin-right:.7em;vertical-align:.5em;opacity:.9}
+  .dim{fill:none;stroke:var(--line);stroke-width:3;stroke-linecap:butt}
+  .ext{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:6 7;opacity:.45}
+  .arrow{fill:var(--line)}
+  .tick{fill:none;stroke:var(--line);stroke-width:3}
+  .shadow{position:absolute;border-radius:50%;background:rgba(0,0,0,.16);filter:blur(28px)}
+  /* depth key: a schematic box in the real W:D:H proportions, the depth edge in the accent */
+  .kb{stroke:var(--line);stroke-width:2;stroke-linejoin:round}
+  .kb.f{fill:var(--accent);fill-opacity:.07}
+  .kb.t{fill:var(--accent);fill-opacity:.16}
+  .kb.s{fill:var(--accent);fill-opacity:.26}
+  .kb-d{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round}
+  .kname{font:700 22px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--text);white-space:nowrap;text-align:center}
+  /* spec table (light): white card, 1px rules, full-height dividers, figures in ink */
+  .tbl{position:absolute;border-radius:14px;overflow:hidden;background:#FFFFFF;box-shadow:inset 0 0 0 1px rgba(30,34,38,.16)}
+  .tbl .hrule{position:absolute;left:0;right:0;height:1px;background:rgba(30,34,38,.14)}
+  .tbl .sep{position:absolute;width:1px;background:rgba(30,34,38,.14)}
+  .th{font:700 22px/1.05 var(--f-text);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;white-space:nowrap}
+  .td{font-family:var(--f-display);font-weight:800;font-stretch:90%;font-size:52px;line-height:1;color:var(--text);text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .td .u{font-size:.55em;font-weight:700;margin-left:.12em}
+  .td-alt{font:500 24px/1 var(--f-text);color:var(--muted);text-align:center;white-space:nowrap}
+  .disc{font:400 24px/1.3 var(--f-text);color:var(--muted);white-space:nowrap}
+  #canvas[lang=zh] .eyebrow{font-family:var(--f-cjk);font-weight:700;letter-spacing:0;font-size:28px}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:.01em;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .headline.compact{font-size:76px}
+  /* figures headline: tabular figures, unit lowercase in the accent; zh keeps the Latin display face for the figures */
+  .headline.dimhl{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .headline.dimhl .hi{text-transform:none}
+  #canvas[lang=zh] .headline.dimhl{font-family:var(--f-display);font-weight:850;font-stretch:114%;font-size:88px;line-height:.95;letter-spacing:-.005em}
+  #canvas[lang=zh] .hlkey,#canvas[lang=zh] .kname,#canvas[lang=zh] .th{font-family:var(--f-cjk);font-weight:700;letter-spacing:.04em;font-size:24px}
+  #canvas[lang=zh] .d-lab .nm{font-family:var(--f-cjk);letter-spacing:.04em;font-size:22px;vertical-align:.3em}
+  #canvas[lang=zh] .td-alt,#canvas[lang=zh] .disc{font-family:var(--f-cjk)}
+  #canvas[lang=zh] .d-lab .v,#canvas[lang=zh] .d-lab .alt,#canvas[lang=zh] .td{font-family:var(--f-display)}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -27,82 +64,369 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
-const floor = H - bandH - m * 0.75;
-const hero = T.asset(job.hero);
-const dims = job.dimensions.slice(0, 4);
+const zh = (job.lang || 'en') === 'zh';
+const G = 8, bandH = job.demo ? 40 : 0, cap = 1.25, u = Math.min(1, W / 1500);
+const m = Math.max(job.min_margin ?? 60, job.text_margin ?? 72);     // text margin (brief: 72)
 const mode = job.mode || 'onproduct';
+const hero = T.asset(job.hero), cb = hero.content_bbox || [0, 0, 1, 1];
+const dims = (job.dimensions || []).filter(d => d && d.value != null && d.from && d.to).slice(0, 4);
 T.layoutInfo = {mode};
+
+/* --accent-ink from the accent's luminance when the palette does not carry it */
+(function(){
+  const pal = job.palette || {};
+  const hx = String(getComputedStyle(T.root).getPropertyValue('--accent')).trim().replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hx)) return;
+  const c = [0, 2, 4].map(i => parseInt(hx.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4));
+  const L = .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  if (L > .4) T.root.classList.add('acc-light');      // a light accent is too faint for small type on the light ground
+  if (!pal['accent-ink']) T.root.style.setProperty('--accent-ink', L > .4 ? '#111111' : '#FFFFFF');
+})();
+
 /* explicit unit conversion with declared rounding (never measured from the photo) */
+const r1 = v => String(Math.round(v * 10) / 10);
 function convert(d) {
-  if (d.unit === 'in') return {v: Math.round(d.value * 2.54), u: 'cm', rule: 'in→cm ×2.54, rounded to 1 cm'};
-  if (d.unit === 'cm') return {v: (Math.round(d.value / 2.54 * 10) / 10).toFixed(1), u: 'in', rule: 'cm→in ÷2.54, rounded to 0.1 in'};
+  const v = +d.value;
+  if (d.unit === 'in') return {v: r1(v * 2.54), u: 'cm', rule: 'in→cm ×2.54, rounded to 0.1 cm'};
+  if (d.unit === 'cm') return {v: r1(v / 2.54), u: 'in', rule: 'cm→in ÷2.54, rounded to 0.1 in'};
+  if (d.unit === 'mm') return {v: r1(v / 25.4), u: 'in', rule: 'mm→in ÷25.4, rounded to 0.1 in'};
   return null;
 }
-const fmtV = d => `${d.value} ${d.unit}`;
-const fmtA = d => { const c = convert(d); return c ? `≈ ${c.v} ${c.u}` : ''; };
 T.layoutInfo.conversions = dims.map(d => ({key: d.key, rule: (convert(d) || {}).rule || null}));
 
-let y = m + 4;
-if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
-const hl = T.text('headline', job.headline, m, y, mode === 'table' ? W * 0.56 : W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
-y = T.rect(hl).y + T.rect(hl).h + 7 * G;
-
-const tableW = mode === 'table' ? Math.round((W - 2 * m) * 0.34) : 0;
-const pad = job.dim_pad ?? 150;                       // room for lines + labels around the product
-const box = {x: m + pad, y: y + pad * 0.35, w: W - 2 * m - 2 * pad - (tableW ? tableW + 4 * G : 0), h: floor - y - pad * 1.1};
-const r = T.contain(hero, box.x, box.y, box.w, box.h, 0.5, 0.5);
-T.img('hero', job.hero, r, {blend: 'multiply'});
-const P = p => [r.x + p[0] * r.w, r.y + p[1] * r.h];
-const placed = [];
-dims.forEach((d, i) => {
-  const a = P(d.from), b = P(d.to);
-  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
-  const off = (d.offset ?? 60);
-  const nx = d.side[0], ny = d.side[1];         // unit-ish outward direction chosen per dimension
-  const nl = Math.hypot(nx, ny); const ox = nx / nl * off, oy = ny / nl * off;
-  let A = [a[0] + ox, a[1] + oy], B = [b[0] + ox, b[1] + oy];
-  if (d.at != null) { // axis-aligned line placed at a normalised coordinate outside the product
-    if (Math.abs(nx) > Math.abs(ny)) { const X = r.x + d.at * r.w; A = [X, a[1]]; B = [X, b[1]]; } else { const Y = r.y + d.at * r.h; A = [a[0], Y]; B = [b[0], Y]; }
-  }
-  T.svgEl('path', {d: `M${a[0]} ${a[1]} L${A[0]} ${A[1]} M${b[0]} ${b[1]} L${B[0]} ${B[1]}`, class: 'ext'});
-  const tx = -dy / len * 14, ty = dx / len * 14;  // end ticks perpendicular to the line
-  T.svgEl('path', {d: `M${A[0]} ${A[1]} L${B[0]} ${B[1]} M${A[0] - tx} ${A[1] - ty} L${A[0] + tx} ${A[1] + ty} M${B[0] - tx} ${B[1] - ty} L${B[0] + tx} ${B[1] + ty}`, class: 'dim'});
-  const mid = [(A[0] + B[0]) / 2 + nx / nl * 26, (A[1] + B[1]) / 2 + ny / nl * 26];
-  if (mode === 'onproduct') {
-    const v = T.text('d' + (i + 1) + '_val', fmtV(d), 0, 0, 360, 'd-val', {tier:'important', maxLines: 1});
-    const al = fmtA(d) ? T.text('d' + (i + 1) + '_alt', fmtA(d), 0, 0, 360, 'd-alt', {tier:'secondary', maxLines: 1}) : null;
-    const vw = Math.max(T.rect(v).w && measure(v), al ? measure(al) : 0), vh = T.rect(v).h + (al ? T.rect(al).h + G : 0);
-    // anchor the label block on the outward side of the midpoint
-    let lx = mid[0] + (nx > 0.3 ? 0 : nx < -0.3 ? -vw : -vw / 2);
-    let ly = mid[1] + (ny > 0.3 ? 0 : ny < -0.3 ? -vh : -vh / 2);
-    lx = Math.max(m, Math.min(W - m - vw, lx)); ly = Math.max(m, Math.min(floor - vh, ly));
-    const align = nx < -0.3 ? 'right' : nx > 0.3 ? 'left' : 'center';
-    for (const e of [v, al]) if (e) { e.style.width = vw + 'px'; e.style.textAlign = align; e.style.left = lx + 'px'; }
-    v.style.top = ly + 'px'; if (al) al.style.top = (ly + T.rect(v).h + G) + 'px';
-  } else {
-    const k = T.el('div', {class: 'd-key', 'data-qa': 'd' + (i + 1) + '_key', 'data-kind': 'shape'}, null, d.key_letter);
-    T.box(k, mid[0] - 32 + nx / nl * 10, mid[1] - 32 + ny / nl * 10, 64, 64);
-  }
-  T.layoutInfo['dim' + (i + 1)] = {A, B};
-});
-function measure(e) { const rg = document.createRange(); rg.selectNodeContents(e); let x0 = 1e9, x1 = -1e9; for (const q of rg.getClientRects()) { x0 = Math.min(x0, q.left); x1 = Math.max(x1, q.right); } return Math.ceil(x1 - x0) + 2; }
-
-if (mode === 'table') {
-  /* ---- Direction B: letter keys on the product + spec table column ---- */
-  const tx = W - m - tableW; let ty = y + 2 * G;
-  dims.forEach((d, i) => {
-    const k = T.el('div', {class: 'd-key', 'data-qa': 'tk' + (i + 1), 'data-kind': 'shape'}, null, d.key_letter); T.box(k, tx, ty, 64, 64);
-    const nm = T.text('t' + (i + 1) + '_name', d.name, tx + 88, ty + 6, tableW - 88, 't-name', {tier:'important', maxLines: 2});
-    let yy = T.rect(nm).y + T.rect(nm).h + 2 * G;
-    const v = T.text('t' + (i + 1) + '_val', fmtV(d), tx + 88, yy, tableW - 88, 't-val', {tier:'important', maxLines: 1});
-    yy = T.rect(v).y + T.rect(v).h + G;
-    if (fmtA(d)) { const al = T.text('t' + (i + 1) + '_alt', fmtA(d), tx + 88, yy, tableW - 88, 't-alt', {tier:'secondary', maxLines: 1}); yy = T.rect(al).y + T.rect(al).h; }
-    ty = yy + 5 * G;
-    if (i < dims.length - 1) { T.box(T.el('div', {class: 'hr'}), tx, ty - 2.5 * G, tableW, 2); }
-  });
-  if (job.table_note) T.text('t_note', job.table_note, tx, ty + G, tableW, 't-note', {tier:'secondary', maxLines: 6});
+/* depth: a dimension of its own, job.depth, or the figure the set builder puts in table_note ("Depth 18 cm." / "深度 18 cm。") */
+let note = job.table_note ? String(job.table_note) : '';
+let depth = job.depth ? Object.assign({key: 'depth'}, job.depth) : null;
+if (!depth && !dims.some(d => d.key === 'depth')) {
+  const re = zh ? /\s*深度\s*([\d.]+)\s*(mm|cm|in)\s*。?/ : /\s*Depth\s+([\d.]+)\s*(mm|cm|in)\.?/i;
+  const mt = note.match(re);
+  if (mt) { depth = {key: 'depth', value: +mt[1], unit: mt[2]}; note = note.replace(mt[0], ' '); }
 }
+if (depth && !depth.name) depth.name = zh ? '深度' : 'Depth';
+note = note.replace(/\s+/g, ' ').trim();
+/* one disclaimer pattern for every variant: '<source>; please allow 1–2 cm variance.' / '<来源>，存在 1–2 cm 误差'.
+   No measurement method is claimed unless the job states one. job.variance: a range string, or false to drop the clause. */
+const unit0 = (dims[0] || depth || {}).unit || 'cm';
+const variance = job.variance === false ? '' : String(job.variance || (unit0 === 'in' ? '0.5–1 in' : '1–2 cm'));
+const tidy = s => String(s).replace(/(\d)\s*[-~～]\s*(\d)/g, '$1–$2').replace(/(\d)(mm|cm|in)\b/g, '$1 $2').replace(/\s+/g, ' ').trim();
+function buildDisclaimer() {
+  if (job.disclaimer != null) return tidy(job.disclaimer);
+  const src = note.replace(/[.。;；,，\s]+$/, '');
+  if (zh) return tidy((src || '尺寸为近似值') + (variance ? '，存在 ' + variance + ' 误差' : '。'));
+  if (!variance) return tidy((src || 'Sizes are approximate') + '.');
+  return tidy(src ? src + '; please allow ' + variance + ' variance.' : 'Sizes are approximate; please allow ' + variance + ' variance.');
+}
+const disclaimer = buildDisclaimer();
+
+/* ---------- header: accent kick, eyebrow, headline ---------- */
+let y = m;
+T.box(T.el('div', {class: 'kick'}), m, y, 64, 8); y += 8 + 3 * G;
+/* P3: a stock headline ('Overall size' / '外形尺寸') gives way to the figures themselves, number first
+   ('40.5 × 18 × 47.6 cm', width × depth × height, each figure named underneath); the stock phrase moves into the eyebrow.
+   job.headline_dims: 'stock' (default: only when the headline is a stock phrase or missing), true (always), false (never). */
+const stockRe = /^\s*(overall\s+(size|dimensions?)|dimensions?|sizes?|product\s+(size|dimensions?)|size\s+chart|外形尺寸|产品尺寸|尺寸(参数|规格)?|规格尺寸)\s*[.。]?\s*$/i;
+const pick = k => dims.find(d => d.key === k) || (k === 'depth' ? depth : null);
+const order = [pick('length') || pick('width'), pick('depth'), pick('height')].filter(Boolean);   // one order everywhere: W × D × H
+let headText = job.headline, eyeText = job.eyebrow, dimHead = false, seq = [];
+(function(){
+  const hd = job.headline_dims ?? 'stock';
+  const isStock = !headText || stockRe.test(T.plain(headText));
+  if (hd === false || (hd === 'stock' && !isStock)) return;
+  if (order.length < 2) return;
+  const un = order[0].unit;
+  if (!un || order.some(d => d.unit !== un)) return;
+  seq = order;
+  headText = seq.map(d => d.value).join(' × ') + ' [[' + un + ']]';
+  dimHead = true;
+  if (job.headline && isStock) eyeText = eyeText ? T.plain(eyeText) + (zh ? '·' : ' · ') + T.plain(job.headline) : job.headline;
+  T.notes.push('headline: stock phrase replaced by the figures (' + T.plain(headText) + ')');
+})();
+if (eyeText) {
+  let e = T.text('eyebrow', eyeText, m, y, W - 2 * m, 'eyebrow', {tier: 'meta', maxLines: 1});
+  if (e.scrollWidth > e.clientWidth + 1 && job.eyebrow && eyeText !== job.eyebrow) { e.remove(); e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier: 'meta', maxLines: 1}); }
+  y += T.rect(e).h + 2 * G;
+}
+const hl = T.text('headline', headText, m, y, W - 2 * m, 'headline' + (dimHead ? ' dimhl' : ''), {tier: 'headline', maxLines: 2});
+const lineCount = e => { const rg = document.createRange(); rg.selectNodeContents(e); return new Set([...rg.getClientRects()].filter(q => q.width > 0).map(q => Math.round(q.top))).size; };
+if (lineCount(hl) > 1 && !zh) hl.classList.add('compact');
+if (dimHead) {   // one line of figures: step down to the compact size, then shrink, never wrap
+  if (hl.scrollWidth > hl.clientWidth + 1) hl.classList.add('compact');
+  let fs = parseFloat(getComputedStyle(hl).fontSize);
+  while (hl.scrollWidth > hl.clientWidth + 1 && fs > 56) { fs -= 2; hl.style.fontSize = fs + 'px'; }
+}
+y = T.rect(hl).y + T.rect(hl).h;
+/* name each headline figure underneath (WIDTH / DEPTH / HEIGHT), so the order reads without guessing */
+if (dimHead && job.headline_keys !== false) {
+  const tn = [...hl.childNodes].find(n => n.nodeType === 3);
+  const spans = [];
+  let at = 0;
+  for (const d of seq) {
+    const sv = String(d.value), i = tn ? tn.data.indexOf(sv, at) : -1;
+    if (i < 0) { spans.length = 0; break; }
+    const rg = document.createRange(); rg.setStart(tn, i); rg.setEnd(tn, i + sv.length);
+    const q = rg.getBoundingClientRect(); spans.push({x0: q.left, x1: q.right}); at = i + sv.length;
+  }
+  if (spans.length === seq.length) {
+    const ky = y + 14;
+    const make = full => seq.map((d, i) => {
+      const txt = full ? T.plain(d.name || d.key) : (zh ? T.plain(d.name || '').slice(0, 1) : String(d.key || '').slice(0, 1).toUpperCase());
+      const e = T.text('hl_k' + (i + 1), txt, 0, ky, 10, 'hlkey', {tier: 'meta', maxLines: 1});
+      e.style.width = 'auto';
+      const w = Math.ceil(e.getBoundingClientRect().width) + 2, cx = (spans[i].x0 + spans[i].x1) / 2;
+      const x = Math.max(m, Math.min(W - m - w, cx - w / 2));
+      e.style.width = w + 'px'; e.style.left = x + 'px';
+      return {e, x0: x, x1: x + w};
+    });
+    let ks = make(true);
+    if (ks.some((k, i) => i && k.x0 < ks[i - 1].x1 + 16)) { ks.forEach(k => k.e.remove()); ks = make(false); }
+    y = ky + Math.max(...ks.map(k => T.rect(k.e).h));
+  }
+}
+
+/* value pills (measured once; placed by the fit below) */
+function pill(id, d, o = {}) {
+  // a shape (the pill) holding one text element per run, so a turned pill still measures as one line
+  const ids = [id, id.replace(/_val$/, '_alt'), id.replace(/_val$/, '_name')];
+  const e = T.el('div', {class: 'd-lab' + (o.size ? ' ' + o.size : '') + (o.stack ? ' stack' : ''), 'data-qa': id.replace(/_val$/, '_pill'), 'data-kind': 'shape', 'data-allow': ids.join(',')});
+  e.style.position = 'absolute';
+  const run = (qid, cls, text, tier) => T.el('span', {class: 'txt ' + cls, 'data-qa': qid, 'data-kind': 'text', 'data-tier': tier, 'data-maxlines': '1',
+    'data-allow': [e.dataset.qa].concat(ids.filter(x => x !== qid)).join(',')}, e, text);
+  if (o.name) run(ids[2], 'nm', T.plain(d.name), 'meta');
+  run(ids[0], 'v', `${d.value} ${d.unit}`, 'important');
+  const c = convert(d);
+  if (c) run(ids[1], 'alt', (o.stack ? '' : ' / ') + `${c.v} ${c.u}`, 'meta');
+  return {el: e, w: e.offsetWidth, h: e.offsetHeight, stack: !!o.stack};
+}
+
+/* depth without a line of its own: a schematic box key beside the product (default), or the old named pill under the headline */
+const depthKey = depth && (job.depth_key ?? true) !== false;
+if (depth && !depthKey) {
+  const p = pill('depth_val', depth, {name: true, size: 'sm'});
+  y += 2 * G; T.box(p.el, m, y); y += p.h;
+}
+const headerBottom = y;
+
+/* ---------- footer: disclaimer microline, light spec table above it ---------- */
+const floor = H - bandH - 62;
+let bottom = floor;
+if (disclaimer) {
+  const dc = T.text('disclaimer', disclaimer, m, 0, W - 2 * m, 'disc', {tier: 'meta', maxLines: 1});
+  const h = T.rect(dc).h; dc.style.top = (floor - h) + 'px'; bottom = floor - h - 3 * G;
+}
+if (mode === 'table') {
+  /* the table carries only what the drawing does not already show (job.table_all: true lists W/D/H too, in the headline order) */
+  const drawn = new Set(dims.map(d => d)); if (depthKey) drawn.add(depth);
+  const figs = order.concat(dims.filter(d => !order.includes(d))).concat(depth && !order.includes(depth) ? [depth] : []);
+  const cols = figs.filter(d => job.table_all || !drawn.has(d)).map(d => ({name: d.name, value: d.value, unit: d.unit, d}));
+  for (const s of (job.specs || [])) if (s && s.name && s.value != null) cols.push({name: s.name, value: s.value, unit: s.unit || '', d: s});
+  const n = Math.min(6, cols.length);
+  if (!n) T.notes.push('table: every figure is already on the drawing, table left out');
+  if (n) {
+    const tw = W - 2 * m, cw = tw / n, hh = 52, vh = 108, th = hh + vh, ty = bottom - th;
+    const ids = [];
+    cols.slice(0, n).forEach((_, i) => ids.push('t' + (i + 1) + '_name', 't' + (i + 1) + '_val', 't' + (i + 1) + '_alt'));
+    const tb = T.el('div', {class: 'tbl', 'data-qa': 'spec_table', 'data-kind': 'shape', 'data-allow': ids.join(',')});
+    T.box(tb, m, ty, tw, th);
+    T.box(T.el('div', {class: 'hrule'}, tb), 0, hh, tw, 1);
+    for (let i = 1; i < n; i++) T.box(T.el('div', {class: 'sep'}, tb), Math.round(i * cw), 0, 1, th);
+    const shrink = (e, min) => { let fs = parseFloat(getComputedStyle(e).fontSize); while (e.scrollWidth > e.clientWidth + 1 && fs > min) { fs -= 1; e.style.fontSize = fs + 'px'; } };
+    cols.slice(0, n).forEach((c, i) => {
+      const x = m + i * cw + 12, w = cw - 24;
+      const nm = T.text('t' + (i + 1) + '_name', T.plain(c.name), x, 0, w, 'th', {tier: 'meta', maxLines: 1, allow: ['spec_table']});
+      shrink(nm, 18);
+      nm.style.top = (ty + (hh - T.rect(nm).h) / 2) + 'px';
+      const v = T.text('t' + (i + 1) + '_val', '', x, 0, w, 'td', {tier: 'important', maxLines: 1, allow: ['spec_table']});
+      v.appendChild(document.createTextNode(String(c.value)));
+      if (c.unit) { const un = document.createElement('span'); un.className = 'u'; un.textContent = c.unit; v.appendChild(un); }
+      shrink(v, 50);
+      const cv = c.d && c.d.unit ? convert(c.d) : null;
+      let al = null;
+      if (cv) al = T.text('t' + (i + 1) + '_alt', `${cv.v} ${cv.u}`, x, 0, w, 'td-alt', {tier: 'meta', maxLines: 1, allow: ['spec_table']});
+      const bh = T.rect(v).h + (al ? T.rect(al).h + 10 : 0), by = ty + hh + (vh - bh) / 2;
+      v.style.top = by + 'px'; if (al) al.style.top = (by + T.rect(v).h + 10) + 'px';
+    });
+    bottom = ty - 4 * G;
+  }
+}
+
+/* ---------- product + dimension lines (+ depth key): fit everything into the free region ---------- */
+const region = {x: m, y: headerBottom + 4 * G, w: W - 2 * m, h: bottom - headerBottom - 4 * G};
+const cw0 = (cb[2] - cb[0]) * hero.width, ch0 = (cb[3] - cb[1]) * hero.height;
+const ratio = Math.max(cw0 / ch0, ch0 / cw0), tilt = job.tilt ?? 30;
+/* a long product lies on a 25-35° diagonal, rising to the right */
+const theta = job.rotate != null ? +job.rotate : (ratio > 2.2 && tilt ? (cw0 >= ch0 ? -tilt : 90 - tilt) : 0);
+const th = theta * Math.PI / 180, ct = Math.cos(th), st = Math.sin(th);
+const rot = (x, y) => [x * ct - y * st, x * st + y * ct];
+/* a line steeper than 45° gets an upright stacked pill (figure over the other unit) beside it; flatter lines a pill turned to the line */
+const labels = dims.map((d, i) => {
+  const v = rot((d.to[0] - d.from[0]) * hero.width, (d.to[1] - d.from[1]) * hero.height);
+  const a = Math.abs(Math.atan2(v[1], v[0]) * 180 / Math.PI) % 180;
+  return pill('d' + (i + 1) + '_val', d, {stack: a > 45 && a < 135});
+});
+const hull = hero.hull && hero.hull.length > 2 ? hero.hull : null;
+const extremes = dims.map(d => {
+  // the hull point furthest out at each end of the line: extension lines start at the real silhouette
+  const dir = [(d.to[0] - d.from[0]) * hero.width, (d.to[1] - d.from[1]) * hero.height];
+  if (!hull) return [d.from, d.to];
+  const dot = p => p[0] * hero.width * dir[0] + p[1] * hero.height * dir[1];
+  let lo = hull[0], hi = hull[0];
+  for (const p of hull) { if (dot(p) < dot(lo)) lo = p; if (dot(p) > dot(hi)) hi = p; }
+  return [lo, hi];
+});
+
+/* depth key: a box drawn in the real width : depth : height proportions (oblique, depth receding at 30°) */
+let key = null;
+if (depthKey) {
+  const wv = +((pick('length') || pick('width') || {}).value || depth.value * 2), hv = +((pick('height') || {}).value || wv);
+  const dv = +depth.value, f = 1, cx = Math.cos(Math.PI / 6) * f, cy = Math.sin(Math.PI / 6) * f;
+  const KW = 230 * u, KH = 220 * u;
+  let k = Math.min(KW / (wv + dv * cx), KH / (hv + dv * cy));
+  let ddx = dv * cx * k, ddy = dv * cy * k;
+  if (Math.hypot(ddx, ddy) < 60 * u) { const g = 60 * u / Math.hypot(ddx, ddy); ddx *= g; ddy *= g; T.notes.push('depth key: depth edge drawn at its minimum length'); }
+  const fw = wv * k, fh = hv * k;
+  const box = {w: fw + ddx, h: fh + ddy, fw, fh, ddx, ddy};
+  const nm = T.text('depth_name', T.plain(depth.name), 0, 0, 10, 'kname', {tier: 'meta', maxLines: 1});
+  nm.style.width = 'auto';
+  const nmw = Math.ceil(nm.getBoundingClientRect().width) + 2, nmh = T.rect(nm).h;
+  nm.style.width = nmw + 'px';
+  const p = pill('depth_val', depth, {stack: true});
+  const lineGap = 26 * u + 30;   // room under the box for the depth dimension line
+  // two arrangements: 'right' (stacked column beside the product) and 'below' (a row under the product, for narrow canvases)
+  const colW = Math.max(p.w, nmw), boxW = box.w + 24 * u, boxH = box.h + lineGap;
+  key = {box, nm, nmw, nmh, p, lineGap, boxW, colW,
+    right: {w: Math.max(boxW, colW), h: boxH + nmh + 12 + p.h, gap: 64 * u},
+    below: {w: boxW + 40 * u + colW, h: Math.max(boxH, nmh + 12 + p.h), gap: 40 * u}};
+}
+
+function geometry(s, cx, cy, place) {
+  const w = hero.width * s, h = hero.height * s;
+  const P = p => { const v = rot((p[0] - .5) * w, (p[1] - .5) * h); return [cx + v[0], cy + v[1]]; };
+  const quad = [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]].map(P);
+  const pts = quad.slice();
+  const lines = dims.map((d, i) => {
+    const a = P(d.from), b = P(d.to);
+    const sv = rot(d.side[0], d.side[1]), sl = Math.hypot(sv[0], sv[1]) || 1, nrm = [sv[0] / sl, sv[1] / sl];
+    const off = d.offset ?? job.dim_offset ?? 50;
+    // the line runs parallel to a→b, 'off' px outside the silhouette's extreme point along the normal
+    const ex = extremes[i].map(P);
+    let reach = Math.max(...pts.slice(0, 4).map(q => (q[0] - a[0]) * nrm[0] + (q[1] - a[1]) * nrm[1]));
+    const A = [a[0] + nrm[0] * (reach + off), a[1] + nrm[1] * (reach + off)], B = [b[0] + nrm[0] * (reach + off), b[1] + nrm[1] * (reach + off)];
+    // project the silhouette extremes onto the line for the ends
+    const uu = [B[0] - A[0], B[1] - A[1]], ul = Math.hypot(uu[0], uu[1]) || 1, ud = [uu[0] / ul, uu[1] / ul];
+    const proj = q => { const t = (q[0] - A[0]) * ud[0] + (q[1] - A[1]) * ud[1]; return [A[0] + ud[0] * t, A[1] + ud[1] * t]; };
+    const A2 = proj(ex[0]), B2 = proj(ex[1]);
+    let ang = Math.atan2(B2[1] - A2[1], B2[0] - A2[0]) * 180 / Math.PI;
+    if (ang > 90.5) ang -= 180; if (ang <= -90) ang += 180; if (Math.abs(ang - 90) < 0.6) ang = -90;
+    const L = labels[i], gap = 10 + 3;
+    if (L.stack) ang = 0;   // upright pill
+    const reachL = L.stack ? Math.abs(nrm[0]) * L.w / 2 + Math.abs(nrm[1]) * L.h / 2 : L.h / 2;
+    const mid = [(A2[0] + B2[0]) / 2, (A2[1] + B2[1]) / 2];
+    const c = [mid[0] + nrm[0] * (gap + reachL), mid[1] + nrm[1] * (gap + reachL)];
+    const ar = ang * Math.PI / 180, ca = Math.cos(ar), sa = Math.sin(ar);
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => [c[0] + sx * L.w / 2 * ca - sy * L.h / 2 * sa, c[1] + sx * L.w / 2 * sa + sy * L.h / 2 * ca]);
+    pts.push(A2, B2, ...corners);
+    return {A: A2, B: B2, ex, nrm, c, ang, corners, len: Math.hypot(B2[0] - A2[0], B2[1] - A2[1])};
+  });
+  // the depth key: right of the product on its baseline, or as a row under the product, lines and pills
+  let kb = null;
+  if (key) {
+    const K = key[place], qx0 = Math.min(...quad.map(q => q[0])), qx1 = Math.max(...quad.map(q => q[0])), qy1 = Math.max(...quad.map(q => q[1]));
+    if (place === 'right') {
+      const lx1 = Math.max(qx1, ...lines.map(L => Math.max(L.A[0], L.B[0])));
+      kb = {x: lx1 + K.gap, y: qy1 - K.h, w: K.w, h: K.h, place};
+    } else {
+      const y1 = Math.max(...pts.map(q => q[1]));
+      kb = {x: (qx0 + qx1) / 2 - K.w / 2, y: y1 + K.gap, w: K.w, h: K.h, place};
+    }
+    pts.push([kb.x, kb.y], [kb.x + kb.w, kb.y + kb.h]);
+  }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return {w, h, quad, lines, kb, ext: {x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys)}};
+}
+function fit(place) {
+  let lo = 0.02, hi = cap;
+  for (let k = 0; k < 28; k++) {
+    const s = (lo + hi) / 2, g = geometry(s, 0, 0, place);
+    if (g.ext.x1 - g.ext.x0 <= region.w && g.ext.y1 - g.ext.y0 <= region.h) lo = s; else hi = s;
+  }
+  return lo;
+}
+/* job.depth_key_at: 'right' | 'below' | 'auto' (default: whichever leaves the product larger; 'right' unless 'below' wins by 4%) */
+let place = 'right', s = fit('right');
+if (key && job.depth_key_at !== 'right') {
+  const sb = fit('below');
+  if (job.depth_key_at === 'below' || sb > s * 1.04) { place = 'below'; s = sb; }
+}
+const g0 = geometry(s, 0, 0, place);
+T.layoutInfo.depth_key_at = key ? place : null;
+/* the product on the canvas centre line when the lines and pills leave room, else as near to it as fits;
+   with a depth key the whole group (product + lines + key) is centred instead */
+const qx = (Math.min(...g0.quad.map(q => q[0])) + Math.max(...g0.quad.map(q => q[0]))) / 2;
+const ox = key ? region.x + (region.w - (g0.ext.x1 - g0.ext.x0)) / 2 - g0.ext.x0
+  : Math.max(region.x - g0.ext.x0, Math.min(region.x + region.w - g0.ext.x1, W / 2 - qx));
+const oy = region.y + (region.h - (g0.ext.y1 - g0.ext.y0)) / 2 - g0.ext.y0;
+const geo = geometry(s, ox, oy, place);
+
+/* contact shadow under an upright product */
+if (!theta) {
+  const bl = geo.quad[3], br = geo.quad[2], sw = (br[0] - bl[0]) * 0.86;
+  T.box(T.el('div', {class: 'shadow', 'data-exempt': '1'}), (bl[0] + br[0]) / 2 - sw / 2, bl[1] - 22, sw, 40);
+}
+const img = T.img('hero', job.hero, {x: ox - geo.w / 2, y: oy - geo.h / 2, w: geo.w, h: geo.h}, {blend: 'multiply'});
+if (theta) { img.style.transform = `rotate(${theta}deg)`; img.dataset.rotate = theta; }
+T.layoutInfo.hero_content_quad = geo.quad;
+T.layoutInfo.hero_rotate = theta;
+
+/* line ends: 14px arrowheads (default) or 24px ticks square to the line (job.dim_style 'ticks'); the key uses the same style */
+const defs = T.svgEl('defs', {});
+const mk = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+for (const [k, v] of Object.entries({id: 'arw', viewBox: '0 0 14 14', refX: '13', refY: '7', markerWidth: '14', markerHeight: '14', markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse'})) mk.setAttribute(k, v);
+const ap = document.createElementNS('http://www.w3.org/2000/svg', 'path'); ap.setAttribute('d', 'M0 1 L14 7 L0 13 Z'); ap.setAttribute('class', 'arrow');
+mk.appendChild(ap); defs.appendChild(mk);
+const ticks = job.dim_style === 'ticks';
+const f = p => p[0].toFixed(1) + ' ' + p[1].toFixed(1);
+function dimLine(A, B, nrm, ex) {
+  // extension lines: from just off the silhouette to a little past the dimension line
+  if (ex) { const e = (q, end) => `M${f([q[0] + nrm[0] * 8, q[1] + nrm[1] * 8])} L${f([end[0] + nrm[0] * 12, end[1] + nrm[1] * 12])}`; T.svgEl('path', {d: e(ex[0], A) + ' ' + e(ex[1], B), class: 'ext'}); }
+  if (ticks) {
+    const tk = q => `M${f([q[0] - nrm[0] * 12, q[1] - nrm[1] * 12])} L${f([q[0] + nrm[0] * 12, q[1] + nrm[1] * 12])}`;
+    T.svgEl('path', {d: `M${f(A)} L${f(B)}`, class: 'dim'});
+    T.svgEl('path', {d: tk(A) + ' ' + tk(B), class: 'tick'});
+  } else T.svgEl('path', {d: `M${f(A)} L${f(B)}`, class: 'dim', 'marker-start': 'url(#arw)', 'marker-end': 'url(#arw)'});
+}
+geo.lines.forEach((L, i) => {
+  dimLine(L.A, L.B, L.nrm, L.ex);
+  const lab = labels[i];
+  T.box(lab.el, L.c[0] - lab.w / 2, L.c[1] - lab.h / 2);
+  if (Math.abs(L.ang) > 0.3) lab.el.style.transform = `rotate(${L.ang.toFixed(2)}deg)`;
+  if (!lab.stack && lab.w > L.len) T.notes.push(`d${i + 1}: value pill longer than its line`);
+  T.layoutInfo['dim' + (i + 1)] = {A: L.A, B: L.B, angle: +L.ang.toFixed(2)};
+});
+
+/* the depth key */
+if (key && geo.kb) {
+  const b = key.box, kb = geo.kb, row = kb.place === 'below';
+  // right: box on top, name + pill centred under it; below: box at left, name + pill in a column to its right
+  const bx = row ? kb.x : kb.x + (kb.w - key.boxW) / 2, by = row ? kb.y + (kb.h - (b.h + key.lineGap)) / 2 : kb.y;
+  const x0 = bx + (key.boxW - 24 * u - b.w) / 2, y0 = by;
+  const P = (x, yy) => [x0 + x, y0 + yy];
+  const poly = (pts, cls) => T.svgEl('path', {d: 'M' + pts.map(q => f(q)).join(' L') + ' Z', class: 'kb ' + cls});
+  const FTL = P(0, b.ddy), FTR = P(b.fw, b.ddy), FBR = P(b.fw, b.ddy + b.fh), FBL = P(0, b.ddy + b.fh);
+  const BTL = P(b.ddx, 0), BTR = P(b.ddx + b.fw, 0), BBR = P(b.ddx + b.fw, b.fh);
+  poly([FTL, FTR, FBR, FBL], 'f'); poly([FTL, BTL, BTR, FTR], 't'); poly([FTR, BTR, BBR, FBR], 's');
+  T.svgEl('path', {d: `M${f(FBR)} L${f(BBR)}`, class: 'kb-d'});
+  // its dimension line, parallel to the depth edge and below it
+  const dl = Math.hypot(b.ddx, b.ddy), dn = [b.ddy / dl, b.ddx / dl], off = 26 * u;
+  dimLine([FBR[0] + dn[0] * off, FBR[1] + dn[1] * off], [BBR[0] + dn[0] * off, BBR[1] + dn[1] * off], dn, [FBR, BBR]);
+  const cx0 = row ? kb.x + key.boxW + 40 * u : kb.x, cw = row ? key.colW : kb.w;
+  const ny = row ? kb.y + (kb.h - (key.nmh + 12 + key.p.h)) / 2 : y0 + b.h + key.lineGap;
+  key.nm.style.left = (cx0 + (cw - key.nmw) / 2) + 'px'; key.nm.style.top = ny + 'px';
+  T.box(key.p.el, cx0 + (cw - key.p.w) / 2, ny + key.nmh + 12);
+  T.layoutInfo.depth_key = {x: +kb.x.toFixed(1), y: +kb.y.toFixed(1), w: +kb.w.toFixed(1), h: +kb.h.toFixed(1)};
+}
+T.layoutInfo.hero_scale = +s.toFixed(3);
+T.layoutInfo.hero_cover = +((g0.ext.y1 - g0.ext.y0) / H).toFixed(3);
+T.layoutInfo.hero_width_share = +((Math.max(...geo.quad.map(q => q[0])) - Math.min(...geo.quad.map(q => q[0]))) / W).toFixed(3);
 T.watermark();
 T.finish();
 })();

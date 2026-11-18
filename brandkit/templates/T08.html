@@ -3,17 +3,34 @@
 <!--INJECT-->
 <link rel="stylesheet" href="engine/base.css">
 <style>
-  /* T08 · uses / steps / states — semantics are explicit */
-  #canvas{--bg:#26292D;--text:#F5F4F1;--muted:#C2C8CD;--accent:#E7B53C;--line:#4A5056;--wm:rgba(255,255,255,.05)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-  .headline{font:700 92px/1.03 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--accent);text-wrap:balance}
-  .u-no{font:700 30px/1 "Noto Sans Display",sans-serif;letter-spacing:.08em;color:var(--accent)}
-  .u-title{font:700 60px/1.08 "Noto Sans Display",sans-serif;color:var(--accent);text-wrap:balance}
-  .u-body{font:500 42px/1.3 "Noto Sans",sans-serif;color:var(--text);text-wrap:pretty}
-  #canvas[lang=zh] .headline{font:700 86px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .u-title{font:700 56px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .u-body{font:500 42px/1.42 "Noto Sans CJK SC",sans-serif}
-  .detail-frame.tile{border-radius:6px}
+  /* T08 · use-scene grid — uses / steps / states; semantics are explicit.
+     Modes: split (n=2) · bento (n=3) · quad (n=4, optional centre knock-out) · columns · stagger (offset mosaic).
+     Photos are as large as a whole product allows, 6px accent gaps. Each photo is placed so its product sits clear of
+     the headline and of its caption; when the scene has too little floor for that, the photo ends early and the caption
+     sits on the dark ground under it (a soft fade joins the two). */
+  #canvas{--bg:#1E1B19;--text:#F4EFE3;--muted:#C9C1B2;--accent:#E7B53C;--line:var(--accent);--wm:rgba(255,255,255,.05);
+    --ground:var(--dark);--hi:color-mix(in srgb,var(--accent) 78%,#fff 22%);background:var(--ground)}
+  #canvas.bleed{background:var(--ground)}
+  .layer{position:absolute;left:0;top:0;width:100%;height:100%}
+  .detail-frame.tile{background:var(--dark-2)}
+  .fade{position:absolute;background:linear-gradient(to bottom,transparent 0%,var(--ground) 100%)}
+  .eyebrow{font:700 24px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--hi);white-space:nowrap}
+  .headline{font-family:var(--f-display);font-weight:900;font-stretch:115%;font-size:88px;line-height:.94;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--cream)}
+  .headline .hi,.u-title .hi{color:var(--hi)}
+  .u-no{font:800 30px/1 var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink,#111);background:var(--accent);
+    display:inline-block;width:auto!important;padding:6px 14px 5px;border-radius:999px}
+  .u-title{font-family:var(--f-display);font-weight:800;font-stretch:112%;font-size:52px;line-height:1;letter-spacing:.005em;
+    text-transform:uppercase;color:var(--cream);text-wrap:balance}
+  .u-body{font:500 32px/1.24 var(--f-text);color:rgba(244,239,227,.92);text-wrap:pretty}
+  .on-photo{text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  .bar{position:absolute;background:var(--accent);height:8px;width:56px}
+  .knock{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 0 6px var(--accent),0 18px 40px rgba(0,0,0,.35)}
+  #canvas[lang=zh] .eyebrow{text-transform:none;letter-spacing:.12em;font-family:var(--f-cjk);font-weight:700;font-size:26px}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:0;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .u-title{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;line-height:1.14;letter-spacing:.01em;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .u-body{font-family:var(--f-cjk);font-weight:500;line-height:1.36}
+  #canvas[lang=zh] .u-no{font-family:var(--f-cjk);font-weight:700;font-size:26px}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -21,57 +38,412 @@
 (function(){
 const T = TPL, job = T.job, W = T.W, H = T.H;
 T.init();
-const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
-const floor = H - bandH - m * 0.75;
-const items = job.items.slice(0, 3);
+const zh = (job.lang || 'en') === 'zh';
+const m = job.text_margin ?? 72, G = 8, GAP = job.gap ?? 6, IN = job.tile_pad ?? 48;
+const bandH = job.demo ? 40 : 0, floorY = H - bandH;
 const sem = job.semantics || 'uses';           // uses | steps | states
 const numbered = sem === 'steps' && !!job.steps_approved;   // numbers only for approved step data
 if (sem === 'steps' && !job.steps_approved) T.notes.push('BLOCKED_BY_EVIDENCE: steps requested without approved step data; rendered unnumbered as uses');
-const mode = job.mode || (W / H >= 0.95 ? 'columns' : 'stagger');   // square/landscape read left->right, portrait top->bottom
-T.layoutInfo = {mode, semantics: sem};
-let y = m + 4;
-if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
-const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
-y = T.rect(hl).y + T.rect(hl).h + 7 * G;
-function caption(i, it, x, yy, w, align) {
-  const id = 'u' + (i + 1), els = [];
-  if (numbered) { const n = T.text(id + '_no', (job.step_label || 'STEP ') + (i + 1), x, yy, w, 'u-no', {tier:'meta', align}); els.push(n); yy = T.rect(n).y + T.rect(n).h + 2 * G; }
-  const t = T.text(id + '_title', it.title, x, yy, w, 'u-title', {tier:'important', maxLines: 2, align}); els.push(t); yy = T.rect(t).y + T.rect(t).h + 2 * G;
-  if (it.body) { const b = T.text(id + '_body', it.body, x, yy, w, 'u-body', {tier:'secondary', maxLines: 3, align}); els.push(b); yy = T.rect(b).y + T.rect(b).h; }
-  const y0 = parseFloat(els[0].style.top);
-  return {h: yy - y0, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; }};
+
+/* ---------- copy hygiene: a caption the builder cut off ("…") is never printed as cut. It is shortened to its last
+   whole clause, or dropped when no whole clause is left. ---------- */
+function whole(s, what) {
+  if (s == null || s === '') return s;
+  s = String(s);
+  if (!/(…|\.\.\.)\s*$/.test(s)) return s;
+  const core = s.replace(/\s*(…|\.\.\.)\s*$/, '');
+  const cut = Math.max(...[',', ';', ':', '.', '，', '；', '：', '。', '、', '\n', ' -', ' –', ' —'].map(c => core.lastIndexOf(c)));
+  let out = cut > 0 ? core.slice(0, cut).trim() : '';
+  if (T.plain(out).replace(/\s/g, '').length < (zh ? 4 : 12)) out = '';
+  else if (!/[.!?。！？]$/.test(out)) out += zh ? '。' : '.';
+  T.notes.push(what + ' arrived truncated ("' + T.plain(s).slice(-24) + '"): ' + (out ? 'shortened to its last whole clause' : 'dropped'));
+  return out || null;
 }
-const n = items.length;
-if (mode === 'stagger') {
-  /* ---- Direction A (AMZ-035): one row per item, image alternates sides, caption on the quiet side ---- */
-  const gap = 5 * G;
-  // two items: keep the row height of a 3-item layout and let whitespace grow (never invent a 3rd)
-  const rowH = (floor - y - 2 * gap) / 3;
-  const extra = (floor - y) - (n * rowH + (n - 1) * gap);
-  let yy = y + (n < 3 ? extra / 2 : 0);
-  const tw = Math.round(W * (job.tile_w ?? 0.56));
-  items.forEach((it, i) => {
-    const left = i % 2 === 0 ? job.first_side !== 'left' : job.first_side === 'left';   // default: first image on the right
-    const tx = left ? m : W - m - tw;
-    T.detailFrame('tile' + (i + 1), it.asset, tx, yy, tw, rowH, {class:'tile', fx: it.focus?.[0] ?? 0.5, fy: it.focus?.[1] ?? 0.5});
-    const cx = left ? m + tw + 6 * G : m, cw = W - 2 * m - tw - 6 * G;
-    const c = caption(i, it, cx, 0, cw, left ? 'left' : 'left');
-    c.move(yy + (rowH - c.h) / 2);
-    yy += rowH + gap;
+
+/* ---------- mode: honour the job's request, but never a layout the brief rules out ---------- */
+const all = (job.items || []).filter(it => it && it.asset && (job.assets || {})[it.asset])
+  .map((it, i) => ({...it, title: whole(it.title, 'item ' + (i + 1) + ' title') || '', body: whole(it.body, 'item ' + (i + 1) + ' body')}));
+const portrait = W / H < 0.95;
+let mode = job.mode || 'auto';
+if (mode === 'auto') mode = all.length >= 4 ? 'quad' : all.length === 3 ? 'bento' : 'split';
+if (mode === 'quad' && all.length < 4) mode = all.length === 3 ? 'bento' : 'split';
+if (mode === 'bento' && all.length !== 3) mode = all.length >= 4 ? 'quad' : 'split';
+if (mode === 'split' && all.length > 2) mode = all.length === 3 ? 'bento' : 'quad';
+{ // columns too narrow to show a whole product at a useful size (3 across a 4:5 canvas): the bento instead
+  const k = Math.min(all.length, 3), cwq = (W - 2 * m - (k - 1) * GAP) / k;
+  if (mode === 'columns' && k === 3 && cwq < (job.min_column_w ?? 400)) { T.notes.push('columns ' + Math.round(cwq) + 'px wide rendered as bento'); mode = 'bento'; }
+}
+let firstSide = job.first_side;
+if (mode === 'bento' && portrait) {   // a 3-tile bento on 4:5 leaves the two lower tiles too short for a whole product and a caption
+  T.notes.push('bento on a portrait canvas rendered as the mirrored stagger mosaic'); mode = 'stagger'; firstSide = firstSide || 'right';
+}
+if (mode === 'stagger' && all.length <= 2) { T.notes.push('stagger with ' + all.length + ' items rendered as split'); mode = 'split'; }
+const items = all.slice(0, mode === 'quad' ? 4 : 3), n = items.length;
+const staggerRows = mode === 'stagger' && job.stagger_style === 'rows';   // optional: the older one-row-per-item stagger
+const bleed = ['split', 'bento', 'quad'].includes(mode) || (mode === 'stagger' && !staggerRows);
+if (bleed) T.root.classList.add('bleed');
+const L = {img: layer(), scrim: layer(), text: layer()};
+function layer() { const d = T.el('div', {class: 'layer'}); return d; }
+
+/* ---------- helpers ---------- */
+function lines(e) {
+  const rg = document.createRange(); rg.selectNodeContents(e);
+  const qs = [...rg.getClientRects()].filter(q => q.height > 0).sort((a, b) => a.top - b.top);
+  let k = 0, cb = -1e9;
+  for (const q of qs) { const mid = (q.top + q.bottom) / 2; if (mid > cb) { k++; cb = q.bottom; } else cb = Math.max(cb, q.bottom); }
+  return k;
+}
+const fits = (e, maxL) => lines(e) <= maxL && e.scrollWidth <= e.clientWidth + 1;
+function setSize(e, st) { const [sz, sx] = Array.isArray(st) ? st : [st, null]; e.style.fontSize = sz + 'px'; e.style.fontStretch = sx ? sx + '%' : ''; }
+/* largest size from `sizes` (and the first string variant) whose lines fit maxL without overflow */
+function fitText(id, strs, x, y, w, cls, sizes, maxL, opts) {
+  const e = T.text(id, strs[0], x, y, w, cls, {...opts, maxLines: maxL, parent: L.text});
+  for (const str of strs) for (const st of sizes) {
+    T.markup(e, str); setSize(e, st);
+    if (fits(e, maxL)) return e;
+  }
+  return e;
+}
+const hrect = e => T.rect(e);
+const plain = s => T.plain(s).replace(/\s+/g, ' ').trim().toLowerCase();
+/* two-tone headline: with no markup, the first line (author break) is set in the accent */
+function twoTone(s) {
+  s = String(s || '');
+  if (job.headline_two_tone === false || /\[\[|\{/.test(s)) return s;
+  const i = s.indexOf('\n');
+  if (i > 0) return '[[' + s.slice(0, i).trim() + ']]\n' + s.slice(i + 1).trim();
+  const words = s.split(' ');
+  return !zh && words.length >= 4 ? '[[' + words.slice(0, 2).join(' ') + ']] ' + words.slice(2).join(' ') : s;
+}
+/* en headline line sets that only break at the author's phrase breaks, or inside one phrase (never across two, so a
+   colour never changes mid-line): fewest lines first; inside a phrase the most even split, single-word lines last. */
+function phraseSets(a) {
+  const ph = a.split('\n').map(s => s.trim()).filter(Boolean);
+  const opts = ph.map(p => {
+    const mm = p.match(/^\[\[([^\]]+)\]\]$/), inner = mm ? mm[1] : p, res = [[p]];
+    if (!mm && /\[\[|\{/.test(p)) return res;
+    const ws = inner.split(/\s+/), wrap = s => mm ? '[[' + s + ']]' : s, sp = [];
+    for (let i = 1; i < ws.length; i++) {
+      const l1 = ws.slice(0, i).join(' '), l2 = ws.slice(i).join(' ');
+      sp.push({lines: [wrap(l1), wrap(l2)], score: Math.abs(l1.length - l2.length) + (i === 1 || i === ws.length - 1 ? 8 : 0)});
+    }
+    sp.sort((p1, p2) => p1.score - p2.score);
+    return res.concat(sp.slice(0, 2).map(s => s.lines));
   });
+  let combos = [[]];
+  for (const o of opts) combos = combos.flatMap(c => o.map((ls, j) => [...c, {ls, j}]));
+  return combos.map(c => ({str: c.flatMap(x => x.ls).join('\n'), n: c.reduce((s, x) => s + x.ls.length, 0), rank: c.reduce((s, x) => s + x.j, 0)}))
+    .sort((p1, p2) => p1.n - p2.n || p1.rank - p2.rank);
+}
+function fitHeadline(x, y, w, cls, sizes, maxL, allow) {
+  const a = twoTone(job.headline);
+  const e = T.text('headline', a, x, y, w, cls, {tier: 'headline', allow, maxLines: maxL, parent: L.text});
+  const tryIt = (str, st, nl) => { T.markup(e, str); setSize(e, st); return lines(e) === nl && e.scrollWidth <= e.clientWidth + 1; };
+  if (zh) {   // zh wraps only where the author broke it (phrase-safe): as many lines as written, never more
+    const nl = Math.min(maxL, a.split('\n').length);
+    for (const st of sizes) if (tryIt(a, st, nl) || (T.markup(e, a), fits(e, nl))) return e;
+    return e;
+  }
+  const sets = a.includes('\n') ? phraseSets(a).filter(c => c.n <= maxL) : [];
+  const ideal = job.headline_min_ideal ?? Math.max(60, Math.ceil(14 * W / 360 / 2) * 2);
+  if (sets.length) {
+    for (const st of sizes) if ((Array.isArray(st) ? st[0] : st) >= ideal && tryIt(sets[0].str, st, sets[0].n)) return e;   // phrase per line
+    const floor = job.headline_min ?? Math.ceil(14 * W / 360 / 2) * 2;   // 14px on a 360px phone view   // then the fewest lines that fit at a readable size, largest size first
+    const sz = st => Array.isArray(st) ? st[0] : st;
+    const widow = c => c.str.split('\n').some(l => !/\s/.test(T.plain(l).trim()));   // a one-word line
+    for (const c of sets) if (!widow(c) || c === sets[0]) for (const st of sizes) if (sz(st) >= floor * 0.86 && tryIt(c.str, st, c.n)) return e;
+    for (const c of sets) for (const st of sizes) if (sz(st) >= floor && tryIt(c.str, st, c.n)) return e;
+    for (const st of sizes) for (const c of sets) if (tryIt(c.str, st, c.n)) return e;
+  }
+  const flat = a.replace(/\]\]\s*\n\s*/g, ']] ').replace(/\s*\n\s*/g, ' ');
+  T.markup(e, flat); e.style.textWrap = 'balance';
+  const fl = job.headline_min ?? Math.ceil(14 * W / 360 / 2) * 2;
+  for (let nl = 1; nl <= maxL; nl++) for (const st of sizes) {   // fewest lines at a readable size, largest size first
+    if ((Array.isArray(st) ? st[0] : st) < fl && nl < maxL) continue;
+    setSize(e, st); if (fits(e, nl) && (nl === 1 || (Array.isArray(st) ? st[0] : st) <= (sizes[0][0] ?? sizes[0]))) return e;
+  }
+  return e;
+}
+
+/* Product box inside a scene (normalised x0,y0,x1,y1): item.box / asset box (_product from the set builder), else the
+   scene generator's standard placement (about 49% x 65% of the frame) centred on the item's focus. */
+function boxOf(it) {
+  const a = T.asset(it.asset), b = it.box || a.box || a.product_box || a._product;
+  if (Array.isArray(b) && b.length === 4) return b;
+  const fx = it.focus?.[0] ?? 0.5, fy = it.focus?.[1] ?? 0.5, hw = job.scene_box_w ?? 0.245, hh = job.scene_box_h ?? 0.325;
+  const cx = Math.min(1 - hw, Math.max(hw, fx)), cy = Math.min(1 - hh, Math.max(hh, fy));
+  return [cx - hw, cy - hh, cx + hw, cy + hh];
+}
+/* Tile aspect range (w/h) in which a cover crop still shows the whole product box. */
+function aspectRange(it) {
+  const a = T.asset(it.asset), A = a.width / a.height, b = boxOf(it);
+  return [A * (b[2] - b[0]) * 1.005, A / ((b[3] - b[1]) * 1.005)];
+}
+/* Shrink a cell to the nearest rect whose aspect keeps the product whole; ax/ay = which side it hugs. */
+function fitCell(c, it, ax = 0.5, ay = 0.5) {
+  const [lo, hi] = aspectRange(it); let {x, y, w, h} = c;
+  if (w / h < lo) { const nh = w / lo; y += (h - nh) * ay; h = nh; }
+  else if (w / h > hi) { const nw = h * hi; x += (w - nw) * ax; w = nw; }
+  return {x, y, w, h};
+}
+const frames = [];
+function tile(i, it, c, edge) {
+  const {x, y, w, h} = c;
+  const id = 'tile' + (i + 1), a = T.asset(it.asset), b = boxOf(it);
+  const f = T.detailFrame(id, it.asset, x, y, w, h, {class: 'tile', parent: L.img, bleed: edge});
+  const fx = it.focus?.[0] ?? (b[0] + b[2]) / 2, fy = it.focus?.[1] ?? (b[1] + b[3]) / 2;
+  const Aw = a.width, Ah = a.height, sCov = Math.max(w / Aw, h / Ah);
+  const sBox = Math.min(w / (Aw * (b[2] - b[0]) * 1.06), h / (Ah * (b[3] - b[1]) * 1.06));
+  const Z = it.zoom ?? job.scene_zoom ?? 1.3;
+  const range = (size, img, b0, b1) => { const lo = Math.max(size - img, -b0 * img), hi = Math.min(0, size - b1 * img); return lo <= hi ? [lo, hi] : [(lo + hi) / 2, (lo + hi) / 2]; };
+  const t = {id, frame: id + '_frame', x, y, w, h, ph: h, s: sCov, img: f.img, el: f.frame,
+    /* (rows stagger) focus toward (tx, ty); freeH = height of the zone the product should sit in */
+    aim(tx, ty, freeH) {
+      const sFree = freeH ? freeH / (Ah * (b[3] - b[1])) : Infinity;
+      const s = Math.max(sCov, Math.min(sCov * Z, sBox, sFree, 1.25)); t.s = s;
+      const iw = Aw * s, ih = Ah * s, rx = range(w, iw, b[0], b[2]), ry = range(h, ih, b[1], b[3]);
+      const ix = Math.min(rx[1], Math.max(rx[0], tx - fx * iw)), iy = Math.min(ry[1], Math.max(ry[0], ty - fy * ih));
+      T.box(f.img, ix, iy, iw, ih);
+    },
+    /* Place the photo so the whole product box sits between topLim and capLim (tile-relative): the caption and the
+       headline never cross it. Largest product first; the photo may end above the tile bottom (the caption then sits
+       on the ground under it). Returns false when no placement keeps the product clear. */
+    place(capLim, topLim) {
+      const airX = Math.max(16, w * 0.04), bw0 = b[2] - b[0];
+      const ihCap = Math.min(Z * sCov * Ah, 1.25 * Ah, (w - 2 * airX) / (bw0 * Aw) * Ah);
+      const feas = (ph, ih) => {
+        const iw = ih * Aw / Ah, capL = Math.min(capLim, ph - 8);
+        const ylo = Math.max(ph - ih, topLim - b[1] * ih), yhi = Math.min(0, capL - b[3] * ih);
+        const xlo = Math.max(w - iw, airX - b[0] * iw), xhi = Math.min(0, w - airX - b[2] * iw);
+        return ylo <= yhi + 0.5 && xlo <= xhi + 0.5 ? {ylo, yhi, xlo, xhi, capL} : null;
+      };
+      let best = null;
+      const phMin = Math.max(h * (job.photo_min_h ?? 0.55), 160);
+      for (let ph = h; ph >= phMin; ph -= 4) {
+        const ihMin = Math.max(ph, w * Ah / Aw);
+        if (ihMin > ihCap + 0.5) continue;
+        for (let k = 0; k <= 32; k++) {
+          const ih = ihCap - (ihCap - ihMin) * k / 32, r = feas(ph, ih);
+          if (r) { if (!best || ih > best.ih * 1.03) best = {ph, ih, r}; break; }
+        }
+      }
+      if (!best) return false;
+      const {ph, ih, r} = best, iw = ih * Aw / Ah;
+      const iy = Math.min(r.yhi, Math.max(r.ylo, (topLim + r.capL) / 2 - (b[1] + b[3]) / 2 * ih));
+      const ix = Math.min(r.xhi, Math.max(r.xlo, w / 2 - fx * iw));
+      T.box(f.img, ix, iy, iw, ih); t.s = ih / Ah; t.ph = ph;
+      if (ph < h - 1) {
+        T.box(f.frame, x, y, w, ph);
+        const boxB = iy + b[3] * ih, fh = Math.min(170, ph - boxB - 4);
+        if (fh > 20) { const fd = T.el('div', {class: 'fade', 'data-exempt': '1'}, L.img); T.box(fd, x, y + ph - fh, w, fh); }
+      }
+      return true;
+    }};
+  t.aim(w / 2, h / 2);
+  frames.push(t);
+  return t;
+}
+function accentLine(x, y, w, h) { const e = T.el('div', {'data-exempt': '1'}, L.img); T.box(e, x, y, w, h); e.style.background = 'var(--accent)'; return e; }
+
+/* Caption titles: one size per row of matching tiles, 2 lines (3 only in narrow columns). */
+const T_MIN = Math.ceil(12 * W / 360);   // 12px on a 360px phone view; below that a title takes a third line instead
+const TITLE = (zh ? [56, 52, 50, 46, 42] : [56, 52, [52, 104], [50, 100], [48, 96], [46, 92], [44, 90], [42, 90]]).filter(st => (Array.isArray(st) ? st[0] : st) >= T_MIN);
+function titleIdx(it, w) {
+  const maxL = 2, e = T.text('_probe', it.title || '', 0, 0, w, 'u-title', {parent: L.text});
+  let k = TITLE.findIndex(st => (setSize(e, st), fits(e, maxL)));
+  e.remove();
+  return k < 0 ? TITLE.length - 1 : k;
+}
+/* Caption block (optional step pill, accent bar, title, body), bottom-aligned at `bottom`. */
+function caption(i, it, x, bottom, w, onPhoto, allow, k0 = 0) {
+  const id = 'u' + (i + 1), els = [], cls = onPhoto ? ' on-photo' : '';
+  let no = null;
+  if (numbered) { no = T.text(id + '_no', (job.step_label || (zh ? '步骤 ' : 'STEP ')) + (i + 1), x, 0, w, 'u-no', {tier: 'meta', allow, parent: L.text}); els.push(no); }
+  let t = fitText(id + '_title', [it.title || ''], x, 0, w, 'u-title' + cls, TITLE.slice(k0), 2, {tier: 'important', allow});
+  if (!fits(t, 2)) { t.remove(); t = fitText(id + '_title', [it.title || ''], x, 0, w, 'u-title' + cls, TITLE.slice(k0), 3, {tier: 'important', allow}); }
+  els.push(t);
+  let b = null;
+  if (it.body) { b = T.text(id + '_body', it.body, x, 0, w, 'u-body' + cls, {tier: 'secondary', maxLines: 2, allow, parent: L.text}); els.push(b); }
+  const barH = 8, hNo = no ? hrect(no).h + 18 : 0, hT = hrect(t).h, hB = b ? hrect(b).h + 14 : 0;
+  const total = hNo + barH + 20 + hT + hB;
+  let top = bottom - total;
+  if (no) { no.style.top = top + 'px'; top += hNo; }
+  const bar = T.el('div', {class: 'bar', 'data-exempt': '1'}, L.text); T.box(bar, x, top, 56, barH); top += barH + 20; els.push(bar);
+  t.style.top = top + 'px'; top += hT;
+  if (b) b.style.top = (top + 14) + 'px';
+  return {top: bottom - total, h: total, els, move(dy) { for (const e of els) e.style.top = (parseFloat(e.style.top) + dy) + 'px'; this.top += dy; }};
+}
+/* Captions for a list of {t, i, x, w, bottom, onPhoto}: tiles with the same height and bottom share one title size
+   and one top line (bars and titles level across the row). */
+function captions(list) {
+  const groups = {};
+  list.forEach(o => { const key = Math.round(o.t.y + o.t.h) + ':' + Math.round(o.t.h); (groups[key] = groups[key] || []).push(o); });
+  for (const g of Object.values(groups)) {
+    const k0 = g.length > 1 ? Math.max(...g.map(o => titleIdx(items[o.i], o.w))) : 0;
+    g.forEach(o => { o.c = caption(o.i, items[o.i], o.x, o.bottom, o.w, o.onPhoto, [o.t.frame], k0); });
+    if (g.length > 1) { const top = Math.min(...g.map(o => o.c.top)); g.forEach(o => o.c.move(top - o.c.top)); }
+  }
+  list.forEach(o => { o.t.capTop = o.c.top; });
+}
+function captionArea(t) {   // text inset inside a tile: m at a canvas edge, IN inside
+  const l = t.x <= 1 ? m : t.x + IN, r = t.x + t.w >= W - 1 ? W - m : t.x + t.w - IN;
+  const b = t.y + t.h >= floorY - 1 ? floorY - m : t.y + t.h - IN;
+  return {x: l, w: r - l, bottom: b};
+}
+function header(x, y, w, sizes, maxL, onPhoto, allow) {
+  const cap = items.map(it => plain(it.title));
+  let eb = null;
+  if (job.eyebrow && !cap.includes(plain(job.eyebrow))) {
+    eb = T.text('eyebrow', job.eyebrow, x, y, w, 'eyebrow' + (onPhoto ? ' on-photo' : ''), {tier: 'meta', allow, parent: L.text});
+    y = hrect(eb).y + hrect(eb).h + 22;
+  }
+  const zhSizes = [92, 84, 76, 68, 60, 56].filter(v => v <= Math.max(sizes[0], 92));
+  const hl = fitHeadline(x, y, w, 'headline' + (onPhoto ? ' on-photo' : ''), zh ? zhSizes : sizes, maxL, allow);
+  return {eb, hl, bottom: hrect(hl).y + hrect(hl).h, left: x, right: x + w};
+}
+
+/* ---------- layouts ---------- */
+let tiles = [], hdr = null;
+const HEAD = [96, 88, 80, 72, 64, 60, [60, 106], [56, 102], 52, [52, 100], 48, [48, 100], [44, 100]];
+function scrimFor(t, i, alpha) {
+  if (t.capTop == null) return;
+  const sh = Math.min(t.h, Math.max(t.h * 0.36, (t.y + t.h) - t.capTop + 120));
+  T.scrim('scrim' + (i + 1), t.x, t.y + t.h - sh, t.w, sh, 'up', alpha, L.scrim);
+}
+function overlayCaptions(knock) {
+  captions(tiles.map((t, i) => {
+    const ca = captionArea(t);
+    let x = ca.x, w = ca.w;
+    if (knock && t.y + t.h > knock.cy - knock.R && t.y < knock.cy + knock.R) {   // keep captions clear of the circle
+      const clear = knock.R + 28;
+      if (t.x + t.w / 2 < knock.cx) w = Math.min(w, knock.cx - clear - x); else { const nx = Math.max(x, knock.cx + clear); w -= nx - x; x = nx; }
+    }
+    return {t, i, x, w, bottom: ca.bottom, onPhoto: true};
+  }));
+}
+function headScrims() {
+  const hb = hdr.bottom, cov = tiles.filter(t => t.y < hb && t.x < hdr.right && t.x + t.w > hdr.left);
+  cov.forEach((t, i) => T.scrim('scrim_head' + (i + 1), t.x, t.y, t.w, Math.min(t.h * 0.75, hb - t.y + 170), 'down', 0.74, L.scrim));
+  hdr.hl.dataset.allow = cov.map(t => t.frame).join(',');
+  if (hdr.eb) hdr.eb.dataset.allow = hdr.hl.dataset.allow;
+  return cov;
+}
+/* every photo: product clear of the headline above it and of its caption below it */
+function placeAll() {
+  tiles.forEach((t, i) => {
+    const under = hdr && t.y < hdr.bottom && t.x < hdr.right && t.x + t.w > hdr.left;
+    const topLim = under ? hdr.bottom - t.y + 28 : 6, capLim = (t.capTop ?? t.y + t.h) - t.y - 12;
+    if (!t.place(capLim, topLim)) {
+      T.notes.push(t.id + ': the scene has too little free floor; the caption overlaps the lower product');
+      t.aim(t.w / 2, (topLim + Math.max(topLim + 1, capLim)) / 2, Math.max(capLim - topLim, t.h * 0.55));
+    }
+    scrimFor(t, i, 0.7);
+  });
+}
+
+if (bleed) {
+  const ids = items.map((_, i) => 'tile' + (i + 1) + '_frame');
+  let headOnPhoto = true;
+  if (mode === 'split') {
+    /* the headline on a dark band across the top (never over a product or a seam); the photos below it */
+    headOnPhoto = false;
+    hdr = header(m, m, W - 2 * m, HEAD, 2, false, []);
+    const y1 = Math.round(hdr.bottom + 48), k = n === 1 ? 1 : 2;
+    const rows = job.split_dir === 'rows' && k > 1;
+    const colW = (W - (k - 1) * GAP) / k, rowH = (floorY - y1 - (k - 1) * GAP) / k;
+    items.forEach((it, i) => {
+      const cell = rows ? {x: 0, y: y1 + i * (rowH + GAP), w: W, h: rowH} : {x: i * (colW + GAP), y: y1, w: colW, h: floorY - y1};
+      tiles.push(tile(i, it, fitCell(cell, it, i % 2 ? 1 : 0, 0), true));
+    });
+    accentLine(0, y1 - GAP, W, GAP);
+    if (k > 1) rows ? accentLine(0, y1 + rowH, W, GAP) : accentLine(colW, y1, GAP, floorY - y1);
+    T.layoutInfo = {split_dir: rows ? 'rows' : 'columns'};
+  } else if (mode === 'bento') {
+    if (!portrait) {   // tile 1 tall on the left, two stacked on the right
+      const w1 = Math.round(W * 0.62) - GAP / 2, w2 = W - w1 - GAP, h2 = (floorY - GAP) / 2;
+      tiles = [tile(0, items[0], fitCell({x: 0, y: 0, w: w1, h: floorY}, items[0], 0, 0), true),
+               tile(1, items[1], fitCell({x: w1 + GAP, y: 0, w: w2, h: h2}, items[1], 1, 0), true),
+               tile(2, items[2], fitCell({x: w1 + GAP, y: h2 + GAP, w: w2, h: h2}, items[2], 1, 1), true)];
+      accentLine(w1, 0, GAP, floorY); accentLine(w1 + GAP, h2, w2, GAP);
+      const ca = captionArea(tiles[0]);
+      hdr = header(ca.x, m, ca.w, HEAD, 3, true, [tiles[0].frame]);
+    } else {           // portrait: the headline on a dark band, tile 1 wide below it, two side by side at the bottom
+      headOnPhoto = false;
+      hdr = header(m, m, W - 2 * m, HEAD, 2, false, []);
+      const y1 = Math.round(hdr.bottom + 48), fl = floorY - y1;
+      const h1 = Math.round(fl * (job.bento_split ?? 0.56)) - GAP / 2, h2 = fl - h1 - GAP, w2 = (W - GAP) / 2;
+      tiles = [tile(0, items[0], fitCell({x: 0, y: y1, w: W, h: h1}, items[0], 0.5, 0), true),
+               tile(1, items[1], fitCell({x: 0, y: y1 + h1 + GAP, w: w2, h: h2}, items[1], 0, 1), true),
+               tile(2, items[2], fitCell({x: w2 + GAP, y: y1 + h1 + GAP, w: w2, h: h2}, items[2], 1, 1), true)];
+      accentLine(0, y1 - GAP, W, GAP); accentLine(0, y1 + h1, W, GAP); accentLine(w2, y1 + h1 + GAP, GAP, h2);
+    }
+  } else if (mode === 'stagger') {
+    /* offset mosaic: two half-width columns whose seams do not line up. The headline column holds the header on the
+       dark ground and tile 1 below it; the other column stacks tiles 2 and 3, split at a different height. */
+    headOnPhoto = false;
+    const left = firstSide !== 'right', cw = (W - GAP) / 2, xA = left ? 0 : cw + GAP, xB = left ? cw + GAP : 0;
+    const hx = left ? m : xA + IN, hw = cw - m - IN;
+    hdr = header(hx, m, hw, HEAD, zh ? 2 : 4, false, []);
+    const y1 = Math.round(hdr.bottom + 52);
+    const split = Math.round((floorY - GAP) * (job.stagger_split ?? 0.5));
+    tiles = [tile(0, items[0], fitCell({x: xA, y: y1, w: cw, h: floorY - y1}, items[0], left ? 0 : 1, 0), true),
+             tile(1, items[1], fitCell({x: xB, y: 0, w: cw, h: split}, items[1], left ? 1 : 0, 0), true),
+             tile(2, items[2], fitCell({x: xB, y: split + GAP, w: cw, h: floorY - split - GAP}, items[2], left ? 1 : 0, 1), true)];
+    accentLine(cw, 0, GAP, floorY); accentLine(xB, split, cw, GAP); accentLine(xA, y1 - GAP, cw, GAP);
+    T.layoutInfo = {stagger_style: 'mosaic'};
+  } else {             // quad: 2x2, optional centre knock-out with the product cut-out
+    const w = (W - GAP) / 2, h = (floorY - GAP) / 2;
+    tiles = items.map((it, i) => tile(i, it, fitCell({x: (i % 2) * (w + GAP), y: Math.floor(i / 2) * (h + GAP), w, h}, it, i % 2, Math.floor(i / 2)), true));
+    accentLine(w, 0, GAP, floorY); accentLine(0, h, W, GAP);
+    hdr = header(m, m, W - 2 * m, [80, 72, 64, 58], 2, true, ids);
+  }
+  let knock = null;
+  if (mode === 'quad' && job.center_asset && (job.assets || {})[job.center_asset]) {
+    const R = Math.round(Math.min(W, floorY) * (job.center_r ?? 0.187)), cx = W / 2, cy = floorY / 2;
+    const k = T.el('div', {class: 'knock', 'data-qa': 'knock', 'data-kind': 'shape', 'data-allow': ids.join(',')}, L.text);
+    T.box(k, cx - R, cy - R, 2 * R, 2 * R);
+    const a = T.asset(job.center_asset), r = T.contain(a, cx - R * 0.7, cy - R * 0.7, R * 1.4, R * 1.4);
+    T.img('center_product', job.center_asset, r, {parent: L.text, allow: ['knock'].concat(ids)});
+    knock = {cx, cy, R};
+  }
+  overlayCaptions(knock);
+  if (headOnPhoto) headScrims();
+  placeAll();
 } else {
-  /* ---- Direction B: columns — reading order left→right, caption under each image ---- */
-  const gap = 5 * G;
-  const span = n < 3 ? (W - 2 * m) * (n === 2 ? 0.84 : 0.6) : W - 2 * m;   // 2 items: more whitespace, not wider claims
-  const cw = (span - (n - 1) * gap) / n, x0 = (W - span) / 2;
-  const caps = items.map((it, i) => caption(i, it, x0 + i * (cw + gap), 0, cw, 'left'));
-  const capH = Math.max(...caps.map(c => c.h));
-  const th = floor - y - capH - 4 * G;
-  items.forEach((it, i) => {
-    T.detailFrame('tile' + (i + 1), it.asset, x0 + i * (cw + gap), y, cw, th, {class:'tile', fx: it.focus?.[0] ?? 0.5, fy: it.focus?.[1] ?? 0.5});
-    caps[i].move(y + th + 4 * G);
-  });
+  if (staggerRows) {
+    /* optional (job.stagger_style 'rows'): one row per item, photo bleeding off its side, caption on the quiet side */
+    hdr = header(m, m, W - 2 * m, [88, 80, 72, 64], 2, false, []);
+    const y0 = hdr.bottom + 48, avail = floorY - m * 0.5 - y0;
+    const gap = 3 * G, rowH = (avail - (n - 1) * gap) / n;
+    const tw = Math.round(W * (job.tile_w ?? (portrait ? 0.58 : 0.6)));
+    let yy = y0;
+    items.forEach((it, i) => {
+      const right = i % 2 === 0 ? job.first_side !== 'left' : job.first_side === 'left';   // default: first photo on the right
+      const t = tile(i, it, fitCell({x: right ? W - tw : 0, y: yy, w: tw, h: rowH}, it, right ? 1 : 0, 0.5), true);
+      tiles.push(t);
+      accentLine(right ? t.x - GAP : t.x + t.w, t.y, GAP, t.h);
+      const cx = right ? m : t.x + t.w + 6 * G, cw = right ? t.x - 6 * G - m : W - m - cx;
+      const c = caption(i, it, cx, 0, cw, false, []);
+      c.move(t.y + (t.h - c.h) / 2 - c.top);
+      yy += rowH + gap;
+    });
+  } else {
+    /* columns: span W-2m under a full-width headline (phrase per line), 6px accent dividers. Each photo is as tall as
+       its column allows with the product whole; the captions share one top line and sit on the ground under the
+       photos (over the floor of the scene where it has room). */
+    const span = W - 2 * m, cw = (span - (n - 1) * GAP) / n;
+    const pad = n >= 3 ? 32 : IN, bottomY = floorY - (job.columns_bottom ?? m);
+    hdr = header(m, m, span, [104, 96, 88, 80, 72, 64, 58], zh ? 2 : 3, false, []);
+    const y0 = Math.round(hdr.bottom + 52), th = bottomY - y0;
+    if (job.columns_captions === 'under') T.notes.push('columns_captions under is retired: captions sit at the photo foot');
+    items.forEach((it, i) => tiles.push(tile(i, it, {x: m + i * (cw + GAP), y: y0, w: cw, h: th}, false)));
+    for (let i = 1; i < n; i++) accentLine(m + i * (cw + GAP) - GAP, y0, GAP, th);
+    captions(tiles.map((t, i) => ({t, i, x: t.x + pad, w: t.w - 2 * pad, bottom: t.y + t.h - pad, onPhoto: true})));
+    placeAll();
+  }
 }
+T.layoutInfo = {...(T.layoutInfo || {}), mode, requested_mode: job.mode || 'auto', semantics: sem, n,
+  tiles: tiles.map(t => ({id: t.id, box: [t.x, t.y, t.w, t.ph].map(v => Math.round(v)), scale: +t.s.toFixed(3)}))};
 T.watermark();
 T.finish();
 })();

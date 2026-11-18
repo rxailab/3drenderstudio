@@ -71,6 +71,10 @@ Compare the product in GENERATED with the references. Return data only:
 - parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
+- nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
+- held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. True when no hand touches it.
+- contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
+- scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
 - issues: up to 5 short, concrete differences in English, each naming the part and what is wrong ("top surface is black, should be light brushed steel"). Empty when there are none.
@@ -286,9 +290,12 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
             'A believable place where this product is used, the product standing ready for use.' if people is False
             else 'A believable place where this product is used, with a person using it.')),
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
-        'signs, captions or other text anywhere in the picture, and no watermark.%s Composition for a %s frame.'
+        'signs, captions or other text anywhere in the picture, and no watermark.%s Nothing is added to the product: no extra grip, '
+        'sleeve, cover, cap, strap or bracket on it. Whatever it touches (a wire, pipe, branch, board) meets it as one whole piece, '
+        'in front of it, behind it or between its jaws, never through it, with no stray ends or strands around it. Composition for a %s frame.'
         % (((' and its surroundings', '') if people is False else
-            (', the hands and the surroundings', ' The hands are an ordinary adult\'s, bare or in plain work gloves suited to the task.') if hands else
+            (', the hands and the surroundings', ' The hands are an ordinary adult\'s, bare or in plain work gloves suited to the task, '
+             'holding the product by the parts made to be held, from the user\'s side, its working end pointing at the work.') if hands else
             (', people and surroundings', ' People are ordinary adults in plain clothes suited to the work, shown naturally.'))
            + ({'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),)),
     ]
@@ -460,7 +467,8 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
     return {'png': content, 'size': list(actual), 'usage': usage}
 
 
-FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text')
+FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
+                  'nothing_attached', 'held_correctly', 'contact_plausible', 'scale_plausible')
 
 
 def fidelity_schema():
@@ -470,7 +478,7 @@ def fidelity_schema():
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None):
+def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None):
     """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
@@ -486,7 +494,8 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
         return {'status': 'unchecked', 'issues': [], 'note': '未配置视觉模型，未自动核对产品是否变形，请对照参考图查看。'}
     schema = fidelity_schema()
     try:
-        facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN'}
+        facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN',
+                 'size_mm': round(float(size_mm)) if size_mm else None}
         body = ai._payload(value, FIDELITY_PROMPT, facts, schema, max_tokens=1500)
         blocks = []
         for index, path in enumerate(reference_paths, 1):
@@ -612,7 +621,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             verdict = _lock_verdict(lock, box_share)          # no need to ask a model about a product that is measurably not there
         else:
             say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
-            verdict = check([reference_path], target, product, people, framing, closeup)
+            verdict = check([reference_path], target, product, people, framing, closeup, size_mm)
         verdict['lock'] = lock
         attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup})
         if verdict['status'] != 'failed':

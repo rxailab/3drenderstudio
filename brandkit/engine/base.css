@@ -1,12 +1,45 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:#808080}
-#canvas{position:relative;overflow:hidden;background:var(--bg);color:var(--text);
-  font-family:"Noto Sans","Noto Sans CJK SC",sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+/* project change: the type the pages are designed in (brandkit/vendor/fonts.css, fetched by brandkit_assets.py) */
+#canvas{--f-display:"Archivo","Archivo Black","Noto Sans Display","Noto Sans",sans-serif;
+  --f-cond:"Barlow Condensed","Archivo","Noto Sans Display",sans-serif;
+  --f-text:"Inter","Noto Sans",sans-serif;
+  --f-cjk:"Noto Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif;
+  --cream:#F4EFE3;--ink:#1A1A1A;--dark:#1E1B19;--dark-2:#2B2724;--hair:rgba(0,0,0,.18);
+  position:relative;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:var(--f-text);-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;font-feature-settings:"tnum" 0}
 .txt{overflow-wrap:normal;word-break:normal;hyphens:manual;white-space:pre-line}
-#canvas[lang=zh] .txt{font-family:"Noto Sans CJK SC","Noto Sans",sans-serif;line-break:strict;word-break:normal;letter-spacing:0}
+#canvas[lang=zh] .txt{font-family:var(--f-cjk);line-break:strict;word-break:normal;letter-spacing:0}
+#canvas[lang=zh] .txt .hi,#canvas[lang=zh] .txt .pill{font-family:inherit}
+/* two-tone headlines and number pills ([[words]] / {words} in the job text) */
+.txt .hi{color:var(--accent)}
+.on-accent .txt .hi,.txt.on-accent .hi{color:var(--cream)}
+.txt .pill{display:inline-block;background:var(--accent);color:var(--accent-ink,#111);border-radius:999px;padding:0 .3em;line-height:1.08;margin:0 .04em}
+/* display / condensed / text roles */
+.f-display{font-family:var(--f-display);font-weight:850;font-stretch:112%;text-transform:uppercase;letter-spacing:-.005em}
+.f-cond{font-family:var(--f-cond);font-weight:800;font-variant-numeric:tabular-nums}
+#canvas[lang=zh] .f-display{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;text-transform:none;letter-spacing:.01em}
+.scrim{pointer-events:none}
+.icon{line-height:0}
+.icon svg{stroke:currentColor}
+.chip{position:absolute;border-radius:10px;background:var(--accent);color:var(--accent-ink,#111);overflow:hidden}
+.chip.chip-dark{background:rgba(20,18,17,.82);color:var(--cream);box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)}
+.chip-icon{position:absolute;background:rgba(0,0,0,.16);color:inherit}
+.chip.chip-dark .chip-icon{background:var(--accent);color:var(--accent-ink,#111)}
+.chip-value{position:absolute;font-family:var(--f-cond);font-weight:800;font-size:54px;line-height:1;font-variant-numeric:tabular-nums}
+.chip-unit{font-size:.5em;font-weight:700;margin-left:.12em;letter-spacing:.02em}
+.chip-label{position:absolute;font-family:var(--f-text);font-weight:600;font-size:21px;line-height:1.1;text-transform:uppercase;letter-spacing:.06em;opacity:.86}
+#canvas[lang=zh] .chip-label{text-transform:none;letter-spacing:.02em;font-size:23px}
+.node-square{fill:var(--accent);stroke:var(--node-stroke,#fff);stroke-width:3}
+.circle-inset{border-radius:50%;box-shadow:0 0 0 6px var(--accent),0 0 0 11px var(--ring-gap,#fff),0 16px 36px rgba(0,0,0,.32)}
+.stat-rule{width:64px;height:8px;background:var(--accent);margin-bottom:18px}
+.stat-value{font-family:var(--f-cond);font-weight:800;font-size:128px;line-height:.9;color:var(--text);font-variant-numeric:tabular-nums}
+.stat-unit{font-size:.42em;font-weight:700;margin-left:.1em}
+.stat-label{margin-top:10px;font-family:var(--f-text);font-weight:600;font-size:26px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stat.on-dark .stat-value{color:var(--cream)} .stat.on-dark .stat-label{color:rgba(244,239,227,.78)}
 /* zh headlines: copy may carry \n at approved phrase boundaries; balance is off so the author break wins */
 #canvas[lang=zh] .headline{text-wrap:wrap}
-.leader{fill:none;stroke:var(--line);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.leader{fill:none;stroke:var(--leader,var(--line));stroke-width:var(--leader-w,2.5);stroke-linecap:square;stroke-linejoin:miter}
 .anchor-ring{fill:var(--ring-fill,rgba(255,255,255,.85));stroke:var(--accent);stroke-width:3}
 .anchor-dot{fill:var(--accent)}
 .detail-frame{overflow:hidden;position:absolute}

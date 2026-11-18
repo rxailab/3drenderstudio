@@ -29,6 +29,20 @@
     return r;
   };
 
+  /* Run the layout once the web fonts it measures with have loaded (project change: the faces now come from
+     brandkit/vendor/fonts.css; laying out before they load would measure the fallback font). */
+  TPL.ready = function (fn) {
+    const zh = (TPL.job.lang || 'en') === 'zh';
+    const faces = ['900 40px Archivo', '800 40px Archivo', '700 40px Archivo', '800 40px "Barlow Condensed"', '700 40px "Barlow Condensed"',
+                   '600 40px "Barlow Condensed"', '400 40px Inter', '500 40px Inter', '600 40px Inter', '700 40px Inter']
+      .concat(zh ? ['400 40px "Noto Sans SC"', '700 40px "Noto Sans SC"', '900 40px "Noto Sans SC"'] : []);
+    let done = false;
+    const go = () => { if (done) return; done = true; fn(); };
+    if (!document.fonts || !document.fonts.load) return go();
+    Promise.all(faces.map(f => document.fonts.load(f, zh ? 'Ag永' : 'Ag').catch(() => null))).then(go, go);
+    setTimeout(go, 4000);
+  };
+
   TPL.asset = function (id) {
     const a = (TPL.job.assets || {})[id];
     if (!a) throw new Error('missing asset ' + id);
@@ -102,11 +116,94 @@
   TPL.text = function (id, str, x, y, w, cls, opts = {}) {
     const e = TPL.el('div', { class: 'txt ' + cls, 'data-qa': id, 'data-kind': 'text',
       'data-tier': opts.tier || 'secondary', 'data-allow': (opts.allow || []).join(','),
-      'data-maxlines': opts.maxLines || '' }, opts.parent, str);
+      'data-maxlines': opts.maxLines || '' }, opts.parent);
+    TPL.markup(e, str);
     TPL.box(e, x, y, w, null);
     if (opts.align) e.style.textAlign = opts.align;
     return e;
   };
+  /* Text with two marks (project change): [[words]] set in the accent (span.hi), {words} as a pill (span.pill).
+     Everything else is plain text; nothing is parsed as HTML. */
+  TPL.markup = function (e, str) {
+    e.textContent = '';
+    const text = str == null ? '' : String(str);
+    const re = /\[\[([^\]]+)\]\]|\{([^}]+)\}/g; let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) e.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const span = document.createElement('span'); span.className = m[1] != null ? 'hi' : 'pill'; span.textContent = m[1] != null ? m[1] : m[2];
+      e.appendChild(span); last = re.lastIndex;
+    }
+    if (last < text.length) e.appendChild(document.createTextNode(text.slice(last)));
+    return e;
+  };
+  TPL.plain = s => String(s == null ? '' : s).replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\{([^}]+)\}/g, '$1');
+
+  /* ---------- graphic primitives (project change: the Amazon-listing vocabulary) ---------- */
+  /* A gradient scrim under text on a photo: dir 'up' darkens towards the bottom edge, 'down' towards the top. */
+  TPL.scrim = function (id, x, y, w, h, dir = 'up', alpha = 0.62, parent) {
+    const e = TPL.el('div', { class: 'scrim', 'data-qa': id, 'data-kind': 'shape', 'data-exempt': '1' }, parent);
+    TPL.box(e, x, y, w, h);
+    const a = Math.max(0, Math.min(0.9, alpha));
+    e.style.background = `linear-gradient(to ${dir === 'up' ? 'top' : 'bottom'}, rgba(12,10,9,${a}) 0%, rgba(12,10,9,${(a * 0.55).toFixed(3)}) 45%, rgba(12,10,9,0) 100%)`;
+    return e;
+  };
+  /* An inline line icon from job.icons (SVG markup fetched by the renderer), drawn in currentColor. */
+  TPL.icon = function (name, x, y, size, color, parent) {
+    const markup = (TPL.job.icons || {})[name];
+    if (!markup) return null;
+    const holder = TPL.el('div', { class: 'icon', 'data-exempt': '1' }, parent);
+    TPL.box(holder, x, y, size, size);
+    holder.innerHTML = markup;
+    const svg = holder.querySelector('svg');
+    if (svg) { svg.setAttribute('width', size); svg.setAttribute('height', size); svg.style.display = 'block'; svg.querySelectorAll('[stroke-width]').forEach(n => n.setAttribute('stroke-width', '1.75')); }
+    if (color) holder.style.color = color;
+    return holder;
+  };
+  /* A spec chip: an icon cell then the value (number large, unit small) over a small uppercase label.
+     Returns {w, h, els}; place with the returned move(). */
+  TPL.chip = function (id, x, y, spec, opts = {}) {
+    const h = opts.h || 104, iconW = spec.icon && (TPL.job.icons || {})[spec.icon] ? h : 0, pad = 22;
+    const box = TPL.el('div', { class: 'chip' + (opts.dark ? ' chip-dark' : ''), 'data-qa': id, 'data-kind': 'shape', 'data-allow': [id + '_v', id + '_l'].join(',') }, opts.parent);
+    if (iconW) { const cell = TPL.el('div', { class: 'chip-icon', 'data-exempt': '1' }, box); TPL.box(cell, 0, 0, iconW, h); TPL.icon(spec.icon, iconW * 0.22, h * 0.22, iconW * 0.56, null, cell); }
+    const v = TPL.el('div', { class: 'txt chip-value', 'data-qa': id + '_v', 'data-kind': 'text', 'data-tier': 'important', 'data-maxlines': '1', 'data-allow': id }, box);
+    v.textContent = spec.value != null ? String(spec.value) : String(spec.text || '');
+    if (spec.unit) { const u = document.createElement('span'); u.className = 'chip-unit'; u.textContent = spec.unit; v.appendChild(u); }
+    const l = TPL.el('div', { class: 'txt chip-label', 'data-qa': id + '_l', 'data-kind': 'text', 'data-tier': 'secondary', 'data-maxlines': '1', 'data-allow': id }, box, spec.label || '');
+    TPL.box(v, iconW + pad, 12, null, null); TPL.box(l, iconW + pad, null, null, null);
+    v.style.whiteSpace = 'nowrap'; l.style.whiteSpace = 'nowrap';
+    const w = iconW + pad * 2 + Math.max(v.getBoundingClientRect().width, l.getBoundingClientRect().width);
+    l.style.top = (h - 12 - l.getBoundingClientRect().height) + 'px';
+    TPL.box(box, x, y, Math.ceil(w), h);
+    return { w: Math.ceil(w), h, el: box, move(nx, ny) { box.style.left = nx + 'px'; box.style.top = ny + 'px'; } };
+  };
+  /* A detail frame cut to a circle, with an accent ring and a soft shadow. */
+  TPL.circleInset = function (id, assetId, cx, cy, r, opts = {}) {
+    const f = TPL.detailFrame(id, assetId, cx - r, cy - r, 2 * r, 2 * r, { ...opts, class: 'circle-inset ' + (opts.class || '') });
+    return f;
+  };
+  /* An orthogonal leader from a label's port to an anchor: one horizontal run then one vertical (or the reverse),
+     whichever is shorter; ends in a square node on the anchor. */
+  TPL.elbowLeader = function (id, port, anchor, labelId, anchorId, prefer) {
+    const hv = [port, [anchor[0], port[1]], anchor], vh = [port, [port[0], anchor[1]], anchor];
+    const straight = Math.abs(port[1] - anchor[1]) < 2 || Math.abs(port[0] - anchor[0]) < 2;
+    const pts = straight ? [port, anchor] : (prefer === 'vh' ? vh : hv);
+    TPL.leader(id, pts, labelId, anchorId);
+    TPL.svgEl('rect', { x: anchor[0] - 9, y: anchor[1] - 9, width: 18, height: 18, class: 'node-square' });
+    TPL.svgEl('circle', { cx: port[0], cy: port[1], r: 5, class: 'anchor-dot' });
+    return pts;
+  };
+  /* A stat block: short accent rule, big number with its unit, small label. */
+  TPL.stat = function (id, x, y, w, spec, opts = {}) {
+    const holder = TPL.el('div', { class: 'stat' + (opts.dark ? ' on-dark' : ''), 'data-exempt': '1' }, opts.parent);
+    TPL.box(holder, x, y, w, null);
+    TPL.el('div', { class: 'stat-rule' }, holder);
+    const v = TPL.el('div', { class: 'txt stat-value', 'data-qa': id + '_v', 'data-kind': 'text', 'data-tier': 'headline', 'data-maxlines': '1' }, holder);
+    v.textContent = String(spec.value ?? spec.text ?? '');
+    if (spec.unit) { const u = document.createElement('span'); u.className = 'stat-unit'; u.textContent = spec.unit; v.appendChild(u); }
+    TPL.el('div', { class: 'txt stat-label', 'data-qa': id + '_l', 'data-kind': 'text', 'data-tier': 'secondary', 'data-maxlines': '2' }, holder, spec.label || '');
+    return holder;
+  };
+
   TPL.rect = function (e) { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
 
   /* SVG overlay for leader lines */
@@ -181,7 +278,13 @@
   /* ---------- QA measurement ---------- */
   TPL.finish = function () {
     const go = () => { try { TPL._measure(); } catch (e) { const s = document.createElement('script'); s.type = 'application/json'; s.id = 'qa-result'; s.textContent = JSON.stringify({issues: [{check: 'js_error', detail: String(e && e.stack || e)}]}); document.body.appendChild(s); } };
-    if (document.readyState === 'complete') go(); else window.addEventListener('load', go);
+    // The layout may run after the load event (it waits for the fonts): measure once every picture it placed has loaded.
+    const pictures = () => Promise.all([...document.images].map(i => i.complete ? null
+      : new Promise(done => { i.addEventListener('load', done, { once: true }); i.addEventListener('error', done, { once: true }); })));
+    let measured = false;
+    const once = () => { if (!measured) { measured = true; go(); } };
+    const settle = () => { pictures().then(once, once); setTimeout(once, 3000); };
+    if (document.readyState === 'complete') settle(); else window.addEventListener('load', settle);
   };
   TPL._measure = function () {
     const W = TPL.W, H = TPL.H, issues = [], els = [];
@@ -279,7 +382,11 @@
       for (let a = 0; a + 1 < A.length; a++) for (let b = 0; b + 1 < B.length; b++)
         if (TPL.segIntersect(A[a], A[a + 1], B[b], B[b + 1])) issues.push({ check: 'leader_crossing', id: `${TPL.leaders[i].id}×${TPL.leaders[j].id}` });
     }
-    const fams = [['Noto Sans Display', 700, 'Hamburgefonstiv'], ['Noto Sans', 400, 'Hamburgefonstiv'], ['Noto Sans', 700, 'Hamburgefonstiv'], ['Noto Sans CJK SC', 700, 'Hamburg控制部件'], ['Noto Sans CJK SC', 400, 'Hamburg控制部件']];
+    // project change: the faces the pages are designed in (brandkit/vendor/fonts.css), and a hard language check.
+    const zhPage = (TPL.job.lang || 'en') === 'zh';
+    const fams = [['Archivo', 800, 'Hamburgefonstiv'], ['Barlow Condensed', 800, 'Hamburgefonstiv'], ['Inter', 400, 'Hamburgefonstiv'], ['Inter', 700, 'Hamburgefonstiv']]
+      .concat(zhPage ? [['Noto Sans SC', 700, 'Hamburg控制部件'], ['Noto Sans SC', 400, 'Hamburg控制部件']] : []);
+    if (!zhPage) for (const e of els) if (e.kind === 'text' && /[\u3400-\u9fff]/.test(e.text || '')) issues.push({ check: 'lang_mismatch', id: e.id, detail: 'Chinese characters on an English page' });
     const fonts = fams.map(([f, w, s]) => ({ family: f, weight: w, available: fontInUse(f, w, s) }));
     for (const f of fonts) if (!f.available) issues.push({ check: 'font_missing', id: f.family + ' ' + f.weight });
     const out = { template: TPL.job.template_id, variant: TPL.job.variant, canvas: [W, H], lang: TPL.job.lang, elements: els, leaders: TPL.leaders, overlaps, issues, fonts, notes: TPL.notes, layout: TPL.layoutInfo || {} };

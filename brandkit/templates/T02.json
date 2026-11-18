@@ -1,326 +1,296 @@
 {
- "schema_version": "1.0",
- "template_id": "T02",
- "status": "rendered",
- "publishability": "demo_only",
- "reference_map": [
-  {
-   "ref_id": "HW-110",
-   "role": "composition",
-   "adopted_rules": [
-    "one dominant diagonal close-up carries the image",
-    "copy on the quiet side, never over texture"
-   ],
-   "excluded_elements": [
-    "copy placed over the ribbed mat",
-    "rubber/comfort claims",
-    "AIRAJ headline styling"
-   ]
+  "schema_version": "1.0",
+  "template_id": "T02",
+  "status": "rendered",
+  "publishability": "demo_only",
+  "reference_map": [
+    {
+      "ref_id": "HW-110",
+      "role": "composition",
+      "adopted_rules": [
+        "one dominant diagonal close-up carries the image",
+        "copy on the quiet side, never over texture"
+      ],
+      "excluded_elements": [
+        "copy placed over the ribbed mat",
+        "rubber/comfort claims",
+        "AIRAJ headline styling"
+      ]
+    },
+    {
+      "ref_id": "AMZ-036",
+      "role": "style",
+      "adopted_rules": [
+        "deep grey ground, accent-coloured short titles, white body",
+        "one close-up = one selling point"
+      ],
+      "excluded_elements": [
+        "LED glow / light effect",
+        "auto-shutdown & charging claims"
+      ]
+    },
+    {
+      "ref_id": "HW-166",
+      "role": "detail_organization",
+      "adopted_rules": [
+        "working end shown large, small secondary"
+      ],
+      "excluded_elements": [
+        "red light on metal",
+        "8-speed claim"
+      ]
+    },
+    {
+      "ref_id": "AMZ-034",
+      "role": "typography_hierarchy",
+      "adopted_rules": [
+        "restrained neutral ground; headline -> detail -> caption order"
+      ],
+      "excluded_elements": [
+        "set counts, weight, dimensions"
+      ]
+    },
+    {
+      "ref_id": "BAG-002",
+      "role": "detail_organization",
+      "adopted_rules": [
+        "consistent product colour across close-ups"
+      ],
+      "excluded_elements": [
+        "4-up grid in every template"
+      ]
+    }
+  ],
+  "canvas": {
+    "width": 1500,
+    "height": 1500
   },
-  {
-   "ref_id": "AMZ-036",
-   "role": "style",
-   "adopted_rules": [
-    "deep grey ground, accent-coloured short titles, white body",
-    "one close-up = one selling point"
-   ],
-   "excluded_elements": [
-    "LED glow / light effect",
-    "auto-shutdown & charging claims"
-   ]
+  "tokens": {
+    "palette": {
+      "bg": "#24272B",
+      "text": "#F6F6F3",
+      "muted": "#C3C9CE",
+      "accent": "#E7B53C",
+      "line": "#6E767D"
+    },
+    "palette_note": "bg/accent come from the job palette (brandkit_set.py); the ground is a lit radial built from --bg (key light 22%/14% mixed 32% toward #6A7380, darker floor) plus 5% feTurbulence grain; job.ground='carbon' adds the 20px diagonal pattern. The accent is one token (--accent); --hi (74% accent) colours the headline keyword, --hi-meta (58% accent) the eyebrow. No coloured rim glow by default.",
+    "spacing_unit": 8,
+    "safe_margin": 72,
+    "min_margin": 60,
+    "fonts": {
+      "display": "Archivo 800/850, wdth 108-112%, uppercase (en)",
+      "text": "Inter 500 (body), 700 (eyebrow)",
+      "zh": "Noto Sans SC 900 (headline/titles), 500 (body)"
+    },
+    "type_scale_px_at_1500": {
+      "headline": 88,
+      "headline_steps": [
+        88,
+        80,
+        72,
+        64,
+        58
+      ],
+      "headline_zh": 92,
+      "feature_title": 64,
+      "feature_title_steps": [
+        64,
+        60,
+        56,
+        52
+      ],
+      "feature2_title": 56,
+      "feature_title_zh": 60,
+      "feature_body": 42,
+      "eyebrow": 24,
+      "accent_bar": "6x120"
+    },
+    "type_floor_note": "size steps never drop under the QA mobile floor (headline 14px, title 12px, body 10px at 360 wide): body = ceil(10.05*W/360) = 42 at 1500, 34 at 1200",
+    "type_scale": {
+      "eyebrow": "Inter 700 28px, tracking .16em, uppercase, --hi-meta (zh: Noto Sans SC 700 30px)",
+      "headline": "Archivo 850 stretch 112% 104px, line-height .96, word-spacing .1em, uppercase, keyword in --hi; steps 104/96/88/80/72/64/58 (zh 100/92/84/76/68/60), never under 14px at 360",
+      "f_title": "Archivo 800 stretch 106% 60px uppercase (≈58% of the headline); steps 60/56/52/48 (zh 58/52/48/44), 2 lines preferred, 3 max",
+      "f_body": "Inter 500 42px (1500) / 34px (1200), 80% cream, 2 lines (3 only as a noted last resort)",
+      "bar": "6x120 accent bar between title and body",
+      "chip": "TPL.chip dark, h 124, value 60px, label 24px (meta caption)"
+    },
+    "geometry": {
+      "margin": 72,
+      "header_to_body_gap": 56,
+      "panel_gutter": 48,
+      "rail_panel_share": "0.36 two close-ups / 0.32 one (portrait 0.38 / 0.34), widens in 0.02 steps to 0.50 for copy",
+      "circle_inset_r": "min(0.14W, 210) at 1500, 48px inside the macro's left edge, bottom at floor-72",
+      "macro_feather": "40px on the bottom bleed only (band: top and bottom)"
+    }
   },
-  {
-   "ref_id": "HW-166",
-   "role": "detail_organization",
-   "adopted_rules": [
-    "working end shown large, small secondary"
-   ],
-   "excluded_elements": [
-    "red light on metal",
-    "8-speed claim"
-   ]
+  "elements": [
+    {
+      "element_id": "eyebrow",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.048,
+        0.11,
+        0.019
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    },
+    {
+      "element_id": "headline",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.083,
+        0.904,
+        0.066
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    },
+    {
+      "element_id": "detail1_frame",
+      "kind": "detail_image",
+      "box_normalized_xywh": [
+        0.36,
+        0.185,
+        0.64,
+        0.815
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": "explicit_bleed (right/bottom; also top when there is no header)"
+    },
+    {
+      "element_id": "f1_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.188,
+        0.28,
+        0.12
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    },
+    {
+      "element_id": "f1_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.345,
+        0.28,
+        0.06
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    },
+    {
+      "element_id": "detail2_frame",
+      "kind": "detail_image",
+      "box_normalized_xywh": [
+        0.392,
+        0.672,
+        0.28,
+        0.28
+      ],
+      "allow_overlap_with": [
+        "detail1_frame"
+      ],
+      "anchor_ref": "f2_leader",
+      "crop_policy": "explicit_circle"
+    },
+    {
+      "element_id": "f2_title",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.728,
+        0.28,
+        0.07
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    },
+    {
+      "element_id": "f2_body",
+      "kind": "text",
+      "box_normalized_xywh": [
+        0.048,
+        0.83,
+        0.28,
+        0.06
+      ],
+      "allow_overlap_with": [],
+      "anchor_ref": null,
+      "crop_policy": null
+    }
+  ],
+  "adaptation_rules": [
+    "header (eyebrow + headline) always runs the full measure on the ground; nothing is drawn over the picture",
+    "layout: 'rail' with two close-ups (copy panel left, macro bleeds right/bottom with a hard shadow-casting edge), 'band' with one (feature stack under the header, macro full width below with 40px top/bottom feather); 'stack' is read as 'band'",
+    "rail panel widens 2% at a time (to 0.50W) until every title fits 3 lines (2 preferred), every body 2 lines and f1 ends 72px above f2; then bodies may take 3 lines with a note; copy never crosses the panel edge",
+    "headline: largest step that fits 2 lines (en), 3 as fallback; zh keeps written lines, and in band joins two phrases with an ideographic space when they fit one line",
+    "eyebrow keeps its slot: when the headline contains it, the echo is removed from the headline ('Up close' + 'THE DETAILS'); the eyebrow is dropped only if nothing would remain",
+    "en hyphenated compounds never break at the hyphen (nowrap span)",
+    "zh titles and bodies that wrap break after the clause mark (，、；：); if a clause still wraps inside itself the panel widens, and over budget the plain wrap is kept",
+    "circle inset sits fully inside the macro (48px from its edge); its caption is on the panel beside it, the caption's accent bar runs on as a leader (TPL.elbowLeader) to the ring",
+    "cone from the inset to features[1].source only when given and visible",
+    "macro crop: cover, zoom job.macro_zoom (default 1.0, pulled back so the object reads whole), upscale cap 1.25 by shrinking the frame, edge snap 0.09, named parts (features[].parts) never sliced, optional overscan",
+    "rim light off by default (job.rim true or opacity: neutral warm white #FFF1DC, 12px blur)",
+    "specs chips (job.specs) under f1 when there is room, skipped with a note otherwise",
+    "notes: stock copy, body that repeats its title, panel widened, copy over budget"
+  ],
+  "render_outputs": [
+    {
+      "path": "scratchpad t02/final_*.png and t02/v10 (tote fixture, en 10 + zh 12 versions, 4:5 en 0/3/5/9 zh 0/5/10)",
+      "actual_render_completed": true
+    }
+  ],
+  "source_files": [
+    "templates/T02.html",
+    "engine/runtime.js",
+    "engine/base.css",
+    "brandkit_render.py"
+  ],
+  "qa_report_path": "templates/T02/qa_report.json",
+  "limitations": [
+    "all copy is neutral visual description, not approved product claims",
+    "element boxes are the measured layout of one render; real layout is computed per job",
+    "material realism (leather grain, stitching, canvas weave) and sharpness depend on the render assets; the template cannot add them",
+    "the template cannot see asset._parts (stripped by the renderer): without features[].parts a crop can still slice a part when the focus puts it near a frame edge",
+    "the inset-to-hero cone needs features[1].source; the leader only ties the inset to its caption",
+    "band crops are wide (≈1.6:1 at 1500): a far-off focus can show mostly ground",
+    "the rail panel keeps some open ground between the two features when the copy is short and no specs are sent"
+  ],
+  "optional_job_fields": {
+    "layout": "'rail' (default with two close-ups) | 'band' (default with one); 'stack' = 'band'",
+    "edge": "'panel' (default, hard edge + shadow) | 'fade' (40px feather)",
+    "d1_width": "macro share of the width in rail (panel = 1 - d1_width as the starting share)",
+    "panel_max": "widest panel share the copy may claim (0.5)",
+    "d2_width": "circle inset diameter share (0.28, r capped at 210 at 1500)",
+    "macro_zoom": "crop zoom on the macro (1.0)",
+    "overscan": "share of the picture kept outside bleed frames (0)",
+    "edge_snap": "crop snaps flush to the picture edge within this share (0.09)",
+    "features[].parts": "[{name, box:[x0,y0,x1,y1]}] 0-1 picture units; crops slide so no part is sliced",
+    "features[1].source": "[nx, ny] in the macro picture: draws the translucent cone to the inset",
+    "specs": "[{icon, value, unit, label}] up to 3 dark spec chips under feature 1",
+    "show_eyebrow": "false hides the eyebrow",
+    "show_headline": "false hides the headline",
+    "headline_accent": "'none' disables the auto keyword accent",
+    "rim": "true or opacity (≤0.5) turns on the neutral rim light",
+    "rim_color": "rim tint (#FFF1DC)",
+    "rim_blur": "rim blur px (12)",
+    "ground": "'carbon' adds the diagonal pattern",
+    "grain": "false removes grain",
+    "band_min_macro": "share of H under which a band macro is noted as short (0.5)",
+    "text_margin": "outer margin px (72)",
+    "max_detail_scale": "upscale cap (1.25)"
   },
-  {
-   "ref_id": "AMZ-034",
-   "role": "typography_hierarchy",
-   "adopted_rules": [
-    "restrained neutral ground; headline -> detail -> caption order"
-   ],
-   "excluded_elements": [
-    "set counts, weight, dimensions"
-   ]
-  },
-  {
-   "ref_id": "BAG-002",
-   "role": "detail_organization",
-   "adopted_rules": [
-    "consistent product colour across close-ups"
-   ],
-   "excluded_elements": [
-    "4-up grid in every template"
-   ]
-  }
- ],
- "canvas": {
-  "width": 1500,
-  "height": 1500
- },
- "tokens": {
-  "palette": {
-   "bg": "#24272B",
-   "text": "#F6F6F3",
-   "muted": "#C3C9CE",
-   "accent": "#E7B53C",
-   "line": "#6E767D"
-  },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
-  "spacing_unit": 8,
-  "safe_margin": 84,
-  "min_margin": 60,
-  "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
-  },
-  "type_scale_px_at_1500": {
-   "headline": 92,
-   "feature_title": 66,
-   "feature_body": 42
-  }
- },
- "elements": [
-  {
-   "element_id": "detail1_frame",
-   "kind": "detail_image",
-   "box_normalized_xywh": [
-    0.392,
-    0.0,
-    0.608,
-    0.7187
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "explicit_bleed"
-  },
-  {
-   "element_id": "eyebrow",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.0587,
-    0.1521,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Detail study",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "headline",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.092,
-    0.3942,
-    0.1263
-   ],
-   "allow_overlap_with": [
-    "detail1_frame"
-   ],
-   "text": "Grip and claw, up close",
-   "style_token": "headline",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "rule1",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.056,
-    0.261,
-    0.064,
-    0.0013
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "f1_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.293,
-    0.0233,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "01",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "f1_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.3277,
-    0.2916,
-    0.0467
-   ],
-   "allow_overlap_with": [],
-   "text": "Two-tone grip",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "f1_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.385,
-    0.3185,
-    0.1092
-   ],
-   "allow_overlap_with": [],
-   "text": "Black-and-yellow handle with raised ribs and an open end slot",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "detail2_frame",
-   "kind": "detail_image",
-   "box_normalized_xywh": [
-    0.056,
-    0.7653,
-    0.44,
-    0.166
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "explicit_detail_crop"
-  },
-  {
-   "element_id": "f2_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.528,
-    0.7659,
-    0.0233,
-    0.0187
-   ],
-   "allow_overlap_with": [],
-   "text": "02",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "f2_title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.528,
-    0.8006,
-    0.2016,
-    0.0467
-   ],
-   "allow_overlap_with": [],
-   "text": "Split claw",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "f2_body",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.528,
-    0.8579,
-    0.4155,
-    0.0728
-   ],
-   "allow_overlap_with": [],
-   "text": "Curved, split claw at the back of the head",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "demo_band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.9733,
-    1.0,
-    0.0267
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  }
- ],
- "adaptation_rules": [
-  "macro frame: explicit cover crop, scale capped at 1.25 (never fake HD)",
-  "inner frame edges feathered 110px into the ground; no glow, no recolour",
-  "portrait (<0.9 aspect): caption rail widens 36%->42%",
-  "second detail -> bottom strip tile (0.44W) + caption; none -> macro runs full height (single-detail fallback)",
-  "headline max 3 lines, one long-headline step, then QA fail -> shorten approved copy",
-  "landscape detail can be supplied rotated (lossless transpose) for portrait frames"
- ],
- "render_outputs": [
-  {
-   "path": "templates/T02/preview_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/preview_360.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/preview_adapted.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/matrix/r1_macro_hammer_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/matrix/r1_macro_hammer_zh_1200x1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/matrix/r1_macro_pliers_single_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T02/matrix/r1_macro_hammer_en_long_1500.png",
-   "actual_render_completed": true
-  }
- ],
- "source_files": [
-  "templates/T02/source/T02.html",
-  "engine/runtime.js",
-  "engine/base.css",
-  "engine/render.py",
-  "engine/build_jobs.py",
-  "engine/prep_assets.py",
-  "assets/demo/assets_manifest.json",
-  "templates/T02/source/jobs/sel_r1_macro_hammer_en_1500.json",
-  "templates/T02/source/jobs/sel_r1_macro_hammer_zh_1200x1500.json",
-  "templates/T02/source/jobs/sel_r1_macro_pliers_single_en_1500.json",
-  "templates/T02/source/jobs/sel_r1_macro_hammer_en_long_1500.json"
- ],
- "qa_report_path": "templates/T02/qa_report.json",
- "limitations": [
-  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
-  "all copy is neutral visual description, not approved product claims",
-  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
-  "no SAM mask used",
-  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
- ]
+  "elements_note": "measured on the en fixture version 0 (1500x1500, rail); band layout (one close-up): header, then f1 full measure, then the macro full width from ~0.37H to the floor"
 }

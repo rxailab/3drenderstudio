@@ -213,7 +213,8 @@ class ReviseTests(unittest.TestCase):
         for frame_h, feather, cut in ((680, None, True), (900, None, False), (900, {'bottom': 400}, True), (500, None, False)):
             record = qa(frame_h, feather); brandkit_render.frame_checks(record, job)
             self.assertEqual(bool(record['issues']), cut, (frame_h, feather))
-        self.assertNotIn('_parts', brandkit_render.compose('T02', {**job, 'canvas': {'width': 10, 'height': 10}}))
+        page = brandkit_render.compose('T02', {**job, 'canvas': {'width': 10, 'height': 10}})
+        self.assertNotIn('_parts', page[page.index('window.JOB'):page.index('</script>', page.index('window.JOB'))])
         jobs = brandkit_set._recropped([{'features': [{'detail': 'macro0', 'focus': [.5, .5]}], 'assets': job['assets']}, {'features': []}])
         self.assertEqual([row['features'][0]['focus'] for row in jobs[:5]], [[.5, .5], [.5, .3], [.5, .7], [.3, .5], [.7, .5]])
         self.assertEqual(len(jobs), 6)                                              # nothing to move without a part map
@@ -250,6 +251,32 @@ class ReviseTests(unittest.TestCase):
             record = qa(frame_w); brandkit_render.frame_checks(record, job)
             self.assertEqual([row['check'] for row in record['issues']], ['scene_product_cropped'] if cut else [], frame_w)
 
+    def test_an_english_set_prints_the_records_chinese_words_in_english_keeping_their_numbers(self):
+        import brandkit_review
+        product = {'language': 'en', 'title': '棘轮割管器', 'headline': 'Clean cuts', 'subline': '', 'usecase': {'headline': ''},
+                   'features': [{'title': '硬化刀轮', 'detail': '切割 6-22 mm 管材', 'parts': ['Wheel']}, {'title': '四颗铆钉', 'detail': ''}],
+                   'specs': [{'label': '重量', 'value': '380 g'}], 'figures': []}
+        scenes = [{'title': '工地现场', 'body': '', 'path': 'a.png'}]; parts = [{'name': '电池', 'caption': ''}]
+        answer = {'lines': [{'source': '棘轮割管器', 'text': 'Ratchet Pipe Cutter'}, {'source': '硬化刀轮', 'text': 'Hardened wheel'},
+                            {'source': '切割 6-22 mm 管材', 'text': 'Cuts 6-25 mm pipe'},               # a number changed: refused
+                            {'source': '重量', 'text': 'Weight'}, {'source': '工地现场', 'text': 'On site'}, {'source': '电池', 'text': 'Battery'},
+                            {'source': '四颗铆钉', 'text': '4 rivets'}]}                                  # 四 written as a figure is fine
+        cache = {}
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), patch.object(brandkit_review, '_ask', return_value=answer) as asked:
+            done, shown, kit, notes = brandkit_set.localise(product, scenes, parts, cache)
+            again = brandkit_set.localise(product, scenes, parts, cache)
+        self.assertEqual((done['title'], done['headline'], done['features'][0]['title'], done['specs'][0]['label']), ('Ratchet Pipe Cutter', 'Clean cuts', 'Hardened wheel', 'Weight'))
+        self.assertEqual((shown[0]['title'], kit[0]['name'], shown[0]['path'], done['features'][1]['title']), ('On site', 'Battery', 'a.png', '4 rivets'))
+        self.assertEqual(brandkit_set._arabic('四颗铆钉，十二件，二十'), '4颗铆钉，12件，20')
+        self.assertEqual(done['features'][0]['detail'], ''); self.assertIn('没能译成英文', notes[0])     # never printed in Chinese
+        self.assertEqual(product['title'], '棘轮割管器')                                          # the record itself is not changed
+        self.assertEqual(asked.call_count, 4)                     # the refused line once more within each build
+        self.assertEqual(asked.call_args.args[2]['lines'], [{'source': '切割 6-22 mm 管材', 'max_chars': 40}])
+        self.assertEqual(brandkit_set.localise({**product, 'language': 'zh'}, scenes, parts, {})[0]['title'], '棘轮割管器')
+        with patch.object(brandkit_review, '_configs', return_value=(None, None)):
+            plain = brandkit_set.localise(product, scenes, parts, {})
+            self.assertIn('没有配置文本模型', plain[3][0]); self.assertEqual(plain[0]['title'], '')
+
     def test_scenes_are_captioned_from_the_pictures_once(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': '办公随行', 'body': '伴随职场日常'}, {'path': 'b.png', 'title': '日常外出', 'body': ''}]
@@ -258,7 +285,21 @@ class ReviseTests(unittest.TestCase):
                 patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(answers)) as asked:
             out, done = brandkit_set.seen_captions({'language': 'zh', 'title': '托特包'}, rows)
         self.assertEqual(asked.call_args_list[0].kwargs['image_path'], 'a.png')
-        self.assertEqual(([row['title'] for row in out], out[0]['body'], out[0].get('caption'), done), (['窗边木桌', '日常外出'], '托特包立在桌上，旁有绿植', 'seen', 1))
+        self.assertEqual(([row['title'] for row in out], out[0]['body'], out[0].get('caption'), done), (['窗边木桌', '日常外出'], '托特包立在桌上，旁有绿植', brandkit_set.CAPTIONED, 1))
+
+    def test_each_language_keeps_its_own_scene_captions(self):
+        import brandkit_review
+        rows = [{'path': 'a.png', 'title': '办公随行', 'body': ''}]
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(brandkit_review, '_ask', return_value={'title': 'At the desk', 'body': 'Stands upright, ready to grab'}):
+            english, _ = brandkit_set.seen_captions({'language': 'en', 'title': 'Tote'}, rows)
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(brandkit_review, '_ask', return_value={'title': '书桌旁', 'body': '稳稳立住，随手可拿'}) as asked:
+            both, _ = brandkit_set.seen_captions({'language': 'zh', 'title': '托特包'}, english)
+            again, _ = brandkit_set.seen_captions({'language': 'zh', 'title': '托特包'}, both)
+        self.assertEqual(asked.call_count, 1)                                     # Chinese written once, then reused
+        self.assertEqual(sorted(both[0]['captions']), ['en', 'zh'])
+        self.assertEqual((both[0]['captions']['en']['title'], both[0]['title']), ('At the desk', '书桌旁'))
 
     def test_chinese_captions_are_set_one_clause_per_line(self):
         self.assertEqual(brandkit_set._clause_lines('托特包置于窗边，随手可取', 'zh', 8), '托特包置于窗边，\n随手可取')

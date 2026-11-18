@@ -56,346 +56,120 @@
    "bg": "#F5F5F2",
    "text": "#1E2226",
    "muted": "#5E666D",
-   "accent": "#2C4C8C"
+   "accent": "#2C4C8C",
+   "line": "var(--text)",
+   "small_accent_text": "color-mix(accent 70%, #000)",
+   "table_ground": "#FFFFFF",
+   "table_rule": "rgba(30,34,38,.14-.16) 1px"
   },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "palette_note": "accent comes from the job palette; --accent-ink is computed from the accent's luminance when the palette lacks it; a light accent (L>0.4) turns the eyebrow to --muted",
+  "ground": "radial-gradient(120% 90% at 60% 55%, #FFFFFF 0%, var(--bg) 72%)",
   "spacing_unit": 8,
-  "safe_margin": 84,
+  "text_margin": 72,
   "min_margin": 60,
   "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
+   "display": "Archivo 850 wdth 114% (headline, en uppercase; unit always lowercase)",
+   "numbers": "Archivo 800 wdth 90% (pills, table values) - one display family, no condensed second face",
+   "text": "Inter 400/500/700",
+   "zh": "Noto Sans SC 700/900; figures stay in Archivo"
   },
   "type_scale_px_at_1500": {
+   "eyebrow": 26,
+   "eyebrow_zh": 28,
    "headline": 88,
-   "dim_value": 64,
-   "dim_alt": 42,
-   "table_name": 50,
-   "table_note": 42
+   "headline_compact": 72,
+   "headline_zh": 92,
+   "headline_axis_keys": 22,
+   "dim_value_pill": 52,
+   "dim_alt_unit": "0.6em inline / 0.58em stacked",
+   "depth_name": 22,
+   "table_header": 22,
+   "table_value": 52,
+   "table_alt": 24,
+   "disclaimer": 24
+  },
+  "strokes": {
+   "dimension_line": "3px var(--line) with 14px marker arrowheads",
+   "extension_line": "1.5px dashed 6/7 at 45%",
+   "line_offset_px": 50,
+   "label_gap_px": 13,
+   "depth_key": "box edges 2px ink, faces accent at 7/16/26% fill, depth edge 6px accent, its own dimension line in the page's line style"
+  },
+  "table": {
+   "height": 160,
+   "header_row": 52,
+   "radius": 14,
+   "max_columns": 6,
+   "style": "white card, 1px rules, full-height dividers, ink figures"
   }
  },
  "elements": [
   {
    "element_id": "eyebrow",
    "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.0587,
-    0.0471,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Size",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "style_token": "eyebrow",
+   "note": "product name (+ ' · ' stock phrase), darkened accent; zh no tracking, '·' without spaces"
   },
   {
    "element_id": "headline",
    "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.092,
-    0.4906,
-    0.061
-   ],
-   "allow_overlap_with": [],
-   "text": "Outer dimensions",
    "style_token": "headline",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "note": "maxLines 2; figures headline (class dimhl) W × D × H + lowercase accent unit when headline_dims applies"
+  },
+  {
+   "element_id": "hl_k1..hl_k3",
+   "kind": "text",
+   "style_token": "headline_axis_keys",
+   "note": "axis names centred under each headline figure (WIDTH / DEPTH / HEIGHT, 宽度 / 深度 / 高度); fall back to W / D / H when they would collide"
   },
   {
    "element_id": "hero",
    "kind": "product_image",
-   "box_normalized_xywh": [
-    0.156,
-    0.2281,
-    0.3647,
-    0.6256
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "asset_id": "hero_stack",
-   "crop_policy": "contain"
+   "crop_policy": "contain",
+   "note": "scaled by a fit search so product + lines + pills + depth key fill the free region; cap 1.25; 30° diagonal when content is longer than 2.2:1"
   },
   {
-   "element_id": "d1_key",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0669,
-    0.5192,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "element_id": "dN_pill / dN_val / dN_alt",
+   "kind": "shape+text",
+   "note": "lines flatter than 45°: one-line pill turned to the line; steeper lines: upright stacked pill (figure over the other unit) beside the line"
   },
   {
-   "element_id": "d2_key",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.3613,
-    0.8731,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "element_id": "depth_name / depth_pill / depth_val / depth_alt",
+   "kind": "shape+text",
+   "note": "depth key: schematic box in real W:D:H proportions, depth edge in the accent with its own dimension line, name + stacked pill; right of the product or as a row below it"
   },
   {
-   "element_id": "d3_key",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.1653,
-    0.8536,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "element_id": "spec_table / tN_name / tN_val / tN_alt",
+   "kind": "shape+text",
+   "note": "table mode, only for figures not on the drawing + job.specs (job.table_all lists W/D/H too, in headline order); left out when empty"
   },
   {
-   "element_id": "tk1",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.642,
-    0.201,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t1_name",
+   "element_id": "disclaimer",
    "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.205,
-    0.2277,
-    0.0367
-   ],
-   "allow_overlap_with": [],
-   "text": "Overall height",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t1_val",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.2523,
-    0.1308,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "text": "36.6 in",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t1_alt",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.3003,
-    0.1016,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "≈ 93 cm",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "tk2",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.642,
-    0.3606,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t2_name",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.3646,
-    0.0961,
-    0.0367
-   ],
-   "allow_overlap_with": [],
-   "text": "Width",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t2_val",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.4119,
-    0.1308,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "text": "20.1 in",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t2_alt",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.4599,
-    0.1016,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "≈ 51 cm",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "tk3",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.642,
-    0.5202,
-    0.0427,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t3_name",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.5242,
-    0.0969,
-    0.0367
-   ],
-   "allow_overlap_with": [],
-   "text": "Depth",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t3_val",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.5715,
-    0.0961,
-    0.0427
-   ],
-   "allow_overlap_with": [],
-   "text": "15 in",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t3_alt",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.7007,
-    0.6195,
-    0.1016,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "≈ 38 cm",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "t_note",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.642,
-    0.6851,
-    0.294,
-    0.175
-   ],
-   "allow_overlap_with": [],
-   "text": "Values as stated in the listing graphic; not verified. Converted values rounded to 1 cm.",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "demo_band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.9733,
-    1.0,
-    0.0267
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
+   "style_token": "disclaimer",
+   "note": "one pattern: '<source>; please allow 1–2 cm variance.' / '<来源>，存在 1–2 cm 误差'; no source → 'Sizes are approximate…' / '尺寸为近似值…'"
   }
  ],
  "adaptation_rules": [
-  "dimension lines bound to measurement anchors (normalised on the asset); axis-aligned lines can sit at a set offset",
-  "values + unit as separate fields; conversion in→cm ×2.54 to 1 cm, cm→in ÷2.54 to 0.1 in, both labelled ≈",
-  "table mode: letter keys on the drawing, values in a side table (robust for tall/crowded products)",
-  "on-product mode: values on the lines (wide/compact products, needs ~230px padding)",
-  "no value without fact_id; missing value -> line not drawn"
+  "dimension lines run parallel to from→to, offset 50px (dim.offset / job.dim_offset) beyond the content box on the dim.side normal; ends are the hull extremes projected onto the line; dim.at is no longer used",
+  "values: 'value unit / converted unit' in one pill; in→cm ×2.54, cm→in ÷2.54, mm→in ÷25.4, all to 0.1",
+  "product + lines + pills are fitted together into the region between header and table/footer and the product is centred on the canvas axis when room allows",
+  "long products (content aspect > 2.2) lie on a diagonal rising to the right (job.tilt, default 30°; job.rotate forces an angle, 0 disables)",
+  "dim_pad is accepted for compatibility but no longer used: the fit computes the room the lines and pills need",
+  "the .d-key letter discs are gone",
+  "one figure order everywhere: length-or-width × depth × height (headline, axis keys, table)",
+  "depth: a dimension with key 'depth' (drawn as a line), else job.depth {value,unit,name?}, else parsed from table_note ('Depth 18 cm.' / '深度 18 cm。'); without a line it gets the depth key (job.depth_key, default true; false = old named pill under the headline)",
+  "depth key placement (job.depth_key_at): 'auto' tries right of the product (on its baseline) and a row below the lines; below wins only when it gives a ≥4% larger product (4:5 canvases)",
+  "table mode: columns = figures not already drawn + job.specs, at most 6; with nothing left the table is dropped and its space goes to the product (noted); job.table_all=true keeps W/D/H columns",
+  "headline_dims (optional, default 'stock'): stock or missing headline becomes the figures ('40.5 × 18 × 47.6 cm'), unit lowercase in the accent in every language; stock phrase joins the eyebrow; true forces, false keeps job.headline; needs ≥2 figures in one unit",
+  "headline_keys (optional, default true): axis names under the headline figures",
+  "the figures headline stays on one line: compact 72 step, then shrinks to ≥56px",
+  "dim_style (optional, default 'arrows'): 'ticks' draws 24px bars square to the line; the depth key's line follows the same style",
+  "disclaimer: job.disclaimer as given (ranges get an en dash, '1-2cm' → '1–2 cm'); else table_note's source sentence (depth sentence removed) + variance clause; job.variance sets the range or false drops it (default '1–2 cm', '0.5–1 in' for inch jobs)"
  ],
  "render_outputs": [
   {
-   "path": "templates/T06/preview_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/preview_360.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/preview_adapted.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/matrix/sel_table_stack_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/matrix/sel_table_bag_en_1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/matrix/sel_table_stack_zh_1200x1500.png",
-   "actual_render_completed": true
-  },
-  {
-   "path": "templates/T06/matrix/sel_onproduct_bag_en_1500.png",
+   "path": "(scratchpad) t06/final/*.png",
    "actual_render_completed": true
   }
  ],

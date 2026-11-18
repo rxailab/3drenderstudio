@@ -5,36 +5,38 @@
  "publishability": "demo_only",
  "reference_map": [
   {
-   "ref_id": "AMZ-044",
+   "ref_id": "DEWALT_DCD771C2/02, DCK240C2/02, DCK277D2/02",
    "role": "information_structure",
    "adopted_rules": [
-    "clean white ground, each item with its own label under it",
-    "title separated from the item area"
+    "dark header band with heavy extended caps title + accent rule",
+    "white body split by thin grey hairlines into a 2x2 / 2-over-3 / 3-over-3 grid",
+    "every item a complete, isolated cut-out centred in its picture zone at one shared visual mass",
+    "centred caption: bold code line + uppercase description (name bold when no code); labels top-aligned per row",
+    "(2) quantity prefix, shown once",
+    "footer band carrying the disclaimer"
    ],
    "excluded_elements": [
-    "brand logos/model numbers",
-    "battery-voltage footnote",
-    "item counts"
+    "brand logos and model numbers (only when the job supplies item.code)"
    ]
   },
   {
-   "ref_id": "AMZ-026",
-   "role": "detail_organization",
+   "ref_id": "Greenworks value banner (brief)",
+   "role": "optional_badge",
    "adopted_rules": [
-    "same label treatment under every item"
+    "accent box \"$xxx+ VALUE\" (headline face) + sub-line on its inner padding, inside the header band, only from an approved job.value_claim"
    ],
    "excluded_elements": [
-    "prices and $ value totals"
+    "unapproved price claims"
    ]
   },
   {
-   "ref_id": "HW-344",
-   "role": "typography_hierarchy",
+   "ref_id": "airaj product_set",
+   "role": "knolling",
    "adopted_rules": [
-    "main item vs accessories kept visually distinct"
+    "packed set of items on white at one visual mass (or items[].rel_size), inside the same header/footer frame and 72px margins, each item captioned"
    ],
    "excluded_elements": [
-    "bit counts, sizes"
+    "Chinese promo stickers"
    ]
   }
  ],
@@ -45,253 +47,54 @@
  "tokens": {
   "palette": {
    "bg": "#FFFFFF",
-   "text": "#1E2226",
+   "text": "#1A1A1A",
    "muted": "#5E666D",
-   "accent": "#2C4C8C"
+   "accent": "#F2B01E"
   },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "palette_note": "accent default is the demo yellow; the set builder replaces it with the brand accent (readable on white) and adds accent-ink",
   "spacing_unit": 8,
-  "safe_margin": 84,
-  "min_margin": 60,
+  "safe_margin": 72,
+  "min_margin": 24,
   "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
+   "display": "Archivo 900 wdth 116 (header title), wdth 112 (value badge)",
+   "text": "Inter 700/400 (captions, disclaimer)",
+   "numbers": "Barlow Condensed 800 (qty badge)",
+   "zh": "Noto Sans SC 900/700/400"
   },
   "type_scale_px_at_1500": {
-   "title": 84,
-   "item_name": 50,
-   "qty": 42,
-   "note": 42
+   "title": 78,
+   "title_zh": 76,
+   "item_code": 42,
+   "item_code_narrow": 36,
+   "item_desc": 28,
+   "qty_badge_circle": "5.6% of W (84 at 1500)",
+   "disclaimer": 26,
+   "value_banner": 58,
+   "item_code_min_dense": 32,
+   "value_sub": 19,
+   "knolling_caption": "42 (>= W/36)"
+  },
+  "frame": {
+   "header_h": 200,
+   "rule_h": 14,
+   "footer_h": 80,
+   "cell_pad": 24,
+   "hairline": "2px #BDBDBD",
+   "cell_side_pad": "clamp(10% of cell, 32, 60)",
+   "picture_fill": "content <= 46% of its zone area (42% in a full-width cell), centred",
+   "disclaimer_color": "#E8E3DA"
   }
  },
- "elements": [
-  {
-   "element_id": "title",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.0587,
-    0.5885,
-    0.0583
-   ],
-   "allow_overlap_with": [],
-   "text": "What the photo shows",
-   "style_token": "headline",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k1_role",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.7677,
-    0.1143,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Main item",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k1_name",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.7957,
-    0.1327,
-    0.0367
-   ],
-   "allow_overlap_with": [],
-   "text": "Tool bag",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k1_qty",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.8377,
-    0.1628,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "Qty pending",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "item1",
-   "kind": "product_image",
-   "box_normalized_xywh": [
-    0.056,
-    0.2345,
-    0.5667,
-    0.5119
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "asset_id": "hero_bag",
-   "crop_policy": "contain"
-  },
-  {
-   "element_id": "k2_role",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.3592,
-    0.1154,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Accessory",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k2_name",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.3872,
-    0.1503,
-    0.0733
-   ],
-   "allow_overlap_with": [],
-   "text": "Shoulder strap pad",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k2_qty",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.4659,
-    0.1628,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "Qty pending",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k3_role",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.7571,
-    0.1154,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Accessory",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k3_name",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.7851,
-    0.2405,
-    0.0367
-   ],
-   "allow_overlap_with": [],
-   "text": "Clear parts box",
-   "style_token": "important",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "k3_qty",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.66,
-    0.8271,
-    0.1628,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "Qty pending",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "item2",
-   "kind": "product_image",
-   "box_normalized_xywh": [
-    0.7109,
-    0.1489,
-    0.1821,
-    0.1889
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "asset_id": "kit_strap",
-   "crop_policy": "contain"
-  },
-  {
-   "element_id": "item3",
-   "kind": "product_image",
-   "box_normalized_xywh": [
-    0.6831,
-    0.5315,
-    0.2379,
-    0.2043
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "asset_id": "kit_partsbox",
-   "crop_policy": "contain"
-  },
-  {
-   "element_id": "note",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.056,
-    0.882,
-    0.3275,
-    0.0336
-   ],
-   "allow_overlap_with": [],
-   "text": "Items not shown to scale",
-   "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "demo_band",
-   "kind": "shape",
-   "box_normalized_xywh": [
-    0.0,
-    0.9733,
-    1.0,
-    0.0267
-   ],
-   "allow_overlap_with": [],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  }
- ],
+ "elements": [],
  "adaptation_rules": [
-  "<=3 items -> main item + accessory column; 4–8 -> equal grid (2x2/3x2/4x2); >8 -> split image",
-  "role label per item (main / accessory / consumable)",
-  "quantity only from approved inventory field; otherwise an explicit 'Qty pending' marker",
-  "items contain-fit, scale capped 1.25; 'not shown to scale' note always rendered"
+  "grid (default): 1 / 2 / 1-over-2 / 2x2 / 2-over-3 / 3-over-3 / 1-over-3-over-3 / 2-over-3-over-3 (never more than 3 columns; job.dense_rows='wide' brings back 3-over-4 / 4-over-4 on square canvases)",
+  "every picture contained and centred in its zone at one visual mass, capped at 1.25x and kept inside the canvas",
+  "captions one size per page: 42px on one line, else two lines at 42 down to 32; zh keeps one line down to 32",
+  "qty only when > 1 and shown once: '(2) ' prefix (default; zh '（2）') or qty_style badge -> accent x2 circle pinned to the product's top-right corner ('both' reads as badge)",
+  "items without a picture are left out (noted); items with the same picture and name merge into one cell with a summed qty; reused pictures and pictures touching their frame edge are noted as likely crops",
+  "role_label is ignored; item.code + item.desc give the DeWalt two-line caption, else item.name alone",
+  "mode knolling: same frame, packed rows at one visual mass (main item 1.8x area, or items[].rel_size), captions 42px; on portrait canvases with more than 6 items it falls back to the grid",
+  "value_claim {text, sub?, approved:true} -> accent badge inside the header band, right-aligned to the margin, centred on the title line"
  ],
  "render_outputs": [
   {
@@ -338,10 +141,8 @@
  ],
  "qa_report_path": "templates/T05/qa_report.json",
  "limitations": [
-  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
-  "all copy is neutral visual description, not approved product claims",
-  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
-  "no SAM mask used",
-  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+  "elements are computed per job; see the QA record of a render",
+  "the template cannot tell a mirrored or cropped picture from a real cut-out; it only notes pictures that touch their frame edge or are reused",
+  "knolling shows relative size only when every item carries rel_size"
  ]
 }

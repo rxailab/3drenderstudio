@@ -720,7 +720,7 @@ class BuildTests(StoreCase):
         self.assertEqual(len(self.scenes), 3)
         self.assertEqual([row['people'] for row in self.scenes][:2], [True, False])                         # at work, then set down where it is used
         poster = self.job('T12')
-        self.assertEqual((poster['mode'], poster['scene'], poster['focus']), ('band', 'scene1', [.5, .55]))
+        self.assertEqual((poster['mode'], poster['scene'], poster['focus']), ('overlay', 'scene1', [.5, .55]))
         self.assertEqual(len(self.job('T08')['items']), 3)
         state = listing.state('fixture')
         self.assertEqual(len(state['scenes']), 3); self.assertTrue(all(row['url'].startswith('/files/fixture/listing/scenes-') for row in state['scenes']))

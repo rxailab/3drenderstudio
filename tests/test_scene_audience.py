@@ -327,6 +327,7 @@ class FidelityTests(unittest.TestCase):
 
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
+                 'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'scale_plausible': True,
                  'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
@@ -351,6 +352,14 @@ class FidelityTests(unittest.TestCase):
         result, _ = self.check(self.verdict(colours_consistent=False, issues=['top surface is black, should be light brushed steel'], note='台面颜色不符。'))
         self.assertEqual(result['status'], 'failed'); self.assertEqual(result['issues'], ['top surface is black, should be light brushed steel'])
         self.assertFalse(result['flags']['colours_consistent'])
+
+    def test_a_wire_through_the_jaws_a_grip_that_is_not_there_or_a_backwards_hold_fails(self):
+        # The defects users found in made scenes: each is a flag the vision model answers, and any one fails the picture.
+        for flag, issue in (('contact_plausible', 'the wire passes through the steel of the jaws'), ('nothing_attached', 'an extra black grip on the handle'),
+                            ('held_correctly', 'the hand holds the tool by its jaws'), ('scale_plausible', 'the pliers are as long as the van floor')):
+            result, body = self.check(self.verdict(**{flag: False, 'issues': [issue], 'note': '不一致。'}))
+            self.assertEqual((result['status'], result['issues'], result['flags'][flag]), ('failed', [issue], False), flag)
+        self.assertIn('size_mm', json.loads(body['messages'][-1]['content'][-1]['text']))
 
     def test_a_picture_without_the_person_that_was_asked_for_fails_and_so_does_an_unwanted_one(self):
         missing, _ = self.check(self.verdict(person_visible=False), people=True)
@@ -400,7 +409,7 @@ class CreateTests(unittest.TestCase):
             return {'path': self.cutout, 'azimuth': azimuth, 'elevation': elevation, 'product_rect': [.25, .3, .75, .7]}
         self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []; self.closeups = []; self.images = []; self.masks = []
         self.locks = []                                        # what the measurement says of each picture; 'kept' when not set
-        def check(references, generated, product, people=None, framing=None, closeup=None):
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None):
             self.checked.append(people); self.framings.append(framing); self.closeups.append(closeup)
             return self.verdicts.pop(0)
         def inspect(layer, picture):

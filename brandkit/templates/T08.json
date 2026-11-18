@@ -39,19 +39,20 @@
    "muted": "#C2C8CD",
    "accent": "#E7B53C"
   },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "palette_note": "ground is --dark #1E1B19 with cream type; accent comes from the job palette (used for 6px tile gaps, caption bars, headline keyword)",
   "spacing_unit": 8,
-  "safe_margin": 84,
+  "safe_margin": 72,
   "min_margin": 60,
   "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
+   "display": "Archivo 800/900 wdth 112-115% uppercase",
+   "text": "Inter 500/700",
+   "zh": "Noto Sans SC 500/900"
   },
   "type_scale_px_at_1500": {
-   "headline": 92,
-   "use_title": 60,
-   "use_body": 42
+   "headline": "96..44 Archivo 900 (stretch 115, 100-106 at the small end); en breaks only at the author's phrase breaks or inside one phrase, fewest lines first, no one-word line when a smaller size avoids it; floor 14px at 360 (58 at 1500, 48 at 1200) except to avoid a widow; zh 92..56 on the written lines",
+   "use_title": "56..50 (1500) display 800, one size per row of matching tiles, bars and titles level; 2 lines, a 3rd line instead of going below 12px at 360",
+   "use_body": "32 Inter 500, cream 92%",
+   "eyebrow": 24
   }
  },
  "elements": [
@@ -230,9 +231,14 @@
  ],
  "adaptation_rules": [
   "semantics explicit: uses (unnumbered) / steps (numbered only with approved step data) / states (unnumbered)",
-  "square & landscape -> columns (left->right); portrait -> stagger rows",
-  "2 items -> more whitespace, never a padded 3rd item",
-  "max 3 items per image",
+  "every photo keeps the whole product (scene_product_cropped) and is placed so the product box sits below the headline and above its caption (largest product first); when the scene has too little floor, the photo ends early and the caption sits on the dark ground under it, joined by a fade; only if no placement exists does the caption overlap the lower product (logged)",
+  "captions: accent bar, title, optional body, at the tile foot on a scrim/ground; a body or title that arrives truncated ('…'/'...') is cut back to its last whole clause or dropped (logged), never printed truncated",
+  "split (n=2): headline on a full-width dark band, two full-height columns below (split_dir 'rows' optional), 6px accent seams; the headline never crosses a photo or seam",
+  "bento (n=3, square): tile 1 0.62W full height with the headline on its top scrim, tiles 2-3 stacked; on portrait canvases bento renders as the mirrored stagger mosaic",
+  "stagger (n=3): offset mosaic; header panel + tile 1 in one half-width column, tiles 2/3 stacked in the other; stagger_style 'rows' keeps the older row layout; stagger n=2 renders as split",
+  "columns: span W-2m under a full-width headline, 6px accent dividers, photos as tall as the whole-product rule allows, captions level on the ground below; 3 columns narrower than min_column_w (400) render as bento (= mirrored mosaic on 4:5, so it differs from stagger)",
+  "quad (n=4): 2x2 full bleed, optional centre knock-out with center_asset",
+  "zh: headline never wraps beyond the written lines (size steps down instead)",
   "steps without approval -> rendered as uses + BLOCKED_BY_EVIDENCE note"
  ],
  "render_outputs": [
@@ -284,6 +290,17 @@
   "all copy is neutral visual description, not approved product claims",
   "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
   "no SAM mask used",
-  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
- ]
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)",
+  "copy (panel titles, bodies, headline/kicker agreement) and scene variety come from the set builder; the template only refuses to print truncated text"
+ ],
+ "optional_job_fields": {
+  "stagger_style": "'mosaic' (default) | 'rows'",
+  "stagger_split": "0.5: seam height of the stacked column in the mosaic",
+  "first_side": "'left' (default; 'right' for bento-on-portrait) : side of the header column in the mosaic / first photo in rows",
+  "min_column_w": "400: narrower 3-column layouts become bento (mirrored mosaic on portrait)",
+  "columns_bottom": "m: bottom margin under columns photos",
+  "photo_min_h": "0.55: shortest a photo may get (fraction of its tile) to keep the product clear of its caption",
+  "headline_min": "14px at 360 (58 at 1500): smallest en headline size tried before allowing a phrase split",
+  "headline_min_ideal": "60: smallest size at which one phrase per line is preferred"
+ }
 }

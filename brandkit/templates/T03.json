@@ -73,20 +73,26 @@
    "accent": "#D0612A",
    "line": "#CDC3BA"
   },
-  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "palette_note": "accent comes from the job palette; --accent-ink is computed from the accent's luminance when the job does not send it",
   "spacing_unit": 8,
-  "safe_margin": 84,
+  "safe_margin": 72,
   "min_margin": 60,
   "fonts": {
-   "display": "Noto Sans Display 700",
-   "text": "Noto Sans 400/500/700",
-   "zh": "Noto Sans CJK SC 400/700"
+   "display": "Archivo 800/850 wdth 112-115 (heavy extended caps)",
+   "text": "Inter 500/600",
+   "zh": "Noto Sans SC 700/900"
   },
   "type_scale_px_at_1500": {
-   "headline": 96,
-   "subhead": 50,
-   "caption_title": 52,
-   "caption_body": 42
+   "headline": 88,
+   "headline_compact": [
+    80,
+    72
+   ],
+   "headline_zh": 92,
+   "subhead": 42,
+   "caption_title": 44,
+   "caption_title_zh": 48,
+   "ring_caption": 42
   }
  },
  "elements": [
@@ -103,31 +109,15 @@
     "detail1_frame",
     "detail2_frame",
     "detail3_frame",
-    "c1_no",
     "c1_title",
     "c1_body",
-    "c2_no",
     "c2_title",
     "c2_body",
-    "c3_no",
     "c3_title",
-    "c3_body"
+    "c3_body",
+    "gap1",
+    "gap2"
    ],
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "eyebrow",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.4227,
-    0.0587,
-    0.1697,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "Rolling stack",
-   "style_token": "meta",
    "anchor_ref": null,
    "crop_policy": "not_applicable"
   },
@@ -176,21 +166,6 @@
    "crop_policy": "contain"
   },
   {
-   "element_id": "c1_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.048,
-    0.336,
-    0.0217,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "01",
-   "style_token": "meta",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
    "element_id": "c1_title",
    "kind": "text",
    "box_normalized_xywh": [
@@ -217,21 +192,6 @@
    "allow_overlap_with": [],
    "text": "Two-rail handle shown extended",
    "style_token": "secondary",
-   "anchor_ref": null,
-   "crop_policy": "not_applicable"
-  },
-  {
-   "element_id": "c2_no",
-   "kind": "text",
-   "box_normalized_xywh": [
-    0.048,
-    0.7899,
-    0.0217,
-    0.0173
-   ],
-   "allow_overlap_with": [],
-   "text": "02",
-   "style_token": "meta",
    "anchor_ref": null,
    "crop_policy": "not_applicable"
   },
@@ -310,12 +270,20 @@
   }
  ],
  "adaptation_rules": [
-  "aspect<1.0 -> rail/split (side rail); aspect>=1.0 -> strip (details under hero)",
-  "details: prefer 2, max 3; strip shows max 2",
-  "tiles are explicit cover crops; height shares remaining rail height, scale capped 1.25",
-  "subhead dropped when 3 details (density rule) in split mode",
-  "hero contain + multiply on warm ground (white-background photos only)",
-  "headline max 2 (rail/strip) / 3 (split) lines, one long step"
+  "split (default): full-bleed close-up rail on the left (38% of W at 1:1, 37% at 4:5), tiles separated by 6px accent gaps, accent seam on the rail edge (rail_seam:false drops it)",
+  "split: tile heights water-fill the rail without passing the 1.25 upscale cap; a tile taller than tile_max_aspect (default 1.4) x its width shows the picture full-width with a blurred, darkened extension instead of slicing its sides",
+  "split: each rail tile = picture + a caption strip the picture never enters (the picture fades into the rail colour); captions title-only by default (caption_title_only:false adds the body), bottom-aligned with a short accent tab, an icon badge when the detail has an 'icon', or caption_style:'band' = solid accent tab flush to the rail's left edge, all tabs one shared width",
+  "split: all rail titles share one size: en 44px at stretch 112 -> 104 -> 96, then smaller (never below the QA secondary minimum) until every title is <=2 lines; zh 48 -> 36 on one line",
+  "split: hero contains into the right column, >=44px clear of the rail seam, centred under the copy with >=84px bottom margin and a soft contact shadow (hero_overlap>0 restores the break-over into the rail); subhead measure capped at ~680px and line-balanced",
+  "headline: two-tone (first word or headline_accent words in the accent, or explicit [[...]]); en 88/80/72 in 2 lines, else 80/72/64 in 3; zh 92 shrinking until the author's lines hold; eyebrow only with show_eyebrow",
+  "details: optional part_box [x0,y0,x1,y1] (normalised in the close-up) frames that part at ~45% of the tile; optional zoom; optional hero_box drops crops that repeat the hero (area > 40% of hero or IoU > 0.5)",
+  "ring: circular insets with centred captions; ring_layout auto picks 'cols' (insets in a column each side of a standing product, 4-6 insets) or 'rows' (above/below a product across the middle) by which leaves the product larger; headline shows when 3 or fewer insets",
+  "legacy rail / strip modes kept for old jobs",
+  "headline: en accent covers the descriptor as one unit and ends its line ('[[CANVAS LEATHER]] / TOTE BAG'); zh accents the leading descriptor (帆布皮革) and keeps the product noun dark",
+  "zh subhead: when it wraps, the break goes after the clause punctuation nearest the middle",
+  "ring rows: with <=3 insets the headline moves to a left column and the product fills the right side above the row when that is larger (57% of canvas height for the tote vs 33% before); 4:5 circles r=136",
+  "ring cols: circles r<=136 (8.8% of W), 20px column gap, so the product reaches ~65% of the canvas height; captions keep the min_margin",
+  "ring captions: en callouts in one casing (title case, small words lower)"
  ],
  "render_outputs": [
   {
@@ -367,5 +335,19 @@
   "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
   "no SAM mask used",
   "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
- ]
+ ],
+ "optional_job_fields": {
+  "caption_style": "'scrim' (default) | 'band'",
+  "rail_seam": "true (default) | false",
+  "tile_max_aspect": "1.4",
+  "hero_overlap": "0 (default: hero stays >=44px clear of the rail seam, centred, >=84px off the bottom); >0 = px at 1500 the product breaks into the rail (old look)",
+  "details[].part_box": "[x0,y0,x1,y1] in the close-up, normalised: split tiles centre the part; ring circles zoom so it fills ~62% of the circle",
+  "details[].icon": "Tabler icon name; drawn at ~56px (2px stroke) in the accent inside an 88px dark badge above the caption (not with caption_style band)",
+  "ring_layout": "'auto' (default) | 'rows' | 'cols'",
+  "ring_headline": "true (default) | false",
+  "ring_style": "'accent' (default) | 'grey'",
+  "tile_min_visible": "0.85: a tile wider than its picture keeps at least this share of the picture's height and extends its sides with a blurred copy, instead of cover-cropping parts away",
+  "ring_side_headline": "true (default): ring rows with <=3 insets put the headline + subhead in a left column and the product full height on the right when that makes it >=12% larger; falls back to the top headline when the copy does not fit the column",
+  "headline_accent": "en: number of leading words in the accent (default: all but the last 2 words when there are 4+, joiners like '&' kept inside, with a line break after the accent unit); zh: number of leading characters (default len-3 for 6+ characters, e.g. 帆布皮革|托特包); false = no accent"
+ }
 }

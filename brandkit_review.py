@@ -66,10 +66,11 @@ ART_DIRECTOR = (
     'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '
-    'its selling points and specs. Each page has one job (goal): its headline names the concrete thing that page shows, taken from the '
-    'selling points (a part, a material, a use), never vague praise (no "处处讲究", "品质之选", "premium quality") and never a benefit the '
-    'facts do not state (no capacity, comfort or durability claims the selling points do not make). No numbers or units at all: figures '
-    'are printed elsewhere on the page. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
+    'its selling points and specs. Each page has one job (goal): its headline says what the buyer gets from the concrete thing that '
+    'page shows, as a selling headline on an Amazon listing would ("Rolled handles that stay comfortable", not "Every key part, clearly '
+    'shown"), never a description of the picture itself, never vague praise (no "处处讲究", "品质之选", "premium quality") and never a '
+    'benefit the facts do not state (no capacity, comfort or durability claims the selling points do not make). A number may lead a headline only when '
+    'the facts give it (a size, a count, a capacity), written as the facts write it; never a number the facts do not contain. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
     '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
     '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
     'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently.')
@@ -187,6 +188,11 @@ def grounded(text, facts):
 
 # ---- copywriter ----
 
+def _numbers_in(text):
+    """The numbers in a text, by value ("2.0" is "2")."""
+    return {('%f' % float(match)).rstrip('0').rstrip('.') for match in re.findall(r'\d+(?:\.\d+)?', str(text or ''))}
+
+
 def write_copy(product, kinds):
     """{kind: {'eyebrow', 'headline'}} written for this product, or {} when no text model answers.
     Returns (copy, note)."""
@@ -210,6 +216,7 @@ def write_copy(product, kinds):
         return {}, '文案模型没有回应（%s），各页使用默认标题。' % str(exc)[:80]
     written = {}; refused = 0
     titles = [' '.join(str(row.get('title', '')).split()) for row in product.get('features') or []]
+    stated = _numbers_in(json.dumps(facts, ensure_ascii=False))
     for row in answer.get('pages', []):
         kind = row.get('template')
         eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
@@ -220,10 +227,10 @@ def write_copy(product, kinds):
         # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
         repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
         if (len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or too_many_lines
-                or re.search(r'\d', headline + eyebrow) or eyebrow and eyebrow in headline or repeats):
+                or not _numbers_in(headline + eyebrow) <= stated or eyebrow and eyebrow in headline or repeats):
             refused += 1; continue
         written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题超长、行数不对、含数字、眉题与标题重复或照抄卖点标题，已改用默认标题。' % refused) if refused else None
+    return written, ('有 %d 条模型写的标题超长、行数不对、含资料里没有的数字、眉题与标题重复或照抄卖点标题，已改用默认标题。' % refused) if refused else None
 
 
 _LINES = {'T01': 2, 'T02': 2, 'T03': 1, 'T04': 1, 'T08': 2}

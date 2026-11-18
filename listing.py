@@ -804,6 +804,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(38, 41, 45), dark=True,
                                                        trim=False, region=region)
                 assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
+                assets[name]['_part_box'] = brandkit_set.part_box(shots[name]['result'], names, region)
                 focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
                 details.append((index, name))
             if 'macro%d' % index in shots:
@@ -823,6 +824,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             product_box = brandkit_set.scene_box(scene)
             if product_box:
                 assets['scene%d' % (index + 1)]['_product'] = product_box
+        # The record's own words in the language the pages are printed in (translated once, kept with the project).
+        translations = listing.get('translations') if isinstance(listing.get('translations'), dict) else {}
+        written, made_scenes = product, scenes          # kept as the user wrote them; only the pages use the translation
+        product, scenes, parts, localised = brandkit_set.localise(product, scenes, parts, translations)
+        notes += localised
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
                'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
@@ -899,14 +905,15 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box')}
-                  for row in scenes if row['role'] not in ('workpiece', 'earlier')]
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
+                   'captions': row.get('captions') or {}}
+                  for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
-        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name)
+        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations)
         if scene_key:
             listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
-        listing.setdefault('product', product); listing.setdefault('brand', brand_record)
+        listing.setdefault('product', written); listing.setdefault('brand', brand_record)
         kept_scenes = scene_key or (scene_store or {}).get('key')
         keep = {folder.name} | ({'scenes-' + kept_scenes} if kept_scenes else set())
         for stale in list((DATA / project_id / 'listing').glob('build-*')) + list((DATA / project_id / 'listing').glob('scenes-*')):
