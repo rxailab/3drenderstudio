@@ -320,6 +320,17 @@ def _fit_line(text, limit):
     return text[:cuts[-1]].rstrip('，、；,;') + ('。' if re.search(r'[\u4e00-\u9fff]', text) else '') if cuts else ''
 
 
+def _clause_lines(text, language, limit):
+    """A Chinese line set one clause per line (the browser would otherwise wrap it mid-word); '' when a clause is
+    longer than ``limit`` characters and so would still wrap. Other languages wrap at spaces and pass unchanged."""
+    if not text or language != 'zh':
+        return text or ''
+    clauses = [part for part in re.split(r'(?<=[，、；。])', text.replace('\n', '')) if part]
+    if any(len(part.rstrip('，、；。')) > limit for part in clauses):
+        return ''
+    return '\n'.join(clauses).rstrip('，、；')
+
+
 def captions(project, product, briefs):
     """A short title and line for each scene, in the listing's language: by the copy model when one is
     configured, else plain titles by what the scene shows."""
@@ -340,7 +351,8 @@ def captions(project, product, briefs):
         system = ('You write captions for product listing images. For each scene description, write a short title naming the moment or '
                   'place of use (not words like "展示"/"showcase" that describe the photo) and one short line saying what the buyer sees. '
                   'Describe only what the scene shows; no numbers, no benefits or claims, no prices or brands. Respect the character limits '
-                  'strictly; different scenes get clearly different titles.')
+                  'strictly; different scenes get clearly different titles. In Chinese, write the line as two short clauses joined by "，", '
+                  'each at most 8 characters, so it can be set one clause per line.')
         answer = scene_stylist._ask(config, system, facts, schema)
         for row, made in zip(rows, answer.get('scenes', [])):
             title = ' '.join(str(made.get('title', '')).split()); body = _fit_line(' '.join(str(made.get('body', '')).split()), limit[1])
@@ -515,12 +527,18 @@ def _jobs_for(kind, ctx):
                   for index, point in ctx['anchors'] if point]
         hero = assets['hero']; wide = hero['width'] / hero['height'] >= .8
         modes = ('band', 'diagonal') if wide else ('diagonal', 'band')
+        # A part seen as separate patches (two rivets) may be pointed at on its other patch, if the first line crosses the product.
+        other = {index: (ctx.get('alternatives') or {}).get(index) or [] for index, point in ctx['anchors'] if point}
+        shown = [index for index, point in ctx['anchors'] if point]
+        points = [{**row, 'other_patch': True} if other[index] else row for row, index in zip(points, shown)]
+        swapped = [{**row, 'anchor': other[index][0]} if other[index] else row for row, index in zip(points, shown)]
         out = []
         for count in (4, 3, 2):
             if len(points) >= count:
                 for mode in modes:
-                    out.append(_job(kind, ctx, mode=mode, hero='hero', eyebrow=t['T01_eyebrow'], headline=t['T01_headline'],
-                                    features=points[:count], assets={'hero': hero}))
+                    for features in ([points[:count], swapped[:count]] if swapped[:count] != points[:count] else [points[:count]]):
+                        out.append(_job(kind, ctx, mode=mode, hero='hero', eyebrow=t['T01_eyebrow'], headline=t['T01_headline'],
+                                        features=features, assets={'hero': hero}))
         return out
     if kind == 'T03':
         called = {index for index, _ in ctx['anchors'][:4]} if 'T01' in (ctx.get('kinds') or ()) else set()
@@ -573,9 +591,15 @@ def _jobs_for(kind, ctx):
         return [_job(kind, ctx, scene=name, focus=scene['focus'], eyebrow=t['T04_eyebrow'], headline=t['T04_headline'],
                      specs=specs[:count], assets={name: assets[name]}) for count in counts]
     if kind == 'T08':
-        ranked = sorted(range(len(ctx['scenes'])), key=lambda index: (ctx['scenes'][index].get('check') == 'failed', index))[:3]
-        items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20), 'body': _clip(ctx['scenes'][index].get('body'), 44) or None,
+        good = [index for index in range(len(ctx['scenes'])) if ctx['scenes'][index].get('check') != 'failed']
+        # A scene whose product check failed is left out while two others can carry the page.
+        ranked = good[:3] if len(good) >= 2 else sorted(range(len(ctx['scenes'])), key=lambda index: (index not in good, index))[:3]
+        items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20),
+                  'body': _clause_lines(_clip(ctx['scenes'][index].get('body'), 44), ctx['language'], 8) or None,
                   'focus': ctx['scenes'][index]['focus']} for index in sorted(ranked)]
+        if not all(row['body'] for row in items):
+            # Captions under some tiles only would break the row's rhythm.
+            items = [{**row, 'body': None} for row in items]
         out = []
         for count in (3, 2):
             if len(items) >= count:
@@ -597,7 +621,8 @@ def _jobs_for(kind, ctx):
             dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
                          'side': side_dir, 'at': at})
         depth_value, depth_unit = _measure(depth, unit)
-        note = t['table_note'] + ('' if ctx['language'] == 'zh' else ' ') + t['depth_note'] % ('%g %s' % (depth_value, depth_unit))
+        # Each sentence on its own line, so the depth figure never wraps away from its label.
+        note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + t['depth_note'] % ('%g\u00a0%s' % (depth_value, depth_unit))
         # A long, low product leaves the table column too little room: its figures go on the lines instead.
         wide = side['width'] / side['height'] > 1.8
         modes = ('onproduct', 'table') if wide else ('table', 'onproduct')

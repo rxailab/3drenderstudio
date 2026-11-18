@@ -657,6 +657,32 @@ class Picture:
         x, y = min(best, key=lambda cell: (cell[0] - cx) ** 2 + (cell[1] - cy) ** 2)
         return [(x + .5) / self.nx, (y + .5) / self.ny], len(hits) / (self.nx * self.ny)
 
+    def other_anchors(self, names, least=.4):
+        """Points on the other separate patches of these parts (the second of two rivets), each at least ``least``
+        the size of the largest, nearest the middle of its patch. A line can then go to whichever is closer."""
+        wanted = {index for index, name in enumerate(self.objects) if name in set(names)}
+        remaining = {(index % self.nx, index // self.nx) for index, cell in enumerate(self.cells) if cell in wanted}
+        patches = []
+        while remaining:
+            stack = [remaining.pop()]; patch = []
+            while stack:
+                x, y = stack.pop(); patch.append((x, y))
+                for neighbour in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if neighbour in remaining:
+                        remaining.discard(neighbour); stack.append(neighbour)
+            patches.append(patch)
+        patches.sort(key=len, reverse=True)
+        if not patches or len(patches[0]) < 3:
+            return []
+        out = []
+        for patch in patches[1:]:
+            if len(patch) < max(3, least * len(patches[0])):
+                break
+            cx = sum(x for x, _ in patch) / len(patch); cy = sum(y for _, y in patch) / len(patch)
+            x, y = min(patch, key=lambda cell: (cell[0] - cx) ** 2 + (cell[1] - cy) ** 2)
+            out.append([(x + .5) / self.nx, (y + .5) / self.ny])
+        return out
+
 
 # ------------------------------------------------------------------ measuring text
 

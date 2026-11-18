@@ -71,7 +71,8 @@ COPYWRITER = (
     'facts do not state (no capacity, comfort or durability claims the selling points do not make). No numbers or units at all: figures '
     'are printed elsewhere on the page. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
     '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
-    '"Up close") that does not repeat the headline. Write the headlines of different pages differently.')
+    '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
+    'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently.')
 VERIFIER = (
     'You check another reviewer\'s claims about one listing image. For each numbered claim, look at CURRENT_RENDER (and REFERENCE_IMAGE, '
     'the product\'s own render, for fidelity claims) and the measured layout, and say whether the claim is clearly true. measured_layout '
@@ -208,6 +209,7 @@ def write_copy(product, kinds):
     except Exception as exc:
         return {}, '文案模型没有回应（%s），各页使用默认标题。' % str(exc)[:80]
     written = {}; refused = 0
+    titles = [' '.join(str(row.get('title', '')).split()) for row in product.get('features') or []]
     for row in answer.get('pages', []):
         kind = row.get('template')
         eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
@@ -215,11 +217,13 @@ def write_copy(product, kinds):
         if kind not in kinds or not headline:
             continue
         too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
+        # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
+        repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
         if (len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or too_many_lines
-                or re.search(r'\d', headline + eyebrow) or eyebrow and eyebrow in headline):
+                or re.search(r'\d', headline + eyebrow) or eyebrow and eyebrow in headline or repeats):
             refused += 1; continue
         written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题超长、行数不对、含数字或眉题与标题重复，已改用默认标题。' % refused) if refused else None
+    return written, ('有 %d 条模型写的标题超长、行数不对、含数字、眉题与标题重复或照抄卖点标题，已改用默认标题。' % refused) if refused else None
 
 
 _LINES = {'T01': 2, 'T02': 2, 'T03': 1, 'T04': 1, 'T08': 2}
@@ -316,7 +320,9 @@ def verify(kind, png, product, reference, measured, verdict, facts=None):
 
 
 def checked(kind, job, png, product, reference=None, measured=None, facts=None):
-    """The art director's verdict, with its claims checked by a second look whenever the page would not pass as it stands."""
+    """The art director's verdict, with its claims checked by a second look whenever the page would not pass as it stands.
+    (On a passing page the remarks are kept unchecked: they change nothing and are not shown; checking them, live, did not
+    make them more accurate.)"""
     verdict = review(kind, job, png, product, reference, measured, facts)
     if verdict and not passed(verdict):
         verdict = verify(kind, png, product, reference, measured, verdict, facts)

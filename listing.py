@@ -638,7 +638,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     pages = []
     try:
         progress('compose', 0, '准备排版素材')
-        assets = {}; anchors = []; details = []; macros = []; focus = {}
+        assets = {}; anchors = []; alternatives = {}; details = []; macros = []; focus = {}
         hero, crop = brandkit_set.flatten(shots['hero']['path'], assets_folder / 'hero.png')
         assets['hero'] = hero
         picture = shots['hero']['picture']
@@ -647,6 +647,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if found and share > .0003:          # a small part (a rivet, a button) still gets its line
                 point = brandkit_set.remap(found, crop)
                 if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                    others = [brandkit_set.remap(other, crop) for other in picture.other_anchors(product['features'][index]['parts'])]
+                    alternatives[index] = [other for other in others if 0 <= other[0] <= 1 and 0 <= other[1] <= 1]
                     anchors.append((index, point))
         for index, names in _focus_features(product, 6):
             if 'detail%d' % index in shots:
@@ -667,7 +669,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         for index, scene in enumerate(scenes):
             assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
-               'anchors': anchors, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
+               'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
         ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes))

@@ -792,8 +792,8 @@ class BuildTests(StoreCase):
         self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene2', 'scene4'))      # the workpiece render, not a failed scene
         by_kind = {page['kind']: page for page in pages}
         self.assertEqual((by_kind['T12']['review']['status'], by_kind['T04']['review']['status']), ('passed', 'passed'))
-        self.assertEqual((by_kind['T08']['review']['status'], by_kind['T08']['review']['vetoes']), ('failed', ['scene_product_mismatch']))
-        self.assertEqual([item['asset'] for item in self.job('T08')['items']], ['scene1', 'scene2', 'scene4'])       # the failed third left out
+        self.assertEqual((by_kind['T08']['review']['status'], by_kind['T08']['review']['vetoes']), ('passed', []))
+        self.assertEqual([item['asset'] for item in self.job('T08')['items']], ['scene2', 'scene4'])       # two good scenes carry the page alone
         self.scene_checks = ['passed', 'passed', 'failed']; listing.save_product('fixture', {'scenes': {'hint': 'again'}})
         listing.build('fixture')
         self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene1', 'scene2'))      # two that passed: one each

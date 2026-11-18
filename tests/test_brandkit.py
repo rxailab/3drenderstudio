@@ -3,6 +3,7 @@
 The browser tests run when Chrome, Chromium or Edge is installed (``BRANDKIT_CHROME`` points at one
 elsewhere); the rest needs nothing but Pillow.
 """
+import shutil
 import sys
 import tempfile
 import unittest
@@ -158,6 +159,47 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(pictures['hero']['shows'], 'the whole product, uncropped')
         self.assertEqual(brandkit_set._fit_line('格纹包身斜角朝前，皮革边条与铜铆钉', 15), '格纹包身斜角朝前。')
         self.assertEqual(brandkit_set._fit_line('一句没有标点的很长很长的说明文字', 8), '')
+
+    def test_a_headline_that_repeats_a_selling_point_is_refused_and_only_failing_pages_are_checked_again(self):
+        import brandkit_review as review
+        product = {'language': 'zh', 'title': '托特包', 'model': '', 'headline': '', 'subline': '', 'size_mm': 476,
+                   'features': [{'title': '卷边皮革提手', 'detail': ''}], 'specs': [], 'figures': []}
+        answer = {'pages': [{'template': 'T02', 'eyebrow': '细节', 'headline': '卷边皮革提手\n铆钉加固根部'},
+                            {'template': 'T04', 'eyebrow': '参数', 'headline': '卷边皮革提手'}]}          # only the callout pages print the titles
+        with patch.object(review, '_configs', return_value=({'model': 'text'}, None)), patch.object(review, '_ask', return_value=answer):
+            written, note = review.write_copy(product, ['T02', 'T04'])
+        self.assertEqual(list(written), ['T04']); self.assertIn('照抄卖点标题', note)
+        good = {'scores': {'product': 22, 'hierarchy': 18, 'composition': 17, 'task': 13, 'color': 9, 'independence': 8},
+                'vetoes': [], 'issues': [{'region': 'a', 'evidence': 'cropped'}, {'region': 'b', 'evidence': 'small'}], 'summary': 'ok', 'score': 87}
+        with patch.object(review, 'review', return_value=good), patch.object(review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(review, '_ask', return_value={'claims': [{'number': 1, 'real': False, 'why': ''}, {'number': 2, 'real': True, 'why': ''}]}):
+            verdict = review.checked('T03', {}, 'x.png', product)
+        self.assertEqual(([row['evidence'] for row in verdict['issues']], verdict.get('refuted', 0)), (['cropped', 'small'], 0))   # not asked again
+        with patch.object(review, 'review', return_value={**good, 'score': 70}), patch.object(review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(review, '_ask', return_value={'claims': [{'number': 1, 'real': False, 'why': ''}, {'number': 2, 'real': True, 'why': ''}]}):
+            verdict = review.checked('T03', {}, 'x.png', product)
+        self.assertEqual(([row['evidence'] for row in verdict['issues']], verdict['refuted']), (['small'], 1))
+
+    def test_a_line_across_the_product_to_the_far_rivet_is_caught_and_the_near_one_is_offered(self):
+        import tempfile, info_layer
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        image = Image.new('RGB', (100, 100), 'white'); image.paste((120, 80, 40), (10, 10, 90, 90)); image.save(folder / 'hero.png')
+        job = {'features': [{'anchor': [.85, .5], 'other_patch': True}, {'anchor': [.5, .5]}], 'assets': {'hero': {'path': str(folder / 'hero.png')}}}
+        qa = {'issues': [], 'elements': [{'id': 'hero', 'kind': 'product_image', 'asset': 'hero', 'layout': [500, 500, 1000, 1000]}],
+              'leaders': [{'id': 'ldr1', 'pts': [[100, 1000], [1350, 1000]]},          # from a left column to the far rivet
+                          {'id': 'ldr2', 'pts': [[100, 1000], [1000, 1000]]}]}         # one large part: its line may cross it
+        brandkit_render.pixel_checks(qa, job)
+        self.assertEqual([(row['check'], row['id']) for row in qa['issues']], [('leader_over_product', 'ldr1')])
+        nx = ny = 10; cells = [-1] * 100
+        for x, y in ((1, 5), (2, 5), (1, 4), (7, 5), (8, 5), (8, 4), (3, 1)):
+            cells[y * nx + x] = 0
+        picture = info_layer.Picture.__new__(info_layer.Picture); picture.nx, picture.ny, picture.cells, picture.objects = nx, ny, cells, ['Rivet']
+        self.assertEqual(len(picture.other_anchors(['Rivet'])), 1)                      # the second rivet, not the stray cell
+
+    def test_chinese_captions_are_set_one_clause_per_line(self):
+        self.assertEqual(brandkit_set._clause_lines('托特包置于窗边，随手可取', 'zh', 8), '托特包置于窗边，\n随手可取')
+        self.assertEqual(brandkit_set._clause_lines('简洁背景下托特包伴随职场日常', 'zh', 8), '')            # it would wrap mid-word
+        self.assertEqual(brandkit_set._clause_lines('By the window, at hand', 'en', 8), 'By the window, at hand')
 
     def test_the_copywriter_and_the_reviewer_are_skipped_without_models(self):
         import brandkit_review as review

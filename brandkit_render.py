@@ -27,7 +27,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('phrase_break', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -136,9 +136,39 @@ def pixel_checks(qa, job):
                 if ratio > 0.01:
                     qa['issues'].append({'check': 'text_over_product', 'id': '%s×%s' % (text['id'], image_row['id']),
                                          'detail': '%.1f%% of sampled points on product pixels' % (ratio * 100)})
+    for image_row in images:
+        record = (job.get('assets') or {}).get(image_row.get('asset')) or {}
+        if record.get('path') in cache and not image_row.get('rotate'):
+            _leader_checks(qa, image_row, cache[record['path']], job)
     for picture in cache.values():
         picture.close()
     qa['pixel_checks'] = found
+
+
+LEADER_OVER_PRODUCT = .45      # of the product's drawn width
+
+
+def _leader_checks(qa, image_row, picture, job):
+    """A line to a part that shows as separate patches (one of two rivets) should not run across the product to the far
+    one: the length drawn over product pixels, against the product's width on the page. Only features marked
+    ``other_patch`` are checked; a line to the middle of one large part has to cross that part."""
+    pixels = picture.load(); lx, ly, lw, lh = image_row['layout']
+    marked = {'ldr%d' % (index + 1) for index, row in enumerate(job.get('features') or []) if isinstance(row, dict) and row.get('other_patch')}
+    for leader in qa.get('leaders') or []:
+        if leader.get('id') not in marked:
+            continue
+        points = leader.get('pts') or []
+        over = 0.0
+        for (x1, y1), (x2, y2) in zip(points, points[1:]):
+            length = math.hypot(x2 - x1, y2 - y1); steps = max(1, int(length / 6))
+            for step in range(steps):
+                x = x1 + (x2 - x1) * (step + .5) / steps; y = y1 + (y2 - y1) * (step + .5) / steps
+                ax, ay = (x - lx) / lw * picture.width, (y - ly) / lh * picture.height
+                if 0 <= ax < picture.width and 0 <= ay < picture.height and min(pixels[int(ax), int(ay)]) < 228:
+                    over += length / steps
+        if over > LEADER_OVER_PRODUCT * lw:
+            qa['issues'].append({'check': 'leader_over_product', 'id': leader.get('id'),
+                                 'detail': '%.0f px of the line over the product (%.0f px wide)' % (over, lw)})
 
 
 def phrase_checks(qa, job):
