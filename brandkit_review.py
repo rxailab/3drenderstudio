@@ -37,7 +37,7 @@ TEXT_FIELDS = ('eyebrow', 'headline', 'support', 'subhead', 'table_note', 'note'
 LISTS = {'T01': ('features', 2), 'T02': ('features', 1), 'T03': ('details', 2), 'T04': ('specs', 2), 'T05': ('items', 1), 'T08': ('items', 2)}
 ITEM_TEXT = ('title', 'body', 'name', 'label', 'text')
 COPY_KINDS = ('T01', 'T02', 'T03', 'T04', 'T08')
-COPY_LIMITS = {'zh': {'eyebrow': 6, 'headline': 14}, 'en': {'eyebrow': 18, 'headline': 34}}
+COPY_LIMITS = {'zh': {'eyebrow': 6, 'headline': 16}, 'en': {'eyebrow': 22, 'headline': 44}}
 _LOCK = threading.Lock()
 _BRIEFS = None
 
@@ -214,7 +214,7 @@ def write_copy(product, kinds):
         answer = _ask(text, COPYWRITER, request, schema)
     except Exception as exc:
         return {}, '文案模型没有回应（%s），各页使用默认标题。' % str(exc)[:80]
-    written = {}; refused = 0
+    written = {}; refused = 0; why_refused = []
     titles = [' '.join(str(row.get('title', '')).split()) for row in product.get('features') or []]
     stated = _numbers_in(json.dumps(facts, ensure_ascii=False))
     for row in answer.get('pages', []):
@@ -226,14 +226,16 @@ def write_copy(product, kinds):
         too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
         # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
         repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
-        if (len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow'] or too_many_lines
-                or not _numbers_in(headline + eyebrow) <= stated or eyebrow and eyebrow in headline or repeats):
-            refused += 1; continue
+        reasons = [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
+                                        ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
+                                        ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
+        if reasons:
+            refused += 1; why_refused.extend(reasons); continue
         written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题超长、行数不对、含资料里没有的数字、眉题与标题重复或照抄卖点标题，已改用默认标题。' % refused) if refused else None
+    return written, ('有 %d 条模型写的标题没有采用（%s），已改用默认标题。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
 
 
-_LINES = {'T01': 2, 'T02': 2, 'T03': 1, 'T04': 1, 'T08': 2}
+_LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2}
 _SHOWS = {'T01': 'the whole product with callout lines to its parts', 'T02': 'dark close-ups of one or two parts',
           'T03': 'the product with a column of part close-ups (headline is the product name; only the eyebrow is used)',
           'T04': 'a usage scene above a band of up to three key figures', 'T08': 'two or three usage scenes side by side'}

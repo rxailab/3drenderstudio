@@ -560,6 +560,17 @@ class RecordTests(StoreCase):
         legacy = store.get('project', 'fixture'); legacy['listing']['product']['pages'] = ['main', 'includes']; store.put('project', legacy)
         self.assertIsNone(listing.stored(legacy)[0]['pages'])                                  # page kinds from before the templates are dropped, not an error
 
+    def test_points_found_on_the_picture_are_kept_while_the_view_stays_the_same(self):
+        listing.save_product('fixture', {'features': [{'title': 'Side cutter', 'parts': []}, {'title': 'Grip', 'parts': [PARTS[1]]}]})
+        project = store.get('project', 'fixture')
+        listing._update('fixture', lambda record, lst: lst.__setitem__('placed', {'view': listing._view_key(record),
+                        'features': {'Side cutter': {'point': [.4, .5], 'parts': [PARTS[0]]}, 'Grip': {'point': [.6, .5], 'parts': []}}}))
+        features = listing.stored(store.get('project', 'fixture'))[0]['features']
+        self.assertEqual((features[0].get('point'), features[0]['parts']), ([.4, .5], [PARTS[0]]))
+        self.assertEqual(features[1]['parts'], [PARTS[1]])                       # a part the user chose stays
+        moved = store.get('project', 'fixture'); moved['plan'] = {**moved['plan'], 'rotation': [0, 0, 90]}; store.put('project', moved)
+        self.assertIsNone(listing.stored(store.get('project', 'fixture'))[0]['features'][0].get('point'))     # shown another way: found again
+
     def test_a_draft_fills_only_what_is_empty_and_prints_only_the_users_numbers(self):
         state = listing.draft('fixture', {'hint': '切割范围: 6-22 mm\n硬化钢切割轮'})
         product = state['product']

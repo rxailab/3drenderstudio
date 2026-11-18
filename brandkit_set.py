@@ -781,7 +781,7 @@ def _clip(text, limit):
         if len(head) > limit:
             break
         best = head
-    if 'best' in locals() and len(best) >= min(limit * .45, 10):
+    if 'best' in locals() and len(best) >= 4:
         return best
     cut = text[:limit]
     if re.search(r'[A-Za-z0-9]', cut[-1:]) and len(text) > limit and re.search(r'[A-Za-z0-9]', text[limit:limit + 1]) and ' ' in cut:

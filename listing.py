@@ -11,6 +11,7 @@ A page prints only numbers the user entered or that were measured on the model.
 """
 import concurrent.futures
 import copy
+import hashlib
 import io
 import math
 import json
@@ -218,6 +219,14 @@ def validate_product(body, project, current=None):
     return record
 
 
+def _view_key(project):
+    """The model and the way the main picture shows it: points found on that picture hold while this stays the same."""
+    plan = project.get('plan') or {}
+    shot = next((row for row in plan.get('shots', []) if row.get('id') == 'hero'), {})
+    return hashlib.sha256(json.dumps([project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')],
+                                     sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def stored(project):
     """(product record, brand record, listing dict) of a project, with defaults filled in."""
     listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
@@ -227,6 +236,16 @@ def stored(project):
         product = default_product(project)
     # Every part of the model: a selling point that names them all is about the whole product (brandkit_set.anchored).
     product['_model_parts'] = part_names(project)
+    # Where the last build found selling points on the main picture, while the product is still shown the same way.
+    placed = listing.get('placed') if isinstance(listing.get('placed'), dict) else {}
+    if placed.get('view') == _view_key(project):
+        whole = set(product['_model_parts'])
+        for row in product['features']:
+            found = (placed.get('features') or {}).get(row['title'])
+            if found and not (row.get('parts') and not set(row['parts']) >= whole):
+                row['point'] = found['point']
+                if found.get('parts'):
+                    row['parts'] = found['parts']
     try:
         brand = brand_kit.validate(listing.get('brand') if isinstance(listing.get('brand'), dict) else {})
     except ValueError:
@@ -696,10 +715,15 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
+    # Selling points found on the main picture are shown close up by cropping round the spot in the same view at twice the size.
+    if kinds & {'T03', 'T02'} and any(product['features'][index].get('point') for index, _ in _focus_features(product, 6)):
+        requests['zoom'] = components.cutout_request(model, plan, size_mm, azimuth, elevation, 3600)
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
     for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
         if kind in kinds:
             for index, names in _focus_features(product, limit):
+                if product['features'][index].get('point'):
+                    continue
                 requests['%s%d' % (key, index)] = {
                     'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                     'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': focal, 'margin': margin, 'focus': names,
@@ -838,6 +862,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
                 anchors.append((index, point))
         for index in brandkit_set.anchored(product):
+            if product['features'][index].get('point'):     # found on the picture: the spot itself, not the middle of its mesh
+                point = brandkit_set.remap(product['features'][index]['point'], crop)
+                if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                    anchors.append((index, point))
+                continue
             found, share = picture.anchor(product['features'][index]['parts']) if picture else (None, 0)
             if found and share > .0003:          # a small part (a rivet, a button) still gets its line
                 point = brandkit_set.remap(found, crop)
@@ -852,6 +881,22 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 kept.append((index, point))
         anchors = kept
         for index, names in _focus_features(product, 6):
+            point = product['features'][index].get('point')
+            if point and 'zoom' in shots:
+                zoom = shots['zoom']['result']
+                for key, side, kind_list, ground in (('detail', .3, details, (38, 41, 45)), ('macro', .22, macros, (22, 24, 27))):
+                    if key == 'macro' and len(macros) >= 2:
+                        continue
+                    name = '%s%d' % (key, index)
+                    half = side / 2; x = min(max(point[0], half), 1 - half); y = min(max(point[1], half), 1 - half)
+                    region = (round(x - half, 4), round(y - half, 4), round(x + half, 4), round(y + half, 4))
+                    assets[name], _ = brandkit_set.flatten(shots['zoom']['path'], assets_folder / (name + '.png'), ground=ground, dark=True,
+                                                           trim=False, region=region)
+                    assets[name]['_parts'] = brandkit_set.part_map(zoom, region)
+                    focus[name] = [round((point[0] - region[0]) / side, 3), round((point[1] - region[1]) / side, 3)]
+                    assets[name]['_part_box'] = [max(0, focus[name][0] - .25), max(0, focus[name][1] - .25), min(1, focus[name][0] + .25), min(1, focus[name][1] + .25)]
+                    kind_list.append((index, name))
+                continue
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
                 region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25, inset=.04)
@@ -970,7 +1015,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
 
     def change(project, listing):
         listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations,
-                       located=located)
+                       located=located, placed={'view': _view_key(project),
+                                                'features': {row['title']: {'point': row['point'], 'parts': row.get('parts') or []}
+                                                             for row in product['features'] if row.get('point')}})
         if scene_key:
             listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
         listing.setdefault('product', written); listing.setdefault('brand', brand_record)

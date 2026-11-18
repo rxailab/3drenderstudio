@@ -130,7 +130,7 @@ class ReviseTests(unittest.TestCase):
         product = {'language': 'zh', 'title': '托特包', 'model': '', 'headline': '', 'subline': '', 'size_mm': 476,
                    'features': [{'title': '皮革提手', 'detail': ''}], 'specs': [], 'figures': [{'value': '476', 'unit': 'mm', 'label': '高度'}]}
         answer = {'pages': [{'template': 'T01', 'eyebrow': '部位导览', 'headline': '卷边提手\n铆钉加固'},
-                            {'template': 'T04', 'eyebrow': '参数', 'headline': '高度476mm\n容量顺手'},          # a number, and two lines on a one-line page
+                            {'template': 'T04', 'eyebrow': '参数', 'headline': '高度520mm\n容量顺手'},          # a number the facts do not give
                             {'template': 'T02', 'eyebrow': '细节', 'headline': '细节看得见'},                  # the eyebrow repeated in the headline
                             {'template': 'T08', 'eyebrow': '场景', 'headline': '一\n二\n三'}]}                # three lines
         with patch.object(review, '_configs', return_value=({'model': 'text'}, None)), patch.object(review, '_ask', return_value=answer):
