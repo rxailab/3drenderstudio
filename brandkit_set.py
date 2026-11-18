@@ -55,14 +55,14 @@ TEXT = {
     'zh': {'T01_eyebrow': '部件一览', 'T01_headline': '每个关键部件，\n一眼看清', 'T03_eyebrow': '细节', 'T02_eyebrow': '细节特写',
            'T02_headline': '近看细节', 'T04_headline': '核心参数', 'T04_eyebrow': '参数', 'T08_eyebrow': '使用场景', 'T08_headline': '用在需要它的地方',
            'T06_eyebrow': '尺寸', 'T06_headline': '外形尺寸', 'T05_headline': '包装清单', 'T05_note': '图示物品未按实际比例',
-           'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度',
+           'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度', 'thickness': '厚度',
            'table_note': '手工测量，请允许 1–2 cm 误差。', 'depth_note': '深度 %s。',
            'scene_titles': ('上手使用', '随时待命', '换个场景')},
     'en': {'T01_eyebrow': 'Part overview', 'T01_headline': 'Every key part,\nclearly shown', 'T03_eyebrow': 'Details', 'T02_eyebrow': 'Up close',
            'T02_headline': 'The details, up close', 'T04_headline': 'Key figures', 'T04_eyebrow': 'Specs', 'T08_eyebrow': 'In use',
            'T08_headline': 'Made for the job', 'T06_eyebrow': 'Dimensions', 'T06_headline': 'Overall size', 'T05_headline': "What's in the box",
            'T05_note': 'Items not shown to scale', 'qty_pending': 'Qty to be confirmed', 'qty_prefix': 'Qty ', 'main': 'Main unit',
-           'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth',
+           'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth', 'thickness': 'Thickness',
            'table_note': 'Measured by hand; please allow 1–2 cm variance.', 'depth_note': 'Depth %s.',
            'scene_titles': ('In use', 'Ready to go', 'On the job')},
 }
@@ -109,18 +109,88 @@ def image_model_ready():
 
 # ---- which pages ----
 
-def anchored(product):
-    """Indexes of the selling points that name parts of the model (they can be pointed at and shown close up)."""
-    return [index for index, feature in enumerate(product['features']) if feature.get('parts')]
+def anchored(product, whole=None):
+    """Indexes of the selling points that name parts of the model (they can be pointed at and shown close up). A selling
+    point that names every part of the model (a model in one piece) is about the whole product, not a part of it."""
+    whole = set(whole or product.get('_model_parts') or ())
+    return [index for index, feature in enumerate(product['features'])
+            if feature.get('parts') and not (whole and set(feature['parts']) >= whole)]
+
+
+def pointed(product):
+    """Indexes of the selling points that were found on the main picture (``point``) without a part of their own."""
+    have = set(anchored(product))
+    return [index for index, feature in enumerate(product['features']) if index not in have and feature.get('point')]
+
+
+LOCATOR = ('You look at a product photo for an online listing and say where each selling point is on the product. For each '
+           'numbered selling point, give the point (x, y as fractions of the picture width and height, from the top left) at the '
+           'centre of the part it is about: a display, a button, a jaw, a cutter, a handle, a battery, a guard. When the selling '
+           'point is about the whole product rather than one part (a material, a mode, a speed, an accuracy), or that part cannot '
+           'be seen from this side, set visible to false.')
+
+
+def locate(picture_path, picture, product, cache):
+    """Where the selling points without a usable part are on the main picture, by the vision model: {index: point}, with
+    the mesh under the point as the feature's part when the model has more than one. Only points the part grid confirms are on
+    the product are kept. ``cache`` ({key: answer}) keeps the answer with the project. Returns (features, notes)."""
+    features = [dict(row) for row in product['features']]
+    wanted = [index for index in range(len(features)) if index not in anchored(product) and features[index].get('title')]
+    if not wanted or picture is None:
+        return features, []
+    key = hashlib.sha256(json.dumps([str(picture_path), [features[index]['title'] for index in wanted]], ensure_ascii=False).encode()).hexdigest()[:16]
+    answer = cache.get(key)
+    if answer is None:
+        try:
+            import brandkit_review
+            _, vision = brandkit_review._configs()
+        except Exception:
+            vision = None
+        if not vision:
+            return features, []
+        schema = {'type': 'object', 'additionalProperties': False, 'required': ['points'],
+                  'properties': {'points': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False,
+                                                                     'required': ['number', 'visible', 'x', 'y'],
+                                                                     'properties': {'number': {'type': 'integer'}, 'visible': {'type': 'boolean'},
+                                                                                    'x': {'type': 'number'}, 'y': {'type': 'number'}}}}}}
+        try:
+            answer = brandkit_review._ask(vision, LOCATOR, {'product': product.get('title', ''), 'selling_points': [
+                {'number': number + 1, 'title': features[index]['title'], 'detail': features[index].get('detail', '')} for number, index in enumerate(wanted)]},
+                schema, image_path=str(picture_path))
+        except Exception as exc:
+            return features, ['没能在主图上找出卖点的位置（%s），这些卖点不画引线。' % str(exc)[:80]]
+        cache[key] = answer
+    several = len(set(name for name in picture.objects)) > 1
+    found = 0
+    for row in answer.get('points') or []:
+        number = row.get('number')
+        if not isinstance(number, int) or not 1 <= number <= len(wanted) or not row.get('visible'):
+            continue
+        x, y = float(row.get('x', -1)), float(row.get('y', -1))
+        if not (0 <= x <= 1 and 0 <= y <= 1):
+            continue
+        cell = picture.cells[min(picture.ny - 1, int(y * picture.ny)) * picture.nx + min(picture.nx - 1, int(x * picture.nx))]
+        if not isinstance(cell, int) or cell < 0 or cell >= len(picture.objects):
+            continue                     # not on the product: a guess the part grid does not back
+        index = wanted[number - 1]
+        features[index]['point'] = [round(x, 4), round(y, 4)]
+        if several:
+            features[index]['parts'] = [picture.objects[cell]]
+        found += 1
+    return features, (['%d 条卖点的位置由视觉模型在主图上找出。' % found] if found else [])
 
 
 def requirements(product, parts, size_known, scene_supply):
     """(has, why): whether each page has what it needs, and the reason when it does not."""
     points = len(anchored(product))
+    callouts = points + len(pointed(product))
     figures = bool(product['figures'] or product['specs'] or size_known)
-    has = {'T12': True, 'T01': points >= 2, 'T03': points >= 2, 'T02': points >= 1, 'T04': scene_supply >= 1 and figures,
+    has = {'T12': True, 'T01': callouts >= 2, 'T03': points >= 2, 'T02': points >= 1, 'T04': scene_supply >= 1 and figures,
            'T08': scene_supply >= 2, 'T06': size_known, 'T05': bool(parts), 'T07': False, 'T09': False, 'T10': False, 'T11': False}
-    why = {'T01': '至少 2 条卖点需要选择对应部件', 'T03': '至少 2 条卖点需要选择对应部件', 'T02': '卖点没有选择对应的部件',
+    single = len(set(product.get('_model_parts') or ())) == 1
+    why = {'T01': '至少 2 条卖点需要选择对应部件，或配置视觉模型在主图上找出它们的位置',
+           'T03': '模型是一个整体，没有可单独特写的部件' if single else '至少 2 条卖点需要选择对应部件',
+           'T02': '模型是一个整体，没有可单独特写的部件' if single else '卖点没有选择对应的部件',
            'T04': '需要场景图（开启 AI 场景或工件图），以及规格、大数字指标或真实尺寸' if not figures else '需要场景图：请开启 AI 场景图或工件使用图',
            'T08': '需要至少 2 张场景图：请开启 AI 场景图（2 张以上）或工件使用图', 'T06': '没有填写真实尺寸', 'T05': '还没有处理完成的组件', **BLOCKED}
     return has, why
@@ -699,15 +769,24 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
 # ---- jobs ----
 
 def _clip(text, limit):
-    """Text cut to a length at a whole character; line breaks the author put in are kept."""
+    """Text that fits ``limit`` characters without an ellipsis (a listing never prints "…"): the leading segment that fits
+    (up to a dash, comma, slash, bracket or " with"), else the whole words that fit; line breaks the author put in are kept."""
     lines = [' '.join(line.split()) for line in str(text or '').split('\n')]
     text = '\n'.join(line for line in lines if line)
     if len(text) <= limit:
         return text
-    cut = text[:limit - 1]
-    if text[limit - 1].isascii() and text[limit - 1].isalnum() and ' ' in cut[limit // 2:]:
+    text = text.rstrip('…').rstrip('.').rstrip()
+    for match in re.finditer(r'\s[-–—|/]\s|[,，;；:：(（/]|\swith\s|\sfor\s|，', text):
+        head = text[:match.start()].rstrip(' ,，;；:：-–—')
+        if len(head) > limit:
+            break
+        best = head
+    if 'best' in locals() and len(best) >= min(limit * .45, 10):
+        return best
+    cut = text[:limit]
+    if re.search(r'[A-Za-z0-9]', cut[-1:]) and len(text) > limit and re.search(r'[A-Za-z0-9]', text[limit:limit + 1]) and ' ' in cut:
         cut = cut[:cut.rindex(' ')]          # a Latin word is not cut in two
-    return cut.rstrip(' ,，;；\n') + '…'
+    return cut.rstrip(' ,，;；:：-–—\n')
 
 
 def _headline(text, language, limit):
@@ -744,9 +823,13 @@ def _palette(template_id, brand):
 def _job(template_id, ctx, **fields):
     width, height = CANVAS[ctx['aspect']]
     tokens = brandkit_render.template_info(template_id)['tokens']
+    palette = _palette(template_id, ctx.get('brand'))
+    background = str(palette.get('bg', '')).lstrip('#')
+    if ctx.get('light_product') and len(background) == 6 and sum(int(background[i:i + 2], 16) for i in (0, 2, 4)) / 765 > .8:
+        palette['bg'] = '#D5D9DD'        # a bright steel or white product on a near-white page would vanish: a cool grey ground
     return {'template_id': template_id, 'variant': 'studio', 'canvas': {'width': width, 'height': height}, 'lang': ctx['language'],
             'safe_margin': tokens.get('safe_margin', 84), 'min_margin': tokens.get('min_margin', 60),
-            'palette': _palette(template_id, ctx.get('brand')), 'publishability': 'user_product', **fields}
+            'palette': palette, 'publishability': 'user_product', **fields}
 
 
 ICON_WORDS = ((('battery', '电池', 'mah'), 'battery-4'), (('volt', '电压'), 'bolt'), (('weight', '重量', '净重', 'kg', ' lb'), 'weight'),
@@ -798,7 +881,8 @@ def _chip_rows(ctx, limit=3):
         if any(value and abs(value - mm) <= max(2.0, mm * .02) for value in shown) or any(row['label'] == t[key] for row in rows):
             continue
         value, unit = measure(mm)
-        icon = {'height': 'arrow-autofit-height', 'width': 'arrow-autofit-width', 'length': 'arrow-autofit-width', 'depth': 'arrows-diagonal'}.get(key, 'ruler-measure')
+        icon = {'height': 'arrow-autofit-height', 'width': 'arrow-autofit-width', 'length': 'arrow-autofit-width', 'depth': 'arrows-diagonal',
+                'thickness': 'arrows-diagonal'}.get(key, 'ruler-measure')
         rows.append({'label': t[key], 'value': value, 'unit': unit, 'icon': icon})
     return [{key: value for key, value in row.items() if value is not None} for row in rows[:limit]]
 
@@ -817,6 +901,8 @@ def dimensions_mm(ctx):
         return []
     width, depth, height = dims
     across, hidden = (width, depth) if width >= depth else (depth, width)
+    if ctx.get('flat'):            # a tool lying flat is shown from above: its length across, its width up, its thickness aside
+        return [('length', across), ('width', hidden), ('thickness', height)]
     return [('width', across), ('height', height), ('depth', hidden)]
 
 
@@ -981,23 +1067,24 @@ def _jobs_for(kind, ctx):
     if kind == 'T06':
         side = assets['side']; box = side['content_bbox']
         rows = dimensions_mm(ctx); unit = ctx['unit']
-        across = next(mm for key, mm in rows if key in ('width', 'length')); up = next(mm for key, mm in rows if key == 'height')
-        depth = next(mm for key, mm in rows if key == 'depth')
+        (across_key, across), (up_key, up), (depth_key, depth) = rows
         dims = []
-        for key, letter, mm, start, end, side_dir, at in (('height', 'H', up, [box[0], box[1]], [box[0], box[3]], [-1, 0], box[0] - .07),
-                                                          ('width', 'W', across, [box[0], box[3]], [box[2], box[3]], [0, 1], box[3] + .07)):
+        for key, letter, mm, start, end, side_dir, at in ((up_key, t[up_key][:1].upper() if ctx['language'] == 'en' else up_key[:1].upper(), up,
+                                                           [box[0], box[1]], [box[0], box[3]], [-1, 0], box[0] - .07),
+                                                          (across_key, t[across_key][:1].upper() if ctx['language'] == 'en' else across_key[:1].upper(), across,
+                                                           [box[0], box[3]], [box[2], box[3]], [0, 1], box[3] + .07)):
             value, shown = _measure(mm, unit)
             dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
                          'side': side_dir, 'at': at})
         depth_value, depth_unit = _measure(depth, unit)
         # Each sentence on its own line, so the depth figure never wraps away from its label.
-        note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + t['depth_note'] % ('%g\u00a0%s' % (depth_value, depth_unit))
+        note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + ('%s %g\u00a0%s%s' % (t[depth_key], depth_value, depth_unit, '。' if ctx['language'] == 'zh' else '.'))
         # Figures on the product first (the Amazon dimension pages); a table when the page is too narrow for them.
         modes = ('onproduct', 'table')
         extra = [{'label': _clip(row['label'], 18), 'value': row['value']} for row in product['specs']
                  if not any(word in row['label'].lower() for word in ('高', '宽', '长', '深', 'height', 'width', 'length', 'depth', 'size', '尺寸'))][:3]
         return [_job(kind, ctx, mode=mode, hero='side', eyebrow=_clip(title, 24) or t['T06_eyebrow'], headline=t['T06_headline'], dimensions=dims,
-                     depth={'value': depth_value, 'unit': depth_unit}, specs=extra or None, disclaimer=t['table_note'].rstrip('。.') ,
+                     depth={'value': depth_value, 'unit': depth_unit, 'name': t[depth_key], 'key': depth_key}, specs=extra or None, disclaimer=t['table_note'].rstrip('。.') ,
                      table_note=note if mode == 'table' else None, assets={'side': side}) for mode in modes]
     if kind == 'T05':
         import components

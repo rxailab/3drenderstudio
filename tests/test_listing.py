@@ -579,7 +579,7 @@ class RecordTests(StoreCase):
     def test_a_pasted_description_is_sorted_into_the_record_keeping_only_what_it_says(self):
         import brandkit_review
         text = '棘轮割管器 PC-22\n切割范围 6-22 mm，整机长 215 mm，重 380 g。硬化钢刀轮可更换；双导向滚轮让切口平直。'
-        answer = {'title': '棘轮割管器', 'model': 'PC-22', 'longest_side': {'value': '215', 'unit': 'mm'}, 'headline': '6-22 mm 管材一次切平',
+        answer = {'title': '棘轮割管器', 'model': 'PC-22', 'longest_side': {'value': '215', 'unit': 'mm', 'quote': '整机长 215 mm'}, 'headline': '6-22 mm 管材一次切平',
                   'subline': '硬化钢刀轮，双导向滚轮', 'notes': ['产地未写'],
                   'features': [{'title': '硬化钢刀轮', 'detail': '可更换', 'parts': [PARTS[0], 'Not a part']},
                                {'title': '双导向滚轮', 'detail': '切口平直，寿命 5000 次', 'parts': []}],          # a number the text never gave
@@ -603,7 +603,7 @@ class RecordTests(StoreCase):
         self.assertIn('产地未写', product['drafted']['notes'])
         self.assertNotIn('size_mm', [] if product['size_mm'] else ['size_mm'])
         with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
-                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '30', 'unit': 'cm'}, 'features': [], 'specs': [], 'figures': []}):
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '30', 'unit': 'cm', 'quote': '整机长 215 mm'}, 'features': [], 'specs': [], 'figures': []}):
             again = listing.extract('fixture', {'text': text})['product']
         self.assertEqual((again['size_mm'], [row['title'] for row in again['features']]), (215.0, ['硬化钢刀轮']))    # a size not in the text is not taken; empty lists keep what was there
         with patch.object(brandkit_review, '_configs', return_value=(None, None)):
@@ -611,7 +611,7 @@ class RecordTests(StoreCase):
                 listing.extract('fixture', {'text': text})
         self.assertEqual(listing._numbers('管径 16,20,25 mm，1,200 g，功率１２００W，2.0Ah'), {'16', '20', '25', '1200', '2'})
         with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), \
-                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '215', 'unit': 'm'},
+                patch.object(brandkit_review, '_ask', return_value={**answer, 'longest_side': {'value': '215', 'unit': 'm', 'quote': '整机长 215 mm'},
                                                                     'features': [{'title': '刀轮', 'detail': '', 'parts': [PARTS[0]] * 60}]}):
             far = listing.extract('fixture', {'text': text})['product']                   # 215 m is out of range, 60 parts are one
         self.assertEqual((far['size_mm'], far['features'][0]['parts']), (215.0, [PARTS[0]]))
@@ -811,7 +811,8 @@ class BuildTests(StoreCase):
                                                       {'title': 'E', 'parts': [PARTS[0]]}, {'title': 'F', 'parts': [PARTS[1]]}]})
         listing.build('fixture')
         callouts = [row['title'] for row in self.job('T01')['features']]; column = [row['title'] for row in self.job('T03')['details']]
-        self.assertEqual(callouts, ['A', 'B', 'C', 'D']); self.assertEqual(column[:2], ['E', 'F'])
+        # A, C and E name the same part: one callout per spot (stacked ones would overlap); the column shows the others.
+        self.assertEqual(callouts, ['A', 'B']); self.assertEqual(column[:2], ['C', 'D'])
         listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})
         listing.build('fixture')
         self.assertEqual([row['title'] for row in self.job('T03')['details']], ['A', 'B'])          # only two points: shown again rather than not at all

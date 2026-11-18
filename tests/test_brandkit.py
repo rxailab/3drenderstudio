@@ -62,9 +62,13 @@ class GeometryTests(unittest.TestCase):
         self.assertNotIn('hull', dark)
 
     def test_words_are_cut_whole_and_chinese_headlines_break_at_a_pause(self):
-        self.assertEqual(brandkit_set._clip('Rolling Stack Toolbox', 18), 'Rolling Stack…')
+        # A listing never prints "…": the leading segment that fits, else whole words.
+        self.assertEqual(brandkit_set._clip('Rolling Stack Toolbox', 18), 'Rolling Stack')
         self.assertEqual(brandkit_set._clip('Stack it,\nroll it away', 40), 'Stack it,\nroll it away')
-        self.assertEqual(brandkit_set._clip('叠放式带轮工具箱组合套装', 8), '叠放式带轮工具…')
+        self.assertEqual(brandkit_set._clip('叠放式带轮工具箱组合套装', 8), '叠放式带轮工具箱')
+        self.assertEqual(brandkit_set._clip('Digital Caliper 0–150 mm / 0–6 in Stainless Steel', 24), 'Digital Caliper 0–150 mm')
+        self.assertEqual(brandkit_set._clip('2 × 20V 4.0 Ah Li-Ion Batteries', 22), '2 × 20V 4.0 Ah Li-Ion')
+        self.assertNotIn('…', brandkit_set._clip('Fast cutting and grinding of metal, tile and stone — includes 2 batteries', 60))
         self.assertEqual(brandkit_set._headline('三层叠放，一次拉走', 'zh', 40), '三层叠放，\n一次拉走')
         self.assertEqual(brandkit_set._headline('单手切管', 'zh', 40), '单手切管')
         self.assertEqual(brandkit_set._headline('Stack it, roll it away', 'en', 40), 'Stack it, roll it away')
@@ -300,6 +304,46 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(asked.call_count, 1)                                     # Chinese written once, then reused
         self.assertEqual(sorted(both[0]['captions']), ['en', 'zh'])
         self.assertEqual((both[0]['captions']['en']['title'], both[0]['title']), ('At the desk', '书桌旁'))
+
+    def test_selling_points_are_found_on_the_picture_when_part_names_do_not_place_them(self):
+        import brandkit_review, info_layer
+        nx = ny = 10; cells = [-1] * 100
+        for y in range(3, 7):
+            for x in range(1, 9):
+                cells[y * nx + x] = 0 if x < 5 else 1                         # two meshes with meaningless names
+        picture = info_layer.Picture.__new__(info_layer.Picture); picture.nx, picture.ny, picture.cells, picture.objects = nx, ny, cells, ['Circle.001', 'Circle.004']
+        product = {'title': 'Pliers', 'features': [{'title': 'Serrated jaws', 'parts': []}, {'title': 'Comfort grip', 'parts': []},
+                                                   {'title': 'CR-V steel', 'parts': []}, {'title': 'Side cutter', 'parts': []}],
+                   '_model_parts': ['Circle.001', 'Circle.004'], 'figures': [], 'specs': [], 'scenes': brandkit_set.default_scenes()}
+        answer = {'points': [{'number': 1, 'visible': True, 'x': .25, 'y': .45}, {'number': 2, 'visible': True, 'x': .75, 'y': .5},
+                             {'number': 3, 'visible': False, 'x': 0, 'y': 0}, {'number': 4, 'visible': True, 'x': .5, 'y': .95}]}   # 4: off the product
+        cache = {}
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), patch.object(brandkit_review, '_ask', return_value=answer) as asked:
+            features, notes = brandkit_set.locate('hero.png', picture, product, cache)
+            brandkit_set.locate('hero.png', picture, product, cache)
+        self.assertEqual(asked.call_count, 1)                                      # kept with the project, not asked again
+        self.assertEqual([row.get('parts') for row in features], [['Circle.001'], ['Circle.004'], [], []])
+        self.assertEqual((features[0]['point'], 'point' in features[3]), ([.25, .45], False))
+        self.assertIn('2 条', notes[0])
+        located = {**product, 'features': features}
+        self.assertEqual((brandkit_set.anchored(located), brandkit_set.pointed(located)), ([0, 1], []))
+        # A model in one piece: the point is the callout's anchor, but there is no part to show close up.
+        whole = {**product, '_model_parts': ['Digital Caliper']}
+        picture.objects = ['Digital Caliper']; picture.cells = [0 if cell >= 0 else -1 for cell in cells]
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), patch.object(brandkit_review, '_ask', return_value=answer):
+            single, _ = brandkit_set.locate('hero.png', picture, whole, {})
+        single_product = {**whole, 'features': single}
+        self.assertEqual((brandkit_set.anchored(single_product), brandkit_set.pointed(single_product)), ([], [0, 1]))
+        has, why = brandkit_set.requirements(single_product, [], True, 0)
+        self.assertEqual((has['T01'], has['T03'], has['T02']), (True, False, False)); self.assertIn('整体', why['T03'])
+        # Every part named at once is the whole product, not a part of it.
+        self.assertEqual(brandkit_set.anchored({'features': [{'title': 'Steel', 'parts': ['Digital Caliper']}], '_model_parts': ['Digital Caliper']}), [])
+
+    def test_a_tool_lying_flat_is_measured_length_width_and_thickness(self):
+        rows = brandkit_set.dimensions_mm({'dims_mm': [235.0, 80.0, 10.0], 'flat': True})
+        self.assertEqual(rows, [('length', 235.0), ('width', 80.0), ('thickness', 10.0)])
+        self.assertEqual(brandkit_set.dimensions_mm({'dims_mm': [405.0, 180.0, 476.0]}), [('width', 405.0), ('height', 476.0), ('depth', 180.0)])
+        self.assertTrue(listing._flat([235, 80, 10])); self.assertFalse(listing._flat([405, 180, 476]))
 
     def test_chinese_captions_are_set_one_clause_per_line(self):
         self.assertEqual(brandkit_set._clause_lines('托特包置于窗边，随手可取', 'zh', 8), '托特包置于窗边，\n随手可取')

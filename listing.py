@@ -225,6 +225,8 @@ def stored(project):
         product = validate_product({}, project, listing.get('product') if isinstance(listing.get('product'), dict) else None)
     except ValueError:
         product = default_product(project)
+    # Every part of the model: a selling point that names them all is about the whole product (brandkit_set.anchored).
+    product['_model_parts'] = part_names(project)
     try:
         brand = brand_kit.validate(listing.get('brand') if isinstance(listing.get('brand'), dict) else {})
     except ValueError:
@@ -385,10 +387,12 @@ EXTRACTOR = (
     'a product record. Extract; do not write new copy. Use only what the text states: never add a feature, number, unit, material, '
     'certification or claim it does not contain. Keep the text\'s own words where they fit the length limits, shortened if needed; '
     'write every field in the output language (translate faithfully when the text is in another language). '
-    'title: the product\'s name (no brand slogan). model: the model or SKU code if given, else "". '
-    'longest_side: the overall size along the product\'s longest side as written in the text (value and unit), or empty strings when the '
-    'text gives no overall size. headline: the text\'s main selling sentence, shortened; subline: a second line that supports it. '
-    'features: the distinct selling points, each a short title and a one-line detail, most important first; for each, parts lists '
+    'title: the product\'s short name as a listing headline prints it, 2 to 5 words ("Digital Caliper", "Cordless Angle Grinder"), '
+    'without sizes, materials or slogans. model: the model or SKU code if given, else "". '
+    'longest_side: the overall size along the WHOLE product\'s longest side as written in the text (value and unit, and quote: the '
+    'exact words of the text you took it from), or empty strings when the text gives no overall size; the size of a part (a disc '
+    'diameter, a jaw opening, a blade, a measuring range, a cutting capacity) is never the product\'s size. headline: the text\'s main selling sentence, shortened; subline: a second line that supports it. '
+    'features: the distinct selling points, each a short title of 2 to 4 words that fits a callout label and a one-line detail, most important first; for each, parts lists '
     'the names from model_parts that show it (exact names, may be empty). specs: label/value pairs of technical data, value with '
     'its unit. figures: up to three numbers worth showing large (value, unit, label), each also present in specs or the text. '
     'notes: anything in the text you could not place, briefly (or nothing).')
@@ -443,8 +447,8 @@ def extract(project_id, body):
     schema = {'type': 'object', 'additionalProperties': False,
               'required': ['title', 'model', 'longest_side', 'headline', 'subline', 'features', 'specs', 'figures', 'notes'],
               'properties': {'title': {'type': 'string'}, 'model': {'type': 'string'}, 'headline': {'type': 'string'}, 'subline': {'type': 'string'},
-                             'longest_side': {'type': 'object', 'additionalProperties': False, 'required': ['value', 'unit'],
-                                              'properties': {'value': {'type': 'string'}, 'unit': {'type': 'string'}}},
+                             'longest_side': {'type': 'object', 'additionalProperties': False, 'required': ['value', 'unit', 'quote'],
+                                              'properties': {'value': {'type': 'string'}, 'unit': {'type': 'string'}, 'quote': {'type': 'string'}}},
                              'features': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['title', 'detail', 'parts'],
                                                                      'properties': {'title': {'type': 'string'}, 'detail': {'type': 'string'},
                                                                                     'parts': {'type': 'array', 'items': {'type': 'string'}}}}},
@@ -452,7 +456,7 @@ def extract(project_id, body):
                              'figures': {'type': 'array', 'items': row(('value', 'unit', 'label'))},
                              'notes': {'type': 'array', 'items': {'type': 'string'}}}}
     request = {'text': text, 'output_language': 'Simplified Chinese' if language == 'zh' else 'English', 'model_parts': names[:200],
-               'limits_in_characters': {'title': 60, 'model': 40, 'headline': 60, 'subline': 120, 'feature_title': 40, 'feature_detail': 90,
+               'limits_in_characters': {'title': 32, 'model': 40, 'headline': 60, 'subline': 120, 'feature_title': 24, 'feature_detail': 90,
                                         'spec_label': 30, 'spec_value': 30, 'figure_value': 12, 'figure_unit': 8, 'figure_label': 30},
                'most': {'features': MAX_FEATURES, 'specs': MAX_SPECS, 'figures': MAX_FIGURES}}
     try:
@@ -493,7 +497,12 @@ def extract(project_id, body):
         except ValueError:
             number = None
         unit = unicodedata.normalize('NFKC', unit) if unit not in UNIT_MM else unit
-        if number and not _numbers(value) <= known:
+        quote = ' '.join(str(side.get('quote', '')).split())
+        overall = re.search(r'overall|total|length|long|size|dimension|整机|总长|全长|长度|尺寸|外形|长', quote, re.I)
+        part = re.search(r'disc|disk|blade|jaw|range|capacity|diameter|opening|cut|thread|片|口|径|范围|容量|行程', quote, re.I)
+        if number and (not quote or quote not in ' '.join(text.split()) or not overall or (part and not re.search(r'overall|total|整机|总长|全长', quote, re.I))):
+            notes.append('介绍里没有写明整件产品的长度，最长边尺寸请手动填写。')
+        elif number and not _numbers(value) <= known:
             dropped.append('最长边尺寸')
         elif number and unit not in UNIT_MM:
             notes.append('最长边尺寸的单位「%s」无法识别，请手动填写毫米数。' % str(side.get('unit', ''))[:12])
@@ -655,6 +664,23 @@ def _focus_features(product, limit):
     return [(index, product['features'][index]['parts']) for index in brandkit_set.anchored(product)][:limit]
 
 
+def _light_share(path):
+    """The share of a cut-out render's product pixels that are near white (bright steel, white plastic)."""
+    from PIL import Image
+    try:
+        with Image.open(path) as opened:
+            image = opened.convert('RGBA'); image.thumbnail((360, 360))
+    except OSError:
+        return 0.0
+    pixels = [pixel for pixel in image.getdata() if pixel[3] > 200]
+    return sum(1 for pixel in pixels if min(pixel[:3]) > 185) / max(1, len(pixels))
+
+
+def _flat(dims):
+    """A product lying flat: its height well under the shorter of its two sides on the ground."""
+    return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
+
+
 def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
@@ -665,8 +691,10 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         import orientation
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
         dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
+        # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
+        elevation = 89 if _flat(dims) else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
-                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': 0, 'projection': 'orthographic', 'margin': .06},
+                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
     for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
@@ -744,7 +772,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     waiting = [row.get('name') for row in components.components(project) if row.get('status') in ('queued', 'processing')]
     if waiting:
         notes.append('有 %d 个组件还在处理，本次套图没有包含：%s。' % (len(waiting), '、'.join(str(name) for name in waiting[:4])))
-    for index, name in enumerate(names):
+    located = listing.get('located') if isinstance(listing.get('located'), dict) else {}
+    refused = False                  # the AI service refused (quota, key): nothing more is asked of it in this build
+    index = 0
+    while index < len(names):
+        name = names[index]
         if cancelled():
             raise ListingCancelled()
         progress('pictures', index / len(names), '渲染第 %d / %d 张素材' % (index + 1, len(names)))
@@ -755,6 +787,19 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             raise ListingCancelled() from None
         picture = info_layer.Picture(result['probe'], result['path']) if info_layer._valid_probe(result.get('probe')) else None
         shots[name] = {'result': result, 'path': result['path'], 'picture': picture}
+        index += 1
+        if name == 'hero':
+            # Selling points the model's part names do not place are found on the main picture; the pages are planned again.
+            features, found = brandkit_set.locate(result['path'], picture, product, located)
+            refused = any(re.search(r'HTTP 40[123]', note) for note in found)
+            if features != product['features']:
+                product = {**product, 'features': features}; notes += found
+                rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
+                kinds = {row['kind'] for row in rows}
+                requests = {**picture_requests(project, product, size_mm, rows, parts), 'hero': requests['hero']}
+                names = ['hero'] + [key for key in requests if key != 'hero']
+            elif found:
+                notes += found
     product_color = brand_kit.dominant_color(shots['hero']['path'])
     brand = brand_kit.Brand(brand_record, product_color)
     brand.logo_path = components.path_of(project_id, brand_record.get('logo'))
@@ -788,6 +833,10 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         hero, crop = brandkit_set.flatten(shots['hero']['path'], assets_folder / 'hero.png')
         assets['hero'] = hero
         picture = shots['hero']['picture']
+        for index in brandkit_set.pointed(product):          # found on the picture by the vision model, no part of its own
+            point = brandkit_set.remap(product['features'][index]['point'], crop)
+            if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                anchors.append((index, point))
         for index in brandkit_set.anchored(product):
             found, share = picture.anchor(product['features'][index]['parts']) if picture else (None, 0)
             if found and share > .0003:          # a small part (a rivet, a button) still gets its line
@@ -796,6 +845,12 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                     others = [brandkit_set.remap(other, crop) for other in picture.other_anchors(product['features'][index]['parts'])]
                     alternatives[index] = [other for other in others if 0 <= other[0] <= 1 and 0 <= other[1] <= 1]
                     anchors.append((index, point))
+        # In selling-point order; two points on the same spot (a model in one piece) would stack their callouts: one is kept.
+        kept = []
+        for index, point in sorted(anchors):
+            if all(math.hypot(point[0] - other[0], point[1] - other[1]) >= .05 for _, other in kept):
+                kept.append((index, point))
+        anchors = kept
         for index, names in _focus_features(product, 6):
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
@@ -832,6 +887,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
                'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
+        ctx['flat'] = bool(ctx['dims_mm']) and _flat(ctx['dims_mm'])
+        ctx['light_product'] = _light_share(shots['hero']['path']) > .35
         ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes))
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
@@ -849,6 +906,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if copy_note:
                 notes.append(copy_note)
         ctx['review'] = vision_ready
+        if refused:
+            ctx['review_refused'] = '额度或密钥被拒绝'
         if not vision_ready:
             notes.append('视觉模型未配置：各页只做了版式测量，没有经过视觉审核。')
         laid = {}; done = [0]; lock = threading.Lock()
@@ -910,7 +969,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                   for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
-        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations)
+        listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations,
+                       located=located)
         if scene_key:
             listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
         listing.setdefault('product', written); listing.setdefault('brand', brand_record)
