@@ -62,7 +62,8 @@ ART_DIRECTOR = (
     'the product. Report position or alignment only when it is plainly visible. For product fidelity compare details carefully with '
     'REFERENCE_IMAGE: labels or patches on the product, colours, handles, hardware; a missing patch or a changed colour in a scene is '
     'scene_product_mismatch. Check every line of text against the facts: a use, benefit or quality the facts do not state is '
-    'claim_not_in_facts. '
+    'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
+    'measured_on_3d_model_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
     'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '

@@ -125,9 +125,10 @@ def pointed(product):
 
 LOCATOR = ('You look at a product photo for an online listing and say where each selling point is on the product. For each '
            'numbered selling point, give the point (x, y as fractions of the picture width and height, from the top left) at the '
-           'centre of the part it is about: a display, a button, a jaw, a cutter, a handle, a battery, a guard. When the selling '
-           'point is about the whole product rather than one part (a material, a mode, a speed, an accuracy), or that part cannot '
-           'be seen from this side, set visible to false.')
+           'centre of the part it is about: a display, a button, a jaw, a cutter, a handle, a battery, a guard. A feature that a part '
+           'delivers points at that part: measuring modes at the jaws and depth rod, a unit switch or zero at its button, a motor at '
+           'the motor housing, a material at the part made of it. Only when no part shows it (an accuracy, a warranty, a speed with no '
+           'visible source) or that part cannot be seen from this side, set visible to false.')
 
 
 def locate(picture_path, picture, product, cache):
@@ -913,12 +914,27 @@ def _measure(mm, unit):
 
 
 def jobs_for(kind, ctx):
-    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. When the
-    copywriter wrote this page's lines, the same versions with the template's own lines follow."""
-    if not (ctx.get('copy') or {}).get(kind):
-        return [{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, ctx))]
-    return [{**job, '_lines': 'model'} for job in _recropped(_jobs_for(kind, ctx))] + \
-           [{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, {**ctx, 'copy': {}}))]
+    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. The lines are
+    the copywriter's (when it wrote this page's), then the product's name as headline, then the template's own short line."""
+    lists = []
+    if (ctx.get('copy') or {}).get(kind):
+        lists.append([{**job, '_lines': 'model'} for job in _recropped(_jobs_for(kind, ctx))])
+    plain = {**ctx, 'copy': {}}
+    lists.append([{**job, '_lines': 'name'} for job in _recropped(_jobs_for(kind, plain))])
+    lists.append([{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, {**plain, 'stock_lines': True}))])
+    out = []; seen = set(); offset = 0
+    for jobs in lists:
+        if not jobs:
+            continue
+        heads = {job.get('headline') for job in jobs}
+        if heads <= seen:
+            continue                         # the same lines again (a page whose headline is not the name's)
+        seen |= heads
+        top = 0
+        for job in jobs:                    # crop variants keep their group, numbered across the lists
+            out.append({**job, '_group': job.get('_group', 0) + offset}); top = max(top, job.get('_group', 0))
+        offset += top + 1
+    return out
 
 
 CROP_SHIFTS = ((0, -.2), (0, .2), (-.2, 0), (.2, 0))
@@ -954,6 +970,14 @@ def _jobs_for(kind, ctx):
         if written.get(key):
             t['%s_%s' % (kind, key)] = written[key]          # the copywriter's line for this product, when it passed its checks
     title = product['title'] or ''; headline = product['headline'] or title
+    if not written.get('headline') and title and not ctx.get('stock_lines'):
+        # No line from the copywriter: the product's own name with a short accent tail beats a stock phrase on every set.
+        name = _clip(title, 26)
+        tails = {'en': {'T01': '%s,\n[[part by part]]', 'T02': '%s\n[[in detail]]', 'T04': '%s\n[[at a glance]]', 'T08': '%s\n[[on the job]]'},
+                 'zh': {'T01': '%s\n[[结构一览]]', 'T02': '%s\n[[做工细节]]', 'T04': '%s\n[[关键参数]]', 'T08': '%s\n[[实用场景]]'}}
+        pattern = tails[ctx['language']].get(kind)
+        if pattern:
+            t['%s_headline' % kind] = pattern % (name.upper() if False else name)
     if kind == 'T12':
         # The poster takes a picture the image model made; a studio render of the workpiece stays on the inside pages.
         made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]

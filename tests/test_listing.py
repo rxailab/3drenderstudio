@@ -782,8 +782,9 @@ class BuildTests(StoreCase):
         by_kind = {page['kind']: page for page in pages}
         self.assertEqual(self.job('T01')['headline'], 'Grips firm'); self.assertEqual(self.job('T01')['eyebrow'], 'Parts')
         self.assertEqual(len(self.job('T01')['features']), 2)                                  # the drop that would go below two was not made
-        self.assertEqual(self.job('T02')['headline'], brandkit_set.TEXT['en']['T02_headline'])
-        self.assertEqual(self.job('T04')['headline'], brandkit_set.TEXT['en']['T04_headline'])
+        # A refused line gives way to the product's own name, not a stock phrase.
+        self.assertEqual(self.job('T02')['headline'], 'Ratchet Pipe Cutter\n[[in detail]]')
+        self.assertEqual(self.job('T04')['headline'], 'Ratchet Pipe Cutter\n[[at a glance]]')
         self.assertTrue(any('默认标题' in note for note in notes))
         self.assertEqual((by_kind['T01']['review']['status'], by_kind['T01']['review']['first_score'], by_kind['T01']['review']['score']), ('revised', 78, 87))
         self.assertIn('缩短headline', by_kind['T01']['review']['applied'])
@@ -835,7 +836,7 @@ class BuildTests(StoreCase):
                 patch.object(brandkit_review, 'write_copy', return_value=({'T01': {'eyebrow': 'Parts', 'headline': 'A very long line'}}, None)):
             pages, _ = listing.build('fixture')
         tried = [job['headline'] for kind, job in self.jobs if kind == 'T01']
-        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], brandkit_set.TEXT['en']['T01_headline'])
+        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], 'Ratchet Pipe Cutter,\n[[part by part]]')
         self.assertTrue(next(page for page in pages if page['kind'] == 'T01')['checks']['passed'])
 
     def test_scenes_whose_product_check_failed_stay_off_the_poster_and_fail_their_pages(self):
