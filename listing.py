@@ -653,14 +653,20 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         for index, names in _focus_features(product, 6):
             if 'detail%d' % index in shots:
                 name = 'detail%d' % index
-                region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25)
-                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), trim=False, region=region)
+                region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25, inset=.04)
+                # On the detail page's dark rail (its only layout here), as studio shots on the rail's own tone, not white cards.
+                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(38, 41, 45), dark=True,
+                                                       trim=False, region=region)
+                assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
                 focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
                 details.append((index, name))
             if 'macro%d' % index in shots:
                 name = 'macro%d' % index
+                region = brandkit_set.part_region(shots[name]['result'], names, least=.34, margin=.15, inset=.1)   # the dark close-up frames fade out
                 assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(22, 24, 27), dark=True, trim=False,
-                                                       region=brandkit_set.part_region(shots[name]['result'], names, least=.34, margin=.15))
+                                                       region=region)
+                assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
+                focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
                 macros.append((index, name))
         if 'side' in shots:
             assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
@@ -720,7 +726,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             width, height = qa['render']['size']
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
                           'width': width, 'height': height, 'notes': page_notes, 'review': review,
-                          'checks': {'passed': not brandkit_render.layout_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
+                          'checks': {'passed': not brandkit_set.hard_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
         if ctx.get('review_refused'):
             notes.append('视觉审核被 AI 服务拒绝（%s），之后的页面没有再请求审核。' % ctx['review_refused'])
         if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
@@ -744,7 +750,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check')}
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption')}
                   for row in scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):

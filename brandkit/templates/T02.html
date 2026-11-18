@@ -49,6 +49,7 @@ function feather(frame, sides, size) {
   const g = sides.map(sd => `linear-gradient(to ${ {left:'right', right:'left', top:'bottom', bottom:'top'}[sd] }, transparent 0, #000 ${size}px)`);
   frame.style.webkitMaskImage = g.join(','); frame.style.maskImage = g.join(',');
   frame.style.webkitMaskComposite = 'source-in'; frame.style.maskComposite = 'intersect';
+  frame.dataset.feather = JSON.stringify(Object.fromEntries(sides.map(sd => [sd, size])));   // project change: reported in QA
 }
 const scaleCap = job.max_detail_scale || 1.25;
 

@@ -78,7 +78,7 @@ if (mode === 'band') {
   T.root.appendChild(cont);
   let y = bandTop + bandPad;
   if (hl) { hl.style.top = y + 'px'; y += hlH; }
-  cells.forEach(c => c.move(y + (cellH - c.h) / 2));
+  cells.forEach(c => c.move(y));   // labels share one line (project change: centring each cell put a figure's label above the others)
   for (let i = 1; i < n; i++) { const r = T.el('div', {class:'vrule'}, cont); T.box(r, m + i * (colW + colGap) - colGap / 2, y, 2, cellH); }
   T.layoutInfo.scene_h = bandTop;
 } else if (mode === 'stack') {

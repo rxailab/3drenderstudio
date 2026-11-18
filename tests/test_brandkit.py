@@ -196,6 +196,55 @@ class ReviseTests(unittest.TestCase):
         picture = info_layer.Picture.__new__(info_layer.Picture); picture.nx, picture.ny, picture.cells, picture.objects = nx, ny, cells, ['Rivet']
         self.assertEqual(len(picture.other_anchors(['Rivet'])), 1)                      # the second rivet, not the stray cell
 
+    def test_a_close_up_frame_that_cuts_through_a_badge_is_caught_and_moved(self):
+        nx = ny = 20; cells = [0] * 400                              # the body fills the render...
+        for y in range(12, 15):
+            for x in range(8, 12):
+                cells[y * nx + x] = 1                                # ...with a small badge on it
+        result = {'probe': {'nx': nx, 'ny': ny, 'cells': cells, 'objects': ['Canvas body', 'Label_MORA']}}
+        parts = brandkit_set.part_map(result, (0, 0, 1, 1))
+        self.assertEqual([row['name'] for row in parts], ['Label_MORA'])          # the body is too large to count
+        def qa(frame_h, feather=None):
+            frame = {'id': 'detail1_frame', 'kind': 'shape', 'x': 0, 'y': 0, 'w': 1000, 'h': frame_h}
+            if feather:
+                frame['feather'] = feather
+            return {'issues': [], 'elements': [frame, {'id': 'detail1', 'kind': 'detail_image', 'asset': 'macro0', 'x': 0, 'y': 0, 'w': 1000, 'h': 1000}]}
+        job = {'assets': {'macro0': {'_parts': parts}}}
+        for frame_h, feather, cut in ((680, None, True), (900, None, False), (900, {'bottom': 400}, True), (500, None, False)):
+            record = qa(frame_h, feather); brandkit_render.frame_checks(record, job)
+            self.assertEqual(bool(record['issues']), cut, (frame_h, feather))
+        self.assertNotIn('_parts', brandkit_render.compose('T02', {**job, 'canvas': {'width': 10, 'height': 10}}))
+        jobs = brandkit_set._recropped([{'features': [{'detail': 'macro0', 'focus': [.5, .5]}], 'assets': job['assets']}, {'features': []}])
+        self.assertEqual([row['features'][0]['focus'] for row in jobs[:5]], [[.5, .5], [.5, .3], [.5, .7], [.3, .5], [.7, .5]])
+        self.assertEqual(len(jobs), 6)                                              # nothing to move without a part map
+
+    def test_a_close_up_window_is_moved_off_a_badge_it_would_slice(self):
+        nx = ny = 40; cells = [-1] * 1600
+        for y in range(4, 16):
+            for x in range(10, 20):
+                cells[y * nx + x] = 0                                 # the handle the close-up is about
+        for y in range(20, 26):
+            for x in range(12, 18):
+                cells[y * nx + x] = 1                                 # a badge just under it
+        result = {'width': 1000, 'height': 1000, 'probe': {'nx': nx, 'ny': ny, 'cells': cells, 'objects': ['Handle', 'Label_MORA']}}
+        region = brandkit_set.part_region(result, ['Handle'], least=.1, margin=.5)
+        with patch.object(brandkit_set, '_uncut', side_effect=lambda window, *rest: window):
+            plain = brandkit_set.part_region(result, ['Handle'], least=.1, margin=.5)
+        self.assertEqual(brandkit_set._cuts(plain, brandkit_set.part_map(result, (0, 0, 1, 1))), ['Label_MORA'])     # as it was: through the badge
+        parts = brandkit_set.part_map(result, (0, 0, 1, 1))
+        self.assertEqual(brandkit_set._cuts(region, parts), [])
+        self.assertTrue(region[0] <= .25 and region[1] <= .1 and region[2] >= .5 and region[3] >= .4, region)   # the handle still whole
+
+    def test_scenes_are_captioned_from_the_pictures_once(self):
+        import brandkit_review
+        rows = [{'path': 'a.png', 'title': '办公随行', 'body': '伴随职场日常'}, {'path': 'b.png', 'title': '日常外出', 'body': ''}]
+        answers = iter([{'title': '窗边木桌', 'body': '托特包立在桌上，旁有绿植'}, {'title': '窗边木桌', 'body': '重复的标题'}])
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(answers)) as asked:
+            out, done = brandkit_set.seen_captions({'language': 'zh', 'title': '托特包'}, rows)
+        self.assertEqual(asked.call_args_list[0].kwargs['image_path'], 'a.png')
+        self.assertEqual(([row['title'] for row in out], out[0]['body'], out[0].get('caption'), done), (['窗边木桌', '日常外出'], '托特包立在桌上，旁有绿植', 'seen', 1))
+
     def test_chinese_captions_are_set_one_clause_per_line(self):
         self.assertEqual(brandkit_set._clause_lines('托特包置于窗边，随手可取', 'zh', 8), '托特包置于窗边，\n随手可取')
         self.assertEqual(brandkit_set._clause_lines('简洁背景下托特包伴随职场日常', 'zh', 8), '')            # it would wrap mid-word

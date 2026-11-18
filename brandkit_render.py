@@ -27,7 +27,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('phrase_break', 'leader_over_product', 'frame_cuts_part', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -74,7 +74,7 @@ def asset(path, **extra):
 
 def compose(template_id, job):
     source = (TEMPLATES / (template_id + '.html')).read_text(encoding='utf-8')
-    public = {**job, 'assets': {key: {k: v for k, v in value.items() if k != 'path'} for key, value in (job.get('assets') or {}).items()}}
+    public = {**job, 'assets': {key: {k: v for k, v in value.items() if k != 'path' and not k.startswith('_')} for key, value in (job.get('assets') or {}).items()}}
     data = json.dumps(public, ensure_ascii=False).replace('</', '<\\/')
     inject = '<base href="%s/">\n<script>window.JOB = %s;</script>' % (ROOT.as_uri(), data)
     return source.replace('<!--INJECT-->', inject)
@@ -171,6 +171,31 @@ def _leader_checks(qa, image_row, picture, job):
                                  'detail': '%.0f px of the line over the product (%.0f px wide)' % (over, lw)})
 
 
+def frame_checks(qa, job):
+    """A close-up frame may cut a large part, but not slice through a small separate one (a badge, a rivet): one whose
+    box is partly inside what the frame shows and partly outside. The part map comes with the asset (``_parts``)."""
+    elements = qa.get('elements', []); frames = {row.get('id'): row for row in elements}
+    for row in elements:
+        if row.get('kind') != 'detail_image' or not row.get('w') or not row.get('h'):
+            continue
+        parts = ((job.get('assets') or {}).get(row.get('asset')) or {}).get('_parts') or []
+        frame = frames.get(str(row.get('id')) + '_frame')
+        if not parts or not frame:
+            continue
+        # A feathered edge hides the picture from about the middle of its fade: that is where a part looks cut.
+        fade = {side: float(size) / 2 for side, size in (frame.get('feather') or {}).items()}
+        window = [(frame['x'] + fade.get('left', 0) - row['x']) / row['w'], (frame['y'] + fade.get('top', 0) - row['y']) / row['h'],
+                  (frame['x'] + frame['w'] - fade.get('right', 0) - row['x']) / row['w'],
+                  (frame['y'] + frame['h'] - fade.get('bottom', 0) - row['y']) / row['h']]
+        for part in parts:
+            box = part['box']; area = (box[2] - box[0]) * (box[3] - box[1])
+            inside = max(0, min(box[2], window[2]) - max(box[0], window[0])) * max(0, min(box[3], window[3]) - max(box[1], window[1]))
+            share = inside / area if area > 0 else 0
+            if .04 < share < .88:
+                qa['issues'].append({'check': 'frame_cuts_part', 'id': '%s×%s' % (row['id'], part['name']),
+                                     'detail': '%.0f%% of %s inside the frame' % (share * 100, part['name'])})
+
+
 def phrase_checks(qa, job):
     """A Chinese headline wraps only where its author broke it: one more line than written means a phrase was split."""
     if job.get('lang') != 'zh':
@@ -210,6 +235,7 @@ def render(template_id, job, out, work=None):
     if not out.is_file():
         raise RenderError('排版浏览器没有输出图片：%s' % shot_result.stderr.decode('utf-8', 'replace')[-300:])
     pixel_checks(qa, job)
+    frame_checks(qa, job)
     phrase_checks(qa, job)
     with Image.open(out) as image:
         if image.size != (width, height):

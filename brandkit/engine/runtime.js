@@ -215,6 +215,7 @@
         const minEq = { headline: 14, important: 12, secondary: 10, meta: 0 }[rec.tier] ?? 10;
         if (rec.equiv_px_at_360 < minEq) issues.push({ check: 'min_size_at_360', id: rec.id, detail: `${rec.equiv_px_at_360}px < ${minEq}px` });
       }
+      if (n.dataset.feather) rec.feather = JSON.parse(n.dataset.feather);   // project change: feathered frame edges, for the renderer's part-cut check
       if (n.tagName === 'IMG') {
         const nw = +n.dataset.nw, nh = +n.dataset.nh;
         rec.asset = n.dataset.asset; rec.crop = n.dataset.crop; rec.natural = [nw, nh];
