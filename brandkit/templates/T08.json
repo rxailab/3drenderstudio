@@ -1,0 +1,289 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T08",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-035",
+   "role": "composition",
+   "adopted_rules": [
+    "one image per idea, caption beside/below it",
+    "rhythm without mechanical repetition (stagger in portrait)"
+   ],
+   "excluded_elements": [
+    "torque-level claims",
+    "numbering uses as if they were steps",
+    "small long paragraphs"
+   ]
+  },
+  {
+   "ref_id": "HW-300",
+   "role": "information_structure",
+   "adopted_rules": [
+    "states compared on one ground"
+   ],
+   "excluded_elements": [
+    "inferring operation order from states"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#26292D",
+   "text": "#F5F4F1",
+   "muted": "#C2C8CD",
+   "accent": "#E7B53C"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 92,
+   "use_title": 60,
+   "use_body": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.1341,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Seen in use",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.7702,
+    0.0632
+   ],
+   "allow_overlap_with": [],
+   "text": "Three settings, one system",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u1_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.7251,
+    0.2077,
+    0.0864
+   ],
+   "allow_overlap_with": [],
+   "text": "Parked in the garage",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u1_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.8221,
+    0.2749,
+    0.0728
+   ],
+   "allow_overlap_with": [],
+   "text": "Assembled stack beside a wall of tools",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u2_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.3609,
+    0.7251,
+    0.2529,
+    0.0864
+   ],
+   "allow_overlap_with": [],
+   "text": "Units opened side by side",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u2_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.3609,
+    0.8221,
+    0.2149,
+    0.1092
+   ],
+   "allow_overlap_with": [],
+   "text": "Each unit shown open with its contents",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u3_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6658,
+    0.7251,
+    0.2563,
+    0.0864
+   ],
+   "allow_overlap_with": [],
+   "text": "Open by the pegboard",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "u3_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.6658,
+    0.8221,
+    0.2395,
+    0.0728
+   ],
+   "allow_overlap_with": [],
+   "text": "Middle box shown open, lid raised",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tile1_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.056,
+    0.1925,
+    0.2782,
+    0.5113
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tile2_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.3609,
+    0.1925,
+    0.2782,
+    0.5113
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "tile3_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.6658,
+    0.1925,
+    0.2782,
+    0.5113
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "semantics explicit: uses (unnumbered) / steps (numbered only with approved step data) / states (unnumbered)",
+  "square & landscape -> columns (left->right); portrait -> stagger rows",
+  "2 items -> more whitespace, never a padded 3rd item",
+  "max 3 items per image",
+  "steps without approval -> rendered as uses + BLOCKED_BY_EVIDENCE note"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T08/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/matrix/sel_columns_3_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/matrix/sel_columns_2_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/matrix/sel_stagger_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T08/matrix/sel_steps_unapproved_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T08/source/T08.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T08/source/jobs/sel_columns_3_en_1500.json",
+  "templates/T08/source/jobs/sel_columns_2_en_1500.json",
+  "templates/T08/source/jobs/sel_stagger_zh_1200x1500.json",
+  "templates/T08/source/jobs/sel_steps_unapproved_en_1500.json"
+ ],
+ "qa_report_path": "templates/T08/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

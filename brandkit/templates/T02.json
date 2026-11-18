@@ -1,0 +1,326 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T02",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "HW-110",
+   "role": "composition",
+   "adopted_rules": [
+    "one dominant diagonal close-up carries the image",
+    "copy on the quiet side, never over texture"
+   ],
+   "excluded_elements": [
+    "copy placed over the ribbed mat",
+    "rubber/comfort claims",
+    "AIRAJ headline styling"
+   ]
+  },
+  {
+   "ref_id": "AMZ-036",
+   "role": "style",
+   "adopted_rules": [
+    "deep grey ground, accent-coloured short titles, white body",
+    "one close-up = one selling point"
+   ],
+   "excluded_elements": [
+    "LED glow / light effect",
+    "auto-shutdown & charging claims"
+   ]
+  },
+  {
+   "ref_id": "HW-166",
+   "role": "detail_organization",
+   "adopted_rules": [
+    "working end shown large, small secondary"
+   ],
+   "excluded_elements": [
+    "red light on metal",
+    "8-speed claim"
+   ]
+  },
+  {
+   "ref_id": "AMZ-034",
+   "role": "typography_hierarchy",
+   "adopted_rules": [
+    "restrained neutral ground; headline -> detail -> caption order"
+   ],
+   "excluded_elements": [
+    "set counts, weight, dimensions"
+   ]
+  },
+  {
+   "ref_id": "BAG-002",
+   "role": "detail_organization",
+   "adopted_rules": [
+    "consistent product colour across close-ups"
+   ],
+   "excluded_elements": [
+    "4-up grid in every template"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#24272B",
+   "text": "#F6F6F3",
+   "muted": "#C3C9CE",
+   "accent": "#E7B53C",
+   "line": "#6E767D"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 92,
+   "feature_title": 66,
+   "feature_body": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "detail1_frame",
+   "kind": "detail_image",
+   "box_normalized_xywh": [
+    0.392,
+    0.0,
+    0.608,
+    0.7187
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "explicit_bleed"
+  },
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.0587,
+    0.1521,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Detail study",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.092,
+    0.3942,
+    0.1263
+   ],
+   "allow_overlap_with": [
+    "detail1_frame"
+   ],
+   "text": "Grip and claw, up close",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "rule1",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.056,
+    0.261,
+    0.064,
+    0.0013
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "f1_no",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.293,
+    0.0233,
+    0.0187
+   ],
+   "allow_overlap_with": [],
+   "text": "01",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "f1_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.3277,
+    0.2916,
+    0.0467
+   ],
+   "allow_overlap_with": [],
+   "text": "Two-tone grip",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "f1_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.385,
+    0.3185,
+    0.1092
+   ],
+   "allow_overlap_with": [],
+   "text": "Black-and-yellow handle with raised ribs and an open end slot",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "detail2_frame",
+   "kind": "detail_image",
+   "box_normalized_xywh": [
+    0.056,
+    0.7653,
+    0.44,
+    0.166
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "explicit_detail_crop"
+  },
+  {
+   "element_id": "f2_no",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.528,
+    0.7659,
+    0.0233,
+    0.0187
+   ],
+   "allow_overlap_with": [],
+   "text": "02",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "f2_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.528,
+    0.8006,
+    0.2016,
+    0.0467
+   ],
+   "allow_overlap_with": [],
+   "text": "Split claw",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "f2_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.528,
+    0.8579,
+    0.4155,
+    0.0728
+   ],
+   "allow_overlap_with": [],
+   "text": "Curved, split claw at the back of the head",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "macro frame: explicit cover crop, scale capped at 1.25 (never fake HD)",
+  "inner frame edges feathered 110px into the ground; no glow, no recolour",
+  "portrait (<0.9 aspect): caption rail widens 36%->42%",
+  "second detail -> bottom strip tile (0.44W) + caption; none -> macro runs full height (single-detail fallback)",
+  "headline max 3 lines, one long-headline step, then QA fail -> shorten approved copy",
+  "landscape detail can be supplied rotated (lossless transpose) for portrait frames"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T02/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/matrix/r1_macro_hammer_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/matrix/r1_macro_hammer_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/matrix/r1_macro_pliers_single_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T02/matrix/r1_macro_hammer_en_long_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T02/source/T02.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T02/source/jobs/sel_r1_macro_hammer_en_1500.json",
+  "templates/T02/source/jobs/sel_r1_macro_hammer_zh_1200x1500.json",
+  "templates/T02/source/jobs/sel_r1_macro_pliers_single_en_1500.json",
+  "templates/T02/source/jobs/sel_r1_macro_hammer_en_long_1500.json"
+ ],
+ "qa_report_path": "templates/T02/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

@@ -864,7 +864,10 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .listing-notes:empty { display: none; }
 .listing-pages { flex: 1; min-height: 0; overflow-y: auto; margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; align-content: start; padding-right: 6px; }
 .listing-page { margin: 0; }
-.listing-page img { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--line); }
+.listing-scenes { grid-column: 1 / -1; }
+.listing-scenes > div { display: flex; gap: 8px; margin-top: 6px; overflow-x: auto; }
+.listing-scenes img { height: 120px; width: auto; display: block; border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.listing-page img { width: 100%; aspect-ratio: 4 / 5; object-fit: contain; display: block; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--line); }
 .listing-page figcaption { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 4px; }
 .listing-page figcaption a { color: var(--accent); }
 @media (max-width: 900px) {

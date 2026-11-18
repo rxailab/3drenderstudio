@@ -1,5 +1,37 @@
 # 本地接口与可复现性
 
+## v32 品牌模板套图与并入的场景图
+
+**场景生成入口移除。** `POST /api/projects/{id}/scene` 返回 405，`POST /api/projects/{id}/scene/recommend` 返回 404。以下接口保留，用于查看和管理以前的场景：
+- `GET /api/projects/{id}/scene`：多了 `moved_to: "listing"`。
+- `POST /api/projects/{id}/scene/{task_id}/cancel`
+- `POST /api/projects/{id}/scene/remove`
+
+新的场景图由 `POST /api/projects/{id}/listing/build` 生成。
+
+**产品记录**（`PUT /api/projects/{id}/listing/product`）新增两个字段：
+- `aspect`：`"1:1"`（1500×1500，默认）或 `"4:5"`（1200×1500）。
+- `scenes`：`{enabled: bool, count: 1–3, audience: "auto" | 人群 id, people: "auto" | "hands" | "include" | "exclude", hint: ≤300 字}`。
+
+`pages` 的取值改为模板编号 `T01`–`T12`。以前保存的旧页面类型读取时丢弃，回到自动挑选。
+
+**套图状态**（`GET /api/projects/{id}/listing`）的变化：
+- `kinds` / `order` 改为模板编号，`auto` 是自动挑选的顺序。
+- `plan` 列出每个模板，暂时不能生成的带 `skipped` 原因。
+- 新增 `scenes`（本次使用的场景图 `{url, title, body, role}`）、`scene_options`（人群列表、`image_ready`、`max`、`people`、`aspects`）和 `layout_available`（是否找到可用的浏览器）。
+- 删除 `elements`。
+
+**页面**：每页新增 `checks: {passed, issues}`，记录排版后测量版面的结果；`notes` 写明用了第几种精简排法。
+
+**审核记录**：每页新增 `review`：
+- `status`：`passed`、`revised`、`failed` 或 `not_verified`。
+- 评分：`score`、`first_score`、`scores`（产品 25、层级 20、构图 20、任务 15、色彩 10、适配 10）。
+- `vetoes`、`issues`、`applied`（采用的修改）、`rounds`、`summary`、`model`。
+
+整套检查的结论写在套图的 `notes` 里。`review.refuted` 是被复核推翻的审核意见数。`review.issues` 只在未通过（`failed`）或经过修改（`revised`）时经过复核；通过的页面上是审核模型未经复核的意见，仅供参考。版式检查新增 `leader_over_product`：引线压在产品上的长度超过产品宽度的 45%；以及 `frame_cuts_part`：特写框（含渐隐边）切过徽标、铆钉等小部件。后者只在同一版式的几种取景之间做选择，不算版式不通过（`checks.passed` 不受它影响），仍会出现在 `checks.issues` 和页面说明里。场景图记录新增 `caption`（`seen` 表示图注是看着图片写的）和 `box`（产品在图中的位置）。版式检查新增 `scene_product_cropped`：场景框裁掉了产品。场景图记录新增 `check`（`passed` / `failed` / `unchecked`），用的场景图核对未通过的页面带 `scene_product_mismatch` 否决。版式检查新增 `phrase_break`：中文标题渲染出的行数比作者写的多。
+
+**生成过程**的阶段为 `pictures`（Blender 素材）→ `scenes`（图像模型场景图）→ `compose`（模板排版）。场景图保存在 `data/{id}/listing/scenes-{key}/`；人群、人物、说明、张数和模型都不变时沿用。
+
 ## v31 场景图的产品姿态
 
 **请求。** `POST /api/projects/{id}/scene` 新增 `pose`：

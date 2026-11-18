@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T07 · modular system: assembled view ↔ real components */
+  #canvas{--bg:#F4F1EC;--text:#1F2225;--muted:#625B55;--accent:#D0612A;--line:#C9BFB5;--wm:rgba(0,0,0,.045)}
+  .wash{position:absolute;inset:0;background:radial-gradient(100% 80% at 35% 60%, #FCFAF7 0%, var(--bg) 70%)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .m-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .m-body{font:400 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .badge{font:700 40px/1 "Noto Sans Display",sans-serif;color:#fff;background:var(--accent);border-radius:50%;width:60px;height:60px;display:flex;align-items:center;justify-content:center}
+  .op{font:300 96px/1 "Noto Sans Display",sans-serif;color:var(--muted);text-align:center}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .m-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .m-body{font:400 42px/1.38 "Noto Sans CJK SC",sans-serif}
+  .link{fill:none;stroke:var(--line);stroke-width:2.5;stroke-dasharray:2 10;stroke-linecap:round}
+  .bracket{fill:none;stroke:var(--accent);stroke-width:3}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init(); T.el('div', {class:'wash'});
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const asm = T.asset(job.assembled);
+const mods = job.modules.slice(0, 4);
+const mode = job.mode || 'column';
+T.layoutInfo = {mode};
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 6 * G;
+const badge = (id, letter, x, yy) => { const b = T.el('div', {class:'badge', 'data-qa': id, 'data-kind':'shape'}, null, letter); T.box(b, x, yy, 60, 60); return b; };
+const fitImg = (id, asset, bx, by, bw, bh, ax = 0.5, ay = 0.5) => {
+  const a = T.asset(asset); let r = T.contain(a, bx, by, bw, bh, ax, ay);
+  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s, x: bx + (bw - a.width * s) * ax, y: by + (bh - a.height * s) * ay}; }
+  T.img(id, asset, r, {blend:'multiply'}); return r;
+};
+
+if (mode === 'column') {
+  /* ---- Direction A (BAG-119): assembled left, modules A/B/C in a right column, level brackets on the assembled ---- */
+  const colW = Math.round((W - 2 * m) * (W / H < 0.9 ? 0.42 : 0.50)), gut = 10 * G;   // portrait: give the assembled view more width
+  const aw = W - 2 * m - colW - gut;
+  const r = fitImg('assembled', job.assembled, m, y, aw - 90, floor - y, 0.5, 1);
+  const cx = W - m - colW;
+  const each = (floor - y - ((job.missing_components || []).length ? 90 : 0)) / mods.length;
+  // r1: each module row = image (left 52%) + badge/name/body (right), so images get the full row height
+  const iw = Math.round(colW * 0.48), tx = cx + iw + 4 * G, tw = colW - iw - 4 * G;
+  mods.forEach((md, i) => {
+    const y0 = y + i * each, rowH = each - 4 * G;
+    fitImg('mod' + (i + 1), md.asset, cx, y0, iw, rowH, 0.5, 0.5);
+    const bb = badge('mb' + (i + 1), md.letter, tx, 0);
+    const nm = T.text('m' + (i + 1) + '_name', md.name, tx, 0, tw, 'm-name', {tier:'important', maxLines: 2});
+    let bd = null; if (md.body) bd = T.text('m' + (i + 1) + '_body', md.body, tx, 0, tw, 'm-body', {tier:'secondary', maxLines: 3});
+    const h = 60 + 2 * G + T.rect(nm).h + (bd ? G + T.rect(bd).h : 0);
+    let ty = y0 + (rowH - h) / 2;
+    bb.style.top = ty + 'px'; ty += 60 + 2 * G; nm.style.top = ty + 'px'; ty += T.rect(nm).h + G; if (bd) bd.style.top = ty + 'px';
+    if (md.level) {
+      const y1 = r.y + md.level[0] * r.h, y2 = r.y + md.level[1] * r.h, bx = r.x + r.w + 26;
+      T.svgEl('path', {d: `M${bx - 14} ${y1 + 6} L${bx} ${y1 + 6} L${bx} ${y2 - 6} L${bx - 14} ${y2 - 6}`, class: 'bracket'});
+      badge('lb' + (i + 1), md.letter, bx + 14, (y1 + y2) / 2 - 30);
+    }
+  });
+} else {
+  /* ---- Direction B: horizontal sequence — modules in order, then the assembled view ---- */
+  const n = mods.length;
+  const aw = Math.round((W - 2 * m) * 0.34);
+  const opW = 70;
+  const mw = (W - 2 * m - aw - opW - (n - 1) * opW) / n;
+  const nameH = 250;
+  const rowTop = y + 4 * G, rowBot = floor - nameH;
+  const ra = fitImg('assembled', job.assembled, W - m - aw, rowTop, aw, rowBot - rowTop, 0.5, 1);
+  let x = m;
+  mods.forEach((md, i) => {
+    const ir = fitImg('mod' + (i + 1), md.asset, x, rowTop, mw, rowBot - rowTop, 0.5, 1);
+    badge('mb' + (i + 1), md.letter, x + mw / 2 - 30, rowBot + 3 * G);
+    T.text('m' + (i + 1) + '_name', md.name, x - 10, rowBot + 3 * G + 76, mw + 20, 'm-name', {tier:'important', maxLines: 2, align:'center'});
+    x += mw;
+    const op = T.el('div', {class:'op', 'data-qa':'op' + (i + 1), 'data-kind':'shape'}, null, i < n - 1 ? '+' : '=');
+    T.box(op, x, (rowTop + rowBot) / 2 - 50, opW, 100);
+    x += opW;
+  });
+  T.text('asm_name', job.assembled_name || '', W - m - aw, rowBot + 3 * G + 76, aw, 'm-name', {tier:'important', maxLines: 2, align:'center'});
+  if (mods.some(md => !md.level)) T.notes.push('module-to-level relationship not declared for some modules');
+}
+const missing = (job.missing_components || []);
+if (missing.length && mode === 'column') {   // visible note: only confirmed parts are drawn
+  T.text('missing_note', (job.missing_label || 'Not shown: ') + missing.join('; '), W - m - Math.round((W - 2 * m) * 0.50), floor - 110, Math.round((W - 2 * m) * 0.50), 'm-body', {tier:'secondary', maxLines: 2});
+}
+if (missing.length) T.notes.push('components without approved views (not drawn): ' + missing.join(', '));
+T.watermark();
+T.finish();
+})();
+</script></body></html>

@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('static/app.js','utf8');
-const part=source.slice(source.indexOf('function sceneHistoryHTML('),source.indexOf('async function loadSceneLibrary('));
+const part=source.slice(source.indexOf('function sceneHistoryHTML('),source.indexOf('function renderHeroOptimization('));
 const context={esc:s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),sceneOutputLabel:o=>`scene v${o.version} ${o.job_id}`,sceneOutputKey:o=>o.job_id};
 vm.createContext(context);vm.runInContext(part,context);
 test('each historical image keeps its own downloads and rendering source',()=>{

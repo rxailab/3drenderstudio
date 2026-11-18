@@ -499,7 +499,7 @@ function renderOrientation() {
   const auto=$('orientAuto');auto.disabled=disabled || !orientAvailable();
   auto.textContent=orientSubmitting && !active?'正在提交…':active?'正在检查朝向…':(dirty?'保存并':'')+(record?'重新自动摆正':'自动摆正');
   if(active || orientSubmitting)auto.setAttribute('aria-busy','true');else auto.removeAttribute('aria-busy');
-  auto.title=sceneLibrary?.image || system?.ai_mode==='ai'?'渲染六个候选姿态，由视觉模型判断哪一面朝上':'渲染六个候选姿态；未启用视觉模型时按部件名称判断，判断不了则保持原样，可手动改选';
+  auto.title=system?.ai_mode==='ai'?'渲染六个候选姿态，由视觉模型判断哪一面朝上':'渲染六个候选姿态；未启用视觉模型时按部件名称判断，判断不了则保持原样，可手动改选';
   // A check that just finished and turned the product is announced once.
   if(task?.status==='completed' && task.id!==orientSeenTask && task.applied_version===current.version){
     orientSeenTask=task.id;
@@ -522,19 +522,18 @@ function orientCheck() { return orientRequest('orientation',{},task=>{current.or
 function orientApply(change,message) {
   return orientRequest('orientation/apply',change,project=>{const before=current.version;current=project;syncSettings();if(project.version!==before)toast(message+'，正在生成新预览；可用撤销恢复。');});
 }
-let sceneSubmitting=false,sceneSeenTask=null,sceneLibrary=null,sceneLibraryLoading=false,sceneRecommending=false,sceneChoiceProject=null;
-const sceneErrors=new Map();
-const sceneZoneLabels={on_top:'台面',inside:'抽屉内',beside:'旁边',behind:'后方'};
-const sceneSkipLabels={not_in_catalogue:'模型库中没有合适的',no_room:'没有合适的位置',no_flat_top:'没有平整台面',no_open_compartment:'没有可打开的抽屉',download_failed:'下载失败',duplicate:'与其他道具重复',import_failed:'模型无法导入'};
-const sceneMethodLabels={render:'3D 道具场景（Blender 渲染）',generate:'AI 图像生成'};
-const sceneSourceLabels={ai:'由 AI 推荐',rules:'按内置规则推荐',user:'你选择的人群'};
+// Usage scenes are made as part of the listing set (套图); this panel only points there and keeps the earlier scene pictures.
+let sceneSubmitting=false;
 function sceneTaskActive() { return ['queued','running'].includes(current?.scene_task?.status); }
-function sceneAvailable() { return system?.runtime?.capabilities?.scene_set!==false; }
-function sceneSegment(id) { return (sceneLibrary?.segments || []).find(item=>item.id===id) || null; }
-function sceneReference(id) { for(const segment of sceneLibrary?.segments || []){const row=(segment.references || []).find(item=>item.id===id);if(row)return row;} return null; }
-function sceneHttps(url) { return typeof url==='string' && /^https:\/\/[^\s<>"']+$/.test(url)?url:''; }
-function sceneFile(url) { return typeof url==='string' && /^\/files\/[^\s<>"']+$/.test(url)?url:''; }
-function sceneGeneratedOutput() { return [...(current?.outputs || [])].filter(o=>o.shot_id==='scene' && o.quality==='generated').sort((a,b)=>b.version-a.version || (b.created_at || 0)-(a.created_at || 0))[0] || null; }
+function renderSceneSet() {
+  const section=$('sceneHistory')?.closest('.scene-set');if(!section)return;
+  section.hidden=!current;if(!current)return;
+  const history=sceneHistoryHTML(current);$('sceneHistory').hidden=!history.count;
+  $('sceneHistoryTitle').textContent=`历史使用场景图（${history.count}）`;
+  stableHTML($('sceneHistoryList'),history.html);
+  const task=current.scene_task;
+  $('sceneStatus').textContent=sceneTaskActive()?taskStageText(task,'正在生成场景'):'';$('sceneStatus').hidden=!sceneTaskActive();
+}
 function sceneHistoryHTML(project) {
   const prefix='/files/'+project.id+'/';
   const safe=url=>typeof url==='string' && url.startsWith(prefix) && !url.includes('..') ? url : '';
@@ -547,204 +546,6 @@ function sceneHistoryHTML(project) {
     return `<article class="scene-history-item">${image}<div><strong>${esc(source)}${i===0?' · 最新':''}</strong><small>${esc(label)}</small><span><a href="${esc(png)}" download>下载 PNG</a>${jpg?` · <a href="${esc(jpg)}" download>下载 JPG</a>`:''}${blend?` · <a href="${esc(blend)}" download>Blender 工程</a>`:''}</span></div></article>`;
   }).join('');
   return {count:records.length,html};
-}
-async function loadSceneLibrary() {
-  if(sceneLibrary || sceneLibraryLoading)return;
-  sceneLibraryLoading=true;
-  // A failed load leaves an empty library: scenes work without audiences, and it is tried again when a project is opened.
-  try{const library=await api('/api/scene/audiences');sceneLibrary=Array.isArray(library?.segments)?library:{segments:[],failed:true};fillSceneAudience();}catch(_){sceneLibrary={segments:[],failed:true};}
-  finally{sceneLibraryLoading=false;if(current)renderSceneSet();}
-}
-function fillSceneAudience() {
-  const select=$('sceneAudienceSelect'),chosen=select.value;
-  select.innerHTML='<option value="auto">自动推荐</option>'+(sceneLibrary?.segments || []).map(item=>`<option value="${esc(item.id)}">${esc(item.label)}</option>`).join('');
-  select.value=[...select.options].some(option=>option.value===chosen)?chosen:'auto';
-  fillSceneReferences();
-}
-function fillSceneReferences() {
-  const segment=sceneSegment($('sceneAudienceSelect').value),select=$('sceneReferenceSelect'),chosen=select.value;
-  select.innerHTML='<option value="">由 AI 在该人群中选择</option>'+(segment?.references || []).map(row=>`<option value="${esc(row.id)}">${esc(row.id+' '+row.title)}</option>`).join('');
-  select.value=[...select.options].some(option=>option.value===chosen)?chosen:'';
-  $('sceneReferenceRow').hidden=!segment;
-}
-function sceneChoices() {
-  const audience=$('sceneAudienceSelect').value || 'auto',reference=audience==='auto'?'':$('sceneReferenceSelect').value;
-  return {hint:$('sceneHint').value.trim().slice(0,300),audience,...(reference?{reference}:{}),method:$('sceneMethodSelect').value || 'auto',people:scenePeopleChoice()};
-}
-function scenePeopleChoice() {
-  // A scene built from 3D props never has a person in it, so asking for one there is not offered.
-  const value=$('scenePeopleSelect').value;
-  return ['include','hands','exclude'].includes(value) && !(['include','hands'].includes(value) && $('sceneMethodSelect').value==='render')?value:'auto';
-}
-function sceneProposal() {
-  // A proposal is shown only while it answers what is on screen: this plan, this hint, this audience.
-  const proposal=current?.scene_proposal,choice=sceneChoices();
-  if(!proposal || proposal.version!==current.version || proposal.hint!==choice.hint)return null;
-  if(choice.audience==='auto'?proposal.audience!=='auto':choice.audience!==proposal.segment_id)return null;
-  if(choice.reference && choice.reference!==proposal.reference_id)return null;
-  if((proposal.people_choice || 'auto')!==choice.people)return null;
-  return proposal;
-}
-function sceneReferenceHTML(id) {
-  const row=sceneReference(id),url=sceneHttps(row?.url);
-  if(!row)return '';
-  return `<p>参考 ${esc(row.id)}：${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(row.title)}</a>`:esc(row.title)}（${esc(row.attribution)}）。${esc(row.note)}</p>`;
-}
-function sceneProposalHTML(proposal) {
-  const segment=sceneSegment(proposal.segment_id),method=proposal.method;
-  const chosen=choice=>choice==='generate' || choice==='render'?choice:method,final=chosen($('sceneMethodSelect').value);
-  const why=proposal.people?'画面含人物':proposal.complex?'画面需要真实环境':'用道具即可搭出';
-  const asked=['include','hands','exclude'].includes(proposal.people_choice),hands=proposal.framing!=='person';
-  const shown=hands?'手部特写（手在操作产品，不露脸）':'包含人物';
-  const people=final==='render'?'不含人物（3D 道具场景里没有人物）':proposal.people?`${shown}${asked?'（你指定）':hands?'（场景策划认为需要有人使用产品；要看到使用者可在上方选「包含人物」）':'（场景策划认为需要有人使用产品）'}`:`不含人物${asked?'（你指定）':'（场景策划认为不需要；想要人物可在上方选「手部特写」或「包含人物」）'}`;
-  const index=typeof sceneLibrary?.pack?.index_url==='string' && sceneLibrary.pack.index_url.startsWith('/references/')?sceneLibrary.pack.index_url:'';
-  return `<strong>${segment?(proposal.audience==='auto'?'推荐人群：':'所选人群：')+esc(segment.label):'没有对应的人群，按通用场景处理'}</strong>`
-    +`<p>${esc(proposal.reason || '')}</p>`
-    +(segment?`<p>他们想知道：${esc(segment.question)}；优先画面：${esc(segment.priority)}。</p>`:'')
-    +sceneReferenceHTML(proposal.reference_id)
-    +(proposal.summary?`<p>计划画面：${esc(proposal.summary)}</p>`:'')
-    +`<p class="scene-method">生成方式：${esc(sceneMethodLabels[final] || '')}${final===method?`（${esc(why)}）`:'（你指定）'}${proposal.method_note && final===method?' '+esc(proposal.method_note):''}</p>`
-    +`<p class="scene-people">画面人物：${esc(people)}</p>`
-    +`<p>${esc(sceneSourceLabels[proposal.source] || '')}；可在上方改选人群、参考、生成方式或人物${index?`，或<a href="${esc(index)}" target="_blank" rel="noopener">浏览参考库</a>`:''}。</p>`;
-}
-function sceneBriefHTML(brief) {
-  const segment=sceneSegment(brief.segment_id);
-  return `<strong>${segment?'面向：'+esc(segment.label):'通用使用场景'}</strong>`
-    +`<p>${esc(sceneSourceLabels[brief.source] || '')}${brief.reason?'：'+esc(brief.reason):''}</p>`+sceneReferenceHTML(brief.reference_id)
-    +(brief.method==='generate'?`<p>画面人物：${brief.people?(brief.framing==='hands'?'手部特写（不露脸）':'包含人物'):'不含人物'}${['include','hands','exclude'].includes(brief.people_choice)?'（你指定）':''}</p>`:'');
-}
-function sceneGeneratedHTML(output) {
-  const made=output.generated || {},check=made.check || {},status=check.status;
-  const seen=check.people && typeof check.people==='object'?check.people:null,asked=typeof seen?.expected==='boolean';
-  const label=status==='passed'?'产品与参考图一致':status==='failed'?(check.product_consistent===true && seen?.ok===false?'画面人物与要求不符':'产品与参考图有差异'):'未自动核对';
-  const hands=seen?.framing==='hands' || made.framing==='hands',wanted=expected=>expected?(hands?'手部特写（不露脸）':'包含人物'):'不含人物';
-  const found=seen?(hands && seen.expected?(seen.visible?(seen.face_visible?'出现了人脸或整个人':'只有手部'):'没有手'):seen.visible?'有人物':'没有人物'):'';
-  const people=asked && typeof seen.visible==='boolean'?`<p class="scene-check-people is-${seen.ok===false?'failed':'passed'}">画面人物：要求${hands && seen.expected?wanted(true):(seen.expected?'包含':'不含')+'人物'}，核对结果为${found}${seen.ok===false?'；已按要求重新生成过，仍未做到，可再生成一次或调整场景说明':''}。</p>`
-    :typeof made.people==='boolean' && status!=='passed' && status!=='failed'?`<p class="scene-check-people">画面人物：要求${hands && made.people?wanted(true):(made.people?'包含':'不含')+'人物'}，未能自动核对，请自行查看。</p>`:'';
-  const issues=Array.isArray(check.issues)?check.issues.filter(item=>typeof item==='string').slice(0,6):[];
-  const references=(Array.isArray(made.references)?made.references:[]).map(row=>sceneFile(row?.url)).filter(Boolean).slice(0,8);
-  const single=references.length===1 && made.anchor;
-  return `<p class="scene-check is-${esc(status || 'unchecked')}"><strong>${esc(label)}</strong>${check.note?' '+esc(check.note):''}</p>`+people
-    +(issues.length?`<ul class="scene-issues">${issues.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:'')
-    +scenePoseHTML(made.pose)
-    +(references.length?`<p>${single?'锁定在画面里的产品渲染（Blender，图像模型不能改动）：':`发给图像模型的产品参考图（${references.length} 个角度，Blender 渲染）：`}</p><div class="scene-refs">${references.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="产品参考角度 ${index+1}" loading="lazy"></a>`).join('')}</div>`:'');
-}
-function scenePoseHTML(pose) {
-  // How the product was posed for the picture: chosen from renders of real poses, or kept as the main image shows it.
-  if(!pose || typeof pose!=='object')return '';
-  const sheets=(Array.isArray(pose.sheets)?pose.sheets:[]).map(sceneFile).filter(Boolean).slice(0,2);
-  const how=pose.mode==='keep'?'保持主图姿态（你指定）':pose.source==='ai'?(pose.changed?'按使用场景调整':'按使用场景判断，保持主图姿态'):'保持主图姿态';
-  const reason=typeof pose.reason==='string' && pose.reason?'：'+esc(pose.reason):'';
-  return `<p class="scene-pose">产品姿态：${esc(how)}${reason}</p>`
-    +(sheets.length?`<p class="field-help">候选姿态：${sheets.map((url,index)=>`<a href="${esc(url)}" target="_blank" rel="noopener">${index?'微调':'第一轮'}</a>`).join(' · ')}</p>`:'');
-}
-function renderSceneSet() {
-  const button=$('sceneButton'),status=$('sceneStatus'),details=$('sceneDetails');
-  const section=button.closest('.scene-set');section.hidden=!current;if(!current)return;
-  if(sceneChoiceProject!==current.id){
-    sceneChoiceProject=current.id;$('sceneAudienceSelect').value='auto';$('sceneMethodSelect').value='auto';$('scenePeopleSelect').value='auto';if($('scenePoseSelect'))$('scenePoseSelect').value='auto';fillSceneReferences();
-    if(sceneLibrary?.failed && !sceneLibraryLoading)sceneLibrary=null;
-  }
-  if(!sceneLibrary)loadSceneLibrary();
-  const task=current.scene_task,set=current.plan?.scene_set,brief=current.plan?.scene_brief,made=brief?.method==='generate',has=!!set || made;
-  const history=sceneHistoryHTML(current);$('sceneHistory').hidden=!history.count;
-  $('sceneHistoryTitle').textContent=`历史使用场景图（${history.count}）`;
-  stableHTML($('sceneHistoryList'),history.html);
-  const active=sceneTaskActive(),job=activeJob();
-  // A render in progress does not hold a scene back: it is built meanwhile and saved in its turn.
-  const locked=busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || sceneSubmitting || sceneRecommending;
-  const ready=sceneAvailable() && !!current.analysis && !serviceDisconnected;
-  let message='';
-  if(serviceDisconnected)message='连接恢复后可生成场景。';
-  else if(!sceneAvailable())message='场景组件未就绪，请查看运行环境。';
-  else if(!current.analysis)message='模型分析完成后即可生成场景。';
-  else if(active)message=taskStageText(task,'正在生成场景');
-  else if(sceneErrors.get(current.id))message=sceneErrors.get(current.id);
-  else if(task?.status==='failed' && task.base_version===current.version)message=task.error || '场景未生成，可重试。';
-  else if(has)message=(set?.summary || brief?.summary || '');
-  // Who the picture is for: the pack's segments, the strategist's proposal, the user's own choice.
-  const audience=$('sceneAudience'),segments=sceneLibrary?.segments || [];
-  audience.hidden=!segments.length;
-  if(segments.length){
-    const disabled=locked || active || !ready;
-    for(const id of ['sceneAudienceSelect','sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect','scenePoseSelect','sceneRecommend'])if($(id))$(id).disabled=disabled;
-    $('sceneRecommend').textContent=sceneRecommending?'正在推荐…':'推荐人群与场景';
-    if(sceneRecommending)$('sceneRecommend').setAttribute('aria-busy','true');else $('sceneRecommend').removeAttribute('aria-busy');
-    const image=sceneLibrary.image || {},wantsImage=$('sceneMethodSelect').value!=='render';
-    // The pose is the image model's concern: a scene built from 3D props shows the product as the plan stands it.
-    if($('scenePoseRow'))$('scenePoseRow').hidden=!wantsImage || !image.available;
-    // A person can only be asked for where the image model makes the picture.
-    const people=$('scenePeopleSelect'),include=people.querySelector('option[value="include"]'),handsOnly=people.querySelector('option[value="hands"]'),canInclude=wantsImage && !!image.available;
-    include.disabled=!canInclude;if(handsOnly)handsOnly.disabled=!canInclude;
-    if(!canInclude && ['include','hands'].includes(people.value))people.value=wantsImage?'auto':'exclude';
-    const help=!image.available && wantsImage?`图像模型不可用（${image.message || '未配置'}）；含人物的场景会改为 3D 道具场景。`
-      :!wantsImage?'3D 道具场景由现成模型布置，画面里没有人物；要有人使用产品，请选「自动」或「AI 图像生成」。':'';
-    $('sceneMethodHelp').textContent=help;$('sceneMethodHelp').hidden=!help;
-    const proposal=active?null:sceneProposal(),picked=sceneSegment($('sceneAudienceSelect').value);
-    // A choice the last proposal does not cover is planned when the scene is generated.
-    const pending=!proposal && !active && picked?`<p>将按你选择的人群「${esc(picked.label)}」策划画面；点「推荐人群与场景」可先看方案，也可以直接生成。</p>`:'';
-    stableHTML($('sceneProposal'),proposal?sceneProposalHTML(proposal):pending);$('sceneProposal').hidden=!proposal && !pending;
-  }
-  button.disabled=locked || active || !ready;$('sceneHint').disabled=button.disabled;
-  const verb=has?(made?'重新生成使用场景图':'换一组场景道具'):'生成使用场景图';
-  button.textContent=sceneSubmitting?'正在提交…':active?'正在生成使用场景…':(dirty?'保存并':'')+verb;
-  if(active || sceneSubmitting)button.setAttribute('aria-busy','true');else button.removeAttribute('aria-busy');
-  button.title='按目标人群策划画面：用 Poly Haven（CC0）的现成模型按真实尺寸布置，或在需要人物、真实环境时由图像模型依据产品渲染图生成';
-  status.textContent=message;status.hidden=!message;status.classList.toggle('is-summary',has && message===(set?.summary || brief?.summary || '') && !active);
-  details.hidden=!has;
-  if(has){
-    $('sceneDetailsTitle').textContent=made?'场景图的来源与核对':'场景道具与来源';
-    stableHTML($('sceneBrief'),brief?sceneBriefHTML(brief):'');$('sceneBrief').hidden=!brief;
-    const props=set && Array.isArray(set.props)?set.props:[],skipped=set && Array.isArray(set.skipped)?set.skipped:[];
-    stableHTML($('sceneProps'),props.map(prop=>{const url=typeof prop.source_url==='string' && /^https:\/\/polyhaven\.com\/a\/[A-Za-z0-9_]+$/.test(prop.source_url)?prop.source_url:'';return `<li><span>${esc(prop.name || prop.asset_id)}</span><small>${esc(sceneZoneLabels[prop.zone] || '')}${url?` · <a href="${esc(url)}" target="_blank" rel="noopener">${esc(prop.provider || 'Poly Haven')}</a>`:''} · ${esc(prop.license || 'CC0')}</small></li>`;}).join(''));
-    $('sceneProps').hidden=!props.length;
-    const output=made?sceneGeneratedOutput():null;
-    stableHTML($('sceneGenerated'),output?sceneGeneratedHTML(output):'');$('sceneGenerated').hidden=!output;
-    if(made){
-      const info=output?.generated || {},stale=output && output.version!==current.version;
-      $('sceneNote').textContent=output?`由图像模型 ${info.model || ''} 生成，不是 Blender 渲染，也没有可导出的 3D 工程；产品外形以上面的渲染参考图为准${info.attempts>1?'，已按核对结果重新生成过一次':''}。${typeof info.quality_lowered_from==='string'?`图像服务未能在「${info.quality_lowered_from}」质量下完成，这张图以 low 质量生成，可稍后重新生成。`:''}${stale?`这张图基于方案 v${output.version}，`:''}修改产品或镜头后请重新生成。其他镜头不变。`:'场景图尚未生成，或已被移除。';
-    }else{
-      const size=set.product?.max_dimension_mm,basis={user:'你填写的尺寸',ai:'模型估计',model_units:'按模型单位推断',category:'按品类常见尺寸'}[set.product?.size_basis] || '';
-      $('sceneNote').textContent=`${set.source==='ai'?'由 AI 选择场景与道具':'按内置品类规则选择'}${size?`；产品最长边按 ${Math.round(size)} mm 计（${basis}）`:''}${set.open?'；已拉开抽屉':''}${skipped.length?`；未放入 ${skipped.length} 项（${[...new Set(skipped.map(row=>sceneSkipLabels[row.reason] || '未放入'))].join('、')}）`:''}。道具只出现在这个镜头里，产品本身与其他镜头不变。`;
-    }
-    $('sceneRemove').disabled=locked || active;
-  }
-  // A scene that just finished is shown: its shot becomes the active one.
-  if(task?.status==='completed' && task.id!==sceneSeenTask && task.applied_version===current.version && shots().some(shot=>shot.id==='scene')){
-    sceneSeenTask=task.id;
-    if(activeShot!=='scene' && !dirty){activeShot='scene';cameraShot='scene';queueMicrotask(()=>{if(current)renderProject();});}
-  }
-}
-async function recommendScene() {
-  if(!current || sceneRecommending || sceneSubmitting || sceneTaskActive() || serviceDisconnected || !current.analysis)return;
-  const id=current.id;sceneErrors.delete(id);sceneRecommending=true;renderSceneSet();
-  try{
-    if(dirty)await savePlan(true);
-    if(current?.id!==id)return;
-    const proposal=await api(`/api/projects/${encodeURIComponent(id)}/scene/recommend`,{method:'POST',body:sceneChoices()});
-    if(current?.id===id)current.scene_proposal=proposal;
-  }catch(error){sceneErrors.set(id,error.message || '未能推荐人群，请重试。');}
-  finally{sceneRecommending=false;if(current)renderSceneSet();}
-}
-async function generateScene() {
-  if(!current || sceneSubmitting || sceneRecommending || sceneTaskActive() || !sceneAvailable() || serviceDisconnected || !current.analysis || (activeJob() && dirty))return;
-  const id=current.id;sceneErrors.delete(id);sceneSubmitting=true;renderSceneSet();renderRenderActivity();
-  try{
-    if(dirty)await savePlan(true);
-    if(current?.id!==id)return;
-    const task=await api(`/api/projects/${encodeURIComponent(id)}/scene`,{method:'POST',body:{expected_version:current.version,...sceneChoices(),pose:$('scenePoseSelect')?.value==='keep'?'keep':'auto'}});
-    if(current?.id===id){current.scene_task=task;sceneSeenTask=null;}
-  }catch(error){sceneErrors.set(id,error.message || '场景未能开始，请重试。');}
-  finally{sceneSubmitting=false;if(current)renderProject();}
-}
-async function removeScene() {
-  if(!current || sceneSubmitting || sceneTaskActive() || activeJob() || dirty)return;
-  const id=current.id;sceneSubmitting=true;renderSceneSet();
-  try{
-    const project=await api(`/api/projects/${encodeURIComponent(id)}/scene/remove`,{method:'POST',body:{expected_version:current.version}});
-    if(current?.id===id){current=project;if(activeShot==='scene'){activeShot='hero';cameraShot='hero';}syncSettings();toast('已移除使用场景；可用撤销恢复。');}
-  }catch(error){sceneErrors.set(id,error.message || '未能移除场景。');}
-  finally{sceneSubmitting=false;if(current)renderProject();}
 }
 function renderHeroOptimization() {
   const button=$('optimizeHeroButton'),reason=$('optimizeHeroReason'),shot=current && heroOptimizationShot();
@@ -1512,7 +1313,6 @@ function applyAiPublic(settings) {
   aiSettings=settings;system=system || {};system.ai=settings;
   system.ai_mode=aiRequestAllowed(settings)?'ai':'rules';
   // The image model follows the same settings; the scene panel shows whether it can be used.
-  if(sceneLibrary && settings?.image_config && typeof settings.image_config==='object')sceneLibrary.image=settings.image_config;
   updateAiMode();renderFeedback();if(current){renderReview();renderMaterialAgent();renderSceneSet();}
 }
 function aiEndpoint(provider,base) { return JSON.stringify([provider || '',String(base || '').trim().replace(/\/+$/,'')]); }
@@ -2577,13 +2377,10 @@ function installEvents() {
   $('homeProjectGrid').onclick=e=>{const removal=e.target.closest('[data-delete-project]');if(removal){deleteProject(removal.dataset.deleteProject);return;}const card=e.target.closest('[data-open-project]');if(card)openProject(card.dataset.openProject);};
   $('exampleList').onclick=async e=>{const b=e.target.closest('[data-example]');if(!b || !workerRenderReady() || navigationBlocked())return;if(!(await resolveUnsavedChanges()))return;b.disabled=true;try{const p=await api('/api/examples/'+b.dataset.example+'/import',{method:'POST'});await refreshList();await openProject(p.id);toast('验收模型已导入，正在进行真实分析。');}catch(error){toast(error.message,true);}finally{b.disabled=false;}};
   $('optimizeHeroButton').onclick=optimizeHero;
-  $('sceneButton').onclick=generateScene;$('sceneRemove').onclick=removeScene;$('sceneRecommend').onclick=recommendScene;
+  $('sceneOpenListing').onclick=()=>{if(typeof listingOpen==='function')listingOpen();};
   $('orientAuto').onclick=orientCheck;$('orientFlip').onclick=()=>orientApply({flip:true},'已上下翻转');
   $('orientTurnLeft').onclick=()=>orientApply({turn:90},'已转向');$('orientTurnRight').onclick=()=>orientApply({turn:-90},'已转向');
   $('orientPoses').addEventListener('click',event=>{const button=event.target.closest('[data-orient-pose]');if(button && !button.disabled)orientApply({candidate:button.dataset.orientPose},'已改用所选姿态');});
-  $('sceneAudienceSelect').onchange=()=>{fillSceneReferences();if(current)renderSceneSet();};
-  for(const id of ['sceneReferenceSelect','sceneMethodSelect','scenePeopleSelect'])$(id).onchange=()=>{if(current)renderSceneSet();};
-  $('sceneHint').addEventListener('input',()=>{if(current)renderSceneSet();});
   $('previewButton').onclick=()=>run('preview');$('renderButton').onclick=()=>run('render');
   $('settingsForm').onsubmit=async e=>{e.preventDefault();try{await savePlan();}catch(error){toast(error.message,true);}};
   $('settingsForm').addEventListener('input',e=>{if(['materialSlot','cameraShot','quality','materialOrigin','materialLicense','externalColor','externalRoughness','externalNormal'].includes(e.target.id))return;if(e.target.id==='materialColor' && selectedMaterial)editedMaterialColors.add(selectedMaterial);markDirty();updateRangeLabels();if(e.target.id==='margin' && draft){draft.margin=readNumber('margin')/100;updateRealtimeFraming();}});

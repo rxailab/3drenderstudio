@@ -1,0 +1,322 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T04",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-024",
+   "role": "composition",
+   "adopted_rules": [
+    "scene ~70% on top, solid info band below",
+    "three columns: label / big value + unit / converted line",
+    "one short line above the columns"
+   ],
+   "excluded_elements": [
+    "400 in-lbs / 2 speeds / 2,000 RPM",
+    "full-bleed brand green",
+    "kit contents shown in scene"
+   ]
+  },
+  {
+   "ref_id": "BAG-137",
+   "role": "style",
+   "adopted_rules": [
+    "product in a real garage context, own silhouette kept"
+   ],
+   "excluded_elements": [
+    "using the scene as size calibration"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F2F1EE",
+   "text": "#1E2226",
+   "muted": "#5E666D",
+   "accent": "#D0612A"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "band_headline": 64,
+   "spec_label": 42,
+   "spec_value": 128,
+   "spec_value_compact": 100,
+   "spec_alt": 42,
+   "qual_text": 54
+  }
+ },
+ "elements": [
+  {
+   "element_id": "band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.6573,
+    1.0,
+    0.3161
+   ],
+   "allow_overlap_with": [
+    "s1_label",
+    "s1_value",
+    "s1_alt",
+    "s2_label",
+    "s2_value",
+    "s2_alt",
+    "s3_label",
+    "s3_value",
+    "s3_alt",
+    "headline"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "scene_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.0,
+    1.0,
+    0.6573
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.0682,
+    0.7656,
+    0.2503,
+    0.0308
+   ],
+   "allow_overlap_with": [],
+   "text": "Overall height",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_value",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.0963,
+    0.8071,
+    0.1941,
+    0.0853
+   ],
+   "allow_overlap_with": [],
+   "text": "36.6in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s1_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.1425,
+    0.8977,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 93 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s2_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4501,
+    0.7656,
+    0.0999,
+    0.0308
+   ],
+   "allow_overlap_with": [],
+   "text": "Width",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s2_value",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.403,
+    0.8071,
+    0.1941,
+    0.0853
+   ],
+   "allow_overlap_with": [],
+   "text": "20.1in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s2_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4492,
+    0.8977,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 51 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s3_label",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7593,
+    0.7656,
+    0.0946,
+    0.0308
+   ],
+   "allow_overlap_with": [],
+   "text": "Depth",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s3_value",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7427,
+    0.8071,
+    0.128,
+    0.0853
+   ],
+   "allow_overlap_with": [],
+   "text": "15in",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "s3_alt",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7559,
+    0.8977,
+    0.1016,
+    0.0336
+   ],
+   "allow_overlap_with": [],
+   "text": "≈ 38 cm",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.2943,
+    0.6946,
+    0.4113,
+    0.0443
+   ],
+   "allow_overlap_with": [],
+   "text": "The stack, measured",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "square/portrait -> band; landscape (W/H>1.2) -> dark side panel",
+  "scene is an explicit cover crop, scale capped at 1.25 (band grows if the scene can't)",
+  "value + unit + converted line; no number without a fact_id",
+  "no quantitative data -> qualitative cells (label + short text), never invented numbers",
+  "columns narrower than 380px use the defined compact value size (100px)",
+  "side panel over-full -> drop panel headline (density rule) before any shrinking"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T04/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/matrix/sel_band_f_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/matrix/sel_band_f_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/matrix/sel_side_jh030_qual_en_1500x1000.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T04/matrix/sel_band_jh030_qual_zh_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T04/source/T04.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T04/source/jobs/sel_band_f_en_1500.json",
+  "templates/T04/source/jobs/sel_band_f_zh_1200x1500.json",
+  "templates/T04/source/jobs/sel_side_jh030_qual_en_1500x1000.json",
+  "templates/T04/source/jobs/sel_band_jh030_qual_zh_1500.json"
+ ],
+ "qa_report_path": "templates/T04/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

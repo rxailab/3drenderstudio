@@ -1,0 +1,259 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T12",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-065",
+   "role": "composition",
+   "adopted_rules": [
+    "scene carries the story, solid band carries the words",
+    "no text on scene texture"
+   ],
+   "excluded_elements": [
+    "brushless-motor claims, badges",
+    "work posture/safety implications"
+   ]
+  },
+  {
+   "ref_id": "AMZ-038",
+   "role": "typography_hierarchy",
+   "adopted_rules": [
+    "one large headline in a quiet zone + one supporting line"
+   ],
+   "excluded_elements": [
+    "icon row with performance claims",
+    "using the original scene as our ground"
+   ]
+  },
+  {
+   "ref_id": "AMZ-081",
+   "role": "style",
+   "adopted_rules": [
+    "headline placed where the image is quiet"
+   ],
+   "excluded_elements": [
+    "reusing people/scene",
+    "assuming every scene has a quiet area"
+   ]
+  },
+  {
+   "ref_id": "BAG-137",
+   "role": "information_structure",
+   "adopted_rules": [
+    "product shown as its own silhouette in a real setting"
+   ],
+   "excluded_elements": [
+    "scene as size calibration"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#E9E6E0",
+   "text": "#1C1F22",
+   "muted": "#4F575E",
+   "accent": "#D0612A"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 128,
+   "headline_compact": 100,
+   "support": 50
+  }
+ },
+ "elements": [
+  {
+   "element_id": "band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.6027,
+    1.0,
+    0.3706
+   ],
+   "allow_overlap_with": [
+    "headline",
+    "support",
+    "rule",
+    "brand_slot",
+    "brand_slot_t"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "scene_frame",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.0,
+    1.0,
+    0.6027
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.6347,
+    0.4453,
+    0.1673
+   ],
+   "allow_overlap_with": [],
+   "text": "Four boxes, one stack",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "rule",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.056,
+    0.818,
+    0.08,
+    0.0053
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "support",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.056,
+    0.8447,
+    0.6066,
+    0.0867
+   ],
+   "allow_overlap_with": [],
+   "text": "Shown closed and stacked on a garage floor.",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "brand_slot",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.7707,
+    0.6347,
+    0.1733,
+    0.048
+   ],
+   "allow_overlap_with": [
+    "brand_slot_t"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "brand_slot_t",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.7918,
+    0.6501,
+    0.131,
+    0.0173
+   ],
+   "allow_overlap_with": [
+    "brand_slot"
+   ],
+   "text": "Brand slot",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "one headline + one supporting line; no CTA/price/badges (ignored with note)",
+  "square/portrait: scene top, solid band below; landscape: solid panel left, scene right, compact headline 100px",
+  "scene cover scale <= 1.25 (band grows instead)",
+  "no scene -> solid editorial: text column 40% and product column never overlap",
+  "brand area = replaceable slot; source logos never placed in it",
+  "zh headlines may carry \\n at phrase boundaries"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T12/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/matrix/sel_band_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/matrix/sel_band_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/matrix/sel_band_jh030_en_1500x1000.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T12/matrix/sel_solid_fallback_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T12/source/T12.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T12/source/jobs/sel_band_en_1500.json",
+  "templates/T12/source/jobs/sel_band_zh_1200x1500.json",
+  "templates/T12/source/jobs/sel_band_jh030_en_1500x1000.json",
+  "templates/T12/source/jobs/sel_solid_fallback_en_1500.json"
+ ],
+ "qa_report_path": "templates/T12/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

@@ -1,0 +1,141 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T10 · interfaces & connections. Each row = one connection chain from the structured graph.
+     status 'approved' -> solid line (+ arrow only if direction is given); anything else -> dashed line, no arrow, "pending" chip. */
+  #canvas{--bg:#F3F4F5;--text:#1D2125;--muted:#5C646B;--accent:#D0612A;--line:#9AA1A8;--ok:#2C6E49;--pend:#8A6D1F;--pend-bg:#FBF3DC;--wm:rgba(0,0,0,.045)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .p-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .l-name{font:700 50px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .l-body{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .chip{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap}
+  .chip.pending{color:var(--pend);background:var(--pend-bg)}
+  .chip.approved{color:#fff;background:var(--ok)}
+  .w-cap{font:600 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);text-align:center}
+  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .p-name,#canvas[lang=zh] .l-name{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.25}
+  #canvas[lang=zh] .l-body,#canvas[lang=zh] .w-cap{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.38}
+  #canvas[lang=zh] .chip{letter-spacing:.04em}
+  .link{fill:none;stroke:var(--line);stroke-width:4;stroke-linecap:round}
+  .link.pending{stroke-dasharray:3 14}
+  .link.approved{stroke:var(--ok)}
+  .win{position:absolute;border-radius:50%;overflow:hidden;box-shadow:0 0 0 6px #fff,0 0 0 8px var(--line)}
+  .win img{position:absolute}
+  .hr{position:absolute;background:#D9DCDF}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const P = job.parts || {}, links = (job.links || []).slice(0, 3), L = job.labels || {};
+const mode = job.mode || 'hub';   // selected direction B; chains is explicit
+T.layoutInfo = {mode};
+const pending = links.filter(l => l.status !== 'approved');
+if (pending.length) T.notes.push(`BLOCKED_BY_EVIDENCE: ${pending.length}/${links.length} connection(s) without approved graph entry; drawn dashed, no arrows, marked pending`);
+if ((job.links || []).length > 3) T.notes.push('more than 3 chains: split into another image');
+const chipTxt = l => l.status === 'approved' ? (L.approved || 'Confirmed') : (L.pending || 'Pending confirmation');
+
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 6 * G;
+
+function fit(id, assetId, bx, by, bw, bh, ay = 0.5) {
+  const a = T.asset(assetId); let r = T.contain(a, bx, by, bw, bh, 0.5, ay);
+  if (r.scale > cap) { const s = cap; r = {w: a.width * s, h: a.height * s, scale: s}; r.x = bx + (bw - r.w) / 2; r.y = by + (bh - r.h) * ay; }
+  T.img(id, assetId, r, {blend:'multiply'}); return r;
+}
+/* circular close-up window: cover crop of the ORIGINAL visible region; never redrawn */
+function windowAt(id, assetId, cx, cy, d, fx = 0.5, fy = 0.5) {
+  const a = T.asset(assetId);
+  const sMax = 1.24; if (d > Math.min(a.width, a.height) * sMax) d = Math.min(a.width, a.height) * sMax;
+  const f = T.el('div', {class:'win', 'data-qa': id + '_frame', 'data-kind':'shape'}); T.box(f, cx - d / 2, cy - d / 2, d, d);
+  const r = T.cover(a, 0, 0, d, d, fx, fy);
+  const i = T.el('img', {src: a.file, 'data-qa': id, 'data-kind':'detail_image', 'data-asset': assetId, 'data-nw': a.width, 'data-nh': a.height, 'data-crop':'explicit_detail_crop', 'data-allow': id + '_frame', 'data-inframe':'1'}, f);
+  T.box(i, r.x, r.y, r.w, r.h);
+  return {d, x: cx - d / 2, y: cy - d / 2};
+}
+function line(id, x1, y1, x2, y2, l) {
+  const st = l.status === 'approved' ? 'approved' : 'pending';
+  const p = T.svgEl('path', {d: `M${x1} ${y1} L${x2} ${y2}`, class: 'link ' + st, 'data-qa-line': id});
+  if (st === 'approved' && (l.direction === 'a_to_b' || l.direction === 'both')) {   // arrows only for approved direction data
+    const head = (xa, ya, xb, yb) => { const a = Math.atan2(yb - ya, xb - xa), s = 22; T.svgEl('path', {d: `M${xb - s * Math.cos(a - .45)} ${yb - s * Math.sin(a - .45)} L${xb} ${yb} L${xb - s * Math.cos(a + .45)} ${yb - s * Math.sin(a + .45)}`, class: 'link approved'}); };
+    head(x1, y1, x2, y2); if (l.direction === 'both') head(x2, y2, x1, y1);
+  }
+}
+
+if (mode === 'chains') {
+  /* ---- Direction A (AMZ-040): one chain per row — part · close-up window · part, caption under ---- */
+  const n = links.length, gap = 4 * G;
+  const rowH = (floor - y - (n - 1) * gap) / n;
+  links.forEach((l, i) => {
+    const y0 = y + i * (rowH + gap), id = 'k' + (i + 1);
+    // caption block (measured first): name + chip + body
+    const cw = W - 2 * m;
+    const nm = T.text(id + '_name', l.name, m, 0, cw * 0.62, 'l-name', {tier:'important', maxLines: 1});
+    const ch = T.text(id + '_chip', chipTxt(l), m, 0, cw, 'chip ' + (l.status === 'approved' ? 'approved' : 'pending'), {tier:'meta', maxLines: 1}); ch.style.width = 'auto';
+    const bd = l.body ? T.text(id + '_body', l.body, m, 0, cw, 'l-body', {tier:'secondary', maxLines: 2}) : null;
+    const capH = Math.max(T.rect(nm).h, T.rect(ch).h) + (bd ? 2 * G + T.rect(bd).h : 0);
+    const visH = rowH - capH - 3 * G;
+    const pw = (W - 2 * m) * 0.30, wd = Math.min(visH, (W - 2 * m) * 0.26);
+    const pnH = 70;   // part name line under each part
+    const ra = fit(id + '_from', P[l.from].asset, m, y0, pw, visH - pnH, 1);
+    const rb = fit(id + '_to', P[l.to].asset, W - m - pw, y0, pw, visH - pnH, 1);
+    T.text(id + '_from_name', P[l.from].name, m, y0 + visH - pnH + G, pw, 'p-name', {tier:'important', maxLines: 1, align:'center'});
+    T.text(id + '_to_name', P[l.to].name, W - m - pw, y0 + visH - pnH + G, pw, 'p-name', {tier:'important', maxLines: 1, align:'center'});
+    const cx = W / 2, cy = y0 + (visH - pnH) / 2;
+    let wn = null;
+    if (l.via_asset) wn = windowAt(id + '_win', l.via_asset, cx, cy, wd, l.via_focus?.[0], l.via_focus?.[1]);
+    const half = wn ? wn.d / 2 + 18 : 0;
+    line(id + '_l1', ra.x + ra.w + 20, cy, cx - half, cy, l);
+    line(id + '_l2', cx + half, cy, rb.x - 20, cy, l);
+    // caption row
+    const cy0 = y0 + visH + 3 * G;
+    nm.style.top = cy0 + 'px';
+    ch.style.top = cy0 + (T.rect(nm).h - T.rect(ch).h) / 2 + 'px'; ch.style.left = (m + T.rect(nm).w + 3 * G) + 'px';
+    if (bd) bd.style.top = (cy0 + Math.max(T.rect(nm).h, T.rect(ch).h) + 2 * G) + 'px';
+    if (i < n - 1) T.box(T.el('div', {class:'hr'}), m, y0 + rowH + gap / 2, W - 2 * m, 2);
+  });
+} else {
+  /* ---- Direction B (AMZ-039): assembled view + one large close-up window; chains listed as text rows ---- */
+  const leftW = Math.round((W - 2 * m) * (W / H < 0.9 ? 0.46 : 0.42)), gut = 7 * G;
+  const rx = m + leftW + gut, rw = W - m - rx;
+  // right column: window, caption, then link rows (measured)
+  const rowsEls = links.map((l, i) => {
+    const id = 'k' + (i + 1), els = [];
+    const ch = T.text(id + '_chip', chipTxt(l), rx, 0, rw, 'chip ' + (l.status === 'approved' ? 'approved' : 'pending'), {tier:'meta', maxLines: 1}); ch.style.width = 'auto'; els.push(ch);
+    const nm = T.text(id + '_name', l.name, rx, 0, rw, 'l-name', {tier:'important', maxLines: 2}); els.push(nm);
+    if (l.body) els.push(T.text(id + '_body', l.body, rx, 0, rw, 'l-body', {tier:'secondary', maxLines: 3}));
+    return els;
+  });
+  const hOf = els => els.reduce((s, e) => s + T.rect(e).h, 0) + (els.length - 1) * 2 * G;
+  const listH = rowsEls.reduce((s, e) => s + hOf(e), 0) + (rowsEls.length - 1) * 5 * G;
+  const wsrc = job.window || {};
+  const cap1 = wsrc.caption ? T.text('win_cap', wsrc.caption, rx, 0, rw, 'w-cap', {tier:'secondary', maxLines: 2}) : null;
+  if (cap1) cap1.innerHTML = cap1.textContent.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])).replace(/([A-Z]{2,4}-\d+)/g, '<span style="white-space:nowrap">$1</span>');   // r4: never split a source ID
+  const capH = cap1 ? T.rect(cap1).h + 2 * G : 0;
+  const availW = floor - y - listH - capH - 8 * G;
+  const d0 = Math.min(rw, availW);
+  let wn = null;
+  if (wsrc.asset && d0 > 160) wn = windowAt('win', wsrc.asset, rx + rw / 2, y + 6 + Math.min(rw, d0) / 2, d0, wsrc.focus?.[0], wsrc.focus?.[1]);
+  let yy = y + (wn ? wn.d + 12 : 0) + 2 * G;
+  if (cap1) { cap1.style.top = yy + 'px'; yy += capH; }
+  yy += 4 * G;
+  rowsEls.forEach((els, i) => {
+    for (const e of els) { e.style.top = yy + 'px'; yy += T.rect(e).h + 2 * G; }
+    yy += 3 * G;
+  });
+  fit('assembled', job.assembled, m, y, leftW, floor - y, 1);
+  if (job.assembled_note) T.notes.push(job.assembled_note);
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

@@ -904,11 +904,15 @@ class SceneFlowTests(unittest.TestCase):
         self.assertEqual(client.get('/references/eu-tool-ecommerce/index.html').status_code, 200)
         self.assertEqual(client.get('/references/eu-tool-ecommerce/references.csv').status_code, 404)
         self.assertEqual(client.get('/references/other/index.html').status_code, 404)
-        proposal = client.post('/api/projects/fixture/scene/recommend', json={'hint': ''}).get_json()
+        # Scenes are made by the listing set now: the standalone entry points are gone, the stylist itself still works.
+        self.assertEqual(client.post('/api/projects/fixture/scene/recommend', json={'hint': ''}).status_code, 404)
+        self.assertEqual(client.post('/api/projects/fixture/scene', json={'expected_version': 1}).status_code, 405)
+        proposal = scene_stylist.recommend('fixture', {'hint': ''})
         self.assertEqual((proposal['segment_id'], proposal['method']), ('site_team', 'generate'))
-        self.assertEqual(client.post('/api/projects/fixture/scene/recommend', json={'audience': 'nobody'}).status_code, 400)
+        with self.assertRaises(ValueError):
+            scene_stylist.recommend('fixture', {'audience': 'nobody'})
         with patch.object(scene_stylist.threading, 'Thread') as thread:
-            self.assertEqual(client.post('/api/projects/fixture/scene', json={'expected_version': 1}).status_code, 202)
+            self.assertEqual(scene_stylist.submit('fixture', {'expected_version': 1})['status'], 'queued')
         scene_stylist._run(thread.call_args.kwargs['args'][0])
         view = client.get('/api/projects/fixture').get_json()
         self.assertEqual((view['scene_task']['status'], view['plan']['scene_brief']['method'], view['outputs'][-1]['quality']), ('completed', 'generate', 'generated'))

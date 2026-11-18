@@ -1,0 +1,163 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T09 · same-condition comparison. Without approved evidence it degrades to a NEUTRAL side-by-side:
+     both columns styled identically, no ticks/crosses, no winner, no percentage claims. */
+  #canvas{--bg:#F6F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#D5D8DB;--spine:#ECEAE5;--wm:rgba(0,0,0,.045)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .s-name{font:700 56px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .s-sub{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
+  .r-label{font:700 50px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
+  .r-unit{font:500 42px/1.1 "Noto Sans",sans-serif;color:var(--muted)}
+  .r-val{font:700 76px/1 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);white-space:nowrap}
+  .r-val .u{font-size:42px;margin-left:8px;color:var(--muted);font-weight:700}
+  .r-val.compact{font-size:64px}
+  .r-val .alt{font:500 42px/1 "Noto Sans",sans-serif;margin-left:22px;color:var(--muted);letter-spacing:0}
+  .r-alt{font:500 42px/1.15 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
+  .note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  .basis{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:2px solid var(--line);border-radius:30px;padding:12px 22px;white-space:nowrap}
+  .ph{position:absolute;border:3px dashed #A9AEB3;border-radius:10px}
+  .ph-text{font:600 42px/1.25 "Noto Sans",sans-serif;color:#7A8086;text-align:center}
+  .pill{font:600 42px/1.2 "Noto Sans",sans-serif;color:#7A8086;border:2px dashed #A9AEB3;border-radius:12px;padding:10px 16px;text-align:center}
+  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .s-name{font:700 52px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .r-label{font:700 50px/1.25 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .s-sub,#canvas[lang=zh] .note,#canvas[lang=zh] .r-unit{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.35}
+  #canvas[lang=zh] .basis{letter-spacing:.04em}
+  .hr{position:absolute;background:var(--line)}
+  .spine{position:absolute;background:var(--spine)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const floor = H - bandH - m * 0.75;
+const cmp = job.comparison || {};
+const evidence = !!cmp.evidence_approved;            // only approved, same-condition evidence unlocks "tested" framing
+const structure = !!job.structure_only;              // blocked preview: slots + required fields, no values
+const mode = job.mode || 'rows';
+const S = (job.subjects || []).slice(0, 2);
+const maxRows = W / H < 0.9 ? 3 : 4;   // r3 density rule: portrait 3 rows, square/landscape 4; more -> second image
+const rows = (job.rows || []).slice(0, maxRows);
+if ((job.rows || []).length > maxRows) T.notes.push(`rows ${maxRows + 1}+ not drawn: split into a second image`);
+const L = job.labels || {};
+T.layoutInfo = {mode, evidence, structure};
+if (!evidence) T.notes.push((job.requested === 'evidence_comparison' ? 'BLOCKED_BY_EVIDENCE: comparison requested without approved evidence; ' : '') + 'rendered as neutral side-by-side (no ticks, no winner)');
+for (const r of rows) for (const k of ['a', 'b']) if (!structure && r[k] && r[k].v != null && !r[k].fact_id) throw new Error('value without fact_id in row ' + r.dim);
+
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 4 * G;
+// basis chip: states what kind of comparison this is — always visible
+const basisTxt = structure ? (L.basis_blocked || 'Blocked: evidence required') : evidence ? (L.basis_tested || 'Same test conditions · ') + (cmp.condition || '') : (L.basis_neutral || 'Neutral side-by-side · not a tested comparison');
+const bc = T.text('basis', basisTxt, m, y, W - 2 * m, 'basis', {tier:'meta', maxLines: 1});
+bc.style.width = 'auto';
+y = T.rect(bc).y + T.rect(bc).h + 5 * G;
+
+// column geometry. r2: landscape (W/H>1.15) reflows to SIDE: subjects stacked left, table right
+const side = mode !== 'spine' && W / H > 1.15;
+T.layoutInfo.side = side;
+const leftW = side ? Math.round((W - 2 * m) * 0.30) : 0, sgut = side ? 7 * G : 0;
+const tx0 = m + leftW + sgut, tw = W - m - tx0;
+let xs, colW, labX, labW, valAlign;
+if (mode === 'spine') {
+  const spineW = Math.round(tw * 0.26); colW = (tw - spineW) / 2;
+  xs = [tx0, tx0 + colW + spineW]; labX = tx0 + colW; labW = spineW; valAlign = ['right', 'left'];
+} else {
+  labW = Math.round(tw * (side ? 0.36 : 0.27)); colW = (tw - labW) / 2;
+  xs = [tx0 + labW, tx0 + labW + colW]; labX = tx0; valAlign = ['center', 'center'];
+}
+const pad = 3 * G;
+
+/* ---- measure the table first so images get the remaining height ---- */
+const noteTxt = job.condition_note || '';
+let noteEl = null, noteH = 0;
+if (noteTxt) { noteEl = T.text('note', noteTxt, m, 0, W - 2 * m, 'note', {tier:'secondary', maxLines: 2}); noteH = T.rect(noteEl).h + 4 * G; }
+const R = rows.map((r, i) => {
+  const id = 'r' + (i + 1), els = [];
+  const lab = T.text(id + '_label', r.dim, labX + (mode === 'spine' ? pad : 0), 0, labW - (mode === 'spine' ? 2 * pad : pad), 'r-label', {tier:'important', maxLines: side ? 3 : 2, align: mode === 'spine' ? 'center' : 'left'});
+  els.push(lab);
+  let lh = T.rect(lab).h;
+  if (r.unit_note) { const u = T.text(id + '_unit', r.unit_note, labX + (mode === 'spine' ? pad : 0), 0, labW - (mode === 'spine' ? 2 * pad : pad), 'r-unit', {tier:'secondary', maxLines: 1, align: mode === 'spine' ? 'center' : 'left'}); els.push(u); lh += G + T.rect(u).h; }
+  const cells = ['a', 'b'].map((k, j) => {
+    const x = xs[j] + pad, w = colW - 2 * pad, ce = [];
+    if (structure) {
+      const p = T.text(id + k + '_ph', L.value_ph || 'value · evidence ID', x, 0, w, 'pill', {tier:'secondary', maxLines: 3}); ce.push(p);
+      return {els: ce, h: T.rect(p).h};
+    }
+    const c = r[k] || {};
+    const v = T.text(id + k + '_val', '', x, 0, w, 'r-val' + (w < 400 ? ' compact' : ''), {tier:'headline', maxLines: 1, align: valAlign[j]});   // narrow columns: defined compact value size
+    v.textContent = c.v != null ? String(c.v) : (L.missing || '—');
+    if (c.v != null) { const u = document.createElement('span'); u.className = 'u'; u.textContent = r.unit; v.appendChild(u); }
+    // r1: converted value sits inline (same line) — saves a line per row so the subject images keep their height
+    // r2: if inline does not fit the column, the converted value drops to its own line (defined fallback, no shrinking)
+    ce.push(v);
+    if (c.alt && c.v != null) {
+      const s2 = document.createElement('span'); s2.className = 'alt'; s2.textContent = c.alt; v.appendChild(s2);
+      if (v.scrollWidth > v.clientWidth + 1) { s2.remove(); const a = T.text(id + k + '_alt', c.alt, x, 0, w, 'r-alt', {tier:'secondary', maxLines: 1, align: valAlign[j]}); ce.push(a); return {els: ce, h: T.rect(v).h + G + T.rect(a).h}; }
+    }
+    return {els: ce, h: T.rect(v).h};
+  });
+  return {lab: els, lh, cells, h: Math.max(lh, ...cells.map(c => c.h))};
+});
+const rowPad = 2 * G + 4;
+const tableH = R.reduce((s, r) => s + r.h + 2 * rowPad, 0);
+
+/* ---- subject header: image + name, equal boxes; never implies scale ---- */
+const nameEls = S.map((s, j) => {
+  const x = side ? m : xs[j] + pad, w = side ? leftW : colW - 2 * pad, els = [];
+  const n = T.text('s' + (j + 1) + '_name', structure ? (L.subject_ph || 'Subject ' + 'AB'[j]) : s.name, x, 0, w, 's-name', {tier:'important', maxLines: 2, align: 'center'}); els.push(n);
+  let h = T.rect(n).h;
+  const subTxt = structure ? (L.subject_sub_ph || 'identified product + source') : s.sub;
+  if (subTxt) { const sb = T.text('s' + (j + 1) + '_sub', subTxt, x, 0, w, 's-sub', {tier:'secondary', maxLines: 2, align: 'center'}); els.push(sb); h += G + T.rect(sb).h; }
+  return {els, h};
+});
+const nameH = Math.max(...nameEls.map(n => n.h));
+// side layout: table header carries the short subject names; images stacked in the left panel
+let hdrH = 0;
+if (side) S.forEach((s, j) => { const hd = T.text('s' + (j + 1) + '_hdr', structure ? 'AB'[j] : s.name, xs[j] + pad, 0, colW - 2 * pad, 's-name', {tier:'important', maxLines: 1, align:'center'}); hdrH = Math.max(hdrH, T.rect(hd).h); hd.style.top = (floor - noteH - tableH - hdrH - 2 * G) + 'px'; });
+const imgTop = y;
+const sideCell = side ? (floor - noteH - y - 4 * G) / 2 : 0;
+const imgBot = side ? 0 : floor - noteH - tableH - 4 * G - nameH - 3 * G;
+const imgH = side ? sideCell - nameH - 3 * G : imgBot - imgTop;
+if (imgH < 160) T.notes.push('image row below 160px: reduce rows or headline');
+if (mode === 'spine') { const sp = T.el('div', {class:'spine'}); T.box(sp, labX, imgTop, labW, floor - noteH - 2 * G - imgTop); T.root.insertBefore(sp, T.root.firstChild); }
+S.forEach((s, j) => {
+  const bx = side ? m : xs[j] + pad, bw = side ? leftW : colW - 2 * pad;
+  const imgTop = side ? y + j * (sideCell + 4 * G) : y, imgBot = imgTop + imgH;
+  if (structure) {
+    const ph = T.el('div', {class:'ph', 'data-qa':'s' + (j + 1) + '_slot', 'data-kind':'shape', 'data-allow':'s' + (j + 1) + '_slot_text'}); T.box(ph, bx, imgTop, bw, imgH);
+    const t = T.text('s' + (j + 1) + '_slot_text', L.view_ph || 'Comparable view\nsame angle · same scale basis', bx + 3 * G, 0, bw - 6 * G, 'ph-text', {tier:'secondary', maxLines: 3, allow:['s' + (j + 1) + '_slot']});
+    t.style.top = (imgTop + (imgH - T.rect(t).h) / 2) + 'px';
+  } else {
+    const a = T.asset(s.asset); let r = T.contain(a, bx, imgTop, bw, imgH, 0.5, 1);
+    if (r.scale > cap) { const k = cap; r = {w: a.width * k, h: a.height * k, scale: k}; r.x = bx + (bw - r.w) / 2; r.y = imgBot - r.h; }
+    T.img('s' + (j + 1) + '_img', s.asset, r, {blend:'multiply'});
+  }
+  let yy = imgBot + 3 * G; for (const e of nameEls[j].els) { e.style.top = yy + 'px'; yy += T.rect(e).h + G; }
+});
+if (!structure && !job.scale_calibrated) T.notes.push('subject images shown at equal display size: not to scale');
+// divider between subjects (rows mode) / spine edges
+let ty = floor - noteH - tableH;
+T.box(T.el('div', {class:'hr'}), tx0, ty - 2 * G, W - m - tx0, 2);
+R.forEach((r, i) => {
+  const y0 = ty + rowPad;
+  // label block vertically centred in row
+  let ly = y0 + (r.h - r.lh) / 2; for (const e of r.lab) { e.style.top = ly + 'px'; ly += T.rect(e).h + G; }
+  r.cells.forEach(c => { let cy = y0 + (r.h - c.h) / 2; for (const e of c.els) { e.style.top = cy + 'px'; cy += T.rect(e).h + G; } });
+  ty += r.h + 2 * rowPad;
+  if (i < R.length - 1) T.box(T.el('div', {class:'hr'}), tx0, ty, W - m - tx0, 2);
+});
+if (mode !== 'spine') T.box(T.el('div', {class:'hr'}), xs[1], side ? floor - noteH - tableH - hdrH - 3 * G : imgTop, 2, ty - (side ? floor - noteH - tableH - hdrH - 3 * G : imgTop));
+if (noteEl) noteEl.style.top = (floor - noteH + 4 * G) + 'px';
+T.watermark();
+T.finish();
+})();
+</script></body></html>

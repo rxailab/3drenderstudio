@@ -3,11 +3,13 @@
 The studio's shots are six views of one object. A listing is a sequence of arguments: what you
 get, what is in the box, what the parts do, what it is like in use, how big it is. This module
 keeps what those images are made from (the product record, the brand kit, the components) and
-builds the set: it stages the pictures each page needs, lays the pages out with the templates
-in ``listing_pages`` and writes them as PNG files.
+builds the set: it stages the pictures each page needs, has the image model make the usage scenes
+around the locked product, lays the pages out with the brand-kit templates (``brandkit_set``) and
+writes them as PNG files.
 
 A page prints only numbers the user entered or that were measured on the model.
 """
+import concurrent.futures
 import copy
 import io
 import math
@@ -23,22 +25,24 @@ from pathlib import Path
 from studio_store import DATA, LOCK, get, put, all_records
 
 import brand_kit
+import brandkit_render
+import brandkit_review
+import brandkit_set
 import components
-import listing_draw
-import listing_elements
-import listing_pages
 
 KIND = 'listing_task'
-PAGE_PX = 2000
 MAX_FEATURES = 8
 MAX_SPECS = 10
 MAX_FIGURES = 3
-MAX_PAGES = 9
+MAX_PAGES = len(brandkit_set.KINDS)
 LANGUAGES = ('en', 'zh')
 WORKPIECES = ('pipe', 'rod', 'board', 'sheet', 'block')
 MATERIALS = ('pvc_white', 'pvc_grey', 'copper', 'steel', 'aluminium', 'wood', 'concrete', 'drywall', 'plastic_black')
 MODES = ('through', 'under', 'front', 'manual')
-AUTO_ORDER = ('main', 'includes', 'callouts', 'usecase', 'feature', 'band', 'specs', 'benefits')
+WORKPIECE_NAMES = {'pipe': '管材', 'rod': '圆棒', 'board': '板材', 'sheet': '薄板', 'block': '块料'}
+MATERIAL_NAMES = {'pvc_white': 'PVC（白）', 'pvc_grey': 'PVC（灰）', 'plastic_black': '塑料', 'copper': '铜', 'steel': '钢', 'aluminium': '铝',
+                  'wood': '木', 'concrete': '混凝土', 'drywall': '石膏板'}
+AUTO_ORDER = brandkit_set.AUTO
 # What a tool is shown working on, by what it is called. Only a starting point: the user can change every part of it.
 USECASE_RULES = (
     (('pipe cutter', 'tube cutter', 'tubing cutter', 'pipe-cutter', '割管', '切管', '管刀', '管子割刀'), {'kind': 'pipe', 'material': 'pvc_white', 'mode': 'through'}),
@@ -50,7 +54,7 @@ USECASE_RULES = (
     (('grinder', '角磨', '磨光'), {'kind': 'sheet', 'material': 'steel', 'mode': 'under'}),
     (('drill', 'driver', '电钻', '冲击钻', '起子'), {'kind': 'board', 'material': 'wood', 'mode': 'front'}),
 )
-STAGES = {'queued': 0, 'pictures': 4, 'compose': 86, 'done': 100}
+STAGES = {'queued': 0, 'pictures': 4, 'scenes': 30, 'compose': 82, 'done': 100}
 TASKS = {}
 
 
@@ -139,7 +143,7 @@ def validate_usecase(value, current=None):
 def default_product(project):
     use = usecase_for(project.get('name', '') + ' ' + str((project.get('metadata') or {}).get('product_category', '')))
     return {'title': str(project.get('name', ''))[:60], 'model': '', 'headline': '', 'subline': '', 'language': 'en', 'size_mm': None,
-            'features': [], 'specs': [], 'figures': [], 'pages': None, 'drafted': None,
+            'features': [], 'specs': [], 'figures': [], 'pages': None, 'drafted': None, 'aspect': '1:1', 'scenes': brandkit_set.default_scenes(),
             # Shown by default only where the placement can be worked out from the model: a tool that closes round its work.
             'usecase': validate_usecase({'enabled': bool(use) and use['mode'] == 'through', **(use or {})})}
 
@@ -185,13 +189,21 @@ def validate_product(body, project, current=None):
         raise ValueError('大数字指标最多 %d 个' % MAX_FIGURES)
     record['figures'] = [{'value': _text(row.get('value'), 12, '指标数值'), 'unit': _text(row.get('unit'), 8, '指标单位'), 'label': _text(row.get('label'), 30, '指标名称')}
                          for row in figures if isinstance(row, dict) and _text(row.get('value'), 12, '指标数值') and _text(row.get('label'), 30, '指标名称')]
-    pages = body.get('pages', current.get('pages'))
-    if pages is not None:
-        if not isinstance(pages, list) or len(pages) > MAX_PAGES or any(kind not in listing_pages.KINDS for kind in pages):
+    if 'pages' in body:
+        pages = body['pages']
+        if pages is not None and (not isinstance(pages, list) or len(pages) > MAX_PAGES or any(kind not in brandkit_set.KINDS for kind in pages)):
             raise ValueError('图片类型列表无效')
-        pages = list(dict.fromkeys(pages))
-    record['pages'] = pages
+    else:
+        # A record kept from before the brand-kit templates names the old page kinds: those choices no longer apply.
+        pages = current.get('pages')
+        pages = [kind for kind in pages if kind in brandkit_set.KINDS] or None if isinstance(pages, list) else None
+    record['pages'] = list(dict.fromkeys(pages)) if pages is not None else None
+    aspect = body.get('aspect', current.get('aspect') or '1:1')
+    if aspect not in brandkit_set.ASPECTS:
+        raise ValueError('图片比例只能是 1:1 或 4:5')
+    record['aspect'] = aspect
     record['usecase'] = validate_usecase(body.get('usecase'), current.get('usecase'))
+    record['scenes'] = brandkit_set.validate_scenes(body.get('scenes'), current.get('scenes') if isinstance(current.get('scenes'), dict) else None)
     return record
 
 
@@ -239,20 +251,15 @@ def ready_components(project):
 
 
 def planned(project, product, parts):
-    """The images this listing gets: [{'kind', 'index', 'reason' or None when skipped}] in order."""
-    has = {'main': True, 'includes': bool(parts), 'callouts': bool(product['features']), 'usecase': product['usecase']['enabled'],
-           'feature': any(feature['parts'] for feature in product['features']), 'band': True,
-           'specs': bool(product['specs']) or product_size(project, product)[1], 'benefits': len(product['features']) >= 3}
-    why = {'includes': '还没有处理完成的组件', 'callouts': '还没有卖点', 'usecase': '没有启用使用场景', 'feature': '卖点没有选择对应的部件',
-           'specs': '没有规格，也没有填写真实尺寸', 'benefits': '卖点少于 3 条'}
-    wanted = product['pages'] if product['pages'] is not None else [kind for kind in AUTO_ORDER if has[kind]][:7]
+    """The images this listing gets: [{'kind', 'index', 'reason' or None when skipped}] in order. Kinds are brand-kit templates."""
+    has, why = brandkit_set.requirements(product, parts, product_size(project, product)[1],
+                                         brandkit_set.scene_supply(product, 1 if _photo(project) else 0))
+    # Left to itself the set has every page there is something for; the ones it cannot make yet are listed with the reason.
+    wanted = product['pages'] if product['pages'] is not None else list(AUTO_ORDER)
     rows = []
     for kind in wanted:
-        if not has[kind]:
-            rows.append({'kind': kind, 'skipped': why.get(kind, '缺少内容')}); continue
-        if kind == 'feature':
-            index = next(index for index, feature in enumerate(product['features']) if feature['parts'])
-            rows.append({'kind': kind, 'index': index})
+        if not has.get(kind):
+            rows.append({'kind': kind, 'skipped': why.get(kind, '缺少内容')})
         else:
             rows.append({'kind': kind, 'index': 0})
     return rows
@@ -380,6 +387,17 @@ def latest(project_id):
     return public_task(max(rows, key=lambda task: task.get('created_at', 0))) if rows else None
 
 
+def _scene_options():
+    import scene_audience
+    try:
+        audiences = [{'id': row['id'], 'label': row['label']} for row in scene_audience.library()]
+    except Exception:
+        audiences = []
+    return {'audiences': audiences, 'image_ready': brandkit_set.image_model_ready(), 'max': brandkit_set.MAX_SCENES,
+            'people': {'auto': '自动', 'hands': '只出现手部', 'include': '包含人物', 'exclude': '不含人物'},
+            'aspects': list(brandkit_set.ASPECTS)}
+
+
 def state(project_id):
     """Everything the listing workspace shows."""
     import engine
@@ -392,12 +410,14 @@ def state(project_id):
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
-            'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in listing_pages.KINDS.items()},
-            'order': list(AUTO_ORDER),
+            'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
+            'order': list(brandkit_set.ORDER), 'auto': list(AUTO_ORDER),
+            'scenes': [{key: row.get(key) for key in ('url', 'title', 'body', 'role')} for row in (listing.get('scenes') or {}).get('items', [])],
+            'scene_options': _scene_options(),
+            'layout_available': brandkit_render.available(),
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
             'options': {'workpieces': list(WORKPIECES), 'materials': list(MATERIALS), 'modes': list(MODES), 'languages': list(LANGUAGES),
-                        'workpiece_names': listing_pages.WORKPIECE_NAMES['zh'], 'material_names': listing_pages.MATERIAL_NAMES['zh']},
-            'elements': {key: {'zh': zh, 'en': en} for key, (zh, en) in listing_elements.ELEMENTS.items()},
+                        'workpiece_names': WORKPIECE_NAMES, 'material_names': MATERIAL_NAMES},
             'task': latest(project_id), 'ready': bool(project.get('analysis')) and project.get('status') == 'ready',
             'available': bool(engine.runtime_status().get('capabilities', {}).get('render', True))}
 
@@ -484,15 +504,9 @@ def _hero_view(project):
     return azimuth, min(24.0, max(10.0, float(shot.get('elevation', 18))))
 
 
-def kit_request(project, plan, size_mm, parts, azimuth):
-    """One render of the product with the components that have models, arranged as a kit, or None when there are none."""
-    rows = [{'name': part['name'], 'role': part['role'], 'model_path': part['model_path'], 'size_mm': part.get('size_mm') or size_mm * .4,
-             'quantity': part['quantity'], 'rotation': part['rotation'], 'plan': {'material_overrides': part.get('finishes') or []}}
-            for part in parts if part.get('model_path')]
-    if not rows:
-        return None
-    return {'action': 'render', 'model_path': str(project['model_path']), 'plan': plan, 'size_mm': float(size_mm), 'companions': rows,
-            'camera': {'azimuth': azimuth, 'elevation': 26, 'focal_length': 70, 'margin': .04}, 'ground': 'none', 'size': [1800, 1800], 'samples': 48}
+def _focus_features(product, limit):
+    """[(feature index, parts)] of the first selling points that name parts of the model."""
+    return [(index, product['features'][index]['parts']) for index in brandkit_set.anchored(product)][:limit]
 
 
 def picture_requests(project, product, size_mm, rows, parts=()):
@@ -500,27 +514,24 @@ def picture_requests(project, product, size_mm, rows, parts=()):
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
     plan['rotation'], _ = display_rotation(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
-    requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1500)}
-    if 'main' in kinds:
-        kit = kit_request(project, plan, size_mm, parts, azimuth)
-        if kit:
-            requests['kit'] = kit
-    if 'specs' in kinds:
+    requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1800)}
+    if 'T06' in kinds:
         import orientation
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
         dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': 0, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
-    for row in rows:
-        if row['kind'] == 'feature' and not row.get('skipped'):
-            parts = product['features'][row['index']]['parts']
-            requests['detail%d' % row['index']] = {
-                'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
-                'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': 85, 'margin': .2, 'focus': parts,
-                           'azimuths': [azimuth, -azimuth, azimuth + 90, azimuth - 90, azimuth + 180]},
-                'ground': 'none', 'size': [1300, 1300], 'samples': 48}
-    if 'usecase' in kinds:
+    # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
+    for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
+        if kind in kinds:
+            for index, names in _focus_features(product, limit):
+                requests['%s%d' % (key, index)] = {
+                    'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
+                    'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': focal, 'margin': margin, 'focus': names,
+                               'azimuths': [azimuth, -azimuth, azimuth + 90, azimuth - 90, azimuth + 180]},
+                    'ground': 'none', 'size': [pixels, pixels], 'samples': 48}
+    if product['usecase']['enabled'] and kinds & {'T04', 'T08', 'T12'}:
         use = product['usecase']
         workpiece = {'kind': use['kind'], 'material': use['material'],
                      'place': {'mode': use['mode'], 'side': use['side'], 'offset_mm': use['offset_mm'], 'rotate': use['rotate']}}
@@ -529,7 +540,7 @@ def picture_requests(project, product, size_mm, rows, parts=()):
                 workpiece[key] = use[key]
         requests['usecase'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm), 'workpiece': workpiece,
                                'camera': {'azimuth': azimuth, 'elevation': 20, 'focal_length': 85, 'margin': .15, 'auto': 'workpiece', 'offset': [0, -.02]},
-                               'ground': 'shadow' if use['mode'] in ('under', 'front') else 'none', 'size': [1600, 1600], 'samples': 48}
+                               'ground': 'shadow', 'size': [1600, 1600], 'samples': 48}
     return requests
 
 
@@ -546,39 +557,42 @@ def _photo(project):
     return None
 
 
-def _glyphs(product):
-    import layer_icons
-    found = {}
-    for index, feature in enumerate(product['features']):
-        for query in (feature.get('icon'), feature['title']):
-            if not query:
-                continue
-            try:
-                rows = layer_icons.search(query, 1)
-            except Exception:
-                rows = []
-            if rows:
-                glyph = layer_icons.glyph(rows[0]['id'])
-                if glyph:
-                    found[index] = glyph
-                    break
-    return found
+def _oriented_mm(project, plan_rotation, size_mm):
+    """The product's width, depth and height in mm, in the pose the listing shows it."""
+    import orientation
+    dims = project['plan'].get('dimensions_mm')
+    measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
+    oriented = orientation.oriented_dimensions(measured, plan_rotation)
+    if isinstance(dims, list) and len(dims) == 3 and max(dims) > 0:
+        scale = max(dims) / max(oriented)
+    else:
+        scale = size_mm / max(oriented)
+    return [value * scale for value in oriented]
 
 
-def context(project, product, brand, parts, shots, size_mm, known):
-    return {'brand': brand, 'product': product, 'language': product['language'], 'components': parts, 'shots': shots, 'product_mm': size_mm,
-            'size_known': known, 'usecase': product['usecase'], 'photo': _photo(project), 'glyphs': _glyphs(product)}
+def _scene_on_white(source, target):
+    """A render with a transparent background (the workpiece shot) as a scene picture: on a soft studio ground."""
+    from PIL import Image
+    with Image.open(source) as opened:
+        image = opened.convert('RGBA')
+    ground = Image.new('RGBA', image.size, (236, 236, 232, 255)); ground.alpha_composite(image)
+    ground.convert('RGB').save(target, 'PNG')
+    return target
 
 
 def build(project_id, cancelled=lambda: False, progress=lambda stage, share, detail='': None):
-    """Stage the pictures, lay out every page and write the PNG files. Returns the stored page rows and notes."""
+    """Stage the pictures, make the usage scenes, lay out every page with the brand-kit templates and write the PNG files.
+    Returns the stored page rows and notes."""
     import info_layer
+    if not brandkit_render.available():
+        raise ValueError('没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。请安装 Chrome，或在 .env 中设置 BRANDKIT_CHROME。')
     project = get('project', project_id)
     product, brand_record, listing = stored(project)
     parts = ready_components(project); size_mm, known = product_size(project, product)
     rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
     if not rows:
         raise ValueError('没有可以生成的图片。')
+    kinds = {row['kind'] for row in rows}
     requests = picture_requests(project, product, size_mm, rows, parts)
     shots = {}; names = list(requests); notes = []
     waiting = [row.get('name') for row in components.components(project) if row.get('status') in ('queued', 'processing')]
@@ -594,37 +608,163 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         except components.ComponentCancelled:
             raise ListingCancelled() from None
         picture = info_layer.Picture(result['probe'], result['path']) if info_layer._valid_probe(result.get('probe')) else None
-        shots[name] = listing_pages.Shot(result, picture)
-    product_color = brand_kit.dominant_color(shots['hero'].path)
+        shots[name] = {'result': result, 'path': result['path'], 'picture': picture}
+    product_color = brand_kit.dominant_color(shots['hero']['path'])
     brand = brand_kit.Brand(brand_record, product_color)
     brand.logo_path = components.path_of(project_id, brand_record.get('logo'))
-    ctx = context(project, product, brand, parts, shots, size_mm, known)
+
+    # Usage scenes: made by the image model around the locked product, kept while the settings stay the same.
+    scenes = []; scene_store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else None; scene_key = None
+    if kinds & {'T12', 'T04', 'T08'}:
+        key = brandkit_set.scene_key(project, product, product['scenes'])
+        scene_folder = DATA / project_id / 'listing' / ('scenes-' + key)
+
+        def say(index, total, detail):
+            progress('scenes', index / max(1, total), detail)
+        try:
+            scenes, scene_key, scene_notes = brandkit_set.make_scenes(project, product, scene_folder, cancelled, say, scene_store)
+        except InterruptedError:
+            raise ListingCancelled() from None
+        notes += scene_notes
     folder = DATA / project_id / 'listing' / ('build-' + uuid.uuid4().hex[:10]); folder.mkdir(parents=True)
+    assets_folder = folder / 'assets'; assets_folder.mkdir()
+    if 'usecase' in shots:
+        path = _scene_on_white(shots['usecase']['path'], assets_folder / 'usecase-scene.png')
+        title = product['usecase']['headline'] or ('使用中' if product['language'] == 'zh' else 'In use')
+        scenes.append({'path': str(path), 'title': title, 'body': '', 'role': 'workpiece', 'focus': [.5, .5]})
+    if not scenes and kinds & {'T04', 'T08'} and _photo(project):
+        scenes.append({'path': str(_photo(project)), 'title': brandkit_set.TEXT[product['language']]['scene_titles'][0], 'body': '',
+                       'role': 'earlier', 'focus': [.5, .55]})
     pages = []
     try:
-        for index, row in enumerate(rows):
+        progress('compose', 0, '准备排版素材')
+        assets = {}; anchors = []; alternatives = {}; details = []; macros = []; focus = {}
+        hero, crop = brandkit_set.flatten(shots['hero']['path'], assets_folder / 'hero.png')
+        assets['hero'] = hero
+        picture = shots['hero']['picture']
+        for index in brandkit_set.anchored(product):
+            found, share = picture.anchor(product['features'][index]['parts']) if picture else (None, 0)
+            if found and share > .0003:          # a small part (a rivet, a button) still gets its line
+                point = brandkit_set.remap(found, crop)
+                if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                    others = [brandkit_set.remap(other, crop) for other in picture.other_anchors(product['features'][index]['parts'])]
+                    alternatives[index] = [other for other in others if 0 <= other[0] <= 1 and 0 <= other[1] <= 1]
+                    anchors.append((index, point))
+        for index, names in _focus_features(product, 6):
+            if 'detail%d' % index in shots:
+                name = 'detail%d' % index
+                region = brandkit_set.part_region(shots[name]['result'], names, least=.36, margin=.25, inset=.04)
+                # On the detail page's dark rail (its only layout here), as studio shots on the rail's own tone, not white cards.
+                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(38, 41, 45), dark=True,
+                                                       trim=False, region=region)
+                assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
+                focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
+                details.append((index, name))
+            if 'macro%d' % index in shots:
+                name = 'macro%d' % index
+                region = brandkit_set.part_region(shots[name]['result'], names, least=.34, margin=.15, inset=.1)   # the dark close-up frames fade out
+                assets[name], _ = brandkit_set.flatten(shots[name]['path'], assets_folder / (name + '.png'), ground=(22, 24, 27), dark=True, trim=False,
+                                                       region=region)
+                assets[name]['_parts'] = brandkit_set.part_map(shots[name]['result'], region)
+                focus[name] = brandkit_set.part_focus(shots[name]['result'], names, region)
+                macros.append((index, name))
+        if 'side' in shots:
+            assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
+        for index, part in enumerate(parts):
+            assets['part%d' % index], _ = brandkit_set.flatten(part['path'], assets_folder / ('part%d.png' % index), pad=.04)
+        for index, scene in enumerate(scenes):
+            assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
+            product_box = brandkit_set.scene_box(scene)
+            if product_box:
+                assets['scene%d' % (index + 1)]['_product'] = product_box
+        ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
+               'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
+               'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
+        ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
+        has, why = brandkit_set.requirements(product, parts, known, len(scenes))
+        has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
+        why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写')
+        work = folder / '_layout'
+        made = [row for row in rows if has.get(row['kind'])]
+        for row in rows:
+            if not has.get(row['kind']):
+                notes.append('「%s」没有生成：%s。' % (brandkit_set.KINDS[row['kind']][0], why.get(row['kind'], '缺少内容')))
+        # Supervision: the copy model writes each page's lines, the vision model reviews every finished page.
+        text_ready, vision_ready = brandkit_review.available()
+        if text_ready:
+            progress('compose', 0, '文案模型撰写各页标题')
+            ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
+            if copy_note:
+                notes.append(copy_note)
+        ctx['review'] = vision_ready
+        if not vision_ready:
+            notes.append('视觉模型未配置：各页只做了版式测量，没有经过视觉审核。')
+        laid = {}; done = [0]; lock = threading.Lock()
+
+        def one(row):
             if cancelled():
                 raise ListingCancelled()
-            progress('compose', index / len(rows), '排版第 %d / %d 张图片' % (index + 1, len(rows)))
-            page = listing_pages.compose(row['kind'], ctx, row.get('index', 0))
-            image = listing_draw.render(page, PAGE_PX)
-            name = '%02d-%s.png' % (index + 1, row['kind'])
-            image.save(folder / name, 'PNG', optimize=True)
-            pages.append({'id': uuid.uuid4().hex[:10], 'kind': row['kind'], 'index': row.get('index', 0), 'file': name, 'url': components.url(folder / name),
-                          'width': image.width, 'height': image.height, 'notes': page.get('notes', [])})
+            kind = row['kind']
+            try:
+                result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
+            except brandkit_render.RenderError:
+                raise
+            except Exception as exc:
+                result = exc
+            with lock:
+                done[0] += 1
+                progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
+            return kind, result
+        progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
+        with concurrent.futures.ThreadPoolExecutor(3) as pool:
+            for kind, result in pool.map(one, made):
+                laid[kind] = result
+        for row in made:
+            kind = row['kind']; result = laid[kind]
+            if isinstance(result, Exception):
+                notes.append('「%s」排版失败：%s' % (brandkit_set.KINDS[kind][0], str(result)[:160])); continue
+            qa, page_notes, review = result
+            name = '%02d-%s.png' % (len(pages) + 1, kind)
+            (folder / ('%s.png' % kind)).rename(folder / name)
+            width, height = qa['render']['size']
+            pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
+                          'width': width, 'height': height, 'notes': page_notes, 'review': review,
+                          'checks': {'passed': not brandkit_set.hard_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
+        if ctx.get('review_refused'):
+            notes.append('视觉审核被 AI 服务拒绝（%s），之后的页面没有再请求审核。' % ctx['review_refused'])
+        if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
+            progress('compose', 1, '视觉模型检查整套图')
+            try:
+                set_review = brandkit_review.review_set(pages, folder, product)
+            except Exception as exc:
+                set_review = None; notes.append('整套图的视觉检查没有完成（%s）。' % str(exc)[:80])
+            if set_review:
+                repeats = '；'.join('第 %s 张' % '、'.join(str(number) for number in group) for group in set_review['repeats'] if len(group) > 1)
+                notes.append('整套检查：%s%s%s' % ('风格一致。' if set_review['consistent'] else '风格不够统一。',
+                                                 ('内容重复：' + repeats + '。') if repeats else '', set_review['notes']))
+        shutil.rmtree(work, ignore_errors=True)
+        if not pages:
+            raise ValueError('没有排出任何图片：' + '；'.join(notes[-3:]))
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
         raise
     if not known:
-        notes.append('产品的真实尺寸没有填写，按模型文件的单位估计为最长边 %g mm，没有画出产品的尺寸线。' % size_mm)
+        notes.append('产品的真实尺寸没有填写，按模型文件的单位估计为最长边 %g mm，没有生成尺寸图。' % size_mm)
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
+    scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box')}
+                  for row in scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
         listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name)
+        if scene_key:
+            listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
         listing.setdefault('product', product); listing.setdefault('brand', brand_record)
-        for stale in (DATA / project_id / 'listing').glob('build-*'):
-            if stale != folder:
+        kept_scenes = scene_key or (scene_store or {}).get('key')
+        keep = {folder.name} | ({'scenes-' + kept_scenes} if kept_scenes else set())
+        for stale in list((DATA / project_id / 'listing').glob('build-*')) + list((DATA / project_id / 'listing').glob('scenes-*')):
+            if stale.name not in keep:
                 shutil.rmtree(stale, ignore_errors=True)
     _update(project_id, change)
     return pages, notes

@@ -142,9 +142,19 @@ function listingRenderUsecase() {
   const select=(key,values,names)=>`<select data-scope="usecase" data-key="${key}">${values.map(value=>`<option value="${esc(value)}" ${u[key]===value?'selected':''}>${esc(names[value] || value)}</option>`).join('')}</select>`;
   const number=(key,placeholder)=>`<input type="text" inputmode="decimal" data-scope="usecase" data-key="${key}" value="${esc(u[key] ?? '')}" placeholder="${esc(placeholder)}">`;
   const triple=(key,labels)=>`<span class="listing-grid3">${labels.map((label,index)=>`<input type="text" inputmode="decimal" data-scope="usecase-triple" data-key="${key}" data-index="${index}" value="${esc(u[key][index])}" aria-label="${esc(label)}" title="${esc(label)}">`).join('')}</span>`;
+  const sc=listingEdit.product.scenes || {enabled:true,count:3,audience:'auto',people:'auto',hint:''},so=listingState.scene_options || {audiences:[],people:{},max:3};
   $('listingPanel').innerHTML=`
-    <p class="field-help">把产品和它加工的工件放在一张图里，标出尺寸和功能，例如割管器套在一根白色塑料管上。工件由程序按尺寸生成，位置由模型上量到的开口决定，也可以手动调整。</p>
-    <label class="listing-check listing-toggle"><input type="checkbox" data-scope="usecase" data-key="enabled" ${u.enabled?'checked':''}> 生成使用场景标注图</label>
+    <h3 class="listing-heading">AI 场景图</h3>
+    <p class="field-help">生成套图时，按目标人群策划使用场景，由图像模型围绕锁定的产品渲染生成（产品外形不会被改动），再排进海报主图、场景参数图和使用场景组图。${so.image_ready?'':'<strong>图像模型未配置</strong>：可在 AI 设置里开启；未开启时海报用纯色版，需要场景的页面会跳过。'}</p>
+    <label class="listing-check listing-toggle"><input type="checkbox" data-scope="scenes" data-key="enabled" ${sc.enabled?'checked':''}> 生成 AI 场景图</label>
+    <div class="listing-grid2">${listingField('场景图数量',`<select data-scope="scenes" data-key="count">${Array.from({length:so.max || 3},(_,i)=>i+1).map(n=>`<option value="${n}" ${sc.count===n?'selected':''}>${n} 张</option>`).join('')}</select>`,'第 1 张是使用中的画面，第 2 张是产品放在使用环境里，第 3 张换一类买家的场景。')}
+      ${listingField('目标人群',`<select data-scope="scenes" data-key="audience"><option value="auto">自动推荐</option>${(so.audiences || []).map(row=>`<option value="${esc(row.id)}" ${sc.audience===row.id?'selected':''}>${esc(row.label)}</option>`).join('')}</select>`)}</div>
+    ${listingField('画面人物',`<select data-scope="scenes" data-key="people">${Object.entries(so.people || {}).map(([key,label])=>`<option value="${esc(key)}" ${sc.people===key?'selected':''}>${esc(label)}</option>`).join('')}</select>`)}
+    ${listingField('场景说明（可选）',listingInput('scenes','hint',sc.hint,'maxlength="300" placeholder="如：车间里的工具柜、户外露营"'),'设置不变时，重新生成套图会沿用已生成的场景图。')}
+    ${listingField('图片比例',`<select data-scope="product" data-key="aspect">${(so.aspects || ['1:1','4:5']).map(value=>`<option value="${esc(value)}" ${listingEdit.product.aspect===value?'selected':''}>${value==='1:1'?'1:1 方图 1500×1500':'4:5 竖图 1200×1500'}</option>`).join('')}</select>`)}
+    <h3 class="listing-heading">工件使用图（3D 渲染）</h3>
+    <p class="field-help">把产品和它加工的工件放在一张图里，例如割管器套在一根白色塑料管上。工件由程序按尺寸生成，位置由模型上量到的开口决定，也可以手动调整。这张图会作为一张场景图，排进使用场景组图。</p>
+    <label class="listing-check listing-toggle"><input type="checkbox" data-scope="usecase" data-key="enabled" ${u.enabled?'checked':''}> 渲染工件使用图</label>
     <div class="listing-grid2">${listingField('工件',select('kind',o.workpieces,o.workpiece_names))}${listingField('材质',select('material',o.materials,o.material_names))}</div>
     ${listingField('位置',select('mode',o.modes,listingModeNames),u.mode==='through'?'在模型上寻找被工具三面包住的开口，工件从中穿过；找不到时放在工具中心。':u.mode==='front'?'工件立在工具长轴的一端；方向不对时改选另一端。':'')}
     ${u.mode==='front'?listingField('哪一端',select('side',['+','-'],{'+':'正向一端','-':'反向一端'})):''}
@@ -154,7 +164,7 @@ function listingRenderUsecase() {
     ${listingField('工件旋转 X / Y / Z（度）',triple('rotate',['绕 X 旋转','绕 Y 旋转','绕 Z 旋转']))}
     ${listingField('这张图的标题',listingInput('usecase','headline',u.headline,'maxlength="60" placeholder="留空则写「In use · 工件名称」"'))}
     <p class="field-help">图上的工件尺寸是你在这里选的尺寸；产品尺寸线只在填写了真实尺寸时画出。</p>
-    <div class="listing-save"><button type="button" class="button secondary" data-action="save-product">保存使用场景</button></div>`;
+    <div class="listing-save"><button type="button" class="button secondary" data-action="save-product">保存场景设置</button></div>`;
 }
 
 // ---- right side ----
@@ -166,23 +176,31 @@ function listingRenderMain() {
     const label=kinds[kind],row=planned.get(kind),on=explicit?listingEdit.product.pages.includes(kind):!!row && !row.skipped;
     return `<label class="listing-kind${row?.skipped?' is-skipped':''}" title="${esc(row?.skipped?'暂时无法生成：'+row.skipped:label.en)}"><input type="checkbox" data-scope="page" value="${esc(kind)}" ${on?'checked':''} ${active?'disabled':''}> ${esc(label.zh)}</label>`;
   }).join('')+(explicit?`<button type="button" class="button subtle" data-action="pages-auto" ${active?'disabled':''}>恢复自动</button>`:'');
-  const build=$('listingBuild');build.disabled=active || listingBusy || !state.ready || !state.available;
+  const build=$('listingBuild');build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false;
   build.textContent=pages.length?'重新生成套图':'生成套图';
   $('listingCancel').hidden=!active;
   const download=$('listingDownload');download.hidden=!pages.length || active;download.href=`/api/projects/${encodeURIComponent(listingProject)}/listing/download`;
   const progress=$('listingProgress');progress.hidden=!active;
   if(active){const value=Math.max(0,Math.min(100,Math.round(task.progress || 0)));$('listingProgressBar').style.width=value+'%';progress.setAttribute('aria-valuenow',String(value));}
-  $('listingStatus').textContent=!state.available?'渲染组件不可用，无法生成套图。':!state.ready?'模型分析完成后才能生成套图。'
+  $('listingStatus').textContent=!state.available?'渲染组件不可用，无法生成套图。':state.layout_available===false?'没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。':!state.ready?'模型分析完成后才能生成套图。'
     :active?`${task.detail || (task.status==='queued'?'排队中':'正在生成')} · ${Math.round(task.progress || 0)}%`
     :task?.status==='failed'?`上次生成失败：${task.error || ''}`:task?.status==='cancelled'?'上次生成已取消。'
     :pages.length?`共 ${pages.length} 张，${new Date((state.built_at || 0)*1000).toLocaleString('zh-CN',{hour12:false})} 生成。`:'还没有生成套图。';
   const skipped=state.plan.filter(row=>row.skipped).map(row=>`「${kinds[row.kind].zh}」暂时无法生成：${row.skipped}。`);
   $('listingNotes').innerHTML=[...(state.notes || []),...skipped,...(listingComponentsBusy()?['有组件还在处理，完成后再生成会把它们放进套图。']:[])].map(note=>`<li>${esc(note)}</li>`).join('');
-  const stamp=Math.round((state.built_at || 0)*1000);
-  $('listingPages').innerHTML=pages.map((page,index)=>`<figure class="listing-page">
+  const stamp=Math.round((state.built_at || 0)*1000),scenes=state.scenes || [];
+  $('listingPages').innerHTML=(scenes.length?`<section class="listing-scenes" aria-label="本次使用的场景图"><span class="field-label">场景图（图像模型生成，产品由遮罩锁定）</span><div>${scenes.map((row,index)=>
+    `<a href="${esc(row.url)}" target="_blank" rel="noopener" title="${esc(row.title || '')}"><img src="${esc(row.url)}" alt="场景图 ${index+1}：${esc(row.title || '')}" loading="lazy"></a>`).join('')}</div></section>`:'')+pages.map((page,index)=>`<figure class="listing-page">
     <a href="${esc(page.url)}" target="_blank" rel="noopener" title="查看原图"><img src="${esc(page.url)}?t=${stamp}" alt="套图第 ${index+1} 张：${esc(kinds[page.kind]?.zh || page.kind)}" loading="lazy"></a>
-    <figcaption><span>${String(index+1).padStart(2,'0')} · ${esc(kinds[page.kind]?.zh || page.kind)}</span><span>${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a></figcaption>
+    <figcaption><span>${String(index+1).padStart(2,'0')} · ${esc(kinds[page.kind]?.zh || page.kind)}${page.checks?(page.checks.passed?' · 版式通过':' · 版式需检查'):''}${listingReviewLabel(page.review)}</span><span>${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a></figcaption>
     ${(page.notes || []).map(note=>`<p class="field-help">${esc(note)}</p>`).join('')}</figure>`).join('');
+}
+
+function listingReviewLabel(review) {
+  // What the vision model's art director made of the page; a page nobody looked at is never shown as approved.
+  if(!review)return '';
+  const score=Number.isFinite(review.score)?` ${review.score}`:'';
+  return {passed:` · 审核通过${score}`,revised:` · 审核后修改${score}`,failed:` · 审核未通过${score}`,not_verified:' · 未经视觉审核'}[review.status] || '';
 }
 
 // ---- reading the forms ----
@@ -197,6 +215,7 @@ function listingOnInput(event) {
   else if(scope==='figure'){p.figures[index][key]=node.value;listingDirty.product=true;}
   else if(scope==='usecase'){p.usecase[key]=node.type==='checkbox'?node.checked:['diameter_mm','width_mm','thickness_mm','length_mm'].includes(key)?listingNumber(node.value):node.value;listingDirty.product=true;
     if(event.type==='change' && ['kind','mode'].includes(key))listingRenderUsecase();}
+  else if(scope==='scenes'){p.scenes={...p.scenes,[key]:node.type==='checkbox'?node.checked:key==='count'?Number(node.value):node.value};listingDirty.product=true;}
   else if(scope==='usecase-triple'){p.usecase[key][index]=listingNumber(node.value) ?? 0;listingDirty.product=true;}
   else if(scope==='brand'){listingEdit.brand[key]=key==='badges'?node.value.split(/[,，;；\n]+/).map(text=>text.trim()).filter(Boolean):node.value;listingDirty.brand=true;}
   else if(scope==='brand-auto'){listingEdit.brand[key]=node.checked?null:listingState.brand[key+'_used'];listingDirty.brand=true;listingRenderBrand();}
@@ -220,7 +239,7 @@ async function listingOnChange(event) {
 async function listingSaveProduct(quiet) {
   const p=listingEdit.product;
   const body={title:p.title,model:p.model,headline:p.headline,subline:p.subline,language:p.language,size_mm:p.size_mm,features:p.features.filter(row=>row.title.trim()),
-    specs:p.specs.filter(row=>row.label.trim() && row.value.trim()),figures:p.figures.filter(row=>row.value.trim() && row.label.trim()),pages:p.pages,usecase:p.usecase};
+    specs:p.specs.filter(row=>row.label.trim() && row.value.trim()),figures:p.figures.filter(row=>row.value.trim() && row.label.trim()),pages:p.pages,usecase:p.usecase,scenes:p.scenes,aspect:p.aspect};
   const state=await api(`/api/projects/${listingProject}/listing/product`,{method:'PUT',body});
   listingDirty.product=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }

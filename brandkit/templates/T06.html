@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T06 · clean dimensions & spec */
+  #canvas{--bg:#F5F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#2C4C8C;--rule:#D6D9DC;--wm:rgba(0,0,0,.045)}
+  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .d-val{font:700 64px/1 "Noto Sans Display",sans-serif;color:var(--text);white-space:nowrap}
+  .d-alt{font:500 42px/1.15 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
+  .d-key{font:700 44px/1 "Noto Sans Display",sans-serif;color:#fff;background:var(--accent);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center}
+  .t-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text)}
+  .t-val{font:700 64px/1 "Noto Sans Display",sans-serif;color:var(--text);white-space:nowrap}
+  .t-alt{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
+  .t-note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
+  #canvas[lang=zh] .t-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
+  #canvas[lang=zh] .t-note,#canvas[lang=zh] .d-alt,#canvas[lang=zh] .t-alt{font-family:"Noto Sans CJK SC",sans-serif}
+  .dim{fill:none;stroke:var(--line);stroke-width:3;stroke-linecap:round}
+  .ext{fill:none;stroke:var(--line);stroke-width:2;stroke-dasharray:6 8;opacity:.55}
+  .hr{position:absolute;height:2px;background:var(--rule)}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const m = job.safe_margin || 84, G = 8, bandH = job.demo ? 40 : 0;
+const floor = H - bandH - m * 0.75;
+const hero = T.asset(job.hero);
+const dims = job.dimensions.slice(0, 4);
+const mode = job.mode || 'onproduct';
+T.layoutInfo = {mode};
+/* explicit unit conversion with declared rounding (never measured from the photo) */
+function convert(d) {
+  if (d.unit === 'in') return {v: Math.round(d.value * 2.54), u: 'cm', rule: 'in→cm ×2.54, rounded to 1 cm'};
+  if (d.unit === 'cm') return {v: (Math.round(d.value / 2.54 * 10) / 10).toFixed(1), u: 'in', rule: 'cm→in ÷2.54, rounded to 0.1 in'};
+  return null;
+}
+const fmtV = d => `${d.value} ${d.unit}`;
+const fmtA = d => { const c = convert(d); return c ? `≈ ${c.v} ${c.u}` : ''; };
+T.layoutInfo.conversions = dims.map(d => ({key: d.key, rule: (convert(d) || {}).rule || null}));
+
+let y = m + 4;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier:'meta'}); y += T.rect(e).h + 3 * G; }
+const hl = T.text('headline', job.headline, m, y, mode === 'table' ? W * 0.56 : W - 2 * m, 'headline', {tier:'headline', maxLines: 2});
+y = T.rect(hl).y + T.rect(hl).h + 7 * G;
+
+const tableW = mode === 'table' ? Math.round((W - 2 * m) * 0.34) : 0;
+const pad = job.dim_pad ?? 150;                       // room for lines + labels around the product
+const box = {x: m + pad, y: y + pad * 0.35, w: W - 2 * m - 2 * pad - (tableW ? tableW + 4 * G : 0), h: floor - y - pad * 1.1};
+const r = T.contain(hero, box.x, box.y, box.w, box.h, 0.5, 0.5);
+T.img('hero', job.hero, r, {blend: 'multiply'});
+const P = p => [r.x + p[0] * r.w, r.y + p[1] * r.h];
+const placed = [];
+dims.forEach((d, i) => {
+  const a = P(d.from), b = P(d.to);
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+  const off = (d.offset ?? 60);
+  const nx = d.side[0], ny = d.side[1];         // unit-ish outward direction chosen per dimension
+  const nl = Math.hypot(nx, ny); const ox = nx / nl * off, oy = ny / nl * off;
+  let A = [a[0] + ox, a[1] + oy], B = [b[0] + ox, b[1] + oy];
+  if (d.at != null) { // axis-aligned line placed at a normalised coordinate outside the product
+    if (Math.abs(nx) > Math.abs(ny)) { const X = r.x + d.at * r.w; A = [X, a[1]]; B = [X, b[1]]; } else { const Y = r.y + d.at * r.h; A = [a[0], Y]; B = [b[0], Y]; }
+  }
+  T.svgEl('path', {d: `M${a[0]} ${a[1]} L${A[0]} ${A[1]} M${b[0]} ${b[1]} L${B[0]} ${B[1]}`, class: 'ext'});
+  const tx = -dy / len * 14, ty = dx / len * 14;  // end ticks perpendicular to the line
+  T.svgEl('path', {d: `M${A[0]} ${A[1]} L${B[0]} ${B[1]} M${A[0] - tx} ${A[1] - ty} L${A[0] + tx} ${A[1] + ty} M${B[0] - tx} ${B[1] - ty} L${B[0] + tx} ${B[1] + ty}`, class: 'dim'});
+  const mid = [(A[0] + B[0]) / 2 + nx / nl * 26, (A[1] + B[1]) / 2 + ny / nl * 26];
+  if (mode === 'onproduct') {
+    const v = T.text('d' + (i + 1) + '_val', fmtV(d), 0, 0, 360, 'd-val', {tier:'important', maxLines: 1});
+    const al = fmtA(d) ? T.text('d' + (i + 1) + '_alt', fmtA(d), 0, 0, 360, 'd-alt', {tier:'secondary', maxLines: 1}) : null;
+    const vw = Math.max(T.rect(v).w && measure(v), al ? measure(al) : 0), vh = T.rect(v).h + (al ? T.rect(al).h + G : 0);
+    // anchor the label block on the outward side of the midpoint
+    let lx = mid[0] + (nx > 0.3 ? 0 : nx < -0.3 ? -vw : -vw / 2);
+    let ly = mid[1] + (ny > 0.3 ? 0 : ny < -0.3 ? -vh : -vh / 2);
+    lx = Math.max(m, Math.min(W - m - vw, lx)); ly = Math.max(m, Math.min(floor - vh, ly));
+    const align = nx < -0.3 ? 'right' : nx > 0.3 ? 'left' : 'center';
+    for (const e of [v, al]) if (e) { e.style.width = vw + 'px'; e.style.textAlign = align; e.style.left = lx + 'px'; }
+    v.style.top = ly + 'px'; if (al) al.style.top = (ly + T.rect(v).h + G) + 'px';
+  } else {
+    const k = T.el('div', {class: 'd-key', 'data-qa': 'd' + (i + 1) + '_key', 'data-kind': 'shape'}, null, d.key_letter);
+    T.box(k, mid[0] - 32 + nx / nl * 10, mid[1] - 32 + ny / nl * 10, 64, 64);
+  }
+  T.layoutInfo['dim' + (i + 1)] = {A, B};
+});
+function measure(e) { const rg = document.createRange(); rg.selectNodeContents(e); let x0 = 1e9, x1 = -1e9; for (const q of rg.getClientRects()) { x0 = Math.min(x0, q.left); x1 = Math.max(x1, q.right); } return Math.ceil(x1 - x0) + 2; }
+
+if (mode === 'table') {
+  /* ---- Direction B: letter keys on the product + spec table column ---- */
+  const tx = W - m - tableW; let ty = y + 2 * G;
+  dims.forEach((d, i) => {
+    const k = T.el('div', {class: 'd-key', 'data-qa': 'tk' + (i + 1), 'data-kind': 'shape'}, null, d.key_letter); T.box(k, tx, ty, 64, 64);
+    const nm = T.text('t' + (i + 1) + '_name', d.name, tx + 88, ty + 6, tableW - 88, 't-name', {tier:'important', maxLines: 2});
+    let yy = T.rect(nm).y + T.rect(nm).h + 2 * G;
+    const v = T.text('t' + (i + 1) + '_val', fmtV(d), tx + 88, yy, tableW - 88, 't-val', {tier:'important', maxLines: 1});
+    yy = T.rect(v).y + T.rect(v).h + G;
+    if (fmtA(d)) { const al = T.text('t' + (i + 1) + '_alt', fmtA(d), tx + 88, yy, tableW - 88, 't-alt', {tier:'secondary', maxLines: 1}); yy = T.rect(al).y + T.rect(al).h; }
+    ty = yy + 5 * G;
+    if (i < dims.length - 1) { T.box(T.el('div', {class: 'hr'}), tx, ty - 2.5 * G, tableW, 2); }
+  });
+  if (job.table_note) T.text('t_note', job.table_note, tx, ty + G, tableW, 't-note', {tier:'secondary', maxLines: 6});
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

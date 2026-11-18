@@ -1,0 +1,371 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T03",
+ "status": "rendered",
+ "publishability": "demo_only",
+ "reference_map": [
+  {
+   "ref_id": "AMZ-006",
+   "role": "composition",
+   "adopted_rules": [
+    "detail rail on one side, single tall hero on the other",
+    "accent only on numbers/small marks"
+   ],
+   "excluded_elements": [
+    "thick borders + big radii (UI-card look)",
+    "360°/magnetic claims"
+   ]
+  },
+  {
+   "ref_id": "BAG-114",
+   "role": "detail_organization",
+   "adopted_rules": [
+    "tall hero ~62% width, two details tell handle + wheels story"
+   ],
+   "excluded_elements": [
+    "orange label boxes",
+    "'All-terrain', 'durable' claims",
+    "LAYER-D badge"
+   ]
+  },
+  {
+   "ref_id": "BAG-113",
+   "role": "information_structure",
+   "adopted_rules": [
+    "wide hero on top, copy + two details in a bottom strip"
+   ],
+   "excluded_elements": [
+    "standing-load demonstration",
+    "orange badge",
+    "'large capacity' claim"
+   ]
+  },
+  {
+   "ref_id": "BAG-128",
+   "role": "style",
+   "adopted_rules": [
+    "warm light ground for black product edges"
+   ],
+   "excluded_elements": [
+    "decorative gradient that hides black edges"
+   ]
+  },
+  {
+   "ref_id": "BAG-040",
+   "role": "detail_organization",
+   "adopted_rules": [
+    "details grouped on one side only"
+   ],
+   "excluded_elements": [
+    "drawer/slide/lock facts"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F3EEE8",
+   "text": "#232323",
+   "muted": "#6A615B",
+   "accent": "#D0612A",
+   "line": "#CDC3BA"
+  },
+  "palette_note": "accent is a demo token chosen to echo the demo product; brand accent must come from the job (brand_input_required)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Noto Sans Display 700",
+   "text": "Noto Sans 400/500/700",
+   "zh": "Noto Sans CJK SC 400/700"
+  },
+  "type_scale_px_at_1500": {
+   "headline": 96,
+   "subhead": 50,
+   "caption_title": 52,
+   "caption_body": 42
+  }
+ },
+ "elements": [
+  {
+   "element_id": "rail_bg",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.0,
+    0.38,
+    0.9733
+   ],
+   "allow_overlap_with": [
+    "detail1_frame",
+    "detail2_frame",
+    "detail3_frame",
+    "c1_no",
+    "c1_title",
+    "c1_body",
+    "c2_no",
+    "c2_title",
+    "c2_body",
+    "c3_no",
+    "c3_title",
+    "c3_body"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4227,
+    0.0587,
+    0.1697,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "Rolling stack",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4227,
+    0.092,
+    0.4801,
+    0.1305
+   ],
+   "allow_overlap_with": [],
+   "text": "Stacked storage on wheels",
+   "style_token": "headline",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "subhead",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.4227,
+    0.2332,
+    0.4587,
+    0.0853
+   ],
+   "allow_overlap_with": [],
+   "text": "Pull handle, wheels and stack clips, as photographed",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "hero",
+   "kind": "product_image",
+   "box_normalized_xywh": [
+    0.5141,
+    0.3505,
+    0.3385,
+    0.5808
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "asset_id": "hero_stack",
+   "crop_policy": "contain"
+  },
+  {
+   "element_id": "c1_no",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.336,
+    0.0217,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "01",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "c1_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.364,
+    0.1852,
+    0.0375
+   ],
+   "allow_overlap_with": [],
+   "text": "Pull handle",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "c1_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.4067,
+    0.2172,
+    0.0711
+   ],
+   "allow_overlap_with": [],
+   "text": "Two-rail handle shown extended",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "c2_no",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.7899,
+    0.0217,
+    0.0173
+   ],
+   "allow_overlap_with": [],
+   "text": "02",
+   "style_token": "meta",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "c2_title",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.8179,
+    0.2015,
+    0.0375
+   ],
+   "allow_overlap_with": [],
+   "text": "Rear wheels",
+   "style_token": "important",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "c2_body",
+   "kind": "text",
+   "box_normalized_xywh": [
+    0.048,
+    0.8607,
+    0.2473,
+    0.0711
+   ],
+   "allow_overlap_with": [],
+   "text": "Treaded wheels on the base unit",
+   "style_token": "secondary",
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  },
+  {
+   "element_id": "detail1_frame",
+   "kind": "detail_image",
+   "box_normalized_xywh": [
+    0.048,
+    0.056,
+    0.284,
+    0.264
+   ],
+   "allow_overlap_with": [
+    "rail_bg"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "explicit_detail_crop"
+  },
+  {
+   "element_id": "detail2_frame",
+   "kind": "detail_image",
+   "box_normalized_xywh": [
+    0.048,
+    0.5099,
+    0.284,
+    0.264
+   ],
+   "allow_overlap_with": [
+    "rail_bg"
+   ],
+   "anchor_ref": null,
+   "crop_policy": "explicit_detail_crop"
+  },
+  {
+   "element_id": "demo_band",
+   "kind": "shape",
+   "box_normalized_xywh": [
+    0.0,
+    0.9733,
+    1.0,
+    0.0267
+   ],
+   "allow_overlap_with": [],
+   "anchor_ref": null,
+   "crop_policy": "not_applicable"
+  }
+ ],
+ "adaptation_rules": [
+  "aspect<1.0 -> rail/split (side rail); aspect>=1.0 -> strip (details under hero)",
+  "details: prefer 2, max 3; strip shows max 2",
+  "tiles are explicit cover crops; height shares remaining rail height, scale capped 1.25",
+  "subhead dropped when 3 details (density rule) in split mode",
+  "hero contain + multiply on warm ground (white-background photos only)",
+  "headline max 2 (rail/strip) / 3 (split) lines, one long step"
+ ],
+ "render_outputs": [
+  {
+   "path": "templates/T03/preview_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/preview_360.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/preview_adapted.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/matrix/r1_split_stack_2det_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/matrix/r1_split_stack_3det_en_1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/matrix/r1_split_stack_zh_1200x1500.png",
+   "actual_render_completed": true
+  },
+  {
+   "path": "templates/T03/matrix/r1_strip_bag_en_1500.png",
+   "actual_render_completed": true
+  }
+ ],
+ "source_files": [
+  "templates/T03/source/T03.html",
+  "engine/runtime.js",
+  "engine/base.css",
+  "engine/render.py",
+  "engine/build_jobs.py",
+  "engine/prep_assets.py",
+  "assets/demo/assets_manifest.json",
+  "templates/T03/source/jobs/sel_r1_split_stack_2det_en_1500.json",
+  "templates/T03/source/jobs/sel_r1_split_stack_3det_en_1500.json",
+  "templates/T03/source/jobs/sel_r1_split_stack_zh_1200x1500.json",
+  "templates/T03/source/jobs/sel_r1_strip_bag_en_1500.json"
+ ],
+ "qa_report_path": "templates/T03/qa_report.json",
+ "limitations": [
+  "demo_only: all photos are third-party reference images with unverified rights; original branding kept, not replaced",
+  "all copy is neutral visual description, not approved product claims",
+  "elements above are the measured layout of the main render; real layout is computed by the template rules for each job",
+  "no SAM mask used",
+  "rendered by engine/render.py with Chrome --headless=old (no visible window); SVG/PDF not produced (no verified vector path)"
+ ]
+}

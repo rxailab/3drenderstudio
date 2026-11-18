@@ -29,7 +29,9 @@ import info_layer
 import listing
 import listing_draw as draw
 import listing_elements as el
-import listing_pages
+import brandkit_render
+import brandkit_set
+import scene_stylist
 import studio_store as store
 from blender import stage_geometry as geometry
 from test_scene_images import project
@@ -323,6 +325,10 @@ class StoreCase(unittest.TestCase):
         for target, name, value in ((engine, 'require_runtime', None), (engine, 'blender_path', '/usr/bin/blender')):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(info_layer, '_config', return_value=None); mocked.start(); self.addCleanup(mocked.stop)       # no model service
+        import scene_imagegen
+        import scene_stylist
+        for target in ((scene_stylist, '_config'), (scene_imagegen, 'config')):                                         # whatever .env says
+            mocked = patch.object(*target, return_value=None); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
             connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         record = project('Ratchet Pipe Cutter'); record['model_path'] = str(self.data / 'fixture' / 'originals' / 'cutter.glb')
@@ -497,7 +503,7 @@ class RecordTests(StoreCase):
                 record.update(name=name); record['analysis']['features']['dimensions'] = dims
                 self.assertEqual(listing.display_rotation(record), ([0.0, 0.0, 0.0], False))
         record.update(name='Angle grinder'); record['analysis']['features']['dimensions'] = [.92, 1.775, 3.34]
-        requests = listing.picture_requests(record, listing.stored(record)[0], 330, [{'kind': 'main', 'index': 0}, {'kind': 'specs', 'index': 0}])
+        requests = listing.picture_requests(record, listing.stored(record)[0], 330, [{'kind': 'T12', 'index': 0}, {'kind': 'T06', 'index': 0}])
         self.assertEqual(requests['hero']['plan']['rotation'], listing.display_rotation(record)[0])
         self.assertEqual(requests['side']['plan']['rotation'], requests['hero']['plan']['rotation'])
         self.assertEqual(requests['side']['camera']['azimuth'], 0)                              # the long side, face on
@@ -521,7 +527,8 @@ class RecordTests(StoreCase):
         self.assertEqual(state['size'], {'mm': 225.0, 'known': True})
         kept = listing.save_product('fixture', {'headline': 'Clean cuts'})['product']       # what is not sent stays
         self.assertEqual((kept['model'], kept['headline'], len(kept['features'])), ('PC-22', 'Clean cuts', 1))
-        for bad in ({'language': 'fr'}, {'features': [{}] * 9}, {'specs': 'x'}, {'pages': ['poster']}, {'usecase': {'kind': 'rope'}}, {'usecase': {'mode': 'over'}},
+        for bad in ({'language': 'fr'}, {'features': [{}] * 9}, {'specs': 'x'}, {'pages': ['poster']}, {'pages': ['main']}, {'aspect': '16:9'}, {'scenes': {'count': 4}},
+                    {'scenes': {'people': 'crowd'}}, {'scenes': {'audience': 'nobody'}}, {'scenes': {'hint': 'x' * 301}}, {'usecase': {'kind': 'rope'}}, {'usecase': {'mode': 'over'}},
                     {'usecase': {'offset_mm': [1, 2]}}, {'size_mm': 0}, {'title': 'x' * 61}, {'figures': [{}] * 4}, {'usecase': {'enabled': 'yes'}}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 listing.save_product('fixture', bad)
@@ -538,16 +545,20 @@ class RecordTests(StoreCase):
 
     def test_the_set_is_planned_from_what_there_is_to_show(self):
         record = store.get('project', 'fixture'); product, _, _ = listing.stored(record)
-        self.assertEqual([row['kind'] for row in listing.planned(record, product, [])], ['main', 'usecase', 'band'])
+        # No image model here: the only scene is the workpiece render a pipe cutter gets by default, and nothing else is known yet.
+        self.assertEqual([row['kind'] for row in listing.planned(record, product, []) if not row.get('skipped')], ['T12'])
         product = listing.save_product('fixture', {'size_mm': 225, 'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B'}, {'title': 'C'}]})['product']
         record = store.get('project', 'fixture')
-        self.assertEqual([(row['kind'], row.get('index')) for row in listing.planned(record, product, [])],
-                         [('main', 0), ('callouts', 0), ('usecase', 0), ('feature', 0), ('band', 0), ('specs', 0), ('benefits', 0)])
-        with_kit = listing.planned(record, product, [{'name': 'Battery'}])
-        self.assertEqual([row['kind'] for row in with_kit], ['main', 'includes', 'callouts', 'usecase', 'feature', 'band', 'specs'])       # seven at most
-        chosen = listing.planned(record, {**product, 'pages': ['main', 'includes', 'specs']}, [])
-        self.assertEqual([(row['kind'], bool(row.get('skipped'))) for row in chosen], [('main', False), ('includes', True), ('specs', False)])
-        self.assertIn('组件', chosen[1]['skipped'])
+        self.assertEqual([(row['kind'], row.get('index')) for row in listing.planned(record, product, []) if not row.get('skipped')], [('T12', 0), ('T02', 0), ('T04', 0), ('T06', 0)])
+        product = listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})['product']
+        with patch.object(brandkit_set, 'image_model_ready', return_value=True):
+            with_kit = listing.planned(record, product, [{'name': 'Battery'}])
+        self.assertEqual([row['kind'] for row in with_kit if not row.get('skipped')], list(brandkit_set.AUTO))
+        chosen = listing.planned(record, {**product, 'pages': ['T12', 'T05', 'T09', 'T06']}, [])
+        self.assertEqual([(row['kind'], bool(row.get('skipped'))) for row in chosen], [('T12', False), ('T05', True), ('T09', True), ('T06', False)])
+        self.assertIn('组件', chosen[1]['skipped']); self.assertIn('证据', chosen[2]['skipped'])
+        legacy = store.get('project', 'fixture'); legacy['listing']['product']['pages'] = ['main', 'includes']; store.put('project', legacy)
+        self.assertIsNone(listing.stored(legacy)[0]['pages'])                                  # page kinds from before the templates are dropped, not an error
 
     def test_a_draft_fills_only_what_is_empty_and_prints_only_the_users_numbers(self):
         state = listing.draft('fixture', {'hint': '切割范围: 6-22 mm\n硬化钢切割轮'})
@@ -570,148 +581,60 @@ class BuildTests(StoreCase):
     def setUp(self):
         super().setUp()
         mocked = patch.object(components, 'stage', side_effect=self.stage); mocked.start(); self.addCleanup(mocked.stop)
+        self.jobs = []; self.failing = {}; self.scenes = []
+        for target, name, value in ((brandkit_render, 'available', True), (brandkit_set, 'image_model_ready', False)):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(brandkit_render, 'render', side_effect=self.fake_render); mocked.start(); self.addCleanup(mocked.stop)
         listing.save_product('fixture', {'title': 'Ratchet Pipe Cutter', 'model': 'PC-22', 'headline': 'One-hand clean cuts', 'subline': 'Square, burr-free cuts.',
                                          'size_mm': 225, 'features': [{'title': 'Hardened cutting wheel', 'detail': 'Replaceable', 'parts': [PARTS[0]]},
                                                                       {'title': 'Twin guide rollers', 'parts': [PARTS[1]]}, {'title': 'Lifetime sharpness'}],
                                          'specs': [{'label': 'Pipe capacity', 'value': '6 - 22 mm'}], 'figures': [{'value': '22', 'unit': 'mm', 'label': 'Max pipe'}]})
         listing.save_brand('fixture', {'name': 'NORTHFORGE', 'badges': ['PRO'], 'legal': '*A legal line.'})
 
-    def words(self, page):
-        return ' '.join(' '.join(''.join(part for part, _ in line) for line in item.get('lines') or []) + ' ' + str(item.get('text', '')) + ' ' + str(item.get('label', ''))
-                        for item in page['items'] if item['type'] in ('text', 'dimension'))
+    def fake_render(self, template_id, job, out, work=None):
+        """The browser stand-in: a page of the job's size, and the layout it was asked for remembered."""
+        self.jobs.append((template_id, job))
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Image.new('RGB', (job['canvas']['width'], job['canvas']['height']), job['palette']['bg']).save(out)
+        issues = self.failing[template_id].pop(0) if self.failing.get(template_id) else []
+        return {'issues': issues, 'notes': [], 'render': {'png': str(out), 'size': [job['canvas']['width'], job['canvas']['height']]}}
 
-    def context(self, preset='frame', **product):
-        record = store.get('project', 'fixture'); stored_product, brand_record, _ = listing.stored(record)
-        stored_product = {**stored_product, **product}
-        parts = listing.ready_components(record); size, known = listing.product_size(record, stored_product)
-        requests = listing.picture_requests(record, stored_product, size, [{'kind': kind, 'index': 0} for kind in listing_pages.KINDS])
-        shots = {}
-        for name, request in requests.items():
-            result = self.stage('fixture', request)
-            shots[name] = listing_pages.Shot(result, info_layer.Picture(result['probe'], result['path']))
-        brand = brand_kit.Brand({**brand_record, 'preset': preset}, '#d9463d')
-        return listing.context(record, stored_product, brand, parts, shots, size, known)
+    def scene(self, project, proposal, hint='', cancelled=None, progress=None, folder=None, pose='auto'):
+        """The image model's stand-in: a scene picture with the product's box in it."""
+        self.scenes.append(proposal); folder.mkdir(parents=True, exist_ok=True)
+        if progress: progress('图像模型正在生成场景')
+        png = folder / (folder.name + '.png'); Image.new('RGB', (2048, 1536), (90, 110, 120)).save(png)
+        status = self.scene_checks.pop(0) if getattr(self, 'scene_checks', None) else 'passed'
+        return None, {'summary': 'A scene', 'model': 'image-model', 'check': {'status': status}}, \
+            {'png': png, 'jpg': png, 'width': 2048, 'height': 1536, 'record': {'anchor': {'box': [.4, .3, .6, .8]}}}
 
-    def test_every_kind_of_page_composes_and_paints_in_every_preset(self):
+    def with_scenes(self):
+        proposal = {'segment_id': None, 'scene': 'A workshop bench.', 'people': True, 'framing': 'hands', 'method': 'generate', 'source': 'rules'}
+        for target, name, value in ((brandkit_set, 'image_model_ready', True), (scene_stylist, 'propose', proposal), (scene_stylist, '_config', None)):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(scene_stylist, 'generate', side_effect=self.scene); mocked.start(); self.addCleanup(mocked.stop)
+
+    def job(self, template_id):
+        return next(job for kind, job in reversed(self.jobs) if kind == template_id)
+
+    def test_building_lays_out_the_templates_in_order_and_remembers_them(self):
         self.add_picture(name='Battery', sku='BP-205', quantity='2')
-        for preset in brand_kit.PRESETS:
-            ctx = self.context(preset)
-            for kind in listing_pages.KINDS:
-                with self.subTest(preset=preset, kind=kind):
-                    page = listing_pages.compose(kind, ctx)
-                    self.assertEqual((page['kind'], page['height']), (kind, 1000))
-                    self.assertTrue(page['items'] and all(item['type'] in draw.TYPES for item in page['items']))
-                    image = draw.render(page, 200, supersample=1)
-                    self.assertEqual(image.size, (200, 200)); self.assertGreater(len(set(image.getdata())), 3)
-                    for item in page['items']:
-                        if item['type'] == 'text' and 'x' in item:
-                            self.assertTrue(-5 <= item['x'] <= 1000 and -5 <= item['y'] <= 1000, item)
-
-    def test_the_main_image_is_white_and_wordless(self):
-        self.add_picture(name='Battery', quantity='2'); self.add_picture(name='Carry case')
-        page = listing_pages.compose('main', self.context('tech'))
-        self.assertEqual(page['background'], '#ffffff')
-        self.assertEqual({item['type'] for item in page['items']}, {'image'})
-        self.assertEqual(len(page['items']), 4)                                           # the case behind, the product, and the battery twice
-
-    def test_the_kit_page_names_every_included_thing_with_its_number(self):
-        self.add_picture(name='Battery', sku='BP-205', quantity='2', caption='20V 5.0Ah'); self.add_picture(name='Charger')
-        row = self.add_picture(name='Spare'); components.update('fixture', row['id'], {'included': False})
-        words = self.words(listing_pages.compose('includes', self.context()))
-        for expected in ('KIT INCLUDES', 'PC-22', '(2) BP-205', '20V 5.0AH', 'CHARGER', 'NORTHFORGE', 'legal line'):
-            self.assertIn(expected.upper(), words.upper())
-        self.assertNotIn('SPARE', words.upper())
-        self.assertEqual((listing_pages._rows(4), listing_pages._rows(5), listing_pages._rows(7), listing_pages._rows(14)), ([2, 2], [2, 3], [3, 4], [4, 4, 4, 4]))
-
-    def test_callouts_point_at_the_part_and_a_point_without_a_part_becomes_a_chip(self):
-        page = listing_pages.compose('callouts', self.context())
-        leaders = [item for item in page['items'] if item['type'] == 'line' and item.get('end') == 'square']
-        self.assertEqual(len(leaders), 2)
-        picture = next(item for item in page['items'] if item['type'] == 'image')
-        for leader in leaders:
-            x, y = leader['points'][-1]
-            self.assertTrue(picture['x'] <= x <= picture['x'] + picture['w'] and picture['y'] <= y <= picture['y'] + picture['h'], (x, y))       # on the product
-        self.assertIn('LIFETIME SHARPNESS', self.words(page).upper()); self.assertIn('没有对应到模型', page['notes'][0])
-        self.assertNotIn('REPLACEABLE', self.words(page).upper())                                   # a framed brand prints titles only
-        self.assertIn('Replaceable', self.words(listing_pages.compose('callouts', self.context('clean'))))
-
-    def test_the_use_case_marks_the_workpiece_and_the_products_size_only_when_it_is_real(self):
-        ctx = self.context()
-        page = listing_pages.compose('usecase', ctx); words = self.words(page)
-        self.assertIn('IN USE · PVC PIPE', words.upper()); self.assertIn('Ø 32 mm', words)
-        self.assertEqual([item['label'] for item in page['items'] if item['type'] == 'dimension'], ['300 mm', '180 mm'])
-        picture = next(item for item in page['items'] if item['type'] == 'image')
-        self.assertEqual((picture['fit'], picture['w'], picture['h'], picture['src']), ('cover', 1000, 1000, ctx['shots']['usecase'].path))       # the picture is the page
-        request = next(request for request in self.requests if request.get('workpiece'))
-        self.assertEqual((request['workpiece']['kind'], request['workpiece']['place']['mode'], request['camera']['auto']), ('pipe', 'through', 'workpiece'))
-        self.assertNotIn('diameter_mm', request['workpiece'])                               # left to the opening measured on the model
-        unknown = listing_pages.compose('usecase', {**ctx, 'size_known': False})
-        self.assertEqual([item for item in unknown['items'] if item['type'] == 'dimension'], [])
-        self.assertIn('Ø 32 mm', self.words(unknown)); self.assertIn('真实尺寸', unknown['notes'][0])
-        inches = self.context(); inches['brand'].unit = 'in'
-        self.assertIn('Ø 1.3 in', self.words(listing_pages.compose('usecase', inches)))
-        titled = self.context(usecase={**ctx['usecase'], 'headline': 'Cuts PVC in one turn'})
-        self.assertIn('CUTS PVC IN ONE TURN', self.words(listing_pages.compose('usecase', titled)).upper())
-
-    def test_a_dimension_is_left_out_rather_than_drawn_across_the_tool(self):
-        ctx = self.context(); shot = ctx['shots']['usecase']
-        shot.crop = [0, 0, 1, 1]; shot.origin = (0, 0); shot.scale = 1000 / shot.width
-        clear = listing_pages._dimension_fit(shot, (300, 780), (700, 780), (500, 550), '300 mm')
-        self.assertEqual(clear, (30, .5))
-        self.assertIsNone(listing_pages._dimension_fit(shot, (300, 560), (700, 560), (500, 900), '300 mm'))       # the only way out runs over the product
-        self.assertIsNone(listing_pages._dimension_fit(shot, (300, 780), (700, 780), (500, 550), '300 mm', avoid=[(500, 812)]))
-        self.assertEqual(shot.shares([320, 400, 480, 480]), (1.0, 0.0)); self.assertEqual(shot.shares([20, 510, 200, 570])[0], 0.0)
-        self.assertGreater(shot.shares([20, 510, 200, 570])[1], .8)
-
-    def test_on_the_band_the_headline_stops_short_of_the_key_figures(self):
-        figures = [{'value': '8,500', 'unit': 'rpm', 'label': 'No-load speed'}, {'value': '115', 'unit': 'mm', 'label': 'Disc'}]
-        for preset in brand_kit.PRESETS:
-            with self.subTest(preset=preset):
-                page = listing_pages.compose('band', self.context(preset, headline='Cuts steel, stays cool', figures=figures))
-                texts = [item for item in page['items'] if item['type'] == 'text']
-                headline = texts[0]; reach = headline['x'] + max(draw.line_width(line, headline['style']) for line in headline['lines'])
-                first_figure = min(item['x'] for item in texts if any('8,500' in part for line in item.get('lines') or [[(item.get('text', ''), False)]] for part, _ in line))
-                self.assertLess(reach, first_figure - 10, (reach, first_figure))
-        photo = self.context(); photo['photo'] = photo['shots']['hero'].path
-        first = listing_pages.compose('band', photo)['items'][0]
-        self.assertEqual((first['type'], first['fit'], first['w']), ('image', 'cover', 1000))       # a photograph, when there is one, fills the top
-
-    def test_a_feature_close_up_shows_the_whole_product_with_a_magnifier_on_the_part(self):
-        ctx = self.context()
-        detail = ctx['shots']['detail0']
-        page = listing_pages.compose('feature', ctx, 0)
-        images = [item for item in page['items'] if item['type'] == 'image']
-        self.assertEqual(images[0]['src'], ctx['shots']['hero'].path)                           # the whole product
-        circle = next(item for item in images if item.get('mask') == 'circle')
-        self.assertEqual(circle['src'], detail.path)
-        self.assertEqual([round(value, 3) for value in circle['crop']], [round(value, 3) for value in listing_pages._part_crop(detail.result, [PARTS[0]])])
-        self.assertTrue(any(item['type'] == 'line' and item.get('end') == 'ring' for item in page['items']))      # pointing at the part
-        self.assertIsNone(listing_pages._part_crop(detail.result, ['Not a part']))
-        square = listing_pages._part_crop({'parts': [{'name': 'a', 'rect': [.4, .4, .5, .6]}]}, ['a'])
-        self.assertAlmostEqual(square[2] - square[0], square[3] - square[1]); self.assertTrue(0 <= square[0] and square[3] <= 1)
-
-    def test_the_specification_page_prints_the_users_rows_and_the_measured_size(self):
-        words = self.words(listing_pages.compose('specs', self.context()))
-        for expected in ('SPECIFICATIONS', 'PIPE CAPACITY', '6 - 22 MM', 'LENGTH', '300 MM', 'HEIGHT', '180 MM'):
-            self.assertIn(expected, words.upper())
-        guessed = listing_pages.compose('specs', {**self.context(), 'size_known': False})
-        self.assertNotIn('300', self.words(guessed)); self.assertIn('真实尺寸', guessed['notes'][0])
-        chinese = self.words(listing_pages.compose('specs', self.context(language='zh')))
-        self.assertIn('规格参数', chinese); self.assertIn('长度', chinese)
-
-    def test_building_writes_the_pages_in_order_and_remembers_them(self):
-        self.add_picture(name='Battery', sku='BP-205')
         seen = []
         pages, notes = listing.build('fixture', progress=lambda stage, share, detail='': seen.append((stage, round(share, 2))))
-        self.assertEqual([page['kind'] for page in pages], ['main', 'includes', 'callouts', 'usecase', 'feature', 'band', 'specs'])
-        self.assertEqual([page['file'] for page in pages][:2], ['01-main.png', '02-includes.png'])
+        # No image model: the poster stands on a solid ground and the workpiece render is the only scene, too few for the usage page.
+        self.assertEqual([page['kind'] for page in pages], ['T12', 'T01', 'T03', 'T02', 'T04', 'T06', 'T05'])
+        self.assertEqual([page['file'] for page in pages][:2], ['01-T12.png', '02-T01.png'])
         for page in pages:
             with Image.open(components.path_of('fixture', page['url'])) as image:
-                self.assertEqual(image.size, (listing.PAGE_PX, listing.PAGE_PX))
-        self.assertEqual((seen[0][0], seen[-1][0]), ('pictures', 'compose')); self.assertTrue(any('品牌色取自产品' in note for note in notes))
+                self.assertEqual(image.size, (1500, 1500))
+            self.assertTrue(page['checks']['passed'])
+        self.assertEqual((seen[0][0], seen[-1][0]), ('pictures', 'compose'))
+        self.assertTrue(any('图像模型未配置' in note for note in notes)); self.assertTrue(any('品牌色取自产品' in note for note in notes))
+        self.assertEqual(self.job('T12')['mode'], 'solid')
         state = listing.state('fixture')
-        self.assertEqual((len(state['pages']), state['brand']['accent_source'], state['order'][0]), (7, 'product', 'main'))
-        red, green, blue, _ = draw.color(state['brand']['accent_used']); self.assertTrue(red > 150 and green < 110, state['brand']['accent_used'])
+        self.assertEqual((len(state['pages']), state['brand']['accent_source'], state['order'][0], state['kinds']['T01']['zh']), (7, 'product', 'T12', '功能标注'))
+        self.assertFalse(state['scene_options']['image_ready'])
+        self.assertIn('2 张', next(row['skipped'] for row in state['plan'] if row['kind'] == 'T08'))
         data, name = listing.archive('fixture')
         with zipfile.ZipFile(io.BytesIO(data)) as bundle:
             self.assertEqual(bundle.namelist(), [page['file'] for page in pages])
@@ -720,10 +643,172 @@ class BuildTests(StoreCase):
         listing.build('fixture')                                                            # a new build replaces the old files
         self.assertFalse(first.exists()); self.assertEqual(len(list((self.data / 'fixture' / 'listing').glob('build-*'))), 1)
 
+    def test_the_jobs_carry_the_users_words_and_what_was_measured_on_the_model(self):
+        self.add_picture(name='Battery', sku='BP-205', quantity='2')
+        listing.save_product('fixture', {'language': 'zh', 'aspect': '4:5', 'headline': '单手操作，切口平整'})
+        listing.save_brand('fixture', {'accent': '#1f6feb', 'unit': 'in'})
+        listing.build('fixture')
+        callouts = self.job('T01')
+        self.assertEqual((callouts['lang'], callouts['canvas']), ('zh', {'width': 1200, 'height': 1500}))
+        self.assertEqual([row['title'] for row in callouts['features']], ['Hardened cutting wheel', 'Twin guide rollers'])       # a point without a part has nothing to point at
+        hero = callouts['assets'][callouts['hero']]
+        for row in callouts['features']:
+            self.assertTrue(0 <= row['anchor'][0] <= .5 if row['title'].startswith('Hardened') else .5 <= row['anchor'][0] <= 1, row)   # on its own half of the product
+        self.assertTrue(Path(hero['path']).is_file()); self.assertTrue(hero['file'].startswith('file://')); self.assertIn('hull', hero)
+        with Image.open(hero['path']) as picture:
+            self.assertEqual(picture.mode, 'RGB'); self.assertEqual(picture.getpixel((0, 0)), (255, 255, 255))          # trimmed and laid on white
+        self.assertEqual(self.job('T12')['headline'], '单手操作，\n切口平整')                                                 # broken at the pause, not mid-phrase
+        size = self.job('T06')
+        self.assertEqual([(row['key'], row['unit']) for row in size['dimensions']], [('height', 'in'), ('width', 'in')])
+        self.assertEqual(max(row['value'] for row in size['dimensions']), round(225 / 25.4, 1))                   # the real size, in the brand's unit
+        self.assertEqual(self.job('T04')['specs'][0], {'label': 'Max pipe', 'value': '22', 'unit': 'mm'})
+        box = self.job('T05')
+        self.assertEqual([(row['name'], row['qty']) for row in box['items']], [('Ratchet Pipe Cutter', 1), ('Battery', 2)])
+        for kind, job in self.jobs:
+            self.assertNotEqual(job['palette']['accent'].lower(), brandkit_render.template_info(kind)['tokens']['palette']['accent'].lower())
+            self.assertNotIn('demo', job)                                                    # the user's own product: no demo watermark
+
+    def test_scenes_are_made_by_the_image_model_once_and_laid_into_the_scene_pages(self):
+        self.with_scenes()
+        pages, _ = listing.build('fixture')
+        self.assertIn('T08', [page['kind'] for page in pages])
+        self.assertEqual(len(self.scenes), 3)
+        self.assertEqual([row['people'] for row in self.scenes][:2], [True, False])                         # at work, then set down where it is used
+        poster = self.job('T12')
+        self.assertEqual((poster['mode'], poster['scene'], poster['focus']), ('band', 'scene1', [.5, .55]))
+        self.assertEqual(len(self.job('T08')['items']), 3)
+        state = listing.state('fixture')
+        self.assertEqual(len(state['scenes']), 3); self.assertTrue(all(row['url'].startswith('/files/fixture/listing/scenes-') for row in state['scenes']))
+        listing.build('fixture')
+        self.assertEqual(len(self.scenes), 3)                                                # the same settings reuse the pictures
+        listing.save_product('fixture', {'scenes': {'hint': 'on a building site', 'count': 2}})
+        listing.build('fixture')
+        self.assertEqual(len(self.scenes), 5)
+        self.assertEqual(len(list((self.data / 'fixture' / 'listing').glob('scenes-*'))), 1)
+        listing.save_product('fixture', {'scenes': {'enabled': False}, 'usecase': {'enabled': False}})
+        pages, _ = listing.build('fixture')
+        self.assertEqual(self.job('T12')['mode'], 'solid'); self.assertNotIn('T08', [page['kind'] for page in pages])
+
+    def test_the_copy_and_vision_models_supervise_every_page(self):
+        import brandkit_review
+        reviewed = {}; checks = []
+
+        def ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
+            if system == brandkit_review.COPYWRITER:
+                return {'pages': [{'template': 'T01', 'eyebrow': 'Parts', 'headline': 'Cuts clean, grips firm'},
+                                  {'template': 'T02', 'eyebrow': 'Close', 'headline': 'Cuts 50 mm pipe'},             # a number nobody gave: refused
+                                  {'template': 'T04', 'eyebrow': 'Specs', 'headline': 'x' * 80}]}                     # too long: refused
+            if system == brandkit_review.SET_REVIEW:
+                return {'consistent': True, 'repeats': [[3, 4]], 'weakest': 4, 'notes': '**第 3、4 张**都是部件特写。'}
+            if system == brandkit_review.VERIFIER:                  # the second look: the close-up page's complaint does not stand
+                checks.append(facts['template'])
+                return {'claims': [{'number': row['number'], 'real': facts['template'] != 'T02', 'why': 'seen'} for row in facts['claims']]}
+            kind = facts['template']['id']; reviewed[kind] = reviewed.get(kind, 0) + 1
+            self.assertEqual(reference_path, str(self.data / 'fixture' / 'listing' / Path(reference_path).parent.parent.name / 'assets' / 'hero.png'))
+            self.assertIn('facts', facts); self.assertEqual(facts['criteria_maximum'], brandkit_review.CRITERIA)
+            good = {'scores': {'product': 22, 'hierarchy': 18, 'composition': 17, 'task': 13, 'color': 9, 'independence': 8}, 'vetoes': [], 'issues': [], 'summary': 'ok'}
+            if kind == 'T01' and reviewed[kind] == 1:              # crowded: drop the second callout... which the minimum of two does not allow
+                return {**good, 'scores': {**good['scores'], 'composition': 8}, 'issues': [
+                    {'region': 'headline', 'evidence': 'too long', 'action': {'type': 'shorten_text', 'target': 'headline', 'text': 'Grips firm'}},
+                    {'region': 'callouts', 'evidence': 'crowded', 'action': {'type': 'drop_item', 'target': 'features', 'index': 1}}]}
+            if kind == 'T02':                                       # a false alarm on the close-ups
+                self.assertEqual(facts['measured_layout']['canvas_px'], [1500, 1500])
+                return {**good, 'scores': {**good['scores'], 'product': 10}, 'issues': [
+                    {'region': 'close-up', 'evidence': 'product cut off', 'action': {'type': 'next_layout'}}]}
+            if kind == 'T06':                                       # never good enough: two rounds, then reported
+                return {**good, 'vetoes': [{'kind': 'text_unreadable', 'evidence': 'table too small'}], 'issues': [
+                    {'region': 'table', 'evidence': 'small', 'action': {'type': 'next_layout'}}]}
+            return good
+        for target, name, value in ((brandkit_review, 'available', (True, True)), (brandkit_review, '_configs', ({'model': 'text'}, {'model': 'vision'}))):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(brandkit_review, '_ask', side_effect=ask); mocked.start(); self.addCleanup(mocked.stop)
+        pages, notes = listing.build('fixture')
+        by_kind = {page['kind']: page for page in pages}
+        self.assertEqual(self.job('T01')['headline'], 'Grips firm'); self.assertEqual(self.job('T01')['eyebrow'], 'Parts')
+        self.assertEqual(len(self.job('T01')['features']), 2)                                  # the drop that would go below two was not made
+        self.assertEqual(self.job('T02')['headline'], brandkit_set.TEXT['en']['T02_headline'])
+        self.assertEqual(self.job('T04')['headline'], brandkit_set.TEXT['en']['T04_headline'])
+        self.assertTrue(any('默认标题' in note for note in notes))
+        self.assertEqual((by_kind['T01']['review']['status'], by_kind['T01']['review']['first_score'], by_kind['T01']['review']['score']), ('revised', 78, 87))
+        self.assertIn('缩短headline', by_kind['T01']['review']['applied'])
+        self.assertEqual((by_kind['T12']['review']['status'], by_kind['T12']['review']['rounds']), ('passed', 0))
+        self.assertEqual((by_kind['T06']['review']['status'], by_kind['T06']['review']['vetoes']), ('failed', ['text_unreadable']))
+        self.assertEqual(reviewed['T06'], 2)                                                   # a revision that scores no better ends the loop
+        self.assertTrue(any('没有让评分变好' in note for note in by_kind['T06']['notes']))
+        self.assertTrue(any('视觉审核未通过' in note for note in by_kind['T06']['notes']))
+        self.assertTrue(any(note.startswith('整套检查') and '第 3、4 张' in note and '*' not in note for note in notes))
+        self.assertEqual((by_kind['T02']['review']['status'], by_kind['T02']['review']['refuted'], reviewed['T02']), ('passed', 1, 1))
+        self.assertNotIn('T12', checks)                                                        # a page that passes is not checked again
+        self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/*.rev*.png')))
+
+    def test_a_refused_review_is_not_asked_again_for_the_other_pages(self):
+        import brandkit_review
+        calls = []
+
+        def ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
+            calls.append(system); raise ValueError('AI 服务的额度已用尽（HTTP 402）')
+        for target, name, value in ((brandkit_review, 'available', (False, True)), (brandkit_review, '_configs', (None, {'model': 'vision'}))):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        pool = listing.concurrent.futures.ThreadPoolExecutor
+        with patch.object(brandkit_review, '_ask', side_effect=ask), patch.object(listing.concurrent.futures, 'ThreadPoolExecutor', lambda workers: pool(1)):
+            pages, notes = listing.build('fixture')
+        self.assertEqual(len(calls), 1); self.assertEqual({page['review']['status'] for page in pages}, {'not_verified'})
+        self.assertTrue(any('之后的页面没有再请求审核' in note for note in notes))
+
+    def test_without_a_vision_model_no_page_is_called_reviewed(self):
+        pages, notes = listing.build('fixture')
+        self.assertEqual({page['review']['status'] for page in pages}, {'not_verified'})
+        self.assertTrue(any('没有经过视觉审核' in note for note in notes))
+
+    def test_the_detail_column_shows_points_the_callouts_did_not(self):
+        listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]},
+                                                      {'title': 'C', 'parts': [PARTS[0]]}, {'title': 'D', 'parts': [PARTS[1]]},
+                                                      {'title': 'E', 'parts': [PARTS[0]]}, {'title': 'F', 'parts': [PARTS[1]]}]})
+        listing.build('fixture')
+        callouts = [row['title'] for row in self.job('T01')['features']]; column = [row['title'] for row in self.job('T03')['details']]
+        self.assertEqual(callouts, ['A', 'B', 'C', 'D']); self.assertEqual(column[:2], ['E', 'F'])
+        listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})
+        listing.build('fixture')
+        self.assertEqual([row['title'] for row in self.job('T03')['details']], ['A', 'B'])          # only two points: shown again rather than not at all
+
+    def test_the_stock_lines_are_tried_when_the_copywriters_do_not_fit(self):
+        import brandkit_review
+        self.failing = {'T01': [[{'check': 'text_max_lines', 'id': 'headline'}]] * 2}          # both arrangements with the model's line
+        with patch.object(brandkit_review, 'available', return_value=(True, False)), \
+                patch.object(brandkit_review, 'write_copy', return_value=({'T01': {'eyebrow': 'Parts', 'headline': 'A very long line'}}, None)):
+            pages, _ = listing.build('fixture')
+        tried = [job['headline'] for kind, job in self.jobs if kind == 'T01']
+        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], brandkit_set.TEXT['en']['T01_headline'])
+        self.assertTrue(next(page for page in pages if page['kind'] == 'T01')['checks']['passed'])
+
+    def test_scenes_whose_product_check_failed_stay_off_the_poster_and_fail_their_pages(self):
+        import brandkit_review
+        self.with_scenes(); self.scene_checks = ['failed', 'passed', 'failed']
+        good = {'scores': {'product': 22, 'hierarchy': 18, 'composition': 17, 'task': 13, 'color': 9, 'independence': 8}, 'vetoes': [], 'issues': [], 'summary': 'ok'}
+        for target, name, value in ((brandkit_review, 'available', (False, True)), (brandkit_review, '_configs', (None, {'model': 'vision'})),
+                                    (brandkit_review, '_ask', good)):
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        pages, _ = listing.build('fixture')
+        self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene2', 'scene4'))      # the workpiece render, not a failed scene
+        by_kind = {page['kind']: page for page in pages}
+        self.assertEqual((by_kind['T12']['review']['status'], by_kind['T04']['review']['status']), ('passed', 'passed'))
+        self.assertEqual((by_kind['T08']['review']['status'], by_kind['T08']['review']['vetoes']), ('passed', []))
+        self.assertEqual([item['asset'] for item in self.job('T08')['items']], ['scene2', 'scene4'])       # two good scenes carry the page alone
+        self.scene_checks = ['passed', 'passed', 'failed']; listing.save_product('fixture', {'scenes': {'hint': 'again'}})
+        listing.build('fixture')
+        self.assertEqual((self.job('T12')['scene'], self.job('T04')['scene']), ('scene1', 'scene2'))      # two that passed: one each
+
+    def test_a_page_that_fails_its_checks_is_laid_out_again_lighter(self):
+        self.failing = {'T12': [[{'check': 'text_max_lines', 'id': 'headline'}]]}
+        pages, _ = listing.build('fixture')
+        first, second = [job for kind, job in self.jobs if kind == 'T12']
+        self.assertEqual((first['mode'], second['mode']), ('solid', 'solid')); self.assertNotIn('compact', first); self.assertTrue(second['compact'])
+        self.assertIn('精简版本', pages[0]['notes'][0]); self.assertTrue(pages[0]['checks']['passed'])
+
     def test_a_component_still_being_processed_is_left_out_and_said(self):
         component_id, base = components.reserve('fixture'); shutil.copy(self.picture(), base / 'case.png'); components.register('fixture', component_id, {'name': 'Case'})
         pages, notes = listing.build('fixture')
-        self.assertNotIn('includes', [page['kind'] for page in pages]); self.assertIn('还在处理', notes[0]); self.assertIn('Case', notes[0])
+        self.assertNotIn('T05', [page['kind'] for page in pages]); self.assertIn('还在处理', notes[0]); self.assertIn('Case', notes[0])
 
     def test_a_task_reports_progress_can_be_cancelled_and_only_one_runs(self):
         with patch.object(listing.threading, 'Thread') as thread:
@@ -733,7 +818,7 @@ class BuildTests(StoreCase):
         self.assertEqual((task['status'], task['progress']), ('queued', 0))
         listing._run(thread.call_args.kwargs['args'][0])
         done = listing.latest('fixture')
-        self.assertEqual((done['status'], done['progress'], done['pages']), ('completed', 100, 7))
+        self.assertEqual((done['status'], done['progress'], done['pages']), ('completed', 100, 6))
         with patch.object(listing.threading, 'Thread') as thread:
             second = listing.submit('fixture')
         self.assertEqual(listing.cancel('fixture', second['id'])['status'], 'cancelled')
@@ -786,36 +871,14 @@ class BuildTests(StoreCase):
         self.assertEqual(bad_role.status_code, 400)
         self.assertEqual({record['id'] for record in store.all_records('project')}, before)
 
-    def test_components_with_models_are_rendered_with_the_product_for_the_main_image(self):
-        record = store.get('project', 'fixture')
-        parts = [{'name': 'Battery', 'role': 'battery', 'quantity': 2, 'size_mm': 120, 'model_path': '/m/battery.glb', 'rotation': [180, 0, 0],
-                  'finishes': [{'name': 'Shell', 'preset': 'matte_plastic'}], 'path': 'x.png'},
-                 {'name': 'Bag', 'role': 'bag', 'quantity': 1, 'size_mm': None, 'path': 'bag.png'}]            # a photograph only: not in 3D
-        kit = listing.kit_request(record, record['plan'], 225, parts, 35)
-        self.assertEqual(kit['companions'], [{'name': 'Battery', 'role': 'battery', 'model_path': '/m/battery.glb', 'size_mm': 120, 'quantity': 2,
-                                              'rotation': [180, 0, 0], 'plan': {'material_overrides': [{'name': 'Shell', 'preset': 'matte_plastic'}]}}])
-        self.assertEqual((kit['model_path'], kit['size_mm'], kit['camera']['azimuth'], kit['ground']), (record['model_path'], 225.0, 35, 'none'))
-        self.assertIsNone(listing.kit_request(record, record['plan'], 225, parts[1:], 35))
-        requests = listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'main', 'index': 0}], parts)
-        self.assertIn('kit', requests)
-        self.assertNotIn('kit', listing.picture_requests(record, listing.stored(record)[0], 225, [{'kind': 'callouts', 'index': 0}], parts))
-        # The main image is the kit render itself, cropped to everything in it, with a photograph-only component beside.
-        ctx = self.context()
-        result = self.stage('fixture', kit); result['kit_rect'] = [.2, .3, .8, .8]
-        ctx['shots']['kit'] = listing_pages.Shot(result)
-        ctx['components'] = [{**parts[0], 'path': ctx['shots']['hero'].path}, {**parts[1], 'path': ctx['shots']['hero'].path}]
-        page = listing_pages.compose('main', ctx)
-        images = [item for item in page['items'] if item['type'] == 'image']
-        self.assertEqual(images[0]['src'], str(result['path'])); self.assertEqual([round(value, 4) for value in images[0]['crop']], [.185, .285, .815, .815])
-        self.assertTrue(images[0].get('reflection')); self.assertEqual(len(images), 2)
-
     def test_the_web_layer_serves_the_workspace(self):
         import app as application
         mocked = patch.object(application, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)       # the file route reads its own name for the folder
         client = application.app.test_client()
         state = client.get('/api/projects/fixture/listing').get_json()
         self.assertEqual((state['product']['model'], state['brand']['name'], state['pages'], state['task']), ('PC-22', 'NORTHFORGE', [], None))
-        self.assertEqual(len(state['presets']), 5); self.assertIn('pipe', state['options']['workpieces']); self.assertGreaterEqual(len(state['elements']), 20)
+        self.assertEqual(len(state['presets']), 5); self.assertIn('pipe', state['options']['workpieces']); self.assertEqual(state['order'], list(brandkit_set.ORDER))
+        self.assertEqual((state['scene_options']['max'], state['product']['scenes']['count'], state['product']['aspect']), (3, 3, '1:1'))
         self.assertEqual(client.put('/api/projects/fixture/listing/product', json={'model': 'PC-25'}).get_json()['product']['model'], 'PC-25')
         self.assertEqual(client.put('/api/projects/fixture/listing/product', json={'language': 'fr'}).status_code, 400)
         self.assertEqual(client.put('/api/projects/fixture/listing/brand', json={'preset': 'promo'}).get_json()['brand']['preset'], 'promo')
@@ -841,7 +904,7 @@ class BuildTests(StoreCase):
             self.assertEqual(client.post('/api/projects/fixture/listing/build', json={}).status_code, 409)
         listing._run(thread.call_args.kwargs['args'][0])
         built = client.get('/api/projects/fixture/listing').get_json()
-        self.assertEqual((built['task']['status'], built['pages'][1]['kind']), ('completed', 'includes'))
+        self.assertEqual((built['task']['status'], built['pages'][1]['kind']), ('completed', 'T01'))
         self.assertEqual(client.get(built['pages'][0]['url']).status_code, 200)
         bundle = client.get('/api/projects/fixture/listing/download')
         self.assertEqual((bundle.status_code, bundle.mimetype), (200, 'application/zip'))
