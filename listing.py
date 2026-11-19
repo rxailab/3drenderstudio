@@ -236,6 +236,7 @@ def stored(project):
         product = default_product(project)
     # Every part of the model: a selling point that names them all is about the whole product (brandkit_set.anchored).
     product['_model_parts'] = part_names(project)
+    product['_category'] = str((project.get('metadata') or {}).get('product_category') or '') if isinstance(project.get('metadata'), dict) else ''
     # Where the last build found selling points on the main picture, while the product is still shown the same way.
     placed = listing.get('placed') if isinstance(listing.get('placed'), dict) else {}
     if placed.get('view') == _view_key(project):
@@ -982,8 +983,12 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             qa, page_notes, review = result
             name = '%02d-%s.png' % (len(pages) + 1, kind)
             (folder / ('%s.png' % kind)).rename(folder / name)
+            vector = folder / 'svg' / ('%s.svg' % kind)
+            if vector.is_file():
+                vector = vector.rename(vector.with_name(name[:-4] + '.svg'))
             width, height = qa['render']['size']
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
+                          'svg': components.url(vector) if vector.is_file() else None,
                           'width': width, 'height': height, 'notes': page_notes, 'review': review,
                           'checks': {'passed': not brandkit_set.hard_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
         if ctx.get('review_refused'):
@@ -1077,8 +1082,15 @@ def archive(project_id):
     if not files:
         raise ValueError('还没有生成套图。')
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_STORED) as bundle:
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for page, path in files:
             bundle.write(path, page['file'])
+            vector = components.path_of(project_id, page.get('svg'), ('.svg',)) if page.get('svg') else None
+            if vector and vector.is_file():
+                bundle.write(vector, 'editable/' + vector.name)          # live text and named layers, for Illustrator, Figma or Inkscape
+        fonts = files[0][1].parent / 'svg' / 'fonts'
+        if fonts.is_dir():
+            for font in sorted(fonts.iterdir()):
+                bundle.write(font, 'editable/fonts/' + font.name)
     slug = re.sub(r'[^\w\-]+', '_', str(project.get('slug') or 'product'))[:40] or 'product'
     return buffer.getvalue(), slug + '-listing.zip'

@@ -837,6 +837,9 @@ def files(filename):
     viewport_glb=(len(parts)==4 and re.fullmatch(r'[a-f0-9]{32}',parts[0]) is not None
                   and parts[1]=='viewport' and re.fullmatch(r'[a-f0-9]{64}',parts[2]) is not None
                   and parts[3]=='scene.glb')
+    # Editable listing pages (SVG) are only ever downloaded, never shown inline from this origin.
+    if path.suffix.lower()=='.svg' and len(parts)>2 and parts[1]=='listing':
+        return send_from_directory(DATA,filename,as_attachment=True,mimetype='image/svg+xml')
     if path.suffix.lower() not in ['.png','.jpg','.blend','.c4d','.zip','.json','.fbx'] and not viewport_glb: abort(404)
     return send_from_directory(DATA,filename,as_attachment=request.args.get('download')=='1')
 
@@ -975,6 +978,8 @@ if __name__=='__main__':
     components.start();components.recover_interrupted()
     import listing
     listing.recover_interrupted()
+    import brandkit_assets
+    brandkit_assets.prefetch()      # fonts and common icons for the listing templates, in the background
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

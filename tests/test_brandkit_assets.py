@@ -20,7 +20,7 @@ SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" 
 class AssetTests(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, self.folder, True)
-        for name, value in (('VENDOR', self.folder), ('FONTS', self.folder / 'fonts'), ('ICONS', self.folder / 'icons')):
+        for name, value in (('VENDOR', self.folder), ('FONTS', self.folder / 'fonts'), ('ICONS', self.folder / 'icons'), ('BUNDLED', self.folder / 'none')):
             mocked = patch.object(brandkit_assets, name, value); mocked.start(); self.addCleanup(mocked.stop)
         brandkit_assets._checked.clear()
 
@@ -43,7 +43,7 @@ class AssetTests(unittest.TestCase):
             self.assertIsNone(brandkit_assets.ensure_icon('evil')); self.assertIsNone(brandkit_assets.ensure_icon('linked'))
             self.assertIsNone(brandkit_assets.ensure_icon('../../etc/passwd'))             # not an icon name: nothing fetched
         self.assertEqual(sum(url.endswith('/battery-4.svg') for url in asked), 1)
-        self.assertEqual(sum(url.endswith('/nope.svg') for url in asked), 1)
+        self.assertEqual(sum(url.endswith('/nope.svg') for url in asked), len(brandkit_assets.ICON_MIRRORS))   # every mirror once, then remembered
         self.assertIn('<path', brandkit_assets.icon_markup('battery-4'))
 
     def test_only_real_fonts_are_kept_and_the_css_names_what_is_there(self):
@@ -52,6 +52,8 @@ class AssetTests(unittest.TestCase):
             self.skipTest('no system TrueType font to stand in')
         good = font.read_bytes()
         def get(url, tries=3):
+            if url.startswith('https://cdn.jsdelivr.net/gh/'):
+                raise urllib.error.URLError('blocked')                        # the first mirror is unreachable: the next one answers
             if 'archivo' in url and url.endswith('.ttf'):
                 return good
             if url.endswith('.ttf'):
@@ -63,6 +65,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn('Inter-Variable.ttf', report['missing']); self.assertNotIn('NotoSansSC-Variable.ttf', report['missing'] + report['present'])
         css = (self.folder / 'fonts.css').read_text()
         self.assertIn("font-family:'Archivo'", css); self.assertNotIn('Inter', css)
+        self.assertIn("url('fonts/Archivo-Variable.ttf')", css)
         with patch.object(brandkit_assets, '_get', side_effect=urllib.error.URLError('offline')):
             self.assertIn('Inter-Variable.ttf', brandkit_assets.ensure_fonts('en')['missing'])     # offline: reported, not raised
 

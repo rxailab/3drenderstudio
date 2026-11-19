@@ -345,6 +345,27 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(brandkit_set.dimensions_mm({'dims_mm': [405.0, 180.0, 476.0]}), [('width', 405.0), ('height', 476.0), ('depth', 180.0)])
         self.assertTrue(listing._flat([235, 80, 10])); self.assertFalse(listing._flat([405, 180, 476]))
 
+    def test_a_body_line_is_never_cut_mid_sentence_and_joined_words_stay_together(self):
+        self.assertEqual(brandkit_set._body('Precision-ground jaws, smooth-sliding beam with a thumb roller', 40), 'Precision-ground jaws.')
+        self.assertIsNone(brandkit_set._body('One button switches between millimetres and inches', 40))     # no whole clause fits: left out
+        self.assertEqual(brandkit_set._body('Cuts soft wire', 40), 'Cuts soft wire')
+        self.assertEqual(brandkit_set._keep_together('Forged CR-V steel'), 'Forged CR-\u2060V steel')
+        self.assertEqual(brandkit_set._keep_together('Two - tone'), 'Two - tone')
+
+    def test_a_line_longer_than_its_space_is_rewritten_shorter_in_its_own_language(self):
+        import brandkit_review
+        product = {'language': 'en', 'title': 'Digital Caliper', 'headline': '', 'subline': '', 'usecase': {'headline': ''},
+                   'features': [{'title': 'Inch/MM Conversion', 'detail': 'One button switches between millimetres and inches'}], 'specs': [], 'figures': []}
+        answer = {'lines': [{'source': 'One button switches between millimetres and inches', 'text': 'One-button mm/inch switch'}]}
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), patch.object(brandkit_review, '_ask', return_value=answer) as asked:
+            done, _, _, notes = brandkit_set.localise(product, [], [], {})
+        self.assertEqual(done['features'][0]['detail'], 'One-button mm/inch switch'); self.assertEqual(notes, [])
+        self.assertEqual(asked.call_args.args[2]['lines'], [{'source': 'One button switches between millimetres and inches', 'max_chars': 40}])
+        zh = {**product, 'language': 'zh', 'title': '数显卡尺', 'features': [{'title': '大屏显示', 'detail': '五位数字读数'}]}
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), patch.object(brandkit_review, '_ask') as untouched:
+            same = brandkit_set.localise(zh, [], [], {})[0]
+        self.assertEqual((same['title'], same['features'][0]['detail'], untouched.call_count), ('数显卡尺', '五位数字读数', 0))
+
     def test_chinese_captions_are_set_one_clause_per_line(self):
         self.assertEqual(brandkit_set._clause_lines('托特包置于窗边，随手可取', 'zh', 8), '托特包置于窗边，\n随手可取')
         self.assertEqual(brandkit_set._clause_lines('简洁背景下托特包伴随职场日常', 'zh', 8), '')            # it would wrap mid-word

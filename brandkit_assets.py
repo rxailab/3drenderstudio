@@ -25,13 +25,19 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / 'brandkit'
+BUNDLED = ROOT / 'fonts'          # the Latin faces ship with the project (OFL): English sets never wait for a download
 VENDOR = Path(os.environ.get('BRANDKIT_VENDOR') or ROOT / 'vendor')
 FONTS = VENDOR / 'fonts'
 ICONS = VENDOR / 'icons'
 GOOGLE = 'https://github.com/google/fonts/raw/main/ofl/'
+# Mirrors tried in order: jsDelivr's CDNs answer where github.com is slow or blocked; GitHub itself last.
+FONT_MIRRORS = ('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/', 'https://fastly.jsdelivr.net/gh/google/fonts@main/ofl/',
+                'https://gcore.jsdelivr.net/gh/google/fonts@main/ofl/', GOOGLE)
 TABLER_VERSION = '3.31.0'
 TABLER = 'https://cdn.jsdelivr.net/npm/@tabler/icons@%s/' % TABLER_VERSION
-TIMEOUT = 60
+ICON_MIRRORS = (TABLER, 'https://fastly.jsdelivr.net/npm/@tabler/icons@%s/' % TABLER_VERSION,
+                'https://gcore.jsdelivr.net/npm/@tabler/icons@%s/' % TABLER_VERSION, 'https://unpkg.com/@tabler/icons@%s/' % TABLER_VERSION)
+TIMEOUT = 120
 MAX_BYTES = 40 * 1024 * 1024
 LOCK = threading.Lock()
 
@@ -68,6 +74,23 @@ def _get(url, tries=3):
             if attempt == tries - 1:
                 raise
         time.sleep(1.5 * (attempt + 1))
+
+
+def _fetch(urls, accept):
+    """The first answer from ``urls`` that ``accept`` takes; a 404 everywhere raises HTTPError 404, anything else URLError."""
+    missing = 0; last = None
+    for url in urls:
+        try:
+            data = _get(url)
+        except urllib.error.HTTPError as exc:
+            missing += exc.code == 404; last = exc; continue
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            last = exc; continue
+        if accept(data):
+            return data
+    if missing == len(urls):
+        raise urllib.error.HTTPError(urls[-1], 404, 'not found', {}, None)
+    raise urllib.error.URLError(str(last) if last else 'no source answered')
 
 
 def _write(target, data):
@@ -109,11 +132,21 @@ def _svg_ok(data):
     return True
 
 
+def _font_file(name):
+    """Where a face is on disk: shipped with the project, else downloaded; None when neither."""
+    for folder in (BUNDLED, FONTS):
+        if (folder / name).is_file():
+            return folder / name
+    return None
+
+
 def _write_css():
     rules = []
     for family, name, _, descriptors, _ in FACES:
-        if (FONTS / name).is_file():
-            rules.append("@font-face{font-family:'%s';src:url('fonts/%s') format('truetype');%s;font-display:block}" % (family, name, descriptors))
+        path = _font_file(name)
+        if path:
+            relative = os.path.relpath(path, VENDOR).replace(os.sep, '/')
+            rules.append("@font-face{font-family:'%s';src:url('%s') format('truetype');%s;font-display:block}" % (family, relative, descriptors))
     _write(VENDOR / 'fonts.css', ('\n'.join(rules) + '\n').encode())
 
 
@@ -128,21 +161,20 @@ def ensure_fonts(language='en', fetch=True):
         for family, name, url, _, languages in FACES:
             if language not in languages:
                 continue
-            target = FONTS / name
-            if not target.is_file() and fetch:
+            if not _font_file(name) and fetch:
+                path = url[len(GOOGLE):] if url.startswith(GOOGLE) else None
                 try:
-                    data = _get(url)
-                    if _font_ok(data):
-                        _write(target, data); changed = True
+                    data = _fetch([mirror + path for mirror in FONT_MIRRORS] if path else [url], _font_ok)
+                    _write(FONTS / name, data); changed = True
                 except (urllib.error.URLError, OSError, ValueError):
                     pass
-            (present if target.is_file() else missing).append(name)
+            (present if _font_file(name) else missing).append(name)
         if changed or not (VENDOR / 'fonts.css').is_file():
             if fetch:
                 for name, url in LICENCES:
-                    if not (FONTS / name).is_file():
+                    if not (FONTS / name).is_file() and not (BUNDLED / name).is_file():
                         try:
-                            _write(FONTS / name, _get(url))
+                            _write(FONTS / name, _fetch([mirror + url[len(GOOGLE):] for mirror in FONT_MIRRORS], lambda data: bool(data)))
                         except (urllib.error.URLError, OSError, ValueError):
                             pass
             _write_css()
@@ -165,7 +197,7 @@ def ensure_icon(name, style='outline', fetch=True):
         if '%s/%s' % (style, name) in known_absent or not fetch:
             return None
         try:
-            data = _get(TABLER + 'icons/%s/%s.svg' % (style, name))
+            data = _fetch([mirror + 'icons/%s/%s.svg' % (style, name) for mirror in ICON_MIRRORS], _svg_ok)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 known_absent.add('%s/%s' % (style, name)); _write(absent, json.dumps(sorted(known_absent)).encode())
@@ -177,10 +209,32 @@ def ensure_icon(name, style='outline', fetch=True):
         _write(target, data)
         if not (ICONS / 'tabler' / 'LICENSE').is_file():
             try:
-                _write(ICONS / 'tabler' / 'LICENSE', _get(TABLER + 'LICENSE'))
+                _write(ICONS / 'tabler' / 'LICENSE', _fetch([mirror + 'LICENSE' for mirror in ICON_MIRRORS], lambda data: bool(data)))
             except (urllib.error.URLError, OSError, ValueError):
                 pass
     return target
+
+
+COMMON_ICONS = ('battery-4', 'bolt', 'ruler-measure', 'weight', 'gauge', 'package', 'stack-2', 'shield-check', 'clock-hour-4', 'droplet',
+                'bulb', 'rotate-clockwise-2', 'arrow-autofit-height', 'arrow-autofit-width', 'arrows-diagonal', 'box')
+
+
+def prefetch(languages=('en', 'zh')):
+    """Fetch the faces and the common icons in the background (at app start), so a first set does not wait or go without."""
+    def run():
+        for language in languages:
+            ensure_fonts(language)
+        for name in COMMON_ICONS:
+            ensure_icon(name)
+    worker = threading.Thread(target=run, name='brandkit-assets', daemon=True)
+    worker.start()
+    return worker
+
+
+def status(language='en'):
+    """Which faces a set in ``language`` has and which it lacks, without fetching."""
+    names = [name for _, name, _, _, languages in FACES if language in languages]
+    return {'present': [name for name in names if _font_file(name)], 'missing': [name for name in names if not _font_file(name)]}
 
 
 def icon_markup(name, style='outline'):

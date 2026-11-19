@@ -64,7 +64,10 @@ ART_DIRECTOR = (
     'scene_product_mismatch. Check every line of text against the facts: a use, benefit or quality the facts do not state is '
     'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
     'measured_on_3d_model_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
-    'Never praise; be specific. Write evidence and summary in the language of the page; quote page text with 「」, never with double quotes.')
+    'A close-up or cropped frame (T02, the T03 rail, circle insets) shows part of the product on purpose: missing body colours or '
+    'parts outside the crop are not scene_product_mismatch. '
+    'Never praise; be specific. Write evidence and summary in Simplified Chinese (the app\'s language), whatever the page\'s language; '
+    'quote page text with 「」, never with double quotes.')
 COPYWRITER = (
     'You write the small eyebrow label and the headline of each page of a product listing set. Use only the facts given: the product, '
     'its selling points and specs. Each page has one job (goal): its headline says what the buyer gets from the concrete thing that '
@@ -74,12 +77,14 @@ COPYWRITER = (
     'the facts give it (a size, a count, a capacity), written as the facts write it; never a number the facts do not contain. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
     '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
     '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
-    'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently.')
+    'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently. The eyebrow is a '
+    'short kicker that adds information (the product type, the job, the material), never a generic label such as "In use", "Specs" '
+    'or "Part overview". When rewrite_because is given, fix exactly those problems in those pages.')
 VERIFIER = (
     'You check another reviewer\'s claims about one listing image. For each numbered claim, look at CURRENT_RENDER (and REFERENCE_IMAGE, '
     'the product\'s own render, for fidelity claims) and the measured layout, and say whether the claim is clearly true. measured_layout '
     'is ground truth: a picture it says shows the whole product inside the page is not cropped. Default to real=false when you cannot '
-    'clearly see it. Answer in the language of the page, briefly.')
+    'clearly see it. Answer briefly in Simplified Chinese.')
 SET_REVIEW = (
     'You review a whole e-commerce listing set shown as a contact sheet (pages numbered in reading order). Say whether the set reads as one '
     'brand system, which pages repeat the same picture or message, and which page adds least. notes: at most two plain sentences, no '
@@ -211,29 +216,46 @@ def write_copy(product, kinds):
     request = {'language': 'Simplified Chinese' if language == 'zh' else 'English', 'limits_in_characters': limits, 'facts': facts,
                'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind],
                           'max_lines': _LINES.get(kind, 2)} for kind in kinds]}
-    try:
-        answer = _ask(text, COPYWRITER, request, schema)
-    except Exception as exc:
-        return {}, '文案模型没有回应（%s），各页使用默认标题。' % str(exc)[:80]
     written = {}; refused = 0; why_refused = []
     titles = [' '.join(str(row.get('title', '')).split()) for row in product.get('features') or []]
     stated = _numbers_in(json.dumps(facts, ensure_ascii=False))
-    for row in answer.get('pages', []):
-        kind = row.get('template')
-        eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
-        headline = '\n'.join(' '.join(line.split()) for line in str(row.get('headline', '')).split('\n') if line.strip())
-        if kind not in kinds or not headline:
-            continue
-        too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
-        # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
-        repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
-        reasons = [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
-                                        ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
-                                        ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
-        if reasons:
-            refused += 1; why_refused.extend(reasons); continue
-        written[kind] = {'eyebrow': eyebrow, 'headline': headline}
-    return written, ('有 %d 条模型写的标题没有采用（%s），已改用默认标题。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
+    reasons_en = {'超长': 'too long for the page', '行数不对': 'more lines than max_lines', '含资料里没有的数字': 'a number the facts do not contain',
+                  '眉题与标题重复': 'the eyebrow repeats the headline', '照抄卖点标题': 'repeats a selling point title printed on the page'}
+    feedback = None
+    for attempt in (1, 2):                  # a line that fails a check is written again once, told why
+        wanted = [kind for kind in kinds if kind not in written]
+        if not wanted:
+            break
+        ask = {**request, 'pages': [page for page in request['pages'] if page['template'] in wanted]}
+        if feedback:
+            ask['rewrite_because'] = feedback
+        try:
+            answer = _ask(text, COPYWRITER, ask, schema)
+        except Exception as exc:
+            if attempt == 1:
+                return {}, '文案模型没有回应（%s），标题改用产品资料。' % str(exc)[:80]
+            break
+        feedback = []
+        for row in answer.get('pages', []):
+            kind = row.get('template')
+            eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
+            headline = '\n'.join(' '.join(line.split()) for line in str(row.get('headline', '')).split('\n') if line.strip())
+            if kind not in wanted or not headline:
+                continue
+            too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
+            # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
+            repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
+            reasons = [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
+                                            ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
+                                            ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
+            if reasons:
+                if attempt == 2:
+                    refused += 1; why_refused.extend(reasons)
+                feedback.append({'template': kind, 'you_wrote': {'eyebrow': eyebrow, 'headline': headline},
+                                 'problems': [reasons_en[why] for why in reasons]})
+                continue
+            written[kind] = {'eyebrow': eyebrow, 'headline': headline}
+    return written, ('有 %d 条模型写的标题改写后仍没有采用（%s），这些页的标题改用产品资料。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
 
 
 _LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2}
