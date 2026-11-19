@@ -6,18 +6,18 @@
   /* T11 · same-series variants. One shared view and ONE display scale for all variants;
      display size never encodes real size unless scale_calibrated (approved lengths). */
   #canvas{--bg:#F4F4F2;--text:#1E2226;--muted:#5E666D;--accent:#C8372D;--line:#D5D8DB;--pend:#8A6D1F;--pend-bg:#FBF3DC;--wm:rgba(0,0,0,.045)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .offer{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap;color:var(--text);background:#E6E7E8}
+  .eyebrow{font:700 26px/1 var(--f-display),var(--f-cjk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 88px/1.04 var(--f-display);letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .offer{font:700 30px/1 var(--f-display),var(--f-cjk);letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap;color:var(--text);background:#E6E7E8}
   .offer.pending{color:var(--pend);background:var(--pend-bg)}
-  .v-model{font:700 96px/1 "Noto Sans Display",sans-serif;letter-spacing:-.02em;color:var(--text);white-space:nowrap}
+  .v-model{font:700 96px/1 var(--f-display);letter-spacing:-.02em;color:var(--text);white-space:nowrap}
   .v-model .u{font-size:46px;margin-left:8px;color:var(--accent)}
-  .v-name{font:600 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);text-wrap:balance}
-  .v-spec{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--text);white-space:nowrap}
+  .v-name{font:600 42px/1.2 var(--f-text);color:var(--muted);text-wrap:balance}
+  .v-spec{font:500 42px/1.25 var(--f-text);color:var(--text);white-space:nowrap}
   .v-spec b{font-weight:700}
-  .note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted)}
-  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .v-name,#canvas[lang=zh] .v-spec,#canvas[lang=zh] .note{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.38}
+  .note{font:500 42px/1.25 var(--f-text);color:var(--muted)}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 var(--f-cjk);text-wrap:wrap}
+  #canvas[lang=zh] .v-name,#canvas[lang=zh] .v-spec,#canvas[lang=zh] .note{font-family:var(--f-cjk);line-height:1.38}
   #canvas[lang=zh] .offer{letter-spacing:.04em}
   .tick{position:absolute;background:var(--accent)}
 </style></head>

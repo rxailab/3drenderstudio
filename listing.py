@@ -27,6 +27,7 @@ from pathlib import Path
 from studio_store import DATA, LOCK, get, put, all_records
 
 import brand_kit
+import brandkit_assets
 import brandkit_render
 import brandkit_review
 import brandkit_set
@@ -236,6 +237,7 @@ def stored(project):
         product = default_product(project)
     # Every part of the model: a selling point that names them all is about the whole product (brandkit_set.anchored).
     product['_model_parts'] = part_names(project)
+    product['_category'] = str((project.get('metadata') or {}).get('product_category') or '') if isinstance(project.get('metadata'), dict) else ''
     # Where the last build found selling points on the main picture, while the product is still shown the same way.
     placed = listing.get('placed') if isinstance(listing.get('placed'), dict) else {}
     if placed.get('view') == _view_key(project):
@@ -580,7 +582,7 @@ def state(project_id):
     brand = brand_kit.Brand(brand_record, listing.get('product_color'))
     parts = ready_components(project)
     size_mm, known = product_size(project, product)
-    return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(),
+    return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
@@ -711,13 +713,14 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
         dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
-        elevation = 89 if _flat(dims) else 0
+        side_elevation = 89 if _flat(dims) else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
-                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': elevation, 'projection': 'orthographic', 'margin': .06},
+                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': side_elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
     # Selling points found on the main picture are shown close up by cropping round the spot in the same view at twice the size.
     if kinds & {'T03', 'T02'} and any(product['features'][index].get('point') for index, _ in _focus_features(product, 6)):
-        requests['zoom'] = components.cutout_request(model, plan, size_mm, azimuth, elevation, 3600)
+        # the hero's own camera at twice the size, so a point found on the hero is the same spot here
+        requests['zoom'] = {**copy.deepcopy(requests['hero']), 'size': [3600, 3600]}
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
     for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
         if kind in kinds:
@@ -880,19 +883,29 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if all(math.hypot(point[0] - other[0], point[1] - other[1]) >= .05 for _, other in kept):
                 kept.append((index, point))
         anchors = kept
+        # Close-ups cut from the zoom: only when it was taken from the hero's camera (the points are the hero's), and one
+        # per spot: a point inside half a window of one already shown would give the same picture twice.
+        same_view = 'zoom' in shots and all(shots['zoom']['result'].get(key) == shots['hero']['result'].get(key) for key in ('azimuth', 'elevation'))
+        taken = {'detail': [], 'macro': []}
         for index, names in _focus_features(product, 6):
             point = product['features'][index].get('point')
-            if point and 'zoom' in shots:
+            if point and 'zoom' in shots and same_view is False:
+                notes.append('特写放大图与主图视角不一致，未用它裁特写。'); same_view = None
+            if point and same_view:
                 zoom = shots['zoom']['result']
                 for key, side, kind_list, ground in (('detail', .3, details, (38, 41, 45)), ('macro', .22, macros, (22, 24, 27))):
                     if key == 'macro' and len(macros) >= 2:
                         continue
+                    if any(math.hypot(point[0] - other[0], point[1] - other[1]) < side / 2 for other in taken[key]):
+                        continue
+                    taken[key].append(point)
                     name = '%s%d' % (key, index)
                     half = side / 2; x = min(max(point[0], half), 1 - half); y = min(max(point[1], half), 1 - half)
                     region = (round(x - half, 4), round(y - half, 4), round(x + half, 4), round(y + half, 4))
                     assets[name], _ = brandkit_set.flatten(shots['zoom']['path'], assets_folder / (name + '.png'), ground=ground, dark=True,
                                                            trim=False, region=region)
                     assets[name]['_parts'] = brandkit_set.part_map(zoom, region)
+                    assets[name]['_centred'] = True          # cut round the feature's own spot: recrops stay near it
                     focus[name] = [round((point[0] - region[0]) / side, 3), round((point[1] - region[1]) / side, 3)]
                     assets[name]['_part_box'] = [max(0, focus[name][0] - .25), max(0, focus[name][1] - .25), min(1, focus[name][0] + .25), min(1, focus[name][1] + .25)]
                     kind_list.append((index, name))
@@ -982,8 +995,12 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             qa, page_notes, review = result
             name = '%02d-%s.png' % (len(pages) + 1, kind)
             (folder / ('%s.png' % kind)).rename(folder / name)
+            vector = folder / 'svg' / ('%s.svg' % kind)
+            if vector.is_file():
+                vector = vector.rename(vector.with_name(name[:-4] + '.svg'))
             width, height = qa['render']['size']
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
+                          'svg': components.url(vector) if vector.is_file() else None,
                           'width': width, 'height': height, 'notes': page_notes, 'review': review,
                           'checks': {'passed': not brandkit_set.hard_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
         if ctx.get('review_refused'):
@@ -1077,8 +1094,15 @@ def archive(project_id):
     if not files:
         raise ValueError('还没有生成套图。')
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_STORED) as bundle:
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for page, path in files:
             bundle.write(path, page['file'])
+            vector = components.path_of(project_id, page.get('svg'), ('.svg',)) if page.get('svg') else None
+            if vector and vector.is_file():
+                bundle.write(vector, 'editable/' + vector.name)          # live text and named layers, for Illustrator, Figma or Inkscape
+        fonts = files[0][1].parent / 'svg' / 'fonts'
+        if fonts.is_dir():
+            for font in sorted(fonts.iterdir()):
+                bundle.write(font, 'editable/fonts/' + font.name)
     slug = re.sub(r'[^\w\-]+', '_', str(project.get('slug') or 'product'))[:40] or 'product'
     return buffer.getvalue(), slug + '-listing.zip'

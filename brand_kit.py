@@ -18,10 +18,12 @@ The presets describe treatments, not anyone's trade dress: no logos, names or ma
 in. A brand name, badge texts, a legal line and a logo are the user's own.
 """
 import colorsys
+import json
 import re
 
 from PIL import Image
 
+import brandkit_assets
 import listing_draw as draw
 
 PRESETS = {
@@ -68,6 +70,11 @@ LIGHT = '#ffffff'
 HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
 UNITS = ('mm', 'in')
 MAX_BADGES = 3
+# The common elements a brand can pick (brandkit/library/elements.json, drawn by runtime.js TPL.badge / TPL.texture):
+# how its badges are drawn ('auto' lets each page choose) and a faint texture on the page ground.
+ELEMENTS = json.loads((brandkit_assets.ROOT / 'library' / 'elements.json').read_text(encoding='utf-8'))
+BADGE_STYLES = tuple(row['id'] for row in ELEMENTS['badge_styles'])
+TEXTURES = tuple(row['id'] for row in ELEMENTS['textures'])
 
 
 def _text(value, limit, label):
@@ -105,6 +112,15 @@ def validate(value, current=None):
     unit = value.get('unit', current.get('unit', 'mm'))
     if unit not in UNITS:
         raise ValueError('尺寸单位只能是 mm 或 in')
+    fonts = value.get('fonts', current.get('fonts', brandkit_assets.DEFAULT_PAIRING))
+    if fonts not in brandkit_assets.PAIRINGS:
+        raise ValueError('未知的字体搭配')
+    badge_style = value.get('badge_style', current.get('badge_style', 'auto'))
+    if badge_style not in BADGE_STYLES:
+        raise ValueError('未知的徽标样式')
+    texture = value.get('texture', current.get('texture', 'none'))
+    if texture not in TEXTURES:
+        raise ValueError('未知的底纹')
     logo = value.get('logo', current.get('logo'))
     if logo is not None and (not isinstance(logo, str) or not logo.startswith('/files/') or len(logo) > 300):
         raise ValueError('标志文件无效')
@@ -113,7 +129,7 @@ def validate(value, current=None):
             'dark': _color(value['dark'], '深色') if 'dark' in value else current.get('dark'),
             'badges': [_text(badge, 16, '徽标文字') for badge in badges if _text(badge, 16, '徽标文字')],
             'legal': _text(value.get('legal', current.get('legal', '')), 200, '说明文字'),
-            'unit': unit, 'logo': logo}
+            'unit': unit, 'logo': logo, 'fonts': fonts, 'badge_style': badge_style, 'texture': texture}
 
 
 def dominant_color(path):

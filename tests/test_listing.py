@@ -192,7 +192,11 @@ class BrandTests(unittest.TestCase):
         kept = brand_kit.validate({'unit': 'in'}, record)
         self.assertEqual((kept['preset'], kept['accent'], kept['unit']), ('tech', '#f5b800', 'in'))
         self.assertIsNone(brand_kit.validate({'accent': None}, record)['accent'])
-        for bad in ({'preset': 'dewalt'}, {'accent': 'red'}, {'badges': ['a', 'b', 'c', 'd']}, {'unit': 'cm'}, {'logo': 'https://example.com/x.png'}, {'name': 'x' * 41}):
+        self.assertEqual((record['fonts'], record['badge_style'], record['texture']), ('industrial', 'auto', 'none'))
+        look = brand_kit.validate({'fonts': 'elegant', 'badge_style': 'ribbon', 'texture': 'carbon'}, record)
+        self.assertEqual((look['fonts'], look['badge_style'], look['texture'], look['preset']), ('elegant', 'ribbon', 'carbon', 'tech'))
+        self.assertEqual(brand_kit.validate({'unit': 'in'}, look)['fonts'], 'elegant')
+        for bad in ({'fonts': 'comic-sans'}, {'badge_style': 'heart'}, {'texture': 'leopard'}, {'preset': 'dewalt'}, {'accent': 'red'}, {'badges': ['a', 'b', 'c', 'd']}, {'unit': 'cm'}, {'logo': 'https://example.com/x.png'}, {'name': 'x' * 41}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 brand_kit.validate(bad)
         self.assertEqual([row['id'] for row in brand_kit.presets()], ['frame', 'flat', 'tech', 'clean', 'promo'])
@@ -641,11 +645,18 @@ class BuildTests(StoreCase):
         for target, name, value in ((brandkit_render, 'available', True), (brandkit_set, 'image_model_ready', False)):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(brandkit_render, 'render', side_effect=self.fake_render); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(brandkit_render, 'export_svg', side_effect=self.fake_svg); mocked.start(); self.addCleanup(mocked.stop)
         listing.save_product('fixture', {'title': 'Ratchet Pipe Cutter', 'model': 'PC-22', 'headline': 'One-hand clean cuts', 'subline': 'Square, burr-free cuts.',
                                          'size_mm': 225, 'features': [{'title': 'Hardened cutting wheel', 'detail': 'Replaceable', 'parts': [PARTS[0]]},
                                                                       {'title': 'Twin guide rollers', 'parts': [PARTS[1]]}, {'title': 'Lifetime sharpness'}],
                                          'specs': [{'label': 'Pipe capacity', 'value': '6 - 22 mm'}], 'figures': [{'value': '22', 'unit': 'mm', 'label': 'Max pipe'}]})
         listing.save_brand('fixture', {'name': 'NORTHFORGE', 'badges': ['PRO'], 'legal': '*A legal line.'})
+
+    def fake_svg(self, template_id, job, out_svg, work=None):
+        out_svg = Path(out_svg); out_svg.parent.mkdir(parents=True, exist_ok=True)
+        out_svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"><text>%s</text></svg>' % template_id)
+        (out_svg.parent / 'fonts').mkdir(exist_ok=True); (out_svg.parent / 'fonts' / 'Inter-Variable.ttf').write_bytes(b'font')
+        return out_svg
 
     def fake_render(self, template_id, job, out, work=None):
         """The browser stand-in: a page of the job's size, and the layout it was asked for remembered."""
@@ -693,7 +704,12 @@ class BuildTests(StoreCase):
         self.assertIn('2 张', next(row['skipped'] for row in state['plan'] if row['kind'] == 'T08'))
         data, name = listing.archive('fixture')
         with zipfile.ZipFile(io.BytesIO(data)) as bundle:
-            self.assertEqual(bundle.namelist(), [page['file'] for page in pages])
+            names = bundle.namelist()
+            self.assertEqual([name for name in names if not name.startswith('editable/')], [page['file'] for page in pages])
+            # each page also as an editable SVG (live text, named layers), with the fonts it names
+            self.assertEqual([name for name in names if name.endswith('.svg')], ['editable/' + page['file'][:-4] + '.svg' for page in pages])
+            self.assertIn('editable/fonts/Inter-Variable.ttf', names)
+        self.assertTrue(all(page['svg'] for page in pages))
         self.assertEqual(name, 'fixture-listing.zip')
         first = Path(components.path_of('fixture', pages[0]['url'])).parent
         listing.build('fixture')                                                            # a new build replaces the old files
@@ -782,9 +798,11 @@ class BuildTests(StoreCase):
         by_kind = {page['kind']: page for page in pages}
         self.assertEqual(self.job('T01')['headline'], 'Grips firm'); self.assertEqual(self.job('T01')['eyebrow'], 'Parts')
         self.assertEqual(len(self.job('T01')['features']), 2)                                  # the drop that would go below two was not made
-        self.assertEqual(self.job('T02')['headline'], brandkit_set.TEXT['en']['T02_headline'])
-        self.assertEqual(self.job('T04')['headline'], brandkit_set.TEXT['en']['T04_headline'])
-        self.assertTrue(any('默认标题' in note for note in notes))
+        # A refused line gives way to the product's own name, not a stock phrase.
+        # A refused line gives way to the product's own data: the parts the close-ups show, the strongest figure.
+        self.assertEqual(self.job('T02')['headline'], 'Hardened cutting wheel,\n[[twin guide rollers]]')
+        self.assertTrue(self.job('T04')['headline'].startswith('[['))
+        self.assertTrue(any('改用产品资料' in note for note in notes))
         self.assertEqual((by_kind['T01']['review']['status'], by_kind['T01']['review']['first_score'], by_kind['T01']['review']['score']), ('revised', 78, 87))
         self.assertIn('缩短headline', by_kind['T01']['review']['applied'])
         self.assertEqual((by_kind['T12']['review']['status'], by_kind['T12']['review']['rounds']), ('passed', 0))
@@ -835,7 +853,7 @@ class BuildTests(StoreCase):
                 patch.object(brandkit_review, 'write_copy', return_value=({'T01': {'eyebrow': 'Parts', 'headline': 'A very long line'}}, None)):
             pages, _ = listing.build('fixture')
         tried = [job['headline'] for kind, job in self.jobs if kind == 'T01']
-        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], brandkit_set.TEXT['en']['T01_headline'])
+        self.assertEqual(tried[0], 'A very long line'); self.assertEqual(self.job('T01')['headline'], 'Square, burr-free cuts.')     # the seller's own line
         self.assertTrue(next(page for page in pages if page['kind'] == 'T01')['checks']['passed'])
 
     def test_scenes_whose_product_check_failed_stay_off_the_poster_and_fail_their_pages(self):

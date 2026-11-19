@@ -90,14 +90,18 @@ def _icons(job):
 
 def compose(template_id, job):
     source = (TEMPLATES / (template_id + '.html')).read_text(encoding='utf-8')
-    brandkit_assets.ensure_fonts(job.get('lang', 'en'))
+    fonts_job = job.get('fonts') or brandkit_assets.job_fonts(None, job.get('lang', 'en'))
+    brandkit_assets.ensure_fonts(job.get('lang', 'en'), pairing=fonts_job.get('pairing'))
     # Private asset notes stay with the renderer, except the product's box in a scene, which the page frames by.
     public = {**job, 'assets': {key: {**{k: v for k, v in value.items() if k != 'path' and not k.startswith('_')},
                                       **({'product_box': value['_product']} if value.get('_product') else {})}
                                 for key, value in (job.get('assets') or {}).items()},
-              'icons': _icons(job)}
+              'icons': _icons(job), 'fonts': fonts_job}
     data = json.dumps(public, ensure_ascii=False).replace('</', '<\\/')
-    fonts = '<link rel="stylesheet" href="vendor/fonts.css">\n' if (brandkit_assets.VENDOR / 'fonts.css').is_file() else ''
+    # The brand's font pairing: its faces (and the default ones behind them) and the role variables the templates use.
+    stacks = fonts_job.get('stacks') or {}
+    roles = ';'.join('--f-%s:%s' % (role, stacks[role]) for role in brandkit_assets.ROLES if isinstance(stacks.get(role), str))
+    fonts = '<style>%s\nhtml #canvas{%s}</style>\n' % (brandkit_assets.font_face_css(job.get('lang', 'en'), fonts_job.get('pairing')), roles)
     inject = '<base href="%s/">\n%s<script>window.JOB = %s;</script>' % (ROOT.as_uri(), fonts, data)
     page = source.replace('<!--INJECT-->', inject)
     # The layout runs once the web fonts are loaded (TPL.ready), so it measures the faces it is drawn in.
@@ -283,6 +287,116 @@ def render(template_id, job, out, work=None):
             image.crop((0, 0, width, height)).save(out)
     qa['render'] = {'png': str(out), 'size': [width, height], 'browser': Path(executable).name}
     return qa
+
+
+RUNTIME_TAG = '<script src="engine/runtime.js"></script>'
+SVG_RESULT = re.compile(r'<script type="image/svg\+xml" id="svg-result">(.*?)</script>', re.S)
+
+
+def _font_faces(language, pairing=None):
+    """The faces the page uses, as (family, file on disk, @font-face descriptors), for the SVG's fonts/ folder."""
+    return brandkit_assets.faces(language, pairing)
+
+
+def _embed_links(svg):
+    """Pictures the page could not read itself (left as file:// links) are embedded from disk."""
+    import base64
+    import mimetypes
+    from urllib.parse import unquote, urlparse
+
+    def embed(match):
+        url = html.unescape(match.group(1))
+        path = Path(unquote(urlparse(url).path))
+        if not path.is_file():
+            return match.group(0)
+        kind = mimetypes.guess_type(path.name)[0] or 'image/png'
+        return 'xlink:href="data:%s;base64,%s"' % (kind, base64.b64encode(path.read_bytes()).decode('ascii'))
+    return re.sub(r'xlink:href="(file://[^"]+)"', embed, svg)
+
+
+def _lighter_photos(svg):
+    """Embedded photographs without transparency as high-quality JPEG instead of PNG: a scene page's file drops from tens
+    of megabytes to a few, and nothing visible changes. Pictures with transparency (cut-outs) stay PNG."""
+    import base64
+    import io as _io
+
+    def swap(match):
+        data = match.group(1)
+        if len(data) < 300_000:
+            return match.group(0)
+        try:
+            with Image.open(_io.BytesIO(base64.b64decode(data))) as opened:
+                image = opened.convert('RGBA') if opened.mode in ('RGBA', 'LA', 'P') else opened.convert('RGB')
+            if image.mode == 'RGBA':
+                if image.getchannel('A').getextrema()[0] < 255:
+                    return match.group(0)
+                image = image.convert('RGB')
+            buffer = _io.BytesIO(); image.save(buffer, 'JPEG', quality=92, optimize=True)
+        except Exception:
+            return match.group(0)
+        return 'data:image/jpeg;base64,' + base64.b64encode(buffer.getvalue()).decode()
+    return re.sub(r'data:image/png;base64,([A-Za-z0-9+/=]+)', swap, svg)
+
+
+def export_svg(template_id, job, out_svg, work=None):
+    """Lay out one page and write it as an editable layered SVG to ``out_svg``: text as <text>, boxes and lines as
+    vectors, pictures as embedded <image> layers, one named group per element (brandkit/engine/svg_export.js).
+    The fonts the page uses are copied into ``fonts/`` next to the file, which the SVG's @font-face rules point at.
+    Normal rendering is untouched: the exporter is only added to this page. Returns the SVG's path."""
+    executable = chrome_path()
+    if not executable:
+        raise RenderError('没有找到 Chrome / Edge 浏览器，无法排版品牌模板。请安装 Chrome，或在 .env 中设置 BRANDKIT_CHROME。')
+    if not (TEMPLATES / (template_id + '.html')).is_file():
+        raise RenderError('未知的模板 %s' % template_id)
+    width, height = job['canvas']['width'], job['canvas']['height']
+    out_svg = Path(out_svg); out_svg.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(work or out_svg.parent); work.mkdir(parents=True, exist_ok=True)
+    language = job.get('lang', 'en')
+    faces = _font_faces(language, (job.get('fonts') or {}).get('pairing'))
+    font_css = '\n'.join("@font-face{font-family:'%s';src:url('fonts/%s') format('truetype');%s}" % (family, path.name, descriptors)
+                         for family, path, descriptors in faces)
+    options = json.dumps({'fontCss': font_css}).replace('</', '<\\/')
+    page_source = compose(template_id, job)
+    if RUNTIME_TAG not in page_source:
+        raise RenderError('模板 %s 没有加载 runtime.js' % template_id)
+    page_source = page_source.replace(RUNTIME_TAG, '%s\n<script>window.SVG_EXPORT_OPTIONS = %s;</script>\n<script src="engine/svg_export.js"></script>'
+                                      % (RUNTIME_TAG, options), 1)
+    page = work / ('%s-%s.html' % (out_svg.stem, uuid.uuid4().hex[:8]))
+    page.write_text(page_source, encoding='utf-8')
+    flags = [_headless(executable), *FLAGS, '--window-size=%d,%d' % (width, height)]
+    try:
+        result = _run([executable, *flags, '--virtual-time-budget=6000', '--dump-dom', page.as_uri()])
+    finally:
+        page.unlink(missing_ok=True)
+    dom = result.stdout.decode('utf-8', 'replace')
+    match = SVG_RESULT.search(dom)
+    if not match or not match.group(1).lstrip().startswith('<?xml'):
+        detail = match.group(1)[:300] if match else result.stderr.decode('utf-8', 'replace')[-300:]
+        raise RenderError('SVG 导出失败：%s' % detail)
+    out_svg.write_text(_lighter_photos(_embed_links(match.group(1))), encoding='utf-8')
+    fonts = out_svg.parent / 'fonts'; fonts.mkdir(exist_ok=True)
+    for _, path, _ in faces:
+        shutil.copy2(path, fonts / path.name)
+        licence = path.parent / (path.name.split('-')[0] + '-OFL.txt')
+        if licence.is_file():
+            shutil.copy2(licence, fonts / licence.name)
+    return out_svg
+
+
+def rasterize_svg(svg_path, out_png, width, height):
+    """Draw an exported SVG (with its fonts/ folder) in the headless browser at its own size, to check it against the page."""
+    executable = chrome_path()
+    if not executable:
+        raise RenderError('没有找到 Chrome / Edge 浏览器')
+    out_png = Path(out_png); out_png.parent.mkdir(parents=True, exist_ok=True)
+    result = _run([executable, _headless(executable), *FLAGS, '--window-size=%d,%d' % (width, height), '--virtual-time-budget=6000',
+                   '--screenshot=%s' % out_png, Path(svg_path).resolve().as_uri()])
+    if not out_png.is_file():
+        raise RenderError('SVG 栅格化失败：%s' % result.stderr.decode('utf-8', 'replace')[-300:])
+    with Image.open(out_png) as image:
+        if image.size != (width, height):
+            image.crop((0, 0, width, height)).save(out_png)
+    return out_png
 
 
 def layout_issues(qa):

@@ -826,6 +826,27 @@ def job_retry(ident):
             if not p.get('analysis'): p['status']='analyzing';put('project',p)
     return jsonify(new),202
 
+@app.get('/brandkit/fonts.css')
+def brandkit_fonts_css():
+    # The font library's faces on this machine, for the brand panel's pairing previews.
+    import brandkit_assets
+    rules=[]
+    for family in brandkit_assets.FAMILIES.values():
+        for face in family['files']:
+            if brandkit_assets._font_file(face['file']):
+                rules.append("@font-face{font-family:'%s';src:url('/brandkit/font/%s') format('truetype');%s;font-display:swap}"%(family['family'],face['file'],face['css']))
+    response=app.response_class('\n'.join(rules)+'\n',mimetype='text/css')
+    response.headers['Cache-Control']='no-cache'
+    return response
+
+@app.get('/brandkit/font/<name>')
+def brandkit_font(name):
+    import brandkit_assets
+    known={face['file'] for family in brandkit_assets.FAMILIES.values() for face in family['files']}
+    path=brandkit_assets._font_file(name) if name in known else None
+    if not path: abort(404)
+    return send_file(path,mimetype='font/ttf',max_age=86400)
+
 @app.get('/files/<path:filename>')
 def files(filename):
     path=(DATA/filename).resolve()
@@ -837,6 +858,9 @@ def files(filename):
     viewport_glb=(len(parts)==4 and re.fullmatch(r'[a-f0-9]{32}',parts[0]) is not None
                   and parts[1]=='viewport' and re.fullmatch(r'[a-f0-9]{64}',parts[2]) is not None
                   and parts[3]=='scene.glb')
+    # Editable listing pages (SVG) are only ever downloaded, never shown inline from this origin.
+    if path.suffix.lower()=='.svg' and len(parts)>2 and parts[1]=='listing':
+        return send_from_directory(DATA,filename,as_attachment=True,mimetype='image/svg+xml')
     if path.suffix.lower() not in ['.png','.jpg','.blend','.c4d','.zip','.json','.fbx'] and not viewport_glb: abort(404)
     return send_from_directory(DATA,filename,as_attachment=request.args.get('download')=='1')
 
@@ -975,6 +999,8 @@ if __name__=='__main__':
     components.start();components.recover_interrupted()
     import listing
     listing.recover_interrupted()
+    import brandkit_assets
+    brandkit_assets.prefetch()      # fonts and common icons for the listing templates, in the background
     port=int(os.getenv('STUDIO_PORT','8765'))
     print('物影 Studio  http://127.0.0.1:%s'%port,flush=True)
     app.run(host='127.0.0.1',port=port,debug=False,threaded=True,use_reloader=False)

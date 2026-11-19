@@ -25,6 +25,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import brandkit_assets
 import brandkit_render
 
 # kind: (zh, en)
@@ -56,14 +57,14 @@ TEXT = {
            'T02_headline': '近看细节', 'T04_headline': '核心参数', 'T04_eyebrow': '参数', 'T08_eyebrow': '使用场景', 'T08_headline': '用在需要它的地方',
            'T06_eyebrow': '尺寸', 'T06_headline': '外形尺寸', 'T05_headline': '包装清单', 'T05_note': '图示物品未按实际比例',
            'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度', 'thickness': '厚度',
-           'table_note': '手工测量，请允许 1–2 cm 误差。', 'depth_note': '深度 %s。',
+           'table_note': '尺寸为近似值，以实物为准。', 'depth_note': '深度 %s。',
            'scene_titles': ('上手使用', '随时待命', '换个场景')},
     'en': {'T01_eyebrow': 'Part overview', 'T01_headline': 'Every key part,\nclearly shown', 'T03_eyebrow': 'Details', 'T02_eyebrow': 'Up close',
            'T02_headline': 'The details, up close', 'T04_headline': 'Key figures', 'T04_eyebrow': 'Specs', 'T08_eyebrow': 'In use',
            'T08_headline': 'Made for the job', 'T06_eyebrow': 'Dimensions', 'T06_headline': 'Overall size', 'T05_headline': "What's in the box",
            'T05_note': 'Items not shown to scale', 'qty_pending': 'Qty to be confirmed', 'qty_prefix': 'Qty ', 'main': 'Main unit',
            'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth', 'thickness': 'Thickness',
-           'table_note': 'Measured by hand; please allow 1–2 cm variance.', 'depth_note': 'Depth %s.',
+           'table_note': 'Sizes are approximate; actual product may vary slightly.', 'depth_note': 'Depth %s.',
            'scene_titles': ('In use', 'Ready to go', 'On the job')},
 }
 
@@ -125,9 +126,10 @@ def pointed(product):
 
 LOCATOR = ('You look at a product photo for an online listing and say where each selling point is on the product. For each '
            'numbered selling point, give the point (x, y as fractions of the picture width and height, from the top left) at the '
-           'centre of the part it is about: a display, a button, a jaw, a cutter, a handle, a battery, a guard. When the selling '
-           'point is about the whole product rather than one part (a material, a mode, a speed, an accuracy), or that part cannot '
-           'be seen from this side, set visible to false.')
+           'centre of the part it is about: a display, a button, a jaw, a cutter, a handle, a battery, a guard. A feature that a part '
+           'delivers points at that part: measuring modes at the jaws and depth rod, a unit switch or zero at its button, a motor at '
+           'the motor housing, a material at the part made of it. Only when no part shows it (an accuracy, a warranty, a speed with no '
+           'visible source) or that part cannot be seen from this side, set visible to false.')
 
 
 def locate(picture_path, picture, product, cache):
@@ -458,7 +460,9 @@ def scene_box(row, slack=.15):
     return [round(max(0.0, box[0] - dx), 4), round(max(0.0, box[1] - dy), 4), round(min(1.0, box[2] + dx), 4), round(min(1.0, box[3] + dy), 4)]
 
 
-LOCALISER = ('You translate the words of a product listing into the language the listing images are printed in. Translate faithfully '
+LOCALISER = ('You fit the words of a product listing to the listing images: lines in another language are translated into the '
+             'images\' language, and lines longer than max_chars are rewritten shorter in the same language, keeping their meaning as '
+             'a complete phrase (never cut off mid-sentence). Translate faithfully '
              'and concisely, as a seller would write them on an Amazon listing; keep every number, unit, model code and brand name exactly '
              'as written; do not add claims or words that are not there. Each line has max_chars, the space the page gives it: stay within '
              'it, shortening to the essential words rather than cutting a word.')
@@ -506,11 +510,13 @@ def localise(product, scenes, parts, cache):
     line is translated once. Returns (product, scenes, parts, notes); without a text model the lines stay as written
     and a note says so. A Chinese set keeps English words (model codes, units, terms) as they are."""
     language = product.get('language')
-    if language != 'en':
+    if language not in ('en', 'zh'):
         return product, scenes, parts, []
     known = cache.setdefault(language, {})
     limits = _strings(product, scenes, parts)
-    wanted = sorted(text for text in limits if _HAN.search(text) and text not in known)
+    # Lines in the wrong language (Chinese on an English set) and lines longer than the space the pages give them.
+    foreign = lambda text: language == 'en' and bool(_HAN.search(text))
+    wanted = sorted(text for text in limits if text not in known and (foreign(text) or len(text) > limits[text]))
     notes = []
     if wanted:
         try:
@@ -519,7 +525,8 @@ def localise(product, scenes, parts, cache):
         except Exception:
             config = None
         if not config:
-            notes.append('产品信息里有中文，但图片文字选的是英文，且没有配置文本模型来翻译：这些中文内容不会印在英文图上，请填写英文或配置文本模型。')
+            if any(foreign(text) for text in wanted):
+                notes.append('产品信息里有中文，但图片文字选的是英文，且没有配置文本模型来翻译：这些中文内容不会印在英文图上，请填写英文或配置文本模型。')
         else:
             schema = {'type': 'object', 'additionalProperties': False, 'required': ['lines'],
                       'properties': {'lines': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['source', 'text'],
@@ -531,7 +538,7 @@ def localise(product, scenes, parts, cache):
                 if not ask:
                     break
                 try:
-                    answer = brandkit_review._ask(config, LOCALISER, {'language': 'English', 'product': product.get('title', ''),
+                    answer = brandkit_review._ask(config, LOCALISER, {'language': 'English' if language == 'en' else 'Simplified Chinese', 'product': product.get('title', ''),
                                                                       'strict_length': attempt == 2,
                                                                       'lines': [{'source': text, 'max_chars': limits[text]} for text in ask]}, schema)
                 except Exception as exc:
@@ -540,18 +547,19 @@ def localise(product, scenes, parts, cache):
                     source, text = row.get('source'), ' '.join(str(row.get('text', '')).split())
                     # Every number written in figures stays; a number in the translation must come from the line ("四" may become "4").
                     kept = digits(source) <= digits(text) and digits(text) <= digits(source) | digits(_arabic(source))
-                    if source in ask and text and not _HAN.search(text) and kept:
+                    if source in ask and text and not (language == 'en' and _HAN.search(text)) and kept:
                         if len(text) <= limits[source]:
                             known[source] = text
                         else:
                             long[source] = text
-            for source, text in long.items():   # still too long: the English line, shortened on the page, beats the Chinese one
-                known.setdefault(source, text)
-            missing = [text for text in wanted if text not in known]
+            for source, text in long.items():   # still too long: the translation beats the Chinese line; a long original stays itself
+                if foreign(source) or len(text) < len(source):
+                    known.setdefault(source, text)
+            missing = [text for text in wanted if text not in known and foreign(text)]
             if missing:
                 notes.append('有 %d 条产品文字没能译成英文，这些文字不会印在英文图上：%s。' % (len(missing), '、'.join(missing[:3])))
     # A line that could not be translated is left off the English pages (a blank field falls back to the template's own words).
-    swap = lambda text: known.get(text, '' if _HAN.search(text) else text) if isinstance(text, str) else text
+    swap = lambda text: known.get(text, '' if foreign(text) else text) if isinstance(text, str) else text
     product = copy.deepcopy(product)
     for key in ('title', 'headline', 'subline'):
         product[key] = swap(product.get(key))
@@ -573,9 +581,12 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
+SCENE_PLAN = 2        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting)
+
+
 def scene_key(project, product, settings):
     plan = project.get('plan') or {}
-    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings],
+    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -600,11 +611,18 @@ def scene_briefs(project, settings, count):
         metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
         text = ' '.join(str(value) for value in (project.get('name', ''), metadata.get('product_category', ''), settings['hint']))
         others = [item for item in scene_audience.rank(text, text) if item != segment]
+        if not others and segment:
+            # nothing else in the product's words: the neighbouring buyer, never the first scene again
+            neighbour = scene_audience.NEIGHBOUR.get(segment)
+            others = [neighbour] if neighbour and scene_audience.segment(neighbour) else []
         other = others[0] if others else None
         wants = first.get('people') if settings['people'] == 'auto' else settings['people'] in ('include', 'hands')
         third = {**first, 'segment_id': other or segment, 'people': bool(wants), 'framing': first.get('framing') if wants else None,
                  'scene': scene_audience.fixed_scene(other, bool(wants)) if other else
                           (first.get('scene', '') + ' Another setting where the same buyer would use it.')}
+        if other:
+            # the third scene's own plan, not the first one's carried over
+            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='')
         briefs.append({'proposal': third, 'role': 'other'})
     return briefs[:count]
 
@@ -662,11 +680,32 @@ def captions(project, product, briefs):
 
 
 SEEN = ('You caption one picture of a product listing set: a scene the image model made with the product in it. Look at the '
-        'picture. Title: the occasion of use it shows, as a shopper would name it ("At the desk", "On the job site", "Weekend away"), '
-        'never one it only suggests (no "office" without office things in view). Line: what the product is doing for its owner there, '
-        'as the picture shows it ("Stands upright, ready to grab"), not a description of the room. No numbers, prices, brands or claims '
-        'the picture does not show. Use a title and a line not in titles_already_used / lines_already_used. Respect the character '
-        'limits strictly. In Chinese, write the line as two short clauses joined by "，", each at most 8 characters.')
+        'picture. Title: what `shows` asks for (the task being done, or the place), as a shopper would name it ("Stripping wire", '
+        '"At the desk", "Weekend away"), only what is in view (no "office" without office things in view, no "job site" for a '
+        'bench). Line: what the product is doing for its owner there, as the picture shows it ("Stands upright, ready to grab"), not '
+        'a description of the room. No numbers, prices, brands or claims the picture does not show. The title must name a different '
+        'place or task from every title in titles_already_used (workshop, workbench and bench are the same place; so are garage and '
+        'shed), and the line must not repeat lines_already_used. Respect the character limits strictly. In Chinese, write the line as '
+        'two short clauses joined by "，", each at most 8 characters.')
+SHOWS = {'use': 'the product at work: title the task being done', 'place': 'the product at rest where it is kept or used: title the place',
+         'other': 'a different setting from the other pictures: title the place or the task'}
+
+
+PLACE_WORDS = {'workbench': 'shop', 'bench': 'shop', 'workshop': 'shop', 'shop': 'shop', 'garage': 'shed', 'shed': 'shed',
+               '工作台': '工坊', '工坊': '工坊', '车间': '工坊', '工作间': '工坊', '台面': '工坊'}
+_TITLE_FILLER = {'at', 'in', 'on', 'the', 'a', 'an', 'by', 'for', 'of', 'to', 'and', 'with'}
+
+
+def _same_place(title, other):
+    """Whether two scene titles name the same place ("In the workshop" / "At the workbench", the words for one place counted
+    as one) or say the same thing in other filler words."""
+    def words(text):
+        text = str(text or '').lower()
+        found = {PLACE_WORDS.get(word, word) for word in re.findall(r'[a-z]+', text) if word not in _TITLE_FILLER and len(word) > 2}
+        found |= {value for key, value in PLACE_WORDS.items() if re.search(r'[\u4e00-\u9fff]', key) and key in text}
+        return found
+    a, b = words(title), words(other); places = set(PLACE_WORDS.values())
+    return bool(a & b & places) or (bool(a) and a == b)
 
 
 CAPTIONED = 'occasion'          # how the captions were written; older ones are written again once
@@ -692,10 +731,11 @@ def seen_captions(product, rows):
         try:
             facts = {'product': product['title'], 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                      'title_max_chars': limit[0], 'line_max_chars': limit[1], 'titles_already_used': sorted(taken),
-                     'lines_already_used': sorted(said)}
+                     'lines_already_used': sorted(said), 'shows': SHOWS.get(row.get('role'), SHOWS['other'])}
             answer = brandkit_review._ask(vision, SEEN, facts, schema, image_path=row['path'])
             title = ' '.join(str(answer.get('title', '')).split()); body = _fit_line(' '.join(str(answer.get('body', '')).split()), limit[1])
-            if title and len(title) <= limit[0] and title not in taken and (not body or body not in said) and not re.search(r'\d', title + body):
+            if (title and len(title) <= limit[0] and title not in taken and not any(_same_place(title, other) for other in taken)
+                    and (not body or body not in said) and not re.search(r'\d', title + body)):
                 captions = {**(row.get('captions') or {}), language: {'title': title, 'body': body, 'how': CAPTIONED}}
                 row = {**row, 'title': title, 'body': body, 'caption': CAPTIONED, 'captions': captions}; done += 1
         except Exception:
@@ -768,6 +808,20 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
 
 # ---- jobs ----
 
+def _body(text, limit):
+    """A body line that fits ``limit``: whole, or its leading whole clause; never a sentence cut off mid-phrase (None then)."""
+    text = ' '.join(str(text or '').split())
+    if len(text) <= limit:
+        return text or None
+    cut = max((match.start() for match in re.finditer(r'[.;,，；。:：]|\s[-–—]\s', text[:limit + 1])), default=-1)
+    return text[:cut].rstrip(' ,，;；:：-–—') + ('.' if not re.search(r'[\u4e00-\u9fff]', text) else '。') if cut >= limit * .35 else None
+
+
+def _keep_together(text):
+    """Joined words (CR-V, Li-Ion, 20V-MAX) are not broken at their hyphen."""
+    return re.sub(r'(?<=[A-Za-z0-9])-(?=[A-Za-z0-9])', '-\u2060', str(text)) if text else text
+
+
 def _clip(text, limit):
     """Text that fits ``limit`` characters without an ellipsis (a listing never prints "…"): the leading segment that fits
     (up to a dash, comma, slash, bracket or " with"), else the whole words that fit; line breaks the author put in are kept."""
@@ -802,6 +856,10 @@ def _headline(text, language, limit):
     return text[:cut + 1] + '\n' + text[cut + 1:]
 
 
+# Pages that carry the brand's badge texts (TPL.badge), and how many: the main image and the poster.
+BADGED = {'T01': 1, 'T12': 1}
+
+
 def _palette(template_id, brand):
     tokens = brandkit_render.template_info(template_id)['tokens']
     palette = dict(tokens['palette'])
@@ -827,9 +885,17 @@ def _job(template_id, ctx, **fields):
     background = str(palette.get('bg', '')).lstrip('#')
     if ctx.get('light_product') and len(background) == 6 and sum(int(background[i:i + 2], 16) for i in (0, 2, 4)) / 765 > .8:
         palette['bg'] = '#D5D9DD'        # a bright steel or white product on a near-white page would vanish: a cool grey ground
+    brand = ctx.get('brand'); record = getattr(brand, 'record', None) or {}
+    extra = {}
+    badges = [text for text in (record.get('badges') or []) if isinstance(text, str) and text.strip()]
+    if badges and template_id in BADGED and 'badges' not in fields:
+        extra['badges'] = [{'text': text, 'style': record.get('badge_style') or 'auto'} for text in badges[:BADGED[template_id]]]
+    if record.get('texture') and record['texture'] != 'none':
+        extra['texture'] = record['texture']
     return {'template_id': template_id, 'variant': 'studio', 'canvas': {'width': width, 'height': height}, 'lang': ctx['language'],
             'safe_margin': tokens.get('safe_margin', 84), 'min_margin': tokens.get('min_margin', 60),
-            'palette': palette, 'publishability': 'user_product', **fields}
+            'palette': palette, 'publishability': 'user_product',
+            'fonts': brandkit_assets.job_fonts(record.get('fonts'), ctx['language']), **extra, **fields}
 
 
 ICON_WORDS = ((('battery', '电池', 'mah'), 'battery-4'), (('volt', '电压'), 'bolt'), (('weight', '重量', '净重', 'kg', ' lb'), 'weight'),
@@ -906,6 +972,37 @@ def dimensions_mm(ctx):
     return [('width', across), ('height', height), ('depth', hidden)]
 
 
+LENGTH_MM = {'mm': 1, 'cm': 10, 'm': 1000, 'in': 25.4, 'inch': 25.4, 'inches': 25.4, '"': 25.4, '毫米': 1, '厘米': 10, '公分': 10}
+
+
+def _stated_lengths(product):
+    """Every length the seller wrote in the specs and figures, as (mm, number as written, unit): "200 mm (8 in)" gives two."""
+    found = []
+    texts = [str(row.get('value', '')) for row in product.get('specs') or []]
+    texts += ['%s %s' % (row.get('value', ''), row.get('unit', '')) for row in product.get('figures') or []]
+    for text in texts:
+        for number, unit in re.findall(r'(\d+(?:\.\d+)?)\s*(mm|cm|inches|inch|in|"|毫米|厘米|公分)(?![a-z])', text.lower()):
+            found.append((float(number) * LENGTH_MM[unit], number, {'inches': 'in', 'inch': 'in', '"': 'in'}.get(unit, unit)))
+    return found
+
+
+def _stated_measure(mm, unit, product):
+    """A measured size as the seller wrote it when they stated it (within 3 %): (value, unit, the other system's stated
+    figure or None); else the measured size in ``unit``."""
+    near = [row for row in _stated_lengths(product) if abs(row[0] - mm) <= mm * .03]
+    metric = next((row for row in near if row[2] in ('mm', 'cm', '毫米', '厘米', '公分')), None)
+    imperial = next((row for row in near if row[2] == 'in'), None)
+    first, other = (imperial, metric) if unit == 'in' else (metric, imperial)
+    if not first:
+        first, other = other, None
+    if not first:
+        value, shown = _measure(mm, unit)
+        return value, shown, None
+    unit_of = {'毫米': 'mm', '厘米': 'cm', '公分': 'cm'}.get(first[2], first[2])
+    alt = {'value': float(other[1]), 'unit': {'毫米': 'mm', '厘米': 'cm', '公分': 'cm'}.get(other[2], other[2])} if other else None
+    return float(first[1]), unit_of, alt
+
+
 def _measure(mm, unit):
     if unit == 'in':
         return round(mm / 25.4, 1), 'in'
@@ -913,12 +1010,27 @@ def _measure(mm, unit):
 
 
 def jobs_for(kind, ctx):
-    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. When the
-    copywriter wrote this page's lines, the same versions with the template's own lines follow."""
-    if not (ctx.get('copy') or {}).get(kind):
-        return [{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, ctx))]
-    return [{**job, '_lines': 'model'} for job in _recropped(_jobs_for(kind, ctx))] + \
-           [{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, {**ctx, 'copy': {}}))]
+    """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. The lines are
+    the copywriter's (when it wrote this page's), then the product's name as headline, then the template's own short line."""
+    lists = []
+    if (ctx.get('copy') or {}).get(kind):
+        lists.append([{**job, '_lines': 'model'} for job in _recropped(_jobs_for(kind, ctx))])
+    plain = {**ctx, 'copy': {}}
+    lists.append([{**job, '_lines': 'name'} for job in _recropped(_jobs_for(kind, plain))])
+    lists.append([{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, {**plain, 'stock_lines': True}))])
+    out = []; seen = set(); offset = 0
+    for jobs in lists:
+        if not jobs:
+            continue
+        heads = {job.get('headline') for job in jobs}
+        if heads <= seen:
+            continue                         # the same lines again (a page whose headline is not the name's)
+        seen |= heads
+        top = 0
+        for job in jobs:                    # crop variants keep their group, numbered across the lists
+            out.append({**job, '_group': job.get('_group', 0) + offset}); top = max(top, job.get('_group', 0))
+        offset += top + 1
+    return out
 
 
 CROP_SHIFTS = ((0, -.2), (0, .2), (-.2, 0), (.2, 0))
@@ -941,10 +1053,54 @@ def _recropped(jobs):
         if not name or not any((job.get('assets') or {}).get(row.get('detail'), {}).get('_parts') for row in job[name]):
             continue
         for dx, dy in CROP_SHIFTS:
-            rows = [{**row, 'focus': [round(min(1, max(0, (row.get('focus') or [.5, .5])[0] + dx)), 3),
-                                      round(min(1, max(0, (row.get('focus') or [.5, .5])[1] + dy)), 3)]} if row.get('detail') else row for row in job[name]]
+            # a close-up cut round its feature's spot moves half as far, so the spot stays in the middle of the frame
+            scale = lambda row: .5 if (job.get('assets') or {}).get(row.get('detail'), {}).get('_centred') else 1
+            rows = [{**row, 'focus': [round(min(1, max(0, (row.get('focus') or [.5, .5])[0] + dx * scale(row))), 3),
+                                      round(min(1, max(0, (row.get('focus') or [.5, .5])[1] + dy * scale(row))), 3)]} if row.get('detail') else row for row in job[name]]
             out.append({**job, name: rows})
     return out
+
+
+def _data_line(kind, ctx):
+    """A headline made of the product's own facts for a page the copywriter did not write: the selling line the seller gave,
+    the parts a close-up shows, the strongest figure, the occasions the scenes show. None when the data has nothing to say."""
+    product = ctx['product']; zh = ctx['language'] == 'zh'; name = _clip(product['title'] or '', 26)
+    features = [row for row in product['features'] if row.get('title')]
+    if kind == 'T01':
+        line = product.get('subline') or product.get('headline')
+        return _clip(line, 44) if line else None
+    if kind == 'T02':
+        shown = [_clip(product['features'][index]['title'], 22) for index, _ in ctx.get('macros', [])[:2]] or [_clip(row['title'], 22) for row in features[:2]]
+        if len(shown) >= 2:
+            return ('%s\n[[%s]]' % (shown[0], shown[1])) if zh else '%s,\n[[%s]]' % (shown[0], shown[1].lower())
+        return None
+    if kind == 'T04':
+        figure = next((row for row in product['figures'] if row.get('value')), None)
+        if figure:
+            return ('[[%s%s]] %s' % (figure['value'], figure.get('unit', ''), figure['label'])) if zh else '[[%s %s]]\n%s' % (figure['value'], figure.get('unit', ''), figure['label'].lower())
+        return None
+    if kind == 'T08':
+        places = [row['title'] for row in ctx.get('scenes') or [] if row.get('title') and row.get('role') in ('use', 'place', 'other')][:2]
+        # "On the job site" and "In the workshop" read "from the job site to the workshop"; zh "在车间" reads "车间".
+        places = [re.sub(r'^(on|in|at|by|for|inside|around)\s+', '', place.strip(), flags=re.I) if not zh else re.sub(r'^[在于]', '', place.strip())
+                  for place in places]
+        if len(places) == 2 and places[0].lower() != places[1].lower():
+            return ('从%s\n[[到%s]]' % (places[0], places[1])) if zh else 'From %s\n[[to %s]]' % (places[0].lower(), places[1].lower())
+        return None
+    return None
+
+
+def _data_eyebrow(ctx, headline):
+    """A kicker that says something: the product's name, or its category when the headline already names it."""
+    product = ctx['product']; name = _clip(product['title'] or '', 24)
+    if name and name.lower() not in TPL_PLAIN(headline).lower():
+        return name
+    category = str(product.get('_category') or '')
+    return _clip(category, 24) or None
+
+
+def TPL_PLAIN(text):
+    return re.sub(r'\[\[|\]\]|[{}]', '', str(text or ''))
 
 
 def _jobs_for(kind, ctx):
@@ -954,6 +1110,13 @@ def _jobs_for(kind, ctx):
         if written.get(key):
             t['%s_%s' % (kind, key)] = written[key]          # the copywriter's line for this product, when it passed its checks
     title = product['title'] or ''; headline = product['headline'] or title
+    if not ctx.get('stock_lines'):
+        # No usable line from the copywriter: words from the product's own data, never a stock phrase.
+        line = _data_line(kind, ctx)
+        if line and not written.get('headline'):
+            t['%s_headline' % kind] = line
+        if not written.get('eyebrow') and '%s_eyebrow' % kind in t:
+            t['%s_eyebrow' % kind] = _data_eyebrow(ctx, t.get('%s_headline' % kind, ''))
     if kind == 'T12':
         # The poster takes a picture the image model made; a studio render of the workpiece stays on the inside pages.
         made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
@@ -982,7 +1145,7 @@ def _jobs_for(kind, ctx):
                         **{**base, 'headline': bare, 'support': None}))
         return out
     if kind == 'T01':
-        points = [{'title': _clip(product['features'][index]['title'], 24), 'body': _clip(product['features'][index].get('detail'), 48), 'anchor': point}
+        points = [{'title': _keep_together(_clip(product['features'][index]['title'], 24)), 'body': _body(product['features'][index].get('detail'), 48), 'anchor': point}
                   for index, point in ctx['anchors'] if point]
         hero = assets['hero']; wide = hero['width'] / hero['height'] >= .8
         modes = ('band', 'diagonal') if wide else ('diagonal', 'band')
@@ -1003,7 +1166,7 @@ def _jobs_for(kind, ctx):
         called = {index for index, _ in ctx['anchors'][:4]} if 'T01' in (ctx.get('kinds') or ()) else set()
         fresh = [(index, name) for index, name in ctx['details'] if index not in called]
         chosen = fresh if len(fresh) >= 2 else ctx['details']      # the callouts' points again only when there are not two others
-        details = [{'title': _clip(product['features'][index]['title'], 22), 'body': _clip(product['features'][index].get('detail'), 40),
+        details = [{'title': _keep_together(_clip(product['features'][index]['title'], 22)), 'body': _body(product['features'][index].get('detail'), 40),
                     'detail': name, 'focus': (ctx.get('focus') or {}).get(name, [.5, .5]), 'part_box': assets[name].get('_part_box')}
                    for index, name in chosen]
         details = [{key: value for key, value in row.items() if value is not None} for row in details]
@@ -1017,7 +1180,7 @@ def _jobs_for(kind, ctx):
                 out.append(_job(kind, ctx, **fields))
         return out
     if kind == 'T02':
-        rows = [{'title': _clip(product['features'][index]['title'], 22), 'body': _clip(product['features'][index].get('detail'), 48), 'detail': name,
+        rows = [{'title': _keep_together(_clip(product['features'][index]['title'], 22)), 'body': _body(product['features'][index].get('detail'), 48), 'detail': name,
                  'focus': (ctx.get('focus') or {}).get(name, [.5, .5]), 'parts': assets[name].get('_parts') or []} for index, name in ctx['macros']]
         out = []
         for count in (2, 1):
@@ -1073,10 +1236,11 @@ def _jobs_for(kind, ctx):
                                                            [box[0], box[1]], [box[0], box[3]], [-1, 0], box[0] - .07),
                                                           (across_key, t[across_key][:1].upper() if ctx['language'] == 'en' else across_key[:1].upper(), across,
                                                            [box[0], box[3]], [box[2], box[3]], [0, 1], box[3] + .07)):
-            value, shown = _measure(mm, unit)
+            # the seller's own figure ("200 mm (8 in)") wins over the measured one converted (20 cm / 7.9 in)
+            value, shown, alt = _stated_measure(mm, unit, product)
             dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
-                         'side': side_dir, 'at': at})
-        depth_value, depth_unit = _measure(depth, unit)
+                         'side': side_dir, 'at': at, **({'alt': alt} if alt else {})})
+        depth_value, depth_unit, _ = _stated_measure(depth, unit, product)
         # Each sentence on its own line, so the depth figure never wraps away from its label.
         note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + ('%s %g\u00a0%s%s' % (t[depth_key], depth_value, depth_unit, '。' if ctx['language'] == 'zh' else '.'))
         # Figures on the product first (the Amazon dimension pages); a table when the page is too narrow for them.
@@ -1122,7 +1286,7 @@ def _measured(qa):
                              'shows': 'the whole product, uncropped' if whole and inside else 'a crop by design (close-up or scene frame)',
                              'fully_inside_page': bool(inside)})
     return {'layout_checks_passed': not hard_issues(qa), 'canvas_px': [width, height], 'pictures': pictures,
-            'smallest_important_text_px_at_360': small, 'text': [{'id': row['id'], 'lines': row.get('lines'), 'text': row.get('text', '')[:40]}
+            'smallest_important_text_px_at_360': small, 'text': [{'id': row['id'], 'lines': row.get('lines'), 'text': row.get('text', '')[:200]}
                                                                   for row in texts][:14], 'notes': qa.get('notes', [])[:3]}
 
 
@@ -1239,8 +1403,17 @@ def lay_out(kind, ctx, out, work):
     problems = hard_issues(qa)
     if problems:
         notes.append('版式检查仍有 %d 处问题：%s。' % (len(problems), '、'.join(sorted({row['check'] for row in problems}))))
-    if any(row.get('check') == 'font_missing' for row in qa.get('issues', [])):
-        notes.append('本机缺少 Noto Sans 字体，已用系统字体代替。')
+    lacking = sorted({str(row.get('id', '')).rsplit(' ', 1)[0] for row in qa.get('issues', []) if row.get('check') == 'font_missing'})
+    if lacking:
+        chinese = [name for name in lacking if 'SC' in name or 'CJK' in name]
+        notes.append(('中文字体 %s 还没有下载成功，这张图暂用系统中文字体（如微软雅黑）；联网后重新生成即可。' % '、'.join(chinese)) if chinese == lacking
+                     else '字体 %s 没有找到，已用系统字体代替；请确认 brandkit/fonts 完整，或联网后重新生成。' % '、'.join(lacking))
     for line in qa.get('notes', [])[:2]:
         notes.append(str(line)[:160])
+    # The same page as an editable design file: live text, vector shapes and named layers (brandkit/engine/svg_export.js).
+    final = current[0] if 'current' in locals() else job
+    try:
+        brandkit_render.export_svg(kind, final, out.parent / 'svg' / (out.stem + '.svg'), work)
+    except Exception as exc:          # the PNG stands without it
+        notes.append('可编辑 SVG 没有导出：%s' % str(exc)[:120])
     return qa, notes, record

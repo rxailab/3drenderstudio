@@ -58,7 +58,8 @@ SEGMENTS = (
      'label': '自雇技工与上门维修者', 'question': '是否便携、能否适应工况',
      'priority': '现场操作、手握、腰包、装车', 'focus': '真实尺度、使用姿势、可靠性',
      'words': ('工具包', '工具箱', '腰包', '便携', '上门', '维修', '锯片', '钻头', '开孔器', '凿', 'tool bag', 'toolbox',
-               'tool box', 'portable', 'blade', 'hole saw', 'chisel', 'drill bit')},
+               'tool box', 'portable', 'blade', 'hole saw', 'chisel', 'drill bit', 'pliers', '钳子', '钢丝钳', '老虎钳', '尖嘴钳',
+               '剥线钳', 'wire stripper', 'crimp')},
     {'id': 'site_team', 'scene': 'A small renovation jobsite: a bare plastered room with a stepladder and dust sheets. Two installers work with the product between them, one taking a tool from it.',
      'place': 'A small renovation jobsite: a bare plastered room with a stepladder and dust sheets, the product standing ready in the middle of the work with tools laid out on it.',
      'label': '小型施工与安装团队', 'question': '如何运输、配置和管理',
@@ -71,7 +72,7 @@ SEGMENTS = (
      'label': '专业维修与工业维护采购', 'question': '型号是否适配、如何选型',
      'priority': '套筒排列、接口、规格、技术细节', 'focus': '明确尺寸与边界、可核查信息',
      'words': ('万用表', '测试仪', '仪表', '套筒', '扭力', '探头', '钳形表', '规格', 'multimeter', 'tester', 'socket set',
-               'torque', 'probe', 'clamp meter', 'gauge')},
+               'torque', 'probe', 'clamp meter', 'gauge', 'caliper', '卡尺', 'micrometer', '千分尺')},
     {'id': 'home_garden', 'scene': 'A small private garden on a mild day: a trimmed lawn, a hedge and a wooden shed. A homeowner uses the product at an easy pace.',
      'place': 'A small private garden on a mild day: a trimmed lawn, a hedge and a wooden shed, the product resting on the grass next to the work it is for.',
      'label': '家庭园艺与庭院维护者', 'question': '是否适合空间、是否好操作',
@@ -85,6 +86,11 @@ SEGMENTS = (
      'words': ('割灌机', '电锯', '链锯', '高枝锯', '吹风机', '园林', '绿地', '绿化', 'brushcutter', 'chainsaw', 'pole saw',
                'blower', 'landscap')},
 )
+# The next most likely buyer when the product's words point at no second segment: a different setting for the third
+# scene of a listing, so it does not repeat the first.
+NEIGHBOUR = {'home_starter': 'diy_project', 'diy_project': 'home_starter', 'workshop_hobbyist': 'mobile_tradesperson',
+             'mobile_tradesperson': 'site_team', 'site_team': 'mobile_tradesperson', 'industrial_maintenance': 'mobile_tradesperson',
+             'home_garden': 'pro_landscape', 'pro_landscape': 'home_garden'}
 # A reference whose picture shows the product at work, usually in someone's hands.
 IN_USE = re.compile(r'使用|操作|锯切|标记|探测|组装|拧|钻孔|喷涂|工作现场|工作场景|排查|用[^，。；：]{1,14}(?:打磨|处理)|mowing|on the job|troubleshooting', re.I)
 _LOCK = threading.Lock()

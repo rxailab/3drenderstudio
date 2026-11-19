@@ -844,6 +844,9 @@ dialog::backdrop { background: rgba(10,10,11,.6); }
 .listing-preset input { position: absolute; opacity: 0; pointer-events: none; }
 .listing-preset:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .listing-preset:has(input:focus-visible) { outline: 2px solid var(--accent-line); }
+.listing-font-display { font-size: 22px; font-weight: 800; line-height: 1.05; color: var(--ink-strong); text-transform: uppercase; }
+.listing-font-cjk { font-size: 17px; font-weight: 700; line-height: 1.1; color: var(--ink-strong); }
+.listing-font-names { font-size: 10px; opacity: .8; }
 .listing-color { display: flex; align-items: center; gap: 8px; }
 .listing-color input[type="color"] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: none; }
 .listing-color input[type="color"]:disabled { opacity: .45; }
