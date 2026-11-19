@@ -254,6 +254,11 @@ function solve(pl) {
         const pts = straight ? [ps, a] : [ps, [a[0], ps[1]], a];
         out.push({side, y, rect, pts, end: a, bends: straight ? 0 : 1});
       }
+      { const inkX0 = x, inkX1 = x + L.w;
+        if (a[0] >= inkX0 + 24 && a[0] <= inkX1 - 24) {
+          if (a[1] < y - 92) out.push({side, y, rect, pts: [[a[0], y - 20], a], end: a, bends: 0, vport: true, drop: true});
+          if (a[1] > y + L.h + 92) out.push({side, y, rect, pts: [[a[0], y + L.h + 20], a], end: a, bends: 0, vport: true, drop: true});
+        } }
       // top / bottom port, near the inner end of the label: vertical run then horizontal into the part
       const rx = inner - dir * 30;
       if ((a[0] - rx) * dir > 40) {
@@ -269,6 +274,7 @@ function solve(pl) {
       // a line must not run back across its own label
       if (!bad) for (let k = 1; k + 1 < c.pts.length; k++) if (T.segRect(c.pts[k], c.pts[k + 1], c.rect, 10)) bad = true;
       if (c.vport && T.segRect(c.pts[0], c.pts[1], c.rect, -2)) bad = true;
+      if (c.drop && over > (job.drop_over_max ?? 200)) bad = true;
       c.bad = bad;
       c.len = len; c.over = over;
       c.cost = len + (len > 0.25 * W ? 600 : 0) + c.bends * 70 + over * 1.6 + (c.vport ? 120 : 0) + (len < 80 ? 300 : 0)
@@ -337,6 +343,7 @@ function search() {
     const ays = aysFor(sf), aPref = ays[0];
     for (const ax of axs) for (const ay of ays) {
       const pl = placement(sf, ax, ay);
+      { const iw = hero.width * pl.s, ih = hero.height * pl.s; if (!theta && (pl.cX - iw / 2 < -0.5 || pl.cX + iw / 2 > W + 0.5 || pl.cY - ih / 2 < -0.5 || pl.cY + ih / 2 > H + 0.5)) continue; }
       const pen = Math.abs(ax - 0.5) * 500 + Math.abs(ay - aPref) * 260 + (1 - sf) * 3000;
       if (best && pen >= best.score) continue;
       const sol = feats.length ? solve(pl) : {pos: [], total: 0};
@@ -450,7 +457,8 @@ function marker(id, pts, a) {
 }
 T.layoutInfo.zones = zones;
 // the brand's badges (warranty, PRO…) in the body's free corners, clear of the product, labels and leaders
-T.placeBadges({x: m, y: Math.max(m, bodyTop + 28), w: W - 2 * m, h: bodyBottom - Math.max(m, bodyTop + 28) - Math.max(28, m - (H - bodyBottom))}, {max: 2, style: 'seal'});
+{ const y0 = Math.max(m, bodyTop + 28), x0 = notch ? notch.x + notch.w + 48 : m, yb = Math.max(y0 + 200, notch ? notch.y + notch.h + 40 : y0 + 240);
+  T.placeBadges({x: x0, y: y0, w: W - m - x0, h: yb - y0}, {max: 1, style: 'seal'}); }
 T.watermark();
 T.finish();
 })();

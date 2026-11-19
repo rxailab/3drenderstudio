@@ -292,6 +292,58 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(asked.call_args_list[0].kwargs['image_path'], 'a.png')
         self.assertEqual(([row['title'] for row in out], out[0]['body'], out[0].get('caption'), done), (['窗边木桌', '日常外出'], '托特包立在桌上，旁有绿植', brandkit_set.CAPTIONED, 1))
 
+    def test_a_scene_title_naming_a_place_already_shown_is_refused(self):
+        import brandkit_review
+        rows = [{'path': 'a.png', 'title': 'x', 'body': '', 'role': 'use'}, {'path': 'b.png', 'title': 'y', 'body': '', 'role': 'place'},
+                {'path': 'c.png', 'title': 'On a house call', 'body': 'Kept', 'role': 'other'}]
+        answers = iter([{'title': 'Stripping wire', 'body': 'Grips the copper firmly'}, {'title': 'In the workshop', 'body': 'Rests on the bench'},
+                        {'title': 'At the workbench', 'body': 'Cuts copper cleanly'}])
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(answers)) as asked:
+            out, done = brandkit_set.seen_captions({'language': 'en', 'title': 'Pliers'}, rows)
+        self.assertEqual([row['title'] for row in out], ['Stripping wire', 'In the workshop', 'On a house call'])
+        self.assertEqual(done, 2)
+        self.assertIn('task', asked.call_args_list[0].args[2]['shows']); self.assertIn('place', asked.call_args_list[1].args[2]['shows'])
+        self.assertTrue(brandkit_set._same_place('在工坊里', '工作台上'))
+        self.assertFalse(brandkit_set._same_place('Cutting wire', 'Stripping wire'))
+
+    def test_the_third_scene_has_its_own_setting_when_no_other_buyer_is_named(self):
+        import scene_audience, scene_stylist
+        first = {'scene': 'Hands cut copper wire on a wooden bench.', 'segment_id': 'workshop_hobbyist', 'people': True, 'framing': 'hands',
+                 'summary': 'workshop plan', 'reference_id': 'R1', 'reason': 'why'}
+        settings = {'hint': '', 'audience': 'auto', 'people': 'auto'}
+        with patch.object(scene_stylist, 'propose', return_value=first), patch.object(scene_stylist, '_source_image', return_value=None), \
+                patch.object(scene_audience, 'rank', return_value=[]):
+            briefs = brandkit_set.scene_briefs({'name': 'Thing'}, settings, 3)
+        third = briefs[2]['proposal']
+        self.assertEqual(third['segment_id'], scene_audience.NEIGHBOUR['workshop_hobbyist'])
+        self.assertNotIn(first['scene'], third['scene']); self.assertIsNone(third['reference_id'])
+        self.assertEqual(scene_audience.rank('Combination Pliers', 'Combination Pliers')[:1], ['mobile_tradesperson'])
+        self.assertNotIn('mobile_tradesperson', scene_audience.rank('wireless earbuds', 'wireless earbuds'))
+
+    def test_close_ups_of_located_points_are_cut_from_the_heros_own_camera(self):
+        """The points are found on the hero: the zoom it is cropped from must be the same view (a flat tool's size page
+        is drawn from above, which once turned the zoom top-down too)."""
+        project = {'model_path': 'm.glb', 'plan': {'rotation': [0, 0, 0], 'shots': [{'id': 'hero', 'azimuth': 35, 'elevation': 24}]},
+                   'analysis': {'features': {'dimensions': [200, 60, 15]}}}
+        product = {'features': [{'title': 'Jaws', 'point': [.27, .42], 'parts': ['Jaw']}], '_model_parts': [], 'usecase': {'enabled': False}}
+        rows = [{'kind': kind} for kind in ('T01', 'T02', 'T06')]
+        with patch.object(listing, 'display_rotation', return_value=([0, 0, 0], False)):
+            requests = listing.picture_requests(project, product, 200, rows)
+        self.assertEqual(requests['side']['camera']['elevation'], 89)                       # the flat tool's size page, from above
+        self.assertEqual(requests['zoom']['camera'], requests['hero']['camera'])
+        self.assertEqual(requests['zoom']['size'], [3600, 3600])
+
+    def test_a_scene_mismatch_is_not_a_veto_on_a_page_without_a_scene(self):
+        import brandkit_review
+        answer = {'scores': {key: value for key, value in brandkit_review.CRITERIA.items()}, 'issues': [], 'summary': '',
+                  'vetoes': [{'kind': 'scene_product_mismatch', 'evidence': 'handle all red'}]}
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), patch.object(brandkit_review, '_ask', return_value=answer):
+            closeup = brandkit_review.review('T02', {'canvas': {}, 'assets': {'macro0': {}}}, 'p.png', {'language': 'en'}, facts={'title': 'x'})
+            scene = brandkit_review.review('T08', {'canvas': {}, 'assets': {'scene1': {}}}, 'p.png', {'language': 'en'}, facts={'title': 'x'})
+        self.assertEqual(closeup['vetoes'], [])
+        self.assertEqual([row['kind'] for row in scene['vetoes']], ['scene_product_mismatch'])
+
     def test_each_language_keeps_its_own_scene_captions(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': '办公随行', 'body': ''}]
@@ -424,7 +476,7 @@ class LayoutTests(StoreCase):
         build = max((self.data / 'fixture' / 'listing').glob('build-*'), key=lambda path: path.stat().st_mtime)
         job = json.loads((build / 'jobs' / 'T01.json').read_text())[-1]
         self.assertEqual(job['fonts']['pairing'], 'poster'); self.assertEqual(job['texture'], 'diagonal')
-        self.assertEqual([row['text'] for row in job['badges']], ['2 Year Warranty', 'PRO'])
+        self.assertEqual([row['text'] for row in job['badges']], ['2 Year Warranty'])        # one badge on the main image
         qa = brandkit_render.render('T01', job, self.data / 'again.png', work=self.data)
         ids = {row['id'] for row in qa['elements']}
         self.assertIn('texture', ids)

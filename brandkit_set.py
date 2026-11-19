@@ -581,9 +581,12 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
+SCENE_PLAN = 2        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting)
+
+
 def scene_key(project, product, settings):
     plan = project.get('plan') or {}
-    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings],
+    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -608,11 +611,18 @@ def scene_briefs(project, settings, count):
         metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
         text = ' '.join(str(value) for value in (project.get('name', ''), metadata.get('product_category', ''), settings['hint']))
         others = [item for item in scene_audience.rank(text, text) if item != segment]
+        if not others and segment:
+            # nothing else in the product's words: the neighbouring buyer, never the first scene again
+            neighbour = scene_audience.NEIGHBOUR.get(segment)
+            others = [neighbour] if neighbour and scene_audience.segment(neighbour) else []
         other = others[0] if others else None
         wants = first.get('people') if settings['people'] == 'auto' else settings['people'] in ('include', 'hands')
         third = {**first, 'segment_id': other or segment, 'people': bool(wants), 'framing': first.get('framing') if wants else None,
                  'scene': scene_audience.fixed_scene(other, bool(wants)) if other else
                           (first.get('scene', '') + ' Another setting where the same buyer would use it.')}
+        if other:
+            # the third scene's own plan, not the first one's carried over
+            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='')
         briefs.append({'proposal': third, 'role': 'other'})
     return briefs[:count]
 
@@ -670,11 +680,32 @@ def captions(project, product, briefs):
 
 
 SEEN = ('You caption one picture of a product listing set: a scene the image model made with the product in it. Look at the '
-        'picture. Title: the occasion of use it shows, as a shopper would name it ("At the desk", "On the job site", "Weekend away"), '
-        'never one it only suggests (no "office" without office things in view). Line: what the product is doing for its owner there, '
-        'as the picture shows it ("Stands upright, ready to grab"), not a description of the room. No numbers, prices, brands or claims '
-        'the picture does not show. Use a title and a line not in titles_already_used / lines_already_used. Respect the character '
-        'limits strictly. In Chinese, write the line as two short clauses joined by "，", each at most 8 characters.')
+        'picture. Title: what `shows` asks for (the task being done, or the place), as a shopper would name it ("Stripping wire", '
+        '"At the desk", "Weekend away"), only what is in view (no "office" without office things in view, no "job site" for a '
+        'bench). Line: what the product is doing for its owner there, as the picture shows it ("Stands upright, ready to grab"), not '
+        'a description of the room. No numbers, prices, brands or claims the picture does not show. The title must name a different '
+        'place or task from every title in titles_already_used (workshop, workbench and bench are the same place; so are garage and '
+        'shed), and the line must not repeat lines_already_used. Respect the character limits strictly. In Chinese, write the line as '
+        'two short clauses joined by "，", each at most 8 characters.')
+SHOWS = {'use': 'the product at work: title the task being done', 'place': 'the product at rest where it is kept or used: title the place',
+         'other': 'a different setting from the other pictures: title the place or the task'}
+
+
+PLACE_WORDS = {'workbench': 'shop', 'bench': 'shop', 'workshop': 'shop', 'shop': 'shop', 'garage': 'shed', 'shed': 'shed',
+               '工作台': '工坊', '工坊': '工坊', '车间': '工坊', '工作间': '工坊', '台面': '工坊'}
+_TITLE_FILLER = {'at', 'in', 'on', 'the', 'a', 'an', 'by', 'for', 'of', 'to', 'and', 'with'}
+
+
+def _same_place(title, other):
+    """Whether two scene titles name the same place ("In the workshop" / "At the workbench", the words for one place counted
+    as one) or say the same thing in other filler words."""
+    def words(text):
+        text = str(text or '').lower()
+        found = {PLACE_WORDS.get(word, word) for word in re.findall(r'[a-z]+', text) if word not in _TITLE_FILLER and len(word) > 2}
+        found |= {value for key, value in PLACE_WORDS.items() if re.search(r'[\u4e00-\u9fff]', key) and key in text}
+        return found
+    a, b = words(title), words(other); places = set(PLACE_WORDS.values())
+    return bool(a & b & places) or (bool(a) and a == b)
 
 
 CAPTIONED = 'occasion'          # how the captions were written; older ones are written again once
@@ -700,10 +731,11 @@ def seen_captions(product, rows):
         try:
             facts = {'product': product['title'], 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                      'title_max_chars': limit[0], 'line_max_chars': limit[1], 'titles_already_used': sorted(taken),
-                     'lines_already_used': sorted(said)}
+                     'lines_already_used': sorted(said), 'shows': SHOWS.get(row.get('role'), SHOWS['other'])}
             answer = brandkit_review._ask(vision, SEEN, facts, schema, image_path=row['path'])
             title = ' '.join(str(answer.get('title', '')).split()); body = _fit_line(' '.join(str(answer.get('body', '')).split()), limit[1])
-            if title and len(title) <= limit[0] and title not in taken and (not body or body not in said) and not re.search(r'\d', title + body):
+            if (title and len(title) <= limit[0] and title not in taken and not any(_same_place(title, other) for other in taken)
+                    and (not body or body not in said) and not re.search(r'\d', title + body)):
                 captions = {**(row.get('captions') or {}), language: {'title': title, 'body': body, 'how': CAPTIONED}}
                 row = {**row, 'title': title, 'body': body, 'caption': CAPTIONED, 'captions': captions}; done += 1
         except Exception:
@@ -825,7 +857,7 @@ def _headline(text, language, limit):
 
 
 # Pages that carry the brand's badge texts (TPL.badge), and how many: the main image and the poster.
-BADGED = {'T01': 2, 'T12': 1}
+BADGED = {'T01': 1, 'T12': 1}
 
 
 def _palette(template_id, brand):
@@ -1021,8 +1053,10 @@ def _recropped(jobs):
         if not name or not any((job.get('assets') or {}).get(row.get('detail'), {}).get('_parts') for row in job[name]):
             continue
         for dx, dy in CROP_SHIFTS:
-            rows = [{**row, 'focus': [round(min(1, max(0, (row.get('focus') or [.5, .5])[0] + dx)), 3),
-                                      round(min(1, max(0, (row.get('focus') or [.5, .5])[1] + dy)), 3)]} if row.get('detail') else row for row in job[name]]
+            # a close-up cut round its feature's spot moves half as far, so the spot stays in the middle of the frame
+            scale = lambda row: .5 if (job.get('assets') or {}).get(row.get('detail'), {}).get('_centred') else 1
+            rows = [{**row, 'focus': [round(min(1, max(0, (row.get('focus') or [.5, .5])[0] + dx * scale(row))), 3),
+                                      round(min(1, max(0, (row.get('focus') or [.5, .5])[1] + dy * scale(row))), 3)]} if row.get('detail') else row for row in job[name]]
             out.append({**job, name: rows})
     return out
 

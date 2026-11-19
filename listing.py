@@ -713,13 +713,14 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
         dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
-        elevation = 89 if _flat(dims) else 0
+        side_elevation = 89 if _flat(dims) else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
-                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': elevation, 'projection': 'orthographic', 'margin': .06},
+                            'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': side_elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
     # Selling points found on the main picture are shown close up by cropping round the spot in the same view at twice the size.
     if kinds & {'T03', 'T02'} and any(product['features'][index].get('point') for index, _ in _focus_features(product, 6)):
-        requests['zoom'] = components.cutout_request(model, plan, size_mm, azimuth, elevation, 3600)
+        # the hero's own camera at twice the size, so a point found on the hero is the same spot here
+        requests['zoom'] = {**copy.deepcopy(requests['hero']), 'size': [3600, 3600]}
     # Close-ups of the parts the selling points name: a medium one for the detail column, a tight one for the dark close-ups.
     for key, kind, limit, focal, margin, pixels in (('detail', 'T03', 6, 85, .2, 1600), ('macro', 'T02', 2, 120, .06, 2200)):
         if kind in kinds:
@@ -882,19 +883,29 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if all(math.hypot(point[0] - other[0], point[1] - other[1]) >= .05 for _, other in kept):
                 kept.append((index, point))
         anchors = kept
+        # Close-ups cut from the zoom: only when it was taken from the hero's camera (the points are the hero's), and one
+        # per spot: a point inside half a window of one already shown would give the same picture twice.
+        same_view = 'zoom' in shots and all(shots['zoom']['result'].get(key) == shots['hero']['result'].get(key) for key in ('azimuth', 'elevation'))
+        taken = {'detail': [], 'macro': []}
         for index, names in _focus_features(product, 6):
             point = product['features'][index].get('point')
-            if point and 'zoom' in shots:
+            if point and 'zoom' in shots and same_view is False:
+                notes.append('特写放大图与主图视角不一致，未用它裁特写。'); same_view = None
+            if point and same_view:
                 zoom = shots['zoom']['result']
                 for key, side, kind_list, ground in (('detail', .3, details, (38, 41, 45)), ('macro', .22, macros, (22, 24, 27))):
                     if key == 'macro' and len(macros) >= 2:
                         continue
+                    if any(math.hypot(point[0] - other[0], point[1] - other[1]) < side / 2 for other in taken[key]):
+                        continue
+                    taken[key].append(point)
                     name = '%s%d' % (key, index)
                     half = side / 2; x = min(max(point[0], half), 1 - half); y = min(max(point[1], half), 1 - half)
                     region = (round(x - half, 4), round(y - half, 4), round(x + half, 4), round(y + half, 4))
                     assets[name], _ = brandkit_set.flatten(shots['zoom']['path'], assets_folder / (name + '.png'), ground=ground, dark=True,
                                                            trim=False, region=region)
                     assets[name]['_parts'] = brandkit_set.part_map(zoom, region)
+                    assets[name]['_centred'] = True          # cut round the feature's own spot: recrops stay near it
                     focus[name] = [round((point[0] - region[0]) / side, 3), round((point[1] - region[1]) / side, 3)]
                     assets[name]['_part_box'] = [max(0, focus[name][0] - .25), max(0, focus[name][1] - .25), min(1, focus[name][0] + .25), min(1, focus[name][1] + .25)]
                     kind_list.append((index, name))

@@ -83,7 +83,8 @@ COPYWRITER = (
 VERIFIER = (
     'You check another reviewer\'s claims about one listing image. For each numbered claim, look at CURRENT_RENDER (and REFERENCE_IMAGE, '
     'the product\'s own render, for fidelity claims) and the measured layout, and say whether the claim is clearly true. measured_layout '
-    'is ground truth: a picture it says shows the whole product inside the page is not cropped. Default to real=false when you cannot '
+    'is ground truth: a picture it says shows the whole product inside the page is not cropped. A close-up or cropped frame shows '
+    'part of the product on purpose: colours or parts outside it are not a product mismatch. Default to real=false when you cannot '
     'clearly see it. Answer briefly in Simplified Chinese.')
 SET_REVIEW = (
     'You review a whole e-commerce listing set shown as a contact sheet (pages numbered in reading order). Say whether the set reads as one '
@@ -319,7 +320,12 @@ def review(kind, job, png, product, reference=None, measured=None, facts=None):
                   clean=_cleaned)
     scores = {key: max(0, min(CRITERIA[key], int(answer['scores'].get(key, 0)))) for key in CRITERIA}
     issues = [row for row in answer.get('issues', []) if isinstance(row, dict)][:MAX_ISSUES]
-    return {'score': sum(scores.values()), 'scores': scores, 'vetoes': answer.get('vetoes', [])[:4], 'issues': issues,
+    vetoes = answer.get('vetoes', [])
+    # A page with no generated scene has no scene to mismatch: on a 3D render or a close-up a missing colour is the crop, not a
+    # wrong product (the model's own fidelity is product_distorted).
+    if not any(str(key).startswith('scene') for key in (job.get('assets') or {})):
+        vetoes = [row for row in vetoes if row.get('kind') != 'scene_product_mismatch']
+    return {'score': sum(scores.values()), 'scores': scores, 'vetoes': vetoes[:4], 'issues': issues,
             'summary': str(answer.get('summary', ''))[:400], 'model': vision.get('model')}
 
 
