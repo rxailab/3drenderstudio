@@ -25,6 +25,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import brandkit_assets
 import brandkit_render
 
 # kind: (zh, en)
@@ -823,6 +824,10 @@ def _headline(text, language, limit):
     return text[:cut + 1] + '\n' + text[cut + 1:]
 
 
+# Pages that carry the brand's badge texts (TPL.badge), and how many: the main image and the poster.
+BADGED = {'T01': 2, 'T12': 1}
+
+
 def _palette(template_id, brand):
     tokens = brandkit_render.template_info(template_id)['tokens']
     palette = dict(tokens['palette'])
@@ -848,9 +853,17 @@ def _job(template_id, ctx, **fields):
     background = str(palette.get('bg', '')).lstrip('#')
     if ctx.get('light_product') and len(background) == 6 and sum(int(background[i:i + 2], 16) for i in (0, 2, 4)) / 765 > .8:
         palette['bg'] = '#D5D9DD'        # a bright steel or white product on a near-white page would vanish: a cool grey ground
+    brand = ctx.get('brand'); record = getattr(brand, 'record', None) or {}
+    extra = {}
+    badges = [text for text in (record.get('badges') or []) if isinstance(text, str) and text.strip()]
+    if badges and template_id in BADGED and 'badges' not in fields:
+        extra['badges'] = [{'text': text, 'style': record.get('badge_style') or 'auto'} for text in badges[:BADGED[template_id]]]
+    if record.get('texture') and record['texture'] != 'none':
+        extra['texture'] = record['texture']
     return {'template_id': template_id, 'variant': 'studio', 'canvas': {'width': width, 'height': height}, 'lang': ctx['language'],
             'safe_margin': tokens.get('safe_margin', 84), 'min_margin': tokens.get('min_margin', 60),
-            'palette': palette, 'publishability': 'user_product', **fields}
+            'palette': palette, 'publishability': 'user_product',
+            'fonts': brandkit_assets.job_fonts(record.get('fonts'), ctx['language']), **extra, **fields}
 
 
 ICON_WORDS = ((('battery', '电池', 'mah'), 'battery-4'), (('volt', '电压'), 'bolt'), (('weight', '重量', '净重', 'kg', ' lb'), 'weight'),
@@ -925,6 +938,37 @@ def dimensions_mm(ctx):
     if ctx.get('flat'):            # a tool lying flat is shown from above: its length across, its width up, its thickness aside
         return [('length', across), ('width', hidden), ('thickness', height)]
     return [('width', across), ('height', height), ('depth', hidden)]
+
+
+LENGTH_MM = {'mm': 1, 'cm': 10, 'm': 1000, 'in': 25.4, 'inch': 25.4, 'inches': 25.4, '"': 25.4, '毫米': 1, '厘米': 10, '公分': 10}
+
+
+def _stated_lengths(product):
+    """Every length the seller wrote in the specs and figures, as (mm, number as written, unit): "200 mm (8 in)" gives two."""
+    found = []
+    texts = [str(row.get('value', '')) for row in product.get('specs') or []]
+    texts += ['%s %s' % (row.get('value', ''), row.get('unit', '')) for row in product.get('figures') or []]
+    for text in texts:
+        for number, unit in re.findall(r'(\d+(?:\.\d+)?)\s*(mm|cm|inches|inch|in|"|毫米|厘米|公分)(?![a-z])', text.lower()):
+            found.append((float(number) * LENGTH_MM[unit], number, {'inches': 'in', 'inch': 'in', '"': 'in'}.get(unit, unit)))
+    return found
+
+
+def _stated_measure(mm, unit, product):
+    """A measured size as the seller wrote it when they stated it (within 3 %): (value, unit, the other system's stated
+    figure or None); else the measured size in ``unit``."""
+    near = [row for row in _stated_lengths(product) if abs(row[0] - mm) <= mm * .03]
+    metric = next((row for row in near if row[2] in ('mm', 'cm', '毫米', '厘米', '公分')), None)
+    imperial = next((row for row in near if row[2] == 'in'), None)
+    first, other = (imperial, metric) if unit == 'in' else (metric, imperial)
+    if not first:
+        first, other = other, None
+    if not first:
+        value, shown = _measure(mm, unit)
+        return value, shown, None
+    unit_of = {'毫米': 'mm', '厘米': 'cm', '公分': 'cm'}.get(first[2], first[2])
+    alt = {'value': float(other[1]), 'unit': {'毫米': 'mm', '厘米': 'cm', '公分': 'cm'}.get(other[2], other[2])} if other else None
+    return float(first[1]), unit_of, alt
 
 
 def _measure(mm, unit):
@@ -1158,10 +1202,11 @@ def _jobs_for(kind, ctx):
                                                            [box[0], box[1]], [box[0], box[3]], [-1, 0], box[0] - .07),
                                                           (across_key, t[across_key][:1].upper() if ctx['language'] == 'en' else across_key[:1].upper(), across,
                                                            [box[0], box[3]], [box[2], box[3]], [0, 1], box[3] + .07)):
-            value, shown = _measure(mm, unit)
+            # the seller's own figure ("200 mm (8 in)") wins over the measured one converted (20 cm / 7.9 in)
+            value, shown, alt = _stated_measure(mm, unit, product)
             dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
-                         'side': side_dir, 'at': at})
-        depth_value, depth_unit = _measure(depth, unit)
+                         'side': side_dir, 'at': at, **({'alt': alt} if alt else {})})
+        depth_value, depth_unit, _ = _stated_measure(depth, unit, product)
         # Each sentence on its own line, so the depth figure never wraps away from its label.
         note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + ('%s %g\u00a0%s%s' % (t[depth_key], depth_value, depth_unit, '。' if ctx['language'] == 'zh' else '.'))
         # Figures on the product first (the Amazon dimension pages); a table when the page is too narrow for them.

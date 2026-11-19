@@ -449,6 +449,8 @@ function marker(id, pts, a) {
   for (const cls of ['mk-halo', 'mk-ring']) T.svgEl('rect', {x: a[0] - R, y: a[1] - R, width: 2 * R, height: 2 * R, class: cls});
 }
 T.layoutInfo.zones = zones;
+// the brand's badges (warranty, PRO…) in the body's free corners, clear of the product, labels and leaders
+T.placeBadges({x: m, y: Math.max(m, bodyTop + 28), w: W - 2 * m, h: bodyBottom - Math.max(m, bodyTop + 28) - Math.max(28, m - (H - bodyBottom))}, {max: 2, style: 'seal'});
 T.watermark();
 T.finish();
 })();

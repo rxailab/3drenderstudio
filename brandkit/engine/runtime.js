@@ -26,6 +26,7 @@
     // map palette tokens to CSS vars
     const pal = TPL.job.palette || {};
     for (const k of Object.keys(pal)) r.style.setProperty('--' + k, pal[k]);
+    if (TPL.job.texture) TPL.texture(TPL.job.texture);     // the brand's ground texture, under everything
     return r;
   };
 
@@ -33,9 +34,11 @@
      brandkit/vendor/fonts.css; laying out before they load would measure the fallback font). */
   TPL.ready = function (fn) {
     const zh = (TPL.job.lang || 'en') === 'zh';
-    const faces = ['900 40px Archivo', '800 40px Archivo', '700 40px Archivo', '800 40px "Barlow Condensed"', '700 40px "Barlow Condensed"',
-                   '600 40px "Barlow Condensed"', '400 40px Inter', '500 40px Inter', '600 40px Inter', '700 40px Inter']
-      .concat(zh ? ['400 40px "Noto Sans SC"', '700 40px "Noto Sans SC"', '900 40px "Noto Sans SC"'] : []);
+    const probe = (TPL.job.fonts && TPL.job.fonts.probe) || [['Archivo', 800], ['Barlow Condensed', 800], ['Inter', 400], ['Inter', 700]]
+      .concat(zh ? [['Noto Sans SC', 700]] : []);
+    // every weight a role is drawn in, so a variable face is loaded once for all of them
+    const faces = [];
+    for (const [f] of probe) for (const x of [400, 500, 600, 700, 800, 900]) faces.push(`${x} 40px "${f}"`);
     let done = false;
     const go = () => { if (done) return; done = true; fn(); };
     if (!document.fonts || !document.fonts.load) return go();
@@ -175,6 +178,163 @@
     l.style.top = (h - 12 - l.getBoundingClientRect().height) + 'px';
     TPL.box(box, x, y, Math.ceil(w), h);
     return { w: Math.ceil(w), h, el: box, move(nx, ny) { box.style.left = nx + 'px'; box.style.top = ny + 'px'; } };
+  };
+  /* ---------- common elements (project change): brand badges and ground textures ---------- */
+  /* A brand badge: a sticker-like mark (seal, burst, shield, ribbon, tag or pill) carrying one short brand text such as
+     "2 YEAR WARRANTY" or "PRO". Drawn as its own inline SVG with the text as a page text element over it, so the editable
+     export keeps the text live. Returns {w, h, el} or null when the text is empty. */
+  TPL.BADGE_STYLES = ['seal', 'burst', 'shield', 'ribbon', 'tag', 'pill'];
+  TPL.badgeSize = function (style) {
+    return ({ seal: [200, 200], burst: [218, 218], shield: [180, 210], ribbon: [300, 92], tag: [290, 88], pill: [290, 74] })[style] || [200, 200];
+  };
+  /* The width a one-line badge (ribbon, tag, pill) needs for ``text`` at height h: the text at 44% of h plus the ends. */
+  TPL.badgeWidth = function (text, style, h) {
+    const c = document.createElement('canvas').getContext('2d'), zh = (TPL.job.lang || 'en') === 'zh';
+    const fam = getComputedStyle(TPL.root).getPropertyValue(zh ? '--f-cjk' : '--f-cond') || 'sans-serif';
+    c.font = `800 ${Math.round(h * 0.44)}px ${fam}`;
+    const tw = c.measureText(zh ? String(text) : String(text).toUpperCase()).width * 1.06;
+    const ends = style === 'ribbon' ? 2 * (h * 0.32 + 18) : style === 'tag' ? h / 2 + 40 : h * 0.84 + 8;
+    return Math.round(Math.min(560, Math.max(h * 2.2, tw + ends)));
+  };
+  TPL.badge = function (id, text, x, y, style, opts = {}) {
+    text = String(text || '').trim();
+    if (!text) return null;
+    style = TPL.BADGE_STYLES.includes(style) ? style : 'seal';
+    let [w, h] = opts.size || TPL.badgeSize(style);
+    if (!opts.size && ['ribbon', 'tag', 'pill'].includes(style)) w = TPL.badgeWidth(text, style, h);
+    const ns = 'http://www.w3.org/2000/svg', box = TPL.el('div', { class: 'badge-el badge-' + style, 'data-qa': id, 'data-kind': 'shape', 'data-allow': id + '_t' }, opts.parent);
+    TPL.box(box, x, y, w, h);
+    const g = document.createElementNS(ns, 'svg'); g.setAttribute('width', w); g.setAttribute('height', h); g.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    g.style.position = 'absolute'; g.style.left = 0; g.style.top = 0; g.style.overflow = 'visible'; box.appendChild(g);
+    const add = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); g.appendChild(e); return e; };
+    const fill = opts.fill || 'var(--accent)', ink = opts.ink || 'var(--accent-ink,#fff)', cx = w / 2, cy = h / 2;
+    let inner = [w * 0.16, h * 0.2, w * 0.68, h * 0.6];          // where the text goes: x, y, w, h
+    if (style === 'seal') {
+      add('circle', { cx, cy, r: w / 2 - 2, fill });
+      add('circle', { cx, cy, r: w / 2 - 14, fill: 'none', stroke: ink, 'stroke-width': 3, 'stroke-dasharray': '2 7', 'stroke-linecap': 'round', opacity: 0.85 });
+      inner = [w * 0.15, h * 0.2, w * 0.7, h * 0.6];
+    } else if (style === 'burst') {
+      const n = 18, pts = [];
+      for (let i = 0; i < n * 2; i++) { const a = Math.PI * i / n - Math.PI / 2, r = i % 2 ? w / 2 * 0.84 : w / 2 - 1; pts.push((cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1)); }
+      add('polygon', { points: pts.join(' '), fill });
+      inner = [w * 0.19, h * 0.24, w * 0.62, h * 0.52];
+    } else if (style === 'shield') {
+      const d = `M${cx} 3 L${w - 4} ${h * 0.16} L${w - 4} ${h * 0.5} C${w - 4} ${h * 0.76} ${cx + w * 0.2} ${h * 0.9} ${cx} ${h - 3} C${cx - w * 0.2} ${h * 0.9} 4 ${h * 0.76} 4 ${h * 0.5} L4 ${h * 0.16} Z`;
+      add('path', { d, fill: opts.dark || 'var(--ink,#141414)', stroke: fill, 'stroke-width': 6, 'stroke-linejoin': 'round' });
+      inner = [w * 0.16, h * 0.24, w * 0.68, h * 0.46];
+      box.dataset.ink = 'light';
+    } else if (style === 'ribbon') {
+      const k = h * 0.32;
+      add('path', { d: `M0 0 H${w} L${w - k} ${cy} L${w} ${h} H0 L${k} ${cy} Z`, fill });
+      inner = [k + 10, h * 0.14, w - 2 * k - 20, h * 0.72];
+    } else if (style === 'tag') {
+      const k = h / 2;
+      add('path', { d: `M${k} 0 H${w - 10} Q${w} 0 ${w} 10 V${h - 10} Q${w} ${h} ${w - 10} ${h} H${k} L0 ${cy} Z`, fill });
+      add('circle', { cx: k * 0.72, cy, r: 8, fill: ink, opacity: 0.9 });
+      inner = [k + 8, h * 0.14, w - k - 26, h * 0.72];
+    } else {
+      add('rect', { x: 2, y: 2, width: w - 4, height: h - 4, rx: (h - 4) / 2, fill: 'none', stroke: fill, 'stroke-width': 5 });
+      inner = [h * 0.42, h * 0.14, w - h * 0.84, h * 0.72];
+      box.dataset.ink = 'accent';
+    }
+    const t = TPL.el('div', { class: 'txt badge-el-t', 'data-qa': id + '_t', 'data-kind': 'text', 'data-tier': 'secondary', 'data-maxlines': '3', 'data-allow': id }, box, text);
+    const color = box.dataset.ink === 'light' ? 'var(--cream,#fff)' : box.dataset.ink === 'accent' ? 'var(--accent)' : ink;
+    Object.assign(t.style, { position: 'absolute', left: inner[0] + 'px', top: inner[1] + 'px', width: inner[2] + 'px', textAlign: 'center', color,
+      fontFamily: 'var(--f-cond)', fontWeight: 800, textTransform: 'uppercase', lineHeight: 1, letterSpacing: '.02em', textWrap: 'balance' });
+    // the largest size at which the text fits the inner box in at most two lines
+    const zh = (TPL.job.lang || 'en') === 'zh';
+    if (zh) { t.style.fontFamily = 'var(--f-cjk)'; t.style.fontWeight = 900; t.style.letterSpacing = '0'; }
+    const oneLine = ['pill', 'ribbon', 'tag'].includes(style);
+    if (oneLine) t.style.whiteSpace = 'nowrap';
+    let fs = Math.round(Math.min(oneLine ? h * 0.44 : inner[3] * 0.42, 72));
+    // every word must fit the width on its own line (no word is broken), and the lines the height
+    const probe = document.createElement('span'); probe.style.whiteSpace = 'nowrap';
+    const widest = () => Math.max(...(oneLine ? [t.textContent] : zh ? [...t.textContent.replace(/\s+/g, '')] : t.textContent.split(/\s+/)).map(word => { probe.textContent = word; t.appendChild(probe); const pw = probe.getBoundingClientRect().width; probe.remove(); return pw; }));
+    const fits = () => widest() <= inner[2] && t.getBoundingClientRect().height <= inner[3] + 1;
+    t.style.fontSize = fs + 'px';
+    while (!fits() && fs > 24) { fs -= 2; t.style.fontSize = fs + 'px'; }
+    if (!fits()) { box.remove(); TPL.notes.push(`badge "${text}" does not fit a ${style} badge`); return null; }
+    t.style.top = (inner[1] + (inner[3] - t.getBoundingClientRect().height) / 2) + 'px';     // centred in the shape
+    if (opts.rotate) box.style.transform = `rotate(${opts.rotate}deg)`;
+    return { w, h, el: box };
+  };
+  /* Where a badge of size w x h can go without covering text, panels or the product: the first of ``spots`` ([x, y]
+     top-left corners) whose box, grown by ``pad``, meets none of the page's elements nor the product's outline. */
+  TPL.freeSpot = function (w, h, spots, pad = 24) {
+    const rects = [];
+    for (const n of TPL.root.querySelectorAll('[data-qa]')) {
+      if (n.dataset.exempt === '1' || n.closest('[data-exempt="1"]')) continue;
+      const kind = n.dataset.kind || (n.tagName === 'IMG' ? 'product_image' : '');
+      if (kind === 'product_image' && n.dataset.bleed) continue;
+      const r = n.getBoundingClientRect(), c = TPL.root.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      if (kind === 'product_image') {
+        const q = n.dataset.quad ? JSON.parse(n.dataset.quad) : (n.dataset.qa === 'hero' && (TPL.layoutInfo || {}).hero_content_quad) || null;
+        if (q && q.length) { rects.push({ poly: q }); continue; }
+        const bb = n.dataset.qa === 'hero' && (TPL.layoutInfo || {}).hero_bbox;
+        if (bb) { rects.push({ x: bb[0], y: bb[1], w: bb[2], h: bb[3] }); continue; }
+      }
+      rects.push({ x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height });
+    }
+    const svg = TPL._svg;
+    if (svg) for (const p of svg.querySelectorAll('path,rect,circle,line')) { const b = p.getBBox(); if (b.width + b.height > 2) rects.push({ x: b.x - 4, y: b.y - 4, w: b.width + 8, h: b.height + 8 }); }
+    const inPoly = (x, y, q) => { let o = false; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const [xi, yi] = q[i], [xj, yj] = q[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) o = !o; } return o; };
+    for (const [x, y] of spots) {
+      const a = { x: x - pad, y: y - pad, w: w + 2 * pad, h: h + 2 * pad };
+      if (x < 0 || y < 0 || x + w > TPL.W || y + h > TPL.H) continue;
+      const hit = rects.some(r => {
+        if (r.poly) {
+          for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) if (inPoly(a.x + a.w * i / 6, a.y + a.h * j / 6, r.poly)) return true;
+          return r.poly.some(([px, py]) => px > a.x && px < a.x + a.w && py > a.y && py < a.y + a.h);
+        }
+        return r.x < a.x + a.w && r.x + r.w > a.x && r.y < a.y + a.h && r.y + r.h > a.y;
+      });
+      if (!hit) return [x, y];
+    }
+    return null;
+  };
+  /* The brand's badges (job.badges: [{text, style}]) set in the first free spots of ``area`` ({x, y, w, h}), corners first;
+     a badge with no free spot is left out with a note. ``style`` 'auto' takes the page's own choice. */
+  TPL.placeBadges = function (area, opts = {}) {
+    const list = (TPL.job.badges || []).filter(b => b && String(b.text || '').trim()).slice(0, opts.max || 3);
+    const placed = [];
+    list.forEach((b, i) => {
+      const style = b.style && b.style !== 'auto' ? b.style : (opts.style || 'seal');
+      const [w0, h] = TPL.badgeSize(style), g = 24;
+      const w = ['ribbon', 'tag', 'pill'].includes(style) ? TPL.badgeWidth(b.text, style, h) : w0;
+      const L = area.x, T_ = area.y, R = area.x + area.w - w, B = area.y + area.h - h;
+      const spots = [[R, T_], [L, T_], [R, B], [L, B], [R, T_ + h + g], [L, T_ + h + g], [R, B - h - g], [L, B - h - g]];
+      // then anywhere in the area, nearest the right edge and the top first (a sticker reads as added, not as copy)
+      const scan = [];
+      for (let y = T_; y <= B; y += 32) for (let x = R; x >= L; x -= 32) scan.push([x, y]);
+      scan.sort((a, b2) => ((R - a[0]) + (a[1] - T_) * 0.8) - ((R - b2[0]) + (b2[1] - T_) * 0.8));
+      spots.push(...scan);
+      const at = TPL.freeSpot(w, h, spots, opts.pad ?? 20);
+      if (!at) { TPL.notes.push(`no free spot for badge "${b.text}"`); return; }
+      const made = TPL.badge('brand_badge' + (i + 1), b.text, at[0], at[1], style, { rotate: style === 'seal' || style === 'burst' ? -8 : 0 });
+      if (made) placed.push(made);
+    });
+    return placed;
+  };
+  /* A faint repeating texture over the ground (job.texture: dots, grid, diagonal or carbon), under everything else. */
+  TPL.texture = function (kind, opts = {}) {
+    if (!['dots', 'grid', 'diagonal', 'carbon'].includes(kind)) return null;
+    const ns = 'http://www.w3.org/2000/svg', s = document.createElementNS(ns, 'svg');
+    const x = opts.x || 0, y = opts.y || 0, w = opts.w || TPL.W, h = opts.h || TPL.H, id = 'tx_' + kind;
+    s.setAttribute('width', w); s.setAttribute('height', h); s.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    s.setAttribute('data-qa', 'texture'); s.setAttribute('data-exempt', '1'); s.setAttribute('data-kind', 'shape');
+    Object.assign(s.style, { position: 'absolute', left: x + 'px', top: y + 'px', pointerEvents: 'none' });
+    const ink = opts.ink || 'var(--text,#141414)', op = opts.opacity ?? 0.07;
+    const cell = { dots: 28, grid: 48, diagonal: 22, carbon: 16 }[kind];
+    const shapes = {
+      dots: `<circle cx="${cell / 2}" cy="${cell / 2}" r="2.2" fill="${ink}"/>`,
+      grid: `<path d="M${cell} 0V${cell}M0 ${cell}H${cell}" stroke="${ink}" stroke-width="1.5" fill="none"/>`,
+      diagonal: `<path d="M0 ${cell}L${cell} 0" stroke="${ink}" stroke-width="2" fill="none"/>`,
+      carbon: `<rect width="${cell / 2}" height="${cell / 2}" fill="${ink}"/><rect x="${cell / 2}" y="${cell / 2}" width="${cell / 2}" height="${cell / 2}" fill="${ink}"/>`
+    }[kind];
+    s.innerHTML = `<defs><pattern id="${id}" width="${cell}" height="${cell}" patternUnits="userSpaceOnUse">${shapes}</pattern></defs><rect width="${w}" height="${h}" fill="url(#${id})" opacity="${op}"/>`;
+    TPL.root.insertBefore(s, opts.before || TPL.root.firstChild);
+    return s;
   };
   /* A detail frame cut to a circle, with an accent ring and a soft shadow. */
   TPL.circleInset = function (id, assetId, cx, cy, r, opts = {}) {
@@ -384,7 +544,7 @@
     }
     // project change: the faces the pages are designed in (brandkit/vendor/fonts.css), and a hard language check.
     const zhPage = (TPL.job.lang || 'en') === 'zh';
-    const fams = [['Archivo', 800, 'Hamburgefonstiv'], ['Barlow Condensed', 800, 'Hamburgefonstiv'], ['Inter', 400, 'Hamburgefonstiv'], ['Inter', 700, 'Hamburgefonstiv']]
+    const fams = (TPL.job.fonts && TPL.job.fonts.probe) || [['Archivo', 800, 'Hamburgefonstiv'], ['Barlow Condensed', 800, 'Hamburgefonstiv'], ['Inter', 400, 'Hamburgefonstiv'], ['Inter', 700, 'Hamburgefonstiv']]
       .concat(zhPage ? [['Noto Sans SC', 700, 'Hamburg控制部件'], ['Noto Sans SC', 400, 'Hamburg控制部件']] : []);
     if (!zhPage) for (const e of els) if (e.kind === 'text' && /[\u3400-\u9fff]/.test(e.text || '')) issues.push({ check: 'lang_mismatch', id: e.id, detail: 'Chinese characters on an English page' });
     const fonts = fams.map(([f, w, s]) => ({ family: f, weight: w, available: fontInUse(f, w, s) }));

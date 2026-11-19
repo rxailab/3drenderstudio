@@ -90,14 +90,18 @@ def _icons(job):
 
 def compose(template_id, job):
     source = (TEMPLATES / (template_id + '.html')).read_text(encoding='utf-8')
-    brandkit_assets.ensure_fonts(job.get('lang', 'en'))
+    fonts_job = job.get('fonts') or brandkit_assets.job_fonts(None, job.get('lang', 'en'))
+    brandkit_assets.ensure_fonts(job.get('lang', 'en'), pairing=fonts_job.get('pairing'))
     # Private asset notes stay with the renderer, except the product's box in a scene, which the page frames by.
     public = {**job, 'assets': {key: {**{k: v for k, v in value.items() if k != 'path' and not k.startswith('_')},
                                       **({'product_box': value['_product']} if value.get('_product') else {})}
                                 for key, value in (job.get('assets') or {}).items()},
-              'icons': _icons(job)}
+              'icons': _icons(job), 'fonts': fonts_job}
     data = json.dumps(public, ensure_ascii=False).replace('</', '<\\/')
-    fonts = '<link rel="stylesheet" href="vendor/fonts.css">\n' if (brandkit_assets.VENDOR / 'fonts.css').is_file() else ''
+    # The brand's font pairing: its faces (and the default ones behind them) and the role variables the templates use.
+    stacks = fonts_job.get('stacks') or {}
+    roles = ';'.join('--f-%s:%s' % (role, stacks[role]) for role in brandkit_assets.ROLES if isinstance(stacks.get(role), str))
+    fonts = '<style>%s\nhtml #canvas{%s}</style>\n' % (brandkit_assets.font_face_css(job.get('lang', 'en'), fonts_job.get('pairing')), roles)
     inject = '<base href="%s/">\n%s<script>window.JOB = %s;</script>' % (ROOT.as_uri(), fonts, data)
     page = source.replace('<!--INJECT-->', inject)
     # The layout runs once the web fonts are loaded (TPL.ready), so it measures the faces it is drawn in.
@@ -289,14 +293,9 @@ RUNTIME_TAG = '<script src="engine/runtime.js"></script>'
 SVG_RESULT = re.compile(r'<script type="image/svg\+xml" id="svg-result">(.*?)</script>', re.S)
 
 
-def _font_faces(language):
+def _font_faces(language, pairing=None):
     """The faces the page uses, as (family, file on disk, @font-face descriptors), for the SVG's fonts/ folder."""
-    faces = []
-    for family, name, _, descriptors, languages in brandkit_assets.FACES:
-        path = brandkit_assets._font_file(name)
-        if language in languages and path:
-            faces.append((family, path, descriptors))
-    return faces
+    return brandkit_assets.faces(language, pairing)
 
 
 def _embed_links(svg):
@@ -353,7 +352,7 @@ def export_svg(template_id, job, out_svg, work=None):
     out_svg = Path(out_svg); out_svg.parent.mkdir(parents=True, exist_ok=True)
     work = Path(work or out_svg.parent); work.mkdir(parents=True, exist_ok=True)
     language = job.get('lang', 'en')
-    faces = _font_faces(language)
+    faces = _font_faces(language, (job.get('fonts') or {}).get('pairing'))
     font_css = '\n'.join("@font-face{font-family:'%s';src:url('fonts/%s') format('truetype');%s}" % (family, path.name, descriptors)
                          for family, path, descriptors in faces)
     options = json.dumps({'fontCss': font_css}).replace('</', '<\\/')

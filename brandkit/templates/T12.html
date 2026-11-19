@@ -61,7 +61,7 @@ const demoH = job.demo ? 40 : 0, floorY = H - demoH;
 const land = W / H > 1.2;
 let mode = job.mode || (job.scene ? 'overlay' : 'solid');
 T.layoutInfo = {mode, landscape: land};
-for (const k of ['cta', 'price', 'badges']) if (job[k]) T.notes.push(`'${k}' ignored: not part of the poster template`);
+for (const k of ['cta', 'price']) if (job[k]) T.notes.push(`'${k}' ignored: not part of the poster template`);
 if ((mode === 'band' || mode === 'overlay') && !job.scene) throw new Error(mode + ' mode needs a scene; use solid mode');
 
 /* accent for words on dark grounds and photos: a dark brand accent is lifted toward cream until it reads (P6) */
@@ -610,6 +610,7 @@ if (mode === 'band') {
   T.layoutInfo.hero_bbox = [pick.cx, pick.cy, pick.cw, pick.ch].map(Math.round);
   // keep the text above the product image in paint order
   for (const id of ['rule', 'headline', 'support', 'chip1', 'chip2', 'chip3', 'brand_slot', 'brand_slot_t', 'badge']) { const e = document.querySelector(`[data-qa="${id}"]`); if (e && e.parentNode === T.root) T.root.appendChild(e); }
+  T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 1, style: 'burst'});    // the brand's badge where the poster leaves room
 }
 T.watermark();
 T.finish();

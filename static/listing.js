@@ -50,7 +50,7 @@ function listingAdopt(state,reset) {
   const first=!listingEdit || reset;listingState=state;
   if(first || !listingDirty.product)listingEdit={...(listingEdit || {}),product:listingClone(state.product)};
   if(first || !listingDirty.brand)listingEdit={...listingEdit,brand:{preset:state.brand.preset,name:state.brand.name,accent:state.brand.accent,dark:state.brand.dark,
-    badges:[...state.brand.badges],legal:state.brand.legal,unit:state.brand.unit}};
+    badges:[...state.brand.badges],legal:state.brand.legal,unit:state.brand.unit,fonts:state.brand.fonts,badge_style:state.brand.badge_style,texture:state.brand.texture}};
   if(first)listingRenderPanel();else if(listingTab==='components')listingRenderComponents();
   listingRenderMain();listingSchedule();
 }
@@ -145,6 +145,7 @@ function listingRenderBrand() {
     <fieldset class="listing-presets"><legend class="field-label">风格</legend>${listingState.presets.map(preset=>`<label class="listing-preset" data-ground="${esc(preset.ground)}">
       <input type="radio" name="listingPreset" data-scope="brand" data-key="preset" value="${esc(preset.id)}" ${b.preset===preset.id?'checked':''}>
       <strong>${esc(preset.label.zh)}</strong><span>${esc(preset.note.zh)}</span></label>`).join('')}</fieldset>
+    ${listingFontPicker(b)}
     ${listingField('品牌名称',listingInput('brand','name',b.name,'maxlength="40" placeholder="显示在页眉，可不填"'))}
     <div class="listing-grid2">
       <label class="listing-field"><span class="field-label">品牌色</span><span class="listing-color"><input type="color" data-scope="brand" data-key="accent" value="${esc(b.accent || used.accent_used)}" ${b.accent?'':'disabled'} aria-label="品牌色">
@@ -153,13 +154,30 @@ function listingRenderBrand() {
       <label class="listing-field"><span class="field-label">深色</span><span class="listing-color"><input type="color" data-scope="brand" data-key="dark" value="${esc(b.dark || used.dark_used)}" ${b.dark?'':'disabled'} aria-label="深色">
         <label class="listing-check"><input type="checkbox" data-scope="brand-auto" data-key="dark" ${b.dark?'':'checked'}> 默认</label></span></label>
     </div>
-    ${listingField('徽标文字（最多 3 个，用逗号分隔）',listingInput('brand','badges',(b.badges || []).join(', '),'placeholder="如 20V, PRO"'),'第一个显示在没有标题的页眉里。')}
+    ${listingField('徽标文字（最多 3 个，用逗号分隔）',listingInput('brand','badges',(b.badges || []).join(', '),'placeholder="如 20V, PRO"'),'印在主图和海报的空白角落，如 2 YEAR WARRANTY、PRO。')}
+    <div class="listing-grid2">
+      ${listingField('徽标样式',`<select data-scope="brand" data-key="badge_style">${((listingState.elements||{}).badge_styles||[]).map(row=>`<option value="${esc(row.id)}" ${(b.badge_style||'auto')===row.id?'selected':''}>${esc(row.label.zh)}</option>`).join('')}</select>`,'徽标印在主图和海报的空白角落。')}
+      ${listingField('背景底纹',`<select data-scope="brand" data-key="texture">${((listingState.elements||{}).textures||[]).map(row=>`<option value="${esc(row.id)}" ${(b.texture||'none')===row.id?'selected':''}>${esc(row.label.zh)}</option>`).join('')}</select>`)}
+    </div>
     ${listingField('页脚说明文字',listingInput('brand','legal',b.legal,'maxlength="200" placeholder="如 *Maximum initial battery voltage…"'))}
     ${listingField('尺寸单位',`<select data-scope="brand" data-key="unit"><option value="mm" ${b.unit==='mm'?'selected':''}>毫米 mm</option><option value="in" ${b.unit==='in'?'selected':''}>英寸 in</option></select>`)}
     <div class="listing-logo"><span class="field-label">标志图片</span>${used.logo?`<img src="${esc(used.logo)}" alt="品牌标志"><button type="button" class="button subtle" data-action="logo-remove">移除</button>`:'<span class="field-help">未上传；页眉显示品牌名称文字。</span>'}
       <input id="listingLogoFile" type="file" accept=".png,.jpg,.jpeg,.webp" aria-label="上传标志图片"></div>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>
     <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>`;
+}
+// The font library's pairings, each previewed in its own faces (served by /brandkit/fonts.css).
+function listingFontPicker(b) {
+  const pairs=listingState.font_pairings||[];
+  if(!pairs.length)return '';
+  if(!document.getElementById('brandkitFontsCss')){const link=document.createElement('link');link.id='brandkitFontsCss';link.rel='stylesheet';link.href='/brandkit/fonts.css';document.head.appendChild(link);}
+  const current=b.fonts||pairs[0].id;
+  return `<fieldset class="listing-presets listing-fonts"><legend class="field-label">字体搭配</legend>${pairs.map(pair=>`<label class="listing-preset listing-font">
+      <input type="radio" name="listingFonts" data-scope="brand" data-key="fonts" value="${esc(pair.id)}" ${current===pair.id?'checked':''}>
+      <span class="listing-font-display" style="font-family:'${esc(pair.display)}',sans-serif">POWER 12V</span>
+      <span class="listing-font-cjk" style="font-family:'${esc(pair.cjk)}',sans-serif">强劲动力</span>
+      <strong>${esc(pair.label.zh)}</strong><span>${esc(pair.note.zh)}</span>
+      <span class="listing-font-names">${esc(pair.display)} · ${esc(pair.text)} · ${esc(pair.cjk)}</span></label>`).join('')}</fieldset>`;
 }
 function listingRenderUsecase() {
   const u=listingEdit.product.usecase,o=listingState.options,round=['pipe','rod'].includes(u.kind);
@@ -269,7 +287,7 @@ async function listingSaveProduct(quiet) {
 }
 async function listingSaveBrand(quiet) {
   const b=listingEdit.brand;
-  const state=await api(`/api/projects/${listingProject}/listing/brand`,{method:'PUT',body:{preset:b.preset,name:b.name,accent:b.accent,dark:b.dark,badges:b.badges,legal:b.legal,unit:b.unit}});
+  const state=await api(`/api/projects/${listingProject}/listing/brand`,{method:'PUT',body:{preset:b.preset,name:b.name,accent:b.accent,dark:b.dark,badges:b.badges,legal:b.legal,unit:b.unit,fonts:b.fonts,badge_style:b.badge_style,texture:b.texture}});
   listingDirty.brand=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }
 async function listingSavePending() { if(listingDirty.product)await listingSaveProduct(true);if(listingDirty.brand)await listingSaveBrand(true); }

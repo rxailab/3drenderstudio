@@ -6,18 +6,18 @@
   /* T10 · interfaces & connections. Each row = one connection chain from the structured graph.
      status 'approved' -> solid line (+ arrow only if direction is given); anything else -> dashed line, no arrow, "pending" chip. */
   #canvas{--bg:#F3F4F5;--text:#1D2125;--muted:#5C646B;--accent:#D0612A;--line:#9AA1A8;--ok:#2C6E49;--pend:#8A6D1F;--pend-bg:#FBF3DC;--wm:rgba(0,0,0,.045)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .p-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .l-name{font:700 50px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .l-body{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .chip{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap}
+  .eyebrow{font:700 26px/1 var(--f-display),var(--f-cjk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 84px/1.04 var(--f-display);letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .p-name{font:700 50px/1.1 var(--f-display);color:var(--text);text-wrap:balance}
+  .l-name{font:700 50px/1.12 var(--f-display);color:var(--text);text-wrap:balance}
+  .l-body{font:500 42px/1.25 var(--f-text);color:var(--muted);text-wrap:pretty}
+  .chip{font:700 30px/1 var(--f-display),var(--f-cjk);letter-spacing:.08em;text-transform:uppercase;border-radius:30px;padding:12px 20px;white-space:nowrap}
   .chip.pending{color:var(--pend);background:var(--pend-bg)}
   .chip.approved{color:#fff;background:var(--ok)}
-  .w-cap{font:600 42px/1.2 "Noto Sans",sans-serif;color:var(--muted);text-align:center}
-  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .p-name,#canvas[lang=zh] .l-name{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.25}
-  #canvas[lang=zh] .l-body,#canvas[lang=zh] .w-cap{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.38}
+  .w-cap{font:600 42px/1.2 var(--f-text);color:var(--muted);text-align:center}
+  #canvas[lang=zh] .headline{font:700 80px/1.18 var(--f-cjk);text-wrap:wrap}
+  #canvas[lang=zh] .p-name,#canvas[lang=zh] .l-name{font-family:var(--f-cjk);line-height:1.25}
+  #canvas[lang=zh] .l-body,#canvas[lang=zh] .w-cap{font-family:var(--f-cjk);line-height:1.38}
   #canvas[lang=zh] .chip{letter-spacing:.04em}
   .link{fill:none;stroke:var(--line);stroke-width:4;stroke-linecap:round}
   .link.pending{stroke-dasharray:3 14}

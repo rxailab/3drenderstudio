@@ -6,6 +6,7 @@ elsewhere); the rest needs nothing but Pillow.
 import shutil
 import sys
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -412,6 +413,24 @@ class LayoutTests(StoreCase):
                         self.assertEqual(image.size, brandkit_set.CANVAS[aspect])
                         self.assertGreater(len(image.convert('L').getcolors(65536) or []), 20)        # a page, not a blank
         self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/_layout')))           # the browser's working files are gone
+
+    def test_a_brand_look_from_the_library_is_carried_through_the_set(self):
+        """A font pairing, badges and a texture from the brand panel reach the pages, and the pages still pass."""
+        self.product('en')
+        listing.save_brand('fixture', {'fonts': 'poster', 'badges': ['2 Year Warranty', 'PRO'], 'badge_style': 'burst', 'texture': 'diagonal'})
+        pages, notes = listing.build('fixture')
+        for page in pages:
+            self.assertTrue(page['checks']['passed'], (page['kind'], page['checks'], page['notes']))
+        build = max((self.data / 'fixture' / 'listing').glob('build-*'), key=lambda path: path.stat().st_mtime)
+        job = json.loads((build / 'jobs' / 'T01.json').read_text())[-1]
+        self.assertEqual(job['fonts']['pairing'], 'poster'); self.assertEqual(job['texture'], 'diagonal')
+        self.assertEqual([row['text'] for row in job['badges']], ['2 Year Warranty', 'PRO'])
+        qa = brandkit_render.render('T01', job, self.data / 'again.png', work=self.data)
+        ids = {row['id'] for row in qa['elements']}
+        self.assertIn('texture', ids)
+        self.assertTrue({'brand_badge1', 'brand_badge1_t'} <= ids or any('badge' in note for note in qa['notes']), qa['notes'])
+        self.assertFalse([row for row in qa['issues'] if row['check'] in ('overlap', 'font_missing', 'safe_margin', 'out_of_canvas')])
+        self.assertIn('Anton', {row['family'] for row in qa['fonts']})
 
     def test_text_on_the_product_is_caught(self):
         out = self.data / 'probe.png'; hero = cut_out(self.data / 'hero-src.png', size=(800, 800), box=(0, 0, 800, 800))

@@ -6,15 +6,15 @@
   /* T07 · modular system: assembled view ↔ real components */
   #canvas{--bg:#F4F1EC;--text:#1F2225;--muted:#625B55;--accent:#D0612A;--line:#C9BFB5;--wm:rgba(0,0,0,.045)}
   .wash{position:absolute;inset:0;background:radial-gradient(100% 80% at 35% 60%, #FCFAF7 0%, var(--bg) 70%)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 88px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .m-name{font:700 50px/1.1 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .m-body{font:400 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .badge{font:700 40px/1 "Noto Sans Display",sans-serif;color:#fff;background:var(--accent);border-radius:50%;width:60px;height:60px;display:flex;align-items:center;justify-content:center}
-  .op{font:300 96px/1 "Noto Sans Display",sans-serif;color:var(--muted);text-align:center}
-  #canvas[lang=zh] .headline{font:700 84px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .m-name{font:700 50px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .m-body{font:400 42px/1.38 "Noto Sans CJK SC",sans-serif}
+  .eyebrow{font:700 26px/1 var(--f-display),var(--f-cjk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 88px/1.04 var(--f-display);letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .m-name{font:700 50px/1.1 var(--f-display);color:var(--text);text-wrap:balance}
+  .m-body{font:400 42px/1.25 var(--f-text);color:var(--muted);text-wrap:pretty}
+  .badge{font:700 40px/1 var(--f-display);color:#fff;background:var(--accent);border-radius:50%;width:60px;height:60px;display:flex;align-items:center;justify-content:center}
+  .op{font:300 96px/1 var(--f-display);color:var(--muted);text-align:center}
+  #canvas[lang=zh] .headline{font:700 84px/1.18 var(--f-cjk);text-wrap:wrap}
+  #canvas[lang=zh] .m-name{font:700 50px/1.2 var(--f-cjk)}
+  #canvas[lang=zh] .m-body{font:400 42px/1.38 var(--f-cjk)}
   .link{fill:none;stroke:var(--line);stroke-width:2.5;stroke-dasharray:2 10;stroke-linecap:round}
   .bracket{fill:none;stroke:var(--accent);stroke-width:3}
 </style></head>

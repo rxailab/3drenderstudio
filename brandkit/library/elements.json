@@ -1,0 +1,19 @@
+{
+ "_comment": "Common page elements the brand panel offers (drawn by brandkit/engine/runtime.js: TPL.badge, TPL.texture). Labels only; the shapes are code.",
+ "badge_styles": [
+  {"id": "auto", "label": {"zh": "自动", "en": "Auto"}},
+  {"id": "seal", "label": {"zh": "圆章", "en": "Seal"}},
+  {"id": "burst", "label": {"zh": "爆炸贴", "en": "Starburst"}},
+  {"id": "shield", "label": {"zh": "盾牌", "en": "Shield"}},
+  {"id": "ribbon", "label": {"zh": "飘带", "en": "Ribbon"}},
+  {"id": "tag", "label": {"zh": "吊牌", "en": "Tag"}},
+  {"id": "pill", "label": {"zh": "描边胶囊", "en": "Outline pill"}}
+ ],
+ "textures": [
+  {"id": "none", "label": {"zh": "无", "en": "None"}},
+  {"id": "dots", "label": {"zh": "圆点", "en": "Dots"}},
+  {"id": "grid", "label": {"zh": "网格", "en": "Grid"}},
+  {"id": "diagonal", "label": {"zh": "斜纹", "en": "Diagonal"}},
+  {"id": "carbon", "label": {"zh": "碳纤维", "en": "Carbon"}}
+ ]
+}

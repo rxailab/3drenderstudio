@@ -27,6 +27,7 @@ from pathlib import Path
 from studio_store import DATA, LOCK, get, put, all_records
 
 import brand_kit
+import brandkit_assets
 import brandkit_render
 import brandkit_review
 import brandkit_set
@@ -581,7 +582,7 @@ def state(project_id):
     brand = brand_kit.Brand(brand_record, listing.get('product_color'))
     parts = ready_components(project)
     size_mm, known = product_size(project, product)
-    return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(),
+    return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],

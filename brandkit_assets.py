@@ -11,6 +11,10 @@ Icons are fetched one by one by their Tabler name the first time a page asks for
 remembered so it is not asked for again. Without a network connection nothing fails: the pages are laid out with
 the fonts the machine has, and the QA record says which faces were missing.
 
+Beyond those default faces, ``brandkit/library/fonts.json`` is a font library: OFL families grouped into pairings (display,
+numbers, text, Chinese) that a brand picks. The Latin ones ship in ``brandkit/fonts``; the Chinese ones are fetched the
+same way as Noto Sans SC. ``job_fonts`` gives a page its pairing's CSS stacks and the faces to wait for.
+
 Run ``python brandkit_assets.py`` to fetch everything now (``--zh`` adds the Chinese face).
 """
 import json
@@ -41,17 +45,46 @@ TIMEOUT = 120
 MAX_BYTES = 40 * 1024 * 1024
 LOCK = threading.Lock()
 
-# family, file, source, CSS descriptors, languages it is for
-FACES = (
-    ('Archivo', 'Archivo-Variable.ttf', GOOGLE + 'archivo/Archivo%5Bwdth,wght%5D.ttf', 'font-weight:100 900;font-stretch:62% 125%', ('en', 'zh')),
-    ('Barlow Condensed', 'BarlowCondensed-SemiBold.ttf', GOOGLE + 'barlowcondensed/BarlowCondensed-SemiBold.ttf', 'font-weight:600', ('en', 'zh')),
-    ('Barlow Condensed', 'BarlowCondensed-Bold.ttf', GOOGLE + 'barlowcondensed/BarlowCondensed-Bold.ttf', 'font-weight:700', ('en', 'zh')),
-    ('Barlow Condensed', 'BarlowCondensed-ExtraBold.ttf', GOOGLE + 'barlowcondensed/BarlowCondensed-ExtraBold.ttf', 'font-weight:800', ('en', 'zh')),
-    ('Inter', 'Inter-Variable.ttf', GOOGLE + 'inter/Inter%5Bopsz,wght%5D.ttf', 'font-weight:100 900', ('en', 'zh')),
-    ('Noto Sans SC', 'NotoSansSC-Variable.ttf', GOOGLE + 'notosanssc/NotoSansSC%5Bwght%5D.ttf', 'font-weight:100 900', ('zh',)),
-)
-LICENCES = (('Archivo-OFL.txt', GOOGLE + 'archivo/OFL.txt'), ('BarlowCondensed-OFL.txt', GOOGLE + 'barlowcondensed/OFL.txt'),
-            ('Inter-OFL.txt', GOOGLE + 'inter/OFL.txt'), ('NotoSansSC-OFL.txt', GOOGLE + 'notosanssc/OFL.txt'))
+LIBRARY = json.loads((ROOT / 'library' / 'fonts.json').read_text(encoding='utf-8'))
+FAMILIES = LIBRARY['families']
+PAIRINGS = {row['id']: row for row in LIBRARY['pairings']}
+DEFAULT_PAIRING = LIBRARY['default']
+ROLES = ('display', 'cond', 'text', 'cjk')
+# The last resort after a pairing's own faces: the default faces, then what the machine has.
+FALLBACK = {'display': '"Archivo","Noto Sans Display","Noto Sans",sans-serif', 'cond': '"Barlow Condensed","Archivo",sans-serif',
+            'text': '"Inter","Noto Sans",sans-serif', 'cjk': '"Noto Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif'}
+PROBE = {'display': 800, 'cond': 700, 'text': 400, 'cjk': 700}
+
+
+def _faces_of(pairing_id):
+    """(family, file, source URL, CSS descriptors, languages) for every face a pairing names; the CJK face is for zh only."""
+    row = PAIRINGS.get(pairing_id) or PAIRINGS[DEFAULT_PAIRING]
+    faces, seen = [], set()
+    for role in ROLES:
+        key = row[role]
+        if key in seen:
+            continue
+        seen.add(key)
+        family = FAMILIES[key]
+        languages = ('zh',) if family['script'] == 'cjk' else ('en', 'zh')
+        faces.extend((family['family'], face['file'], GOOGLE + face['src'], face['css'], languages) for face in family['files'])
+    return tuple(faces)
+
+
+def _licences_of(pairing_id, language=None):
+    row = PAIRINGS.get(pairing_id) or PAIRINGS[DEFAULT_PAIRING]
+    names = []
+    for key in dict.fromkeys(row[role] for role in ROLES):
+        if language == 'en' and FAMILIES[key]['script'] == 'cjk':
+            continue
+        name = FAMILIES[key]['files'][0]['file'].split('-')[0] + '-OFL.txt'
+        names.append((name, GOOGLE + FAMILIES[key]['licence']))
+    return tuple(names)
+
+
+# family, file, source, CSS descriptors, languages it is for (the default pairing)
+FACES = _faces_of(DEFAULT_PAIRING)
+LICENCES = _licences_of(DEFAULT_PAIRING)
 ICON_NAME = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
 _checked = {}
 
@@ -141,24 +174,28 @@ def _font_file(name):
 
 
 def _write_css():
-    rules = []
-    for family, name, _, descriptors, _ in FACES:
-        path = _font_file(name)
-        if path:
-            relative = os.path.relpath(path, VENDOR).replace(os.sep, '/')
-            rules.append("@font-face{font-family:'%s';src:url('%s') format('truetype');%s;font-display:block}" % (family, relative, descriptors))
+    rules, seen = [], set()
+    for family_key, family in FAMILIES.items():
+        for face in family['files']:
+            path = _font_file(face['file'])
+            if path and face['file'] not in seen:
+                seen.add(face['file'])
+                relative = os.path.relpath(path, VENDOR).replace(os.sep, '/')
+                rules.append("@font-face{font-family:'%s';src:url('%s') format('truetype');%s;font-display:block}" % (family['family'], relative, face['css']))
     _write(VENDOR / 'fonts.css', ('\n'.join(rules) + '\n').encode())
 
 
-def ensure_fonts(language='en', fetch=True):
-    """The faces a set in ``language`` needs, downloaded if missing. Returns {'present': [...], 'missing': [...]}."""
-    key = (language, fetch)
+def ensure_fonts(language='en', fetch=True, pairing=None):
+    """The faces a set in ``language`` needs (in the brand's font ``pairing``), downloaded if missing.
+    Returns {'present': [...], 'missing': [...]}."""
+    pairing = pairing if pairing in PAIRINGS else DEFAULT_PAIRING
+    key = (language, fetch, pairing)
     if key in _checked:
         return _checked[key]
     present, missing = [], []
     with LOCK:
         changed = False
-        for family, name, url, _, languages in FACES:
+        for family, name, url, _, languages in _faces_of(pairing):
             if language not in languages:
                 continue
             if not _font_file(name) and fetch:
@@ -171,7 +208,7 @@ def ensure_fonts(language='en', fetch=True):
             (present if _font_file(name) else missing).append(name)
         if changed or not (VENDOR / 'fonts.css').is_file():
             if fetch:
-                for name, url in LICENCES:
+                for name, url in _licences_of(pairing, language):
                     if not (FONTS / name).is_file() and not (BUNDLED / name).is_file():
                         try:
                             _write(FONTS / name, _fetch([mirror + url[len(GOOGLE):] for mirror in FONT_MIRRORS], lambda data: bool(data)))
@@ -182,6 +219,57 @@ def ensure_fonts(language='en', fetch=True):
     if not missing:
         _checked[key] = result
     return result
+
+
+def faces(language='en', pairing=None):
+    """The faces on disk a page in ``language`` and ``pairing`` uses, as (family, path, descriptors): the pairing's own,
+    then the default ones it falls back on."""
+    found, seen = [], set()
+    for pid in dict.fromkeys((pairing if pairing in PAIRINGS else DEFAULT_PAIRING, DEFAULT_PAIRING)):
+        for family, name, _, descriptors, languages in _faces_of(pid):
+            path = _font_file(name)
+            if language in languages and path and name not in seen:
+                seen.add(name); found.append((family, path, descriptors))
+    return found
+
+
+def licence_files(pairing=None):
+    """The OFL texts on disk for a pairing's families (and the defaults)."""
+    names = {name for pid in {pairing if pairing in PAIRINGS else DEFAULT_PAIRING, DEFAULT_PAIRING} for name, _ in _licences_of(pid)}
+    return [path for path in (_font_file(name) for name in sorted(names)) if path]
+
+
+def font_face_css(language='en', pairing=None, url=None):
+    """@font-face rules for a page; ``url(path)`` gives each file's address (default: relative to brandkit/)."""
+    url = url or (lambda path: os.path.relpath(path, ROOT).replace(os.sep, '/'))
+    return '\n'.join("@font-face{font-family:'%s';src:url('%s') format('truetype');%s;font-display:block}" % (family, url(path), descriptors)
+                     for family, path, descriptors in faces(language, pairing))
+
+
+def job_fonts(pairing=None, language='en'):
+    """What a job carries about its type: the pairing, each role's CSS font stack and the faces to wait for and check."""
+    pid = pairing if pairing in PAIRINGS else DEFAULT_PAIRING
+    row = PAIRINGS[pid]
+    stacks, probe = {}, []
+    for role in ROLES:
+        family = FAMILIES[row[role]]['family']
+        stacks[role] = '"%s",%s' % (family, FALLBACK[role])
+        if role == 'cjk' and row['cjk'] != 'notosanssc':
+            # a decorative Chinese face draws Latin letters poorly: model codes and numbers on a Chinese page take
+            # the pairing's text face, the Han characters fall through to the Chinese face
+            stacks[role] = '"%s",%s' % (FAMILIES[row['text']]['family'], stacks[role])
+        if role != 'cjk' or language == 'zh':
+            sample = 'Hamburg控制部件' if role == 'cjk' else 'Hamburgefonstiv'
+            for weight in ((PROBE[role], 400) if role == 'text' else (PROBE[role],)):
+                if [family, weight, sample] not in probe:
+                    probe.append([family, weight, sample])
+    return {'pairing': pid, 'stacks': stacks, 'probe': probe}
+
+
+def pairings():
+    """The pairings for the brand panel: id, labels and each role's family name."""
+    return [{'id': row['id'], 'label': row['label'], 'note': row['note'],
+             **{role: FAMILIES[row[role]]['family'] for role in ROLES}} for row in LIBRARY['pairings']]
 
 
 def ensure_icon(name, style='outline', fetch=True):
@@ -224,6 +312,9 @@ def prefetch(languages=('en', 'zh')):
     def run():
         for language in languages:
             ensure_fonts(language)
+        for pid in PAIRINGS:            # every pairing in the library, so a brand that picks one does not wait
+            for language in languages:
+                ensure_fonts(language, pairing=pid)
         for name in COMMON_ICONS:
             ensure_icon(name)
     worker = threading.Thread(target=run, name='brandkit-assets', daemon=True)
@@ -231,9 +322,9 @@ def prefetch(languages=('en', 'zh')):
     return worker
 
 
-def status(language='en'):
+def status(language='en', pairing=None):
     """Which faces a set in ``language`` has and which it lacks, without fetching."""
-    names = [name for _, name, _, _, languages in FACES if language in languages]
+    names = [name for _, name, _, _, languages in _faces_of(pairing or DEFAULT_PAIRING) if language in languages]
     return {'present': [name for name in names if _font_file(name)], 'missing': [name for name in names if not _font_file(name)]}
 
 

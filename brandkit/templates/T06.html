@@ -86,6 +86,8 @@ T.layoutInfo = {mode};
 /* explicit unit conversion with declared rounding (never measured from the photo) */
 const r1 = v => String(Math.round(v * 10) / 10);
 function convert(d) {
+  // the seller's own figure in the other system ("200 mm (8 in)"), when they gave one
+  if (d.alt && d.alt.value != null && d.alt.unit) return {v: String(+d.alt.value), u: d.alt.unit, rule: 'as stated'};
   const v = +d.value;
   if (d.unit === 'in') return {v: r1(v * 2.54), u: 'cm', rule: 'in→cm ×2.54, rounded to 0.1 cm'};
   if (d.unit === 'cm') return {v: r1(v / 2.54), u: 'in', rule: 'cm→in ÷2.54, rounded to 0.1 in'};

@@ -192,7 +192,11 @@ class BrandTests(unittest.TestCase):
         kept = brand_kit.validate({'unit': 'in'}, record)
         self.assertEqual((kept['preset'], kept['accent'], kept['unit']), ('tech', '#f5b800', 'in'))
         self.assertIsNone(brand_kit.validate({'accent': None}, record)['accent'])
-        for bad in ({'preset': 'dewalt'}, {'accent': 'red'}, {'badges': ['a', 'b', 'c', 'd']}, {'unit': 'cm'}, {'logo': 'https://example.com/x.png'}, {'name': 'x' * 41}):
+        self.assertEqual((record['fonts'], record['badge_style'], record['texture']), ('industrial', 'auto', 'none'))
+        look = brand_kit.validate({'fonts': 'elegant', 'badge_style': 'ribbon', 'texture': 'carbon'}, record)
+        self.assertEqual((look['fonts'], look['badge_style'], look['texture'], look['preset']), ('elegant', 'ribbon', 'carbon', 'tech'))
+        self.assertEqual(brand_kit.validate({'unit': 'in'}, look)['fonts'], 'elegant')
+        for bad in ({'fonts': 'comic-sans'}, {'badge_style': 'heart'}, {'texture': 'leopard'}, {'preset': 'dewalt'}, {'accent': 'red'}, {'badges': ['a', 'b', 'c', 'd']}, {'unit': 'cm'}, {'logo': 'https://example.com/x.png'}, {'name': 'x' * 41}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 brand_kit.validate(bad)
         self.assertEqual([row['id'] for row in brand_kit.presets()], ['frame', 'flat', 'tech', 'clean', 'promo'])

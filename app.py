@@ -826,6 +826,27 @@ def job_retry(ident):
             if not p.get('analysis'): p['status']='analyzing';put('project',p)
     return jsonify(new),202
 
+@app.get('/brandkit/fonts.css')
+def brandkit_fonts_css():
+    # The font library's faces on this machine, for the brand panel's pairing previews.
+    import brandkit_assets
+    rules=[]
+    for family in brandkit_assets.FAMILIES.values():
+        for face in family['files']:
+            if brandkit_assets._font_file(face['file']):
+                rules.append("@font-face{font-family:'%s';src:url('/brandkit/font/%s') format('truetype');%s;font-display:swap}"%(family['family'],face['file'],face['css']))
+    response=app.response_class('\n'.join(rules)+'\n',mimetype='text/css')
+    response.headers['Cache-Control']='no-cache'
+    return response
+
+@app.get('/brandkit/font/<name>')
+def brandkit_font(name):
+    import brandkit_assets
+    known={face['file'] for family in brandkit_assets.FAMILIES.values() for face in family['files']}
+    path=brandkit_assets._font_file(name) if name in known else None
+    if not path: abort(404)
+    return send_file(path,mimetype='font/ttf',max_age=86400)
+
 @app.get('/files/<path:filename>')
 def files(filename):
     path=(DATA/filename).resolve()

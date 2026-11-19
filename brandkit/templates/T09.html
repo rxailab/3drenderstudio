@@ -6,26 +6,26 @@
   /* T09 · same-condition comparison. Without approved evidence it degrades to a NEUTRAL side-by-side:
      both columns styled identically, no ticks/crosses, no winner, no percentage claims. */
   #canvas{--bg:#F6F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:#D5D8DB;--spine:#ECEAE5;--wm:rgba(0,0,0,.045)}
-  .eyebrow{font:700 26px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-  .headline{font:700 84px/1.04 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);text-wrap:balance}
-  .s-name{font:700 56px/1.08 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .s-sub{font:500 42px/1.2 "Noto Sans",sans-serif;color:var(--muted)}
-  .r-label{font:700 50px/1.12 "Noto Sans Display",sans-serif;color:var(--text);text-wrap:balance}
-  .r-unit{font:500 42px/1.1 "Noto Sans",sans-serif;color:var(--muted)}
-  .r-val{font:700 76px/1 "Noto Sans Display",sans-serif;letter-spacing:-.01em;color:var(--text);white-space:nowrap}
+  .eyebrow{font:700 26px/1 var(--f-display),var(--f-cjk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .headline{font:700 84px/1.04 var(--f-display);letter-spacing:-.01em;color:var(--text);text-wrap:balance}
+  .s-name{font:700 56px/1.08 var(--f-display);color:var(--text);text-wrap:balance}
+  .s-sub{font:500 42px/1.2 var(--f-text);color:var(--muted)}
+  .r-label{font:700 50px/1.12 var(--f-display);color:var(--text);text-wrap:balance}
+  .r-unit{font:500 42px/1.1 var(--f-text);color:var(--muted)}
+  .r-val{font:700 76px/1 var(--f-display);letter-spacing:-.01em;color:var(--text);white-space:nowrap}
   .r-val .u{font-size:42px;margin-left:8px;color:var(--muted);font-weight:700}
   .r-val.compact{font-size:64px}
-  .r-val .alt{font:500 42px/1 "Noto Sans",sans-serif;margin-left:22px;color:var(--muted);letter-spacing:0}
-  .r-alt{font:500 42px/1.15 "Noto Sans",sans-serif;color:var(--muted);white-space:nowrap}
-  .note{font:500 42px/1.25 "Noto Sans",sans-serif;color:var(--muted);text-wrap:pretty}
-  .basis{font:700 30px/1 "Noto Sans Display","Noto Sans CJK SC",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:2px solid var(--line);border-radius:30px;padding:12px 22px;white-space:nowrap}
+  .r-val .alt{font:500 42px/1 var(--f-text);margin-left:22px;color:var(--muted);letter-spacing:0}
+  .r-alt{font:500 42px/1.15 var(--f-text);color:var(--muted);white-space:nowrap}
+  .note{font:500 42px/1.25 var(--f-text);color:var(--muted);text-wrap:pretty}
+  .basis{font:700 30px/1 var(--f-display),var(--f-cjk);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:2px solid var(--line);border-radius:30px;padding:12px 22px;white-space:nowrap}
   .ph{position:absolute;border:3px dashed #A9AEB3;border-radius:10px}
-  .ph-text{font:600 42px/1.25 "Noto Sans",sans-serif;color:#7A8086;text-align:center}
-  .pill{font:600 42px/1.2 "Noto Sans",sans-serif;color:#7A8086;border:2px dashed #A9AEB3;border-radius:12px;padding:10px 16px;text-align:center}
-  #canvas[lang=zh] .headline{font:700 80px/1.18 "Noto Sans CJK SC",sans-serif;text-wrap:wrap}
-  #canvas[lang=zh] .s-name{font:700 52px/1.2 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .r-label{font:700 50px/1.25 "Noto Sans CJK SC",sans-serif}
-  #canvas[lang=zh] .s-sub,#canvas[lang=zh] .note,#canvas[lang=zh] .r-unit{font-family:"Noto Sans CJK SC",sans-serif;line-height:1.35}
+  .ph-text{font:600 42px/1.25 var(--f-text);color:#7A8086;text-align:center}
+  .pill{font:600 42px/1.2 var(--f-text);color:#7A8086;border:2px dashed #A9AEB3;border-radius:12px;padding:10px 16px;text-align:center}
+  #canvas[lang=zh] .headline{font:700 80px/1.18 var(--f-cjk);text-wrap:wrap}
+  #canvas[lang=zh] .s-name{font:700 52px/1.2 var(--f-cjk)}
+  #canvas[lang=zh] .r-label{font:700 50px/1.25 var(--f-cjk)}
+  #canvas[lang=zh] .s-sub,#canvas[lang=zh] .note,#canvas[lang=zh] .r-unit{font-family:var(--f-cjk);line-height:1.35}
   #canvas[lang=zh] .basis{letter-spacing:.04em}
   .hr{position:absolute;background:var(--line)}
   .spine{position:absolute;background:var(--spine)}
