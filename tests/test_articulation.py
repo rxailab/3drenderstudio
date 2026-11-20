@@ -41,6 +41,13 @@ class AnswerTests(unittest.TestCase):
         self.assertEqual(clean['states'][1]['values'], {'jaws': 18.0})              # a value for a joint that does not exist is dropped
         self.assertTrue(clean['articulated'])
 
+    def test_a_hinge_rests_as_modelled_and_its_open_state_is_open(self):
+        swapped = answer(states=[{'id': 'closed', 'label_zh': '闭合', 'label_en': 'Closed', 'role': 'rest', 'values': [{'joint': 'jaws', 'value': 20}]},
+                                 {'id': 'open', 'label_zh': '张开', 'label_en': 'Open', 'role': 'open', 'values': [{'joint': 'jaws', 'value': 0}]}])
+        clean = articulation._clean_answer(swapped, PROBE)
+        self.assertEqual([state['values']['jaws'] for state in clean['states']], [0.0, 20.0])
+        self.assertEqual(articulation._tidy({'usage': ['grip it']})['usage'], {'en': ['grip it'], 'zh': []})
+
     def test_one_state_or_no_joint_is_not_articulated(self):
         self.assertFalse(articulation._clean_answer(answer(states=answer()['states'][:1]), PROBE)['articulated'])
         self.assertFalse(articulation._clean_answer(answer(joints=[]), PROBE)['articulated'])

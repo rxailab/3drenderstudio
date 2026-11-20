@@ -546,9 +546,11 @@ def solve_joint(joint, all_rows, unit_mm):
             scores[sign] = (hits, -spread)
         rest = _spread(joint)
         a, b = scores[1], scores[-1]
-        if abs(a[0] - b[0]) <= max(20, .25 * max(abs(a[0]), abs(b[0]))):
-            scores = {1: (0, a[1]), -1: (0, b[1])}            # contact cannot tell: the spread decides
-        notes.append('spread at rest %.4f' % rest)
+        # The spread decides: halves are often modelled interlocking at the rivet, and how many faces cross there rises
+        # and falls with the angle. Contact only breaks a tie.
+        if abs(a[1] - b[1]) > .1 * max(abs(a[1]), abs(b[1]), 1e-9):
+            scores = {1: (a[1], a[0]), -1: (b[1], b[0])}
+        notes.append('spread at rest %.4f, open %+.4f / %+.4f' % (rest, -a[1], -b[1]))
     def key(sign):
         value = scores[sign]
         return value if isinstance(value, tuple) else (value, 0)
@@ -562,6 +564,10 @@ def solve_joint(joint, all_rows, unit_mm):
         # a slider runs inside its housing and touches it all the way: contact says nothing about its range. Its limits
         # are geometric: it keeps 40 % of its length in the parts that guide it, and goes in no further than flush.
         low, high = _slide_limits(joint, fixed, unit_mm)
+        if joint.get('stretch'):
+            # a tape could be pulled out for metres; a picture shows a hand's length of it next to the case
+            whole = np.concatenate([_world(ob) for ob in _mesh_objects()])
+            high = min(high, 1.5 * float(np.ptp(whole, axis=0).max()) * unit_mm)
         joint['max'] = round(min(maximum, high), 2); joint['min'] = round(low, 2); joint['notes'] = notes
         if high < maximum:
             notes.append('range limited to %.1f mm so it stays in its guide' % high)
@@ -605,6 +611,9 @@ def _slide_limits(joint, fixed, unit_mm):
     g_hi = max(float(t.max()) for t in guide)
     if joint.get('stretch'):
         high = float('inf')                       # a tape's hook is meant to leave its case
+    elif _rides_on_rail(joint, fixed):
+        # a slider round a beam (a caliper) stays on it all the way: its far end no further than the beam's
+        high = max(0.0, g_hi - float(tm.max()) - .1 * float(np.ptp(tm))) * unit_mm      # short of the end cap
     else:
         # each moving part keeps 40 % of its own length in the guide (the blade, not the thumb button riding with it)
         high = min(max(0.0, g_hi - float((pts @ a).min()) - .4 * float(np.ptp(pts @ a)))
@@ -616,6 +625,23 @@ def _slide_limits(joint, fixed, unit_mm):
         out = float(tm.max()) - g_hi
     low = -max(0.0, out) * unit_mm
     return low, high
+
+
+def _rides_on_rail(joint, fixed):
+    """Whether the moving group runs along a fixed part that starts where it ends and is longer than it (a caliper's
+    slider on its beam), rather than inside a body it slides out of (a knife blade)."""
+    a = np.array(joint['axis'], dtype=float) * joint['sign']
+    moving = _group_points(_members(joint, 'moving'))
+    if not len(moving):
+        return False
+    tm = moving @ a; length = float(tm.max() - tm.min())
+    other = [i for i in range(3) if abs(a[i]) < .5]; mlo, mhi = moving.min(0), moving.max(0)
+    for row in fixed:
+        pts = _group_points([row]); t = pts @ a
+        if all(pts[:, i].max() > mlo[i] and pts[:, i].min() < mhi[i] for i in other) \
+                and float(t.max()) > float(tm.max()) + length and float(t.min()) <= float(tm.max()) + length * .05:
+            return True
+    return False
 
 
 def _slide_extras(joint, fixed):
@@ -759,6 +785,43 @@ def probe(request):
             'bbox_mm': [(lo * unit_mm).round(1).tolist(), (hi * unit_mm).round(1).tolist()]}
 
 
+def _decal_hosts(parts):
+    """{flat part id: id of the solid part it lies on}: a printed scale, a label, a legend has no thickness of its own and
+    goes wherever the part under it goes, whatever the vision model said about it."""
+    def box(part):
+        return np.array(part['bbox_mm'][0]), np.array(part['bbox_mm'][1])
+    longest = max(max(part['size_mm']) for part in parts) or 1
+    solids = [part for part in parts if min(part['size_mm']) > longest * .01]
+    hosts = {}
+    for part in parts:
+        if part in solids:
+            continue
+        lo, hi = box(part); thin = int(np.argmin(part['size_mm'])); plane = [i for i in range(3) if i != thin]
+        centre = (lo + hi) / 2; best = None
+        for solid in solids:
+            slo, shi = box(solid); pad = longest * .01
+            if all(slo[i] - pad <= lo[i] and hi[i] <= shi[i] + pad for i in plane):
+                gap = max(0.0, slo[thin] - centre[thin], centre[thin] - shi[thin])
+                area = np.prod([shi[i] - slo[i] for i in plane])
+                if gap < longest * .02 and (best is None or (gap, area) < best[0]):
+                    best = ((gap, area), solid['id'])
+        if best:
+            hosts[part['id']] = best[1]
+    return hosts
+
+
+def _follow_hosts(joint, hosts):
+    """A joint with every flat part moved into its host's group (or out of all groups when its host does not move)."""
+    joint = dict(joint); roles = ('moving', 'counter', 'stretch')
+    for role in roles:
+        joint[role] = [i for i in joint.get(role) or [] if i not in hosts]
+    for decal, host in hosts.items():
+        for role in roles:
+            if host in joint[role]:
+                joint[role].append(decal); break
+    return joint
+
+
 def _whole(rows, parts):
     """Selections merged per object; an object whose every part is selected becomes one whole-object selection (so its
     children follow it and it is treated as one body)."""
@@ -787,8 +850,10 @@ def solve(request):
     unit_mm = float(request['size_mm']) / longest if request.get('size_mm') else 1000.0
     parts = part_list(unit_mm); by_id = {part['id']: part for part in parts}
     rows = [{**_selector(part), 'id': part['id']} for part in parts]
+    hosts = _decal_hosts(parts)
     solved = []
     for joint in request.get('joints') or []:
+        joint = _follow_hosts(joint, hosts)
         made = {'name': joint.get('name') or 'joint%d' % (len(solved) + 1), 'type': 'hinge' if joint.get('type') == 'hinge' else 'slide',
                 'axis_name': joint.get('axis') or 'z', 'pivot_hint': joint.get('pivot') or {}, 'away_from': joint.get('away_from'),
                 'max': joint.get('max')}

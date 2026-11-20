@@ -201,6 +201,16 @@ def _facts(project, product, probe):
             'objects': [{'name': row['name'], 'parent': row['parent'], 'type': row['type']} for row in probe['objects']]}
 
 
+def _tidy(answer):
+    """Small shape slips a model makes: usage rules as a bare list (taken as English), a missing usage."""
+    usage = answer.get('usage')
+    if isinstance(usage, list):
+        answer['usage'] = {'en': [str(rule) for rule in usage], 'zh': []}
+    elif not isinstance(usage, dict):
+        answer['usage'] = {'en': [], 'zh': []}
+    return answer
+
+
 def _clean_answer(answer, probe):
     """Only joints over known parts; states that name known joints; values within each joint's range."""
     ids = {part['id'] for part in probe['parts']}
@@ -215,6 +225,7 @@ def _clean_answer(answer, probe):
                        'stretch': [i for i in joint.get('stretch') or [] if i in ids and i not in moving],
                        'max': max(1.0, min(float(joint.get('max') or 20), 180.0 if joint.get('type') == 'hinge' else 2000.0))})
     names = {joint['name'] for joint in joints}
+    hinges = {joint['name']: joint['max'] for joint in joints if joint.get('type') == 'hinge'}
     states = []
     for state in answer.get('states') or []:
         kinds = {joint['name']: joint.get('type') for joint in joints}
@@ -224,6 +235,15 @@ def _clean_answer(answer, probe):
         if state.get('id') and state['id'] not in {row['id'] for row in states}:
             states.append({'id': str(state['id'])[:24], 'label_zh': str(state.get('label_zh', ''))[:12], 'label_en': str(state.get('label_en', ''))[:24],
                            'role': state.get('role', 'open'), 'values': values})
+    # A hinge at rest is as modelled (0): pliers are modelled with their jaws shut, so a "closed" state the model gave an
+    # angle would drive the jaws through each other. An opened state left at 0 takes the widest opening it gave.
+    for name, limit in hinges.items():
+        widest = max([state['values'].get(name, 0) for state in states] + [0]) or limit * .75
+        for state in states:
+            if state['role'] == 'rest':
+                state['values'][name] = 0.0
+            elif not state['values'].get(name):
+                state['values'][name] = widest
     return {'articulated': bool(answer.get('articulated') and joints and len(states) >= 2), 'product_kind': str(answer.get('product_kind', ''))[:60],
             'reasoning': str(answer.get('reasoning', ''))[:400], 'joints': joints, 'states': states[:4],
             'usage': {lang: [str(rule)[:200] for rule in (answer.get('usage') or {}).get(lang) or []][:4] for lang in ('en', 'zh')}}
@@ -266,7 +286,8 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
                               'note': 'The second picture shows how your previous answer posed the product; fix what the check found.'}
                              if feedback else {}))
         answer = _clean_answer(brandkit_review._ask(vision, ARTICULATOR, ask, _schema(), image_path=str(sheet),
-                                                    reference_path=str(feedback['states_picture']) if feedback else None), probe)
+                                                    reference_path=str(feedback['states_picture']) if feedback else None,
+                                                    clean=_tidy), probe)
         record.update(product_kind=answer['product_kind'], reasoning=answer['reasoning'], usage=answer['usage'])
         if not answer['articulated']:
             record.update(status='none', joints=[], states=[])
