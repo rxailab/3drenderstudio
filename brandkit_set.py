@@ -614,8 +614,8 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
-SCENE_PLAN = 3        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
-                      # 3: moving parts set and usage rules from the pose agent)
+SCENE_PLAN = 4        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
+                      # 3: moving parts set and usage rules from the pose agent; 4: long tools held larger in hand close-ups)
 
 
 def scene_key(project, product, settings):

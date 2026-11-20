@@ -25,6 +25,8 @@ VERSION = 1
 GROUND = (198, 200, 203)          # the plain ground the anchor stands on; nothing of it may remain in the picture
 # The product's longer side as a share of the canvas's shorter side, and how far down its centre sits.
 PLACING = {'hands': (.56, .53), 'person': (.36, .58), 'none': (.5, .55)}
+LONG = 3.0                        # a cut-out this many times longer than it is wide is a long, thin tool
+LONG_HANDS = .8                   # held in hands, its length fills this share of the frame (hands then come out life-size)
 ROOM = .07                        # of the canvas: the product moves this far away from the side its work lies on
 ROOM_SIDES = {'below': (0, -1), 'above': (0, 1), 'left': (1, 0), 'right': (-1, 0)}
 WORK = 384                        # longer side, in pixels, at which the product is looked for
@@ -54,6 +56,10 @@ def anchor(cutout, size, framing=None, room=None):
         raise ValueError('产品抠图是空白的，无法锚定产品。')
     cut = cut.crop(bounds)
     share, down = PLACING.get(framing if framing in PLACING else 'none')
+    if framing == 'hands' and max(cut.size) > LONG * min(cut.size):
+        # A long, thin tool (a caliper, a ruler, a tape blade) at the usual share leaves the hands holding it small in the
+        # frame, and the image model zooms in to make a close-up of them, enlarging the product off its anchor.
+        share = LONG_HANDS
     scale = share * min(width, height) / max(cut.size)
     w = max(1, round(cut.width * scale)); h = max(1, round(cut.height * scale))
     placed = cut.resize((w, h), Image.Resampling.LANCZOS)

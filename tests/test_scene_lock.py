@@ -55,6 +55,10 @@ class AnchorTests(unittest.TestCase):
             self.assertAlmostEqual(max(box[2] - box[0], box[3] - box[1]) / 640, share, delta=.01)
             self.assertTrue(0 <= box[0] < box[2] <= 640 and 0 <= box[1] < box[3] <= 640, box)
             self.assertEqual(canvas.getpixel((2, 2)), scene_lock.GROUND)
+        long_tool = Image.new('RGBA', (500, 80), (0, 0, 0, 0)); ImageDraw.Draw(long_tool).rectangle([0, 20, 499, 60], fill=(40, 40, 40, 255))
+        held = scene_lock.anchor(long_tool, SIZE, 'hands')[2]
+        self.assertAlmostEqual((held[2] - held[0]) / 640, scene_lock.LONG_HANDS, delta=.01)      # a caliper fills the close-up
+        self.assertAlmostEqual((scene_lock.anchor(long_tool, SIZE, None)[2][2] - scene_lock.anchor(long_tool, SIZE, None)[2][0]) / 640, .5, delta=.01)
         wide = scene_lock.anchor(cutout(), (800, 600))[2]
         self.assertTrue(0 <= wide[0] and wide[2] <= 800 and wide[3] <= 600)
         with self.assertRaises(ValueError):
