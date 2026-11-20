@@ -327,7 +327,7 @@ class FidelityTests(unittest.TestCase):
 
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
-                 'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'scale_plausible': True,
+                 'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'scale_plausible': True,
                  'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
@@ -348,6 +348,26 @@ class FidelityTests(unittest.TestCase):
         self.assertEqual([block['type'] for block in content], ['text', 'image', 'text', 'image', 'text', 'image', 'text'])
         self.assertEqual([block['text'][:11] for block in content if block['type'] == 'text'][:3], ['REFERENCE 1', 'REFERENCE 2', 'GENERATED: '])
 
+    def test_the_products_usage_rules_are_checked(self):
+        sent = {}
+        def post(config, body):
+            sent['body'] = body
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch',
+                                                            'input': self.verdict(used_correctly=False, issues=['beam tilted'], note='倾斜。')}]}
+        rules = ['jaws close squarely on both faces', 'beam perpendicular to the measured faces']
+        with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
+            result = scene_imagegen.check(self.references, self.generated, 'digital caliper', usage=rules)
+        self.assertEqual(result['status'], 'failed'); self.assertFalse(result['flags']['used_correctly'])
+        self.assertIn('beam perpendicular to the measured faces', json.dumps(sent['body'], ensure_ascii=False))
+
+    def test_the_prompt_sets_the_moving_parts_and_the_way_of_use(self):
+        text = scene_imagegen.prompt('digital caliper', 150, 'A workshop bench.', people=True, framing='hands',
+                                     usage=['jaws close squarely on both faces of the workpiece'], setting='Measuring')
+        self.assertIn('USE. Its moving parts are set as image 1 shows (Measuring)', text)
+        self.assertIn('jaws close squarely on both faces of the workpiece', text)
+        resting = scene_imagegen.prompt('digital caliper', 150, 'A bench.', people=False, usage=['jaws square on the work'])
+        self.assertNotIn('USE.', resting)                       # nobody uses it in a resting picture
+
     def test_any_difference_fails_and_is_named(self):
         result, _ = self.check(self.verdict(colours_consistent=False, issues=['top surface is black, should be light brushed steel'], note='台面颜色不符。'))
         self.assertEqual(result['status'], 'failed'); self.assertEqual(result['issues'], ['top surface is black, should be light brushed steel'])
@@ -356,7 +376,8 @@ class FidelityTests(unittest.TestCase):
     def test_a_wire_through_the_jaws_a_grip_that_is_not_there_or_a_backwards_hold_fails(self):
         # The defects users found in made scenes: each is a flag the vision model answers, and any one fails the picture.
         for flag, issue in (('contact_plausible', 'the wire passes through the steel of the jaws'), ('nothing_attached', 'an extra black grip on the handle'),
-                            ('held_correctly', 'the hand holds the tool by its jaws'), ('scale_plausible', 'the pliers are as long as the van floor')):
+                            ('held_correctly', 'the hand holds the tool by its jaws'), ('scale_plausible', 'the pliers are as long as the van floor'),
+                            ('used_correctly', 'the caliper is tilted across the board, its jaws on one edge only')):
             result, body = self.check(self.verdict(**{flag: False, 'issues': [issue], 'note': '不一致。'}))
             self.assertEqual((result['status'], result['issues'], result['flags'][flag]), ('failed', [issue], False), flag)
         self.assertIn('size_mm', json.loads(body['messages'][-1]['content'][-1]['text']))

@@ -74,6 +74,7 @@ Compare the product in GENERATED with the references. Return data only:
 - nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
 - held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. True when no hand touches it.
 - contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
+- used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; pliers hold the wire inside the jaws). True when the product is at rest or no rules are given.
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
@@ -263,7 +264,7 @@ POSE_LINES = {'held': 'Build the scene around this exact pose: the hands grip th
               'rest': 'Build the scene around this exact pose: the product rests on its surface just as it is, with its shadow under it.'}
 
 
-def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None):
+def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None):
     """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
@@ -304,6 +305,15 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         contact = re.sub(r'\s+', ' ', str(pose.get('contact') or '')).strip()[:120].rstrip('.')
         lines.insert(2, 'THE POSE. The product in image 1 is already posed for this moment: %s.%s %s' % (
             text, (' It meets the work at %s.' % contact) if contact else '', POSE_LINES['rest' if people is False else 'held']))
+    use = []
+    if setting:
+        use.append('Its moving parts are set as image 1 shows (%s): keep them exactly so; whatever it works on fits that setting '
+                   '(the gap between open jaws is the thickness of the piece between them).' % re.sub(r'\s+', ' ', str(setting)).strip()[:120])
+    rules = [re.sub(r'\s+', ' ', str(rule)).strip().rstrip('.')[:200] for rule in (usage or [])[:4] if str(rule).strip()]
+    if rules and people is not False:
+        use.append('Show it used correctly: ' + '; '.join(rules) + '.')
+    if use:
+        lines.insert(3 if pose and pose.get('description') else 2, 'USE. ' + ' '.join(use))
     if hands:
         lines.insert(3 if not (pose and pose.get('description')) else 4, HANDS_RULE)
     elif people in PEOPLE_RULES:
@@ -468,7 +478,7 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
 
 
 FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
-                  'nothing_attached', 'held_correctly', 'contact_plausible', 'scale_plausible')
+                  'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'scale_plausible')
 
 
 def fidelity_schema():
@@ -478,7 +488,7 @@ def fidelity_schema():
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None):
+def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None, usage=None):
     """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
@@ -495,7 +505,8 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
     schema = fidelity_schema()
     try:
         facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN',
-                 'size_mm': round(float(size_mm)) if size_mm else None}
+                 'size_mm': round(float(size_mm)) if size_mm else None,
+                 'usage_rules': [str(rule)[:200] for rule in (usage or [])[:4]]}
         body = ai._payload(value, FIDELITY_PROMPT, facts, schema, max_tokens=1500)
         blocks = []
         for index, path in enumerate(reference_paths, 1):
@@ -544,14 +555,16 @@ def _lock_verdict(lock, box):
 
 
 def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None,
-           pose='auto', hint=''):
+           pose='auto', hint='', articulation=None, usage_rules=None):
     """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``.
 
     ``people`` is True when a person must be in the picture and False when
     nobody may be; None leaves it to the scene description. ``framing``
     'hands' shows that person as hands at work, close up, with no face.
     ``pose`` 'auto' poses the product the way it is used in the scene
-    (scene_pose); 'keep' shows it in the plan's own pose.
+    (scene_pose); 'keep' shows it in the plan's own pose. ``articulation`` sets its moving parts
+    (articulation.plan_for: pliers open, a caliper's jaws at the workpiece's thickness), with a 'label' saying how;
+    ``usage_rules`` are the product's own rules for being used correctly, given to the image model and checked after.
     """
     import scene_lock
     import scene_pose
@@ -565,8 +578,11 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     folder.mkdir(parents=True, exist_ok=True)
     # The pose it has in this moment of its use, worked out from renders of real poses; then rendered and locked like any other.
     hold = 'hands' if hands else 'person' if people else 'nobody' if people is False else 'scene'
+    if articulation:
+        # the moving parts set for this moment (opened, slid, pulled out): every candidate pose and the locked render show it
+        plan = {**plan, 'articulation': {key: value for key, value in articulation.items() if key != 'label'}}
     posed = scene_pose.decide(project, _reference_plan(plan), azimuth, elevation, scene, product, hold, stop, say,
-                              pose if pose in scene_pose.MODES else 'auto', hint)
+                              pose if pose in scene_pose.MODES else 'auto', hint, **({'usage': usage_rules} if usage_rules else {}))
     if stop(): raise InterruptedError()
     staged = product_render(project, {**plan, 'rotation': posed['rotation']}, azimuth, elevation, size_mm, size, stop, say)
     if stop(): raise InterruptedError()
@@ -583,7 +599,8 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     for number in range(1, MAX_ATTEMPTS + 1):
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
-        text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed)
+        text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
+                      (articulation or {}).get('label'))
 
         def call(value):
             nonlocal masked
@@ -621,7 +638,8 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             verdict = _lock_verdict(lock, box_share)          # no need to ask a model about a product that is measurably not there
         else:
             say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
-            verdict = check([reference_path], target, product, people, framing, closeup, size_mm)
+            verdict = check([reference_path], target, product, people, framing, closeup, size_mm,
+                            **({'usage': usage_rules} if usage_rules else {}))
         verdict['lock'] = lock
         attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup})
         if verdict['status'] != 'failed':

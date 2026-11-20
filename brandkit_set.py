@@ -10,9 +10,10 @@ out in a headless browser (``brandkit_render``), checks the measured layout, and
 lighter version of a page (fewer labels, another arrangement) when a check fails.
 
 Templates (each one rule-driven HTML; see ``brandkit/templates/T*.json`` for its reference map):
-T12 poster · T01 callouts · T03 product + detail column · T02 dark close-ups · T04 scene + figures band ·
-T08 usage scenes · T06 dimensions · T05 in the box. T07, T09, T10 and T11 need evidence a 3D model
-does not carry (module levels, test results, connection maps, a model range) and are not built.
+T12 poster · T01 callouts · T03 product + detail column · T13 poses (the product in the states of its moving parts:
+pliers closed / open, a caliper closed / measuring / open, from the pose agent ``articulation``) · T02 dark close-ups ·
+T04 scene + figures band · T08 usage scenes · T06 dimensions · T05 in the box. T07, T09, T10 and T11 need evidence a 3D
+model does not carry (module levels, test results, connection maps, a model range) and are not built.
 """
 import copy
 import hashlib
@@ -33,6 +34,7 @@ KINDS = {
     'T12': ('海报主图', 'Hero poster'),
     'T01': ('功能标注', 'Callouts'),
     'T03': ('主体 + 细节栏', 'Product + details'),
+    'T13': ('多姿态展示', 'Poses'),
     'T02': ('深色细节特写', 'Close-ups'),
     'T04': ('场景 + 参数带', 'Scene + key figures'),
     'T08': ('使用场景组图', 'Usage scenes'),
@@ -44,7 +46,7 @@ KINDS = {
     'T11': ('同系列变体', 'Variants'),
 }
 ORDER = tuple(KINDS)
-AUTO = ('T12', 'T01', 'T03', 'T02', 'T04', 'T08', 'T06', 'T05')
+AUTO = ('T12', 'T01', 'T03', 'T13', 'T02', 'T04', 'T08', 'T06', 'T05')
 # Pages that need facts a model does not carry. They are listed so the user sees why they are not made.
 BLOCKED = {'T07': '需要每个模块单独的模型和它们的叠放层级', 'T09': '需要同条件测试的对比证据', 'T10': '需要已确认的连接关系',
            'T11': '需要同系列其他型号的模型'}
@@ -58,6 +60,7 @@ TEXT = {
            'T06_eyebrow': '尺寸', 'T06_headline': '外形尺寸', 'T05_headline': '包装清单', 'T05_note': '图示物品未按实际比例',
            'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度', 'thickness': '厚度',
            'table_note': '尺寸为近似值，以实物为准。', 'depth_note': '深度 %s。',
+           'T13_eyebrow': '活动部件', 'T13_headline': '一件工具，多种状态', 'T13_from_to': '从%s\n[[到%s]]',
            'scene_titles': ('上手使用', '随时待命', '换个场景')},
     'en': {'T01_eyebrow': 'Part overview', 'T01_headline': 'Every key part,\nclearly shown', 'T03_eyebrow': 'Details', 'T02_eyebrow': 'Up close',
            'T02_headline': 'The details, up close', 'T04_headline': 'Key figures', 'T04_eyebrow': 'Specs', 'T08_eyebrow': 'In use',
@@ -65,6 +68,7 @@ TEXT = {
            'T05_note': 'Items not shown to scale', 'qty_pending': 'Qty to be confirmed', 'qty_prefix': 'Qty ', 'main': 'Main unit',
            'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth', 'thickness': 'Thickness',
            'table_note': 'Sizes are approximate; actual product may vary slightly.', 'depth_note': 'Depth %s.',
+           'T13_eyebrow': 'Moving parts', 'T13_headline': 'One tool, every position', 'T13_from_to': '%s\n[[to %s]]',
            'scene_titles': ('In use', 'Ready to go', 'On the job')},
 }
 
@@ -182,19 +186,21 @@ def locate(picture_path, picture, product, cache):
     return features, (['%d 条卖点的位置由视觉模型在主图上找出。' % found] if found else [])
 
 
-def requirements(product, parts, size_known, scene_supply):
-    """(has, why): whether each page has what it needs, and the reason when it does not."""
+def requirements(product, parts, size_known, scene_supply, poses=0):
+    """(has, why): whether each page has what it needs, and the reason when it does not. ``poses``: how many states of its
+    moving parts the product can be shown in (the pose agent's, ``articulation.states``) or pose pictures there are."""
     points = len(anchored(product))
     callouts = points + len(pointed(product))
     figures = bool(product['figures'] or product['specs'] or size_known)
-    has = {'T12': True, 'T01': callouts >= 2, 'T03': points >= 2, 'T02': points >= 1, 'T04': scene_supply >= 1 and figures,
+    has = {'T12': True, 'T01': callouts >= 2, 'T03': points >= 2, 'T13': poses >= 2, 'T02': points >= 1, 'T04': scene_supply >= 1 and figures,
            'T08': scene_supply >= 2, 'T06': size_known, 'T05': bool(parts), 'T07': False, 'T09': False, 'T10': False, 'T11': False}
     single = len(set(product.get('_model_parts') or ())) == 1
     why = {'T01': '至少 2 条卖点需要选择对应部件，或配置视觉模型在主图上找出它们的位置',
            'T03': '模型是一个整体，没有可单独特写的部件' if single else '至少 2 条卖点需要选择对应部件',
            'T02': '模型是一个整体，没有可单独特写的部件' if single else '卖点没有选择对应的部件',
            'T04': '需要场景图（开启 AI 场景或工件图），以及规格、大数字指标或真实尺寸' if not figures else '需要场景图：请开启 AI 场景图或工件使用图',
-           'T08': '需要至少 2 张场景图：请开启 AI 场景图（2 张以上）或工件使用图', 'T06': '没有填写真实尺寸', 'T05': '还没有处理完成的组件', **BLOCKED}
+           'T08': '需要至少 2 张场景图：请开启 AI 场景图（2 张以上）或工件使用图', 'T06': '没有填写真实尺寸', 'T05': '还没有处理完成的组件',
+           'T13': '没有识别出可以展示的活动部件（需要至少 2 个姿态；可在「活动部件」里查看或重新识别）', **BLOCKED}
     return has, why
 
 
@@ -283,6 +289,33 @@ def flatten(source, target, pad=.03, ground=(255, 255, 255), dark=False, trim=Tr
         fields.update(shape(piece.getchannel('A')))
     width, height = image.size
     return fields, (crop[0] / width, crop[1] / height, crop[2] / width, crop[3] / height)
+
+
+def pose_assets(sources, folder, pad=.03):
+    """The renders of one product in its poses (one camera, framed alike by the articulation envelope) as template assets
+    cut with ONE window, the union of every pose's product plus a margin: the pictures stay the same size and scale, so
+    the parts that do not move sit in the same place in each (T13 lays them out at one shared scale)."""
+    boxes = []; size = None
+    for source in sources:
+        with Image.open(source) as opened:
+            image = opened.convert('RGBA')
+        size = size or image.size
+        if image.size != size:            # not one camera: each pose keeps its own crop
+            boxes = None; break
+        box = image.getchannel('A').point(lambda value: 255 if value > 8 else 0).getbbox()
+        if box:
+            boxes.append(box)
+    region = None
+    if boxes:
+        x0, y0 = min(box[0] for box in boxes), min(box[1] for box in boxes)
+        x1, y1 = max(box[2] for box in boxes), max(box[3] for box in boxes)
+        px = round(max(x1 - x0, y1 - y0) * pad); width, height = size
+        region = (max(0, x0 - px) / width, max(0, y0 - px) / height, min(width, x1 + px) / width, min(height, y1 + px) / height)
+    out = []
+    for index, source in enumerate(sources):
+        fields, _ = flatten(source, Path(folder) / ('pose%d.png' % index), pad=pad, trim=region is None, region=region)
+        out.append(fields)
+    return out
 
 
 def _visible_patch(probe, names):
@@ -581,12 +614,15 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
-SCENE_PLAN = 2        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting)
+SCENE_PLAN = 3        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
+                      # 3: moving parts set and usage rules from the pose agent)
 
 
 def scene_key(project, product, settings):
     plan = project.get('plan') or {}
-    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN],
+    moving = project.get('articulation') if isinstance(project.get('articulation'), dict) else {}
+    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN,
+                      moving.get('key'), moving.get('status')],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -624,7 +660,29 @@ def scene_briefs(project, settings, count):
             # the third scene's own plan, not the first one's carried over
             third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='')
         briefs.append({'proposal': third, 'role': 'other'})
-    return briefs[:count]
+    return [_with_moving_parts(project, brief) for brief in briefs[:count]]
+
+
+def _with_moving_parts(project, brief):
+    """A brief with the product's moving parts set for its moment (the pose agent's states: at work the working or
+    open state, at rest the rest pose) and the product's own rules for being used correctly."""
+    import articulation
+    from studio_store import get
+    try:
+        project = get('project', project['id'])
+    except (KeyError, TypeError):
+        pass
+    states = articulation.states(project)
+    proposal = dict(brief['proposal'])
+    wanted = ('rest',) if brief['role'] == 'place' else ('working', 'open')
+    chosen = next((row for role in wanted for row in states if row.get('role') == role), None)
+    plan = articulation.plan_for(project, chosen['id']) if chosen else None
+    if plan:
+        proposal['articulation'] = {**plan, 'label': chosen.get('label_en') or chosen['id']}
+    rules = articulation.usage(project, 'en')
+    if rules:
+        proposal['usage'] = rules
+    return {**brief, 'proposal': proposal}
 
 
 def _fit_line(text, limit):
@@ -1079,6 +1137,14 @@ def _data_line(kind, ctx):
         if figure:
             return ('[[%s%s]] %s' % (figure['value'], figure.get('unit', ''), figure['label'])) if zh else '[[%s %s]]\n%s' % (figure['value'], figure.get('unit', ''), figure['label'].lower())
         return None
+    if kind == 'T13':
+        # "Closed to fully open" from the states the pose agent named, in the page's language.
+        labels = [' '.join(str(row.get('label') or '').split()) for row in ctx.get('poses') or []]
+        labels = [label for label in labels if label]
+        if len(labels) >= 2 and labels[0].lower() != labels[-1].lower():
+            first, last = _clip(labels[0], 18), _clip(labels[-1], 18)
+            return TEXT['zh' if zh else 'en']['T13_from_to'] % (first, last if zh else last.lower())
+        return None
     if kind == 'T08':
         places = [row['title'] for row in ctx.get('scenes') or [] if row.get('title') and row.get('role') in ('use', 'place', 'other')][:2]
         # "On the job site" and "In the workshop" read "from the job site to the workshop"; zh "在车间" reads "车间".
@@ -1178,6 +1244,19 @@ def _jobs_for(kind, ctx):
                               assets={'hero': assets['hero'], **{row['detail']: assets[row['detail']] for row in use}}, details=use)
                 out.append(_job(kind, ctx, subhead=_clip(product['subline'], 60) or None, **fields))
                 out.append(_job(kind, ctx, **fields))
+        return out
+    if kind == 'T13':
+        # The product in the states of its moving parts: one camera, one window, one scale (``pose_assets``); the template
+        # sets them side by side or, for a long product, stacked. Three states, else the first and the last.
+        poses = [{'asset': row['asset'], 'label': _clip(row.get('label') or '', 18)} for row in ctx.get('poses') or [] if row.get('asset') in assets][:3]
+        groups = [poses] + ([[poses[0], poses[-1]]] if len(poses) == 3 else [])
+        out = []
+        for use in groups:
+            if len(use) < 2:
+                continue
+            for mode in ('auto', 'columns', 'rows'):
+                out.append(_job(kind, ctx, mode=mode, eyebrow=t['T13_eyebrow'], headline=_headline(t['T13_headline'], ctx['language'], 40), poses=use,
+                                assets={row['asset']: assets[row['asset']] for row in use}))
         return out
     if kind == 'T02':
         rows = [{'title': _keep_together(_clip(product['features'][index]['title'], 22)), 'body': _body(product['features'][index].get('detail'), 48), 'detail': name,

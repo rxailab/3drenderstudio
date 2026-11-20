@@ -4,6 +4,7 @@ Blender is replaced by a stand-in that paints a plain picture, except in the run
 at the end, which runs blender/stage.py on a small model when Blender is installed. No test
 reaches a model service.
 """
+import copy
 import io
 import json
 import queue
@@ -22,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 for folder in (ROOT, ROOT / 'tests'):
     if str(folder) not in sys.path: sys.path.insert(0, str(folder))
 
+import articulation
 import brand_kit
 import components
 import engine
@@ -37,6 +39,10 @@ from blender import stage_geometry as geometry
 from test_scene_images import project
 
 PARTS = ['G-07C抽屉(2)_8', 'G-不锈钢台面_2']
+# The states the pose agent (articulation.py) found for a tool whose parts move, as articulation.states gives them.
+POSES = [{'id': 'closed', 'label_zh': '闭合', 'label_en': 'Closed', 'role': 'rest', 'values': {'hinge': 0.0}},
+         {'id': 'open', 'label_zh': '张开', 'label_en': 'Open', 'role': 'open', 'values': {'hinge': 20.0}},
+         {'id': 'wide', 'label_zh': '全开', 'label_en': 'Fully open', 'role': 'open', 'values': {'hinge': 35.0}}]
 
 
 def grid(nu, nv, solid):
@@ -557,12 +563,41 @@ class RecordTests(StoreCase):
         product = listing.save_product('fixture', {'features': [{'title': 'A', 'parts': [PARTS[0]]}, {'title': 'B', 'parts': [PARTS[1]]}]})['product']
         with patch.object(brandkit_set, 'image_model_ready', return_value=True):
             with_kit = listing.planned(record, product, [{'name': 'Battery'}])
-        self.assertEqual([row['kind'] for row in with_kit if not row.get('skipped')], list(brandkit_set.AUTO))
+        # everything but the poses page, which needs a model whose parts move (test_the_poses_are_staged_...)
+        self.assertEqual([row['kind'] for row in with_kit if not row.get('skipped')], [kind for kind in brandkit_set.AUTO if kind != 'T13'])
+        self.assertIn('活动部件', next(row['skipped'] for row in with_kit if row['kind'] == 'T13'))
         chosen = listing.planned(record, {**product, 'pages': ['T12', 'T05', 'T09', 'T06']}, [])
         self.assertEqual([(row['kind'], bool(row.get('skipped'))) for row in chosen], [('T12', False), ('T05', True), ('T09', True), ('T06', False)])
         self.assertIn('组件', chosen[1]['skipped']); self.assertIn('证据', chosen[2]['skipped'])
         legacy = store.get('project', 'fixture'); legacy['listing']['product']['pages'] = ['main', 'includes']; store.put('project', legacy)
         self.assertIsNone(listing.stored(legacy)[0]['pages'])                                  # page kinds from before the templates are dropped, not an error
+
+    def test_the_poses_are_staged_from_the_heros_camera_with_the_envelope_of_every_state(self):
+        record = store.get('project', 'fixture'); product = listing.stored(record)[0]
+        rows = [{'kind': 'T12', 'index': 0}, {'kind': 'T13', 'index': 0}]
+        posed = {'closed': None, 'open': {'state': 'open', 'joints': [{'name': 'hinge', 'type': 'hinge', 'value': 20.0}]},
+                 'wide': {'state': 'wide', 'joints': [{'name': 'hinge', 'type': 'hinge', 'value': 35.0}]}}
+        with patch.object(articulation, 'states', return_value=POSES), \
+                patch.object(articulation, 'plan_for', side_effect=lambda project, state: copy.deepcopy(posed[state])):
+            requests = listing.picture_requests(record, product, 225, rows)
+            planned = listing.planned(record, product, [])
+        self.assertEqual([name for name in requests if name.startswith('pose_')], ['pose_closed', 'pose_open', 'pose_wide'])
+        for name in ('pose_closed', 'pose_open', 'pose_wide'):
+            with self.subTest(name=name):
+                # the main picture's camera, framed for every state alike
+                self.assertEqual({key: value for key, value in requests[name].items() if key != 'plan'}, {key: value for key, value in requests['hero'].items() if key != 'plan'})
+                self.assertEqual(requests[name]['plan']['articulation_envelope'], [{}, posed['open'], posed['wide']])
+                self.assertEqual(requests[name]['plan']['rotation'], requests['hero']['plan']['rotation'])
+        self.assertNotIn('articulation', requests['pose_closed']['plan'])                                    # the rest pose is the model as it is
+        self.assertEqual((requests['pose_open']['plan']['articulation'], requests['pose_wide']['plan']['articulation']), (posed['open'], posed['wide']))
+        self.assertNotIn('articulation_envelope', requests['hero']['plan']); self.assertNotIn('articulation', requests['hero']['plan'])
+        self.assertNotIn('skipped', next(row for row in planned if row['kind'] == 'T13'))
+        # one state, no pose agent record, or no poses page: nothing more is staged
+        for states, kinds in ((POSES[:1], rows), ([], rows), (POSES, rows[:1])):
+            with self.subTest(states=len(states), kinds=len(kinds)), patch.object(articulation, 'states', return_value=states), \
+                    patch.object(articulation, 'plan_for', side_effect=lambda project, state: copy.deepcopy(posed[state])):
+                self.assertFalse([name for name in listing.picture_requests(record, product, 225, kinds) if name.startswith('pose_')])
+        self.assertIn('活动部件', next(row['skipped'] for row in listing.planned(record, product, []) if row['kind'] == 'T13'))
 
     def test_points_found_on_the_picture_are_kept_while_the_view_stays_the_same(self):
         listing.save_product('fixture', {'features': [{'title': 'Side cutter', 'parts': []}, {'title': 'Grip', 'parts': [PARTS[1]]}]})
@@ -880,6 +915,53 @@ class BuildTests(StoreCase):
         self.assertEqual((first['mode'], second['mode']), ('solid', 'solid')); self.assertNotIn('compact', first); self.assertTrue(second['compact'])
         self.assertIn('精简版本', pages[0]['notes'][0]); self.assertTrue(pages[0]['checks']['passed'])
 
+    def posed(self):
+        """A model whose parts move: the pose agent's states, and their plans for the renderer."""
+        plans = {'closed': None, 'open': {'state': 'open', 'joints': [{'name': 'hinge', 'value': 20.0}]},
+                 'wide': {'state': 'wide', 'joints': [{'name': 'hinge', 'value': 35.0}]}}
+        for name, value in (('states', {'return_value': POSES}), ('plan_for', {'side_effect': lambda project, state: copy.deepcopy(plans[state])})):
+            mocked = patch.object(articulation, name, **value); mocked.start(); self.addCleanup(mocked.stop)
+
+    def test_a_product_with_moving_parts_gets_a_poses_page(self):
+        self.posed()
+        pages, notes = listing.build('fixture')
+        self.assertEqual([page['kind'] for page in pages], ['T12', 'T01', 'T03', 'T13', 'T02', 'T04', 'T06'], notes)
+        job = self.job('T13')
+        self.assertEqual([row['label'] for row in job['poses']], ['Closed', 'Open', 'Fully open'])
+        self.assertEqual([row['asset'] for row in job['poses']], ['pose_closed', 'pose_open', 'pose_wide'])
+        self.assertEqual((job['eyebrow'], job['headline']), ('Ratchet Pipe Cutter', 'Closed\n[[to fully open]]'))      # from the data, not a stock line
+        sizes = {(job['assets'][name]['width'], job['assets'][name]['height']) for name in job['assets']}
+        self.assertEqual(len(sizes), 1)                                                     # one window for every pose: one scale
+        staged = [request for request in self.requests if 'articulation_envelope' in request['plan']]
+        self.assertEqual(len(staged), 3)
+        self.assertEqual([request['plan'].get('articulation', {}).get('state') for request in staged], [None, 'open', 'wide'])
+        listing.save_product('fixture', {'language': 'zh'})
+        pages, notes = listing.build('fixture')
+        job = self.job('T13')
+        self.assertEqual([row['label'] for row in job['poses']], ['闭合', '张开', '全开'])
+        self.assertEqual(job['headline'], '从闭合\n[[到全开]]')
+        self.assertIn('T13', [page['kind'] for page in pages])
+
+    def test_the_set_is_built_when_the_pose_agent_fails(self):
+        mocked = patch.object(listing, 'pose_agent_ready', return_value=True); mocked.start(); self.addCleanup(mocked.stop)
+        with patch.object(articulation, 'analyse', side_effect=RuntimeError('vision service down')) as analyse:
+            pages, notes = listing.build('fixture')
+        self.assertEqual((analyse.call_args.args[0], analyse.call_args.args[1]['title'], analyse.call_args.args[2]), ('fixture', 'Ratchet Pipe Cutter', 225.0))
+        self.assertNotIn('T13', [page['kind'] for page in pages]); self.assertIn('T12', [page['kind'] for page in pages])
+        self.assertTrue(any('活动部件识别失败' in note and 'vision service down' in note for note in notes), notes)
+        self.assertNotIn('fixture', articulation.RUNNING)
+        failed = {'status': 'failed', 'states': [], 'notes': ['姿态检查未通过：钳口转轴不对'], 'key': 'k'}
+        with patch.object(articulation, 'analyse', return_value=failed):
+            pages, notes = listing.build('fixture')
+        self.assertTrue(any('活动部件的姿态没有通过检查' in note and '钳口转轴不对' in note for note in notes), notes)
+        self.assertNotIn('T13', [page['kind'] for page in pages])
+        # A stored record for another model file is not used when the pose agent cannot look again.
+        record = store.get('project', 'fixture'); record['articulation'] = {'status': 'ready', 'key': 'stale', 'states': POSES, 'joints': []}
+        store.put('project', record); mocked.stop()
+        with patch.object(listing, 'pose_agent_ready', return_value=False):
+            pages, _ = listing.build('fixture')
+        self.assertNotIn('T13', [page['kind'] for page in pages])
+
     def test_a_component_still_being_processed_is_left_out_and_said(self):
         component_id, base = components.reserve('fixture'); shutil.copy(self.picture(), base / 'case.png'); components.register('fixture', component_id, {'name': 'Case'})
         pages, notes = listing.build('fixture')
@@ -986,6 +1068,43 @@ class BuildTests(StoreCase):
         self.assertIsNone(client.delete('/api/projects/fixture/listing/logo').get_json()['brand']['logo'])
         self.assertEqual(client.delete('/api/projects/fixture/components/%s' % component_id).get_json()['removed'], component_id)
         self.assertEqual(client.get('/api/projects/missing/listing').status_code, 404)
+
+
+    def test_the_pose_agent_is_shown_and_asked_again_through_the_web_layer(self):
+        import app as application
+        mocked = patch.object(application, 'DATA', self.data); mocked.start(); self.addCleanup(mocked.stop)
+        client = application.app.test_client()
+        self.assertEqual(client.get('/api/projects/fixture/articulation').get_json()['status'], 'unknown')
+        folder = self.data / 'fixture' / 'articulation' / '0123456789abcdef'; folder.mkdir(parents=True)
+        for name in ('parts.png', 'states1.png', 'probe.png'):
+            Image.new('RGB', (40, 20), (250, 250, 250)).save(folder / name)
+        record = store.get('project', 'fixture')
+        record['articulation'] = {'status': 'ready', 'key': '0123456789abcdef', 'product_kind': 'pliers', 'reasoning': 'Two halves turn about the rivet.',
+                                  'states': POSES[:2], 'joints': [{'name': 'hinge', 'type': 'hinge', 'max': 20.0, 'moving': [1]}],
+                                  'usage': {'zh': ['钳口夹住电线'], 'en': ['Grip the wire in the jaws']}, 'notes': [], 'at': 7,
+                                  'parts_sheet': str(folder / 'parts.png'), 'previews': str(folder / 'states1.png')}
+        store.put('project', record)
+        view = client.get('/api/projects/fixture/articulation').get_json()
+        self.assertEqual((view['status'], view['product_kind'], [row['id'] for row in view['states']], view['running']), ('ready', 'pliers', ['closed', 'open'], False))
+        self.assertEqual(view['parts_sheet'], '/api/projects/fixture/articulation/files/0123456789abcdef/parts.png')
+        self.assertEqual(client.get(view['parts_sheet']).mimetype, 'image/png'); self.assertEqual(client.get(view['previews']).status_code, 200)
+        for bad in ('0123456789abcdef/probe.png', '0123456789abcdef/../../originals/x.png', 'zzzz/parts.png', '0123456789abcdef/states9.png'):
+            with self.subTest(bad=bad):
+                self.assertEqual(client.get('/api/projects/fixture/articulation/files/' + bad).status_code, 404)
+        self.assertEqual(client.get('/api/projects/missing/articulation').status_code, 404)
+        record['articulation']['parts_sheet'] = str(self.data / 'elsewhere' / 'parts.png'); store.put('project', record)
+        self.assertIsNone(client.get('/api/projects/fixture/articulation').get_json()['parts_sheet'])        # only the pose agent's own folder
+        # Asking again runs in the background; while it runs the record says so, and a failure is kept as a note.
+        import articulation as pose_agent
+        with patch('threading.Thread') as thread, patch.object(pose_agent, 'analyse', side_effect=ValueError('渲染失败')) as analyse:
+            started = client.post('/api/projects/fixture/articulation', json={})
+            self.assertEqual((started.status_code, started.get_json()['running']), (202, True))
+            self.assertEqual(client.post('/api/projects/fixture/articulation', json={}).status_code, 202)
+            self.assertEqual(thread.call_count, 1)                                              # one run at a time
+            thread.call_args.kwargs['target']()
+        self.assertEqual((analyse.call_args.args[0], analyse.call_args.args[2], analyse.call_args.kwargs), ('fixture', 225.0, {'force': True}))
+        view = client.get('/api/projects/fixture/articulation').get_json()
+        self.assertEqual((view['running'], view['status']), (False, 'ready')); self.assertIn('识别失败：渲染失败', view['notes'][-1])
 
 
 # A frame shaped like a C, 100 x 100 x 30 mm, open to +X: a spine and two arms 40 mm apart.

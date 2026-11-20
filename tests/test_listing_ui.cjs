@@ -246,3 +246,29 @@ test('extracting saves brand edits first, and an answer that arrives after anoth
   assert.notEqual(h.field('product','title').value,'From A');                                    // A's answer stays with A
   assert.equal(h.w.listingUnsaved(),false);
 });
+
+test('the moving-parts tab shows what the pose agent found and asks it again',async t=>{
+  const h=await setup(t);await h.open();
+  let found={status:'ready',running:false,product_kind:'digital caliper',reasoning:'The slider runs along the beam.',at:5,
+    states:[{id:'closed',label_zh:'闭合',label_en:'Closed',role:'rest'},{id:'open',label_zh:'全开',label_en:'Fully open',role:'open'}],
+    usage:{zh:['卡爪垂直夹住工件两面'],en:['Jaws square on the work']},notes:['姿态检查未通过：滑块方向反了'],
+    parts_sheet:'/api/projects/a/articulation/files/0123456789abcdef/parts.png',previews:'/api/projects/a/articulation/files/0123456789abcdef/states2.png'};
+  h.respond=call=>{if(call.path==='/api/projects/a/articulation'){if(call.method==='POST')found={...found,running:true};return JSON.parse(JSON.stringify(found));}};
+  await h.tab('articulation');await tick();await tick();
+  const panel=h.node('listingPanel'),text=panel.textContent;
+  assert.equal(h.w.document.querySelector('[data-listing-tab="articulation"]').getAttribute('aria-selected'),'true');
+  assert.match(text,/有活动部件/);assert.match(text,/digital caliper/);assert.match(text,/The slider runs along the beam/);
+  assert.deepEqual([...panel.querySelectorAll('.listing-poses strong')].map(node=>node.textContent),['闭合','全开']);
+  assert.match(text,/卡爪垂直夹住工件两面/);assert.doesNotMatch(text,/Jaws square/);                 // the Chinese rules
+  assert.match(text,/滑块方向反了/);
+  assert.deepEqual([...panel.querySelectorAll('.listing-articulation-pictures img')].map(node=>node.getAttribute('src').split('?')[0]),[found.parts_sheet,found.previews]);
+  panel.querySelector('[data-action="articulation-run"]').click();await tick();await tick();await tick();
+  assert.ok(h.calls.some(call=>call.method==='POST' && call.path==='/api/projects/a/articulation'));
+  assert.match(h.node('listingPanel').textContent,/识别中/);
+  assert.equal(h.node('listingPanel').querySelector('[data-action="articulation-run"]').disabled,true);
+  found={...found,running:false,status:'none',states:[]};await h.leave();                          // leaving stops the polling
+  for(const [status,label] of [['none','没有活动部件'],['failed','识别失败']]){
+    found={...found,status};h.w.setInspectorTab('listing');await tick();await tick();await h.tab('articulation');await tick();await tick();
+    assert.match(h.node('listingPanel').textContent,new RegExp(label));await h.leave();
+  }
+});

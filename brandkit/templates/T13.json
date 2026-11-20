@@ -1,0 +1,156 @@
+{
+ "schema_version": "1.0",
+ "template_id": "T13",
+ "status": "rendered",
+ "publishability": "user_product",
+ "derived_from": "T11 (columns mode: same view, shared scale, shared baseline, label per column)",
+ "reference_map": [
+  {
+   "ref_id": "HW-316",
+   "role": "composition",
+   "adopted_rules": [
+    "same orientation repeated so the difference reads",
+    "headline separated from the product area"
+   ],
+   "excluded_elements": [
+    "offer / pending chips",
+    "'not to scale' note (the poses are one product at one true scale)"
+   ]
+  },
+  {
+   "ref_id": "AMZ-017",
+   "role": "style",
+   "adopted_rules": [
+    "identical angle and rhythm across the states"
+   ],
+   "excluded_elements": [
+    "invented ranges or measuring claims"
+   ]
+  }
+ ],
+ "canvas": {
+  "width": 1500,
+  "height": 1500
+ },
+ "tokens": {
+  "palette": {
+   "bg": "#F5F5F2",
+   "text": "#1E2226",
+   "muted": "#5E666D",
+   "accent": "#2C4C8C"
+  },
+  "palette_note": "accent comes from the job palette; a light accent (L>0.4) turns the eyebrow and step numbers to --muted",
+  "ground": "radial-gradient(120% 90% at 50% 58%, #FFFFFF 0%, var(--bg) 74%)",
+  "spacing_unit": 8,
+  "safe_margin": 84,
+  "min_margin": 60,
+  "fonts": {
+   "display": "Archivo 850 wdth 114% (headline), 800 wdth 108% (state labels), en uppercase",
+   "numbers": "Barlow Condensed 800 (step numbers 01 02 03)",
+   "text": "Inter 700 (eyebrow)",
+   "zh": "Noto Sans SC 700/900"
+  },
+  "type_scale_px_at_1500": {
+   "eyebrow": 26,
+   "eyebrow_zh": 28,
+   "headline": 88,
+   "headline_compact": 78,
+   "headline_zh": 92,
+   "step_number": 34,
+   "state_label": "50 down to 42 (one size for all labels; >= 10px at 360 wide)"
+  }
+ },
+ "elements": [
+  {
+   "element_id": "eyebrow",
+   "kind": "text",
+   "style_token": "meta",
+   "text": "Digital caliper"
+  },
+  {
+   "element_id": "headline",
+   "kind": "text",
+   "style_token": "headline",
+   "text": "Closed to fully open"
+  },
+  {
+   "element_id": "p1_img",
+   "kind": "product_image",
+   "crop_policy": "contain",
+   "asset_id": "pose0"
+  },
+  {
+   "element_id": "p1_num",
+   "kind": "text",
+   "style_token": "meta",
+   "text": "01"
+  },
+  {
+   "element_id": "p1_label",
+   "kind": "text",
+   "style_token": "secondary",
+   "text": "Closed"
+  },
+  {
+   "element_id": "p2_img",
+   "kind": "product_image",
+   "crop_policy": "contain",
+   "asset_id": "pose1"
+  },
+  {
+   "element_id": "p2_num",
+   "kind": "text",
+   "style_token": "meta",
+   "text": "02"
+  },
+  {
+   "element_id": "p2_label",
+   "kind": "text",
+   "style_token": "secondary",
+   "text": "Measuring"
+  },
+  {
+   "element_id": "p3_img",
+   "kind": "product_image",
+   "crop_policy": "contain",
+   "asset_id": "pose2"
+  },
+  {
+   "element_id": "p3_num",
+   "kind": "text",
+   "style_token": "meta",
+   "text": "03"
+  },
+  {
+   "element_id": "p3_label",
+   "kind": "text",
+   "style_token": "secondary",
+   "text": "Fully open"
+  }
+ ],
+ "job_fields": {
+  "eyebrow": "optional kicker",
+  "headline": "required; zh keeps the author's line breaks",
+  "poses": "[{asset, label}] 2-3 states, rest pose first, labels in the page language",
+  "mode": "auto (default) | columns | rows",
+  "shared_frame": "default true: pictures of one size share one frame"
+ },
+ "adaptation_rules": [
+  "every pose is the same camera at the same display scale: pictures of one size are placed identically, so the fixed parts line up and only the moving ones change",
+  "columns: the poses side by side on one baseline, step number and state name under each, a thin accent arrow between columns",
+  "rows: very wide products (a caliper, a tape pulled out) stack, the step number and name in a left column joined by a thin downward arrow",
+  "auto picks rows only when it shows the product at least 18% larger than columns",
+  "one label size for all poses, at most two lines, never below 10px at 360 wide",
+  "a frame that would cross the canvas edge shrinks the shared scale (3% steps); upscale capped at 1.25",
+  "no offer chip, no 'not to scale' note"
+ ],
+ "render_outputs": [],
+ "source_files": [
+  "templates/T13.html",
+  "engine/runtime.js",
+  "engine/base.css"
+ ],
+ "limitations": [
+  "the poses come from the pose agent (articulation.py); the template draws what it is given and claims nothing about range"
+ ]
+}

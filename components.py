@@ -233,7 +233,8 @@ def stage(project_id, request, cancelled=None, on_progress=None):
         raise ValueError('模型文件不存在，请重新上传。')
     stat = model.stat()
     identity = hashlib.sha256(json.dumps([request, stat.st_size, stat.st_mtime_ns, _digest(STAGE_SCRIPT), _digest(WORKER_SCRIPT),
-                                          _digest(ROOT / 'blender' / 'stage_geometry.py')], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
+                                          _digest(ROOT / 'blender' / 'stage_geometry.py'), _digest(ROOT / 'blender' / 'articulate.py')],
+                                         sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
     folder = DATA / project_id / 'stage' / identity
 
     def stored():

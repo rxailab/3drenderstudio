@@ -1,0 +1,219 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!--INJECT-->
+<link rel="stylesheet" href="engine/base.css">
+<style>
+  /* T13 · poses: the product in two or three states of its moving parts (pliers closed / open, a caliper closed /
+     measuring / open, a tape retracted / pulled out), white cut-outs of ONE camera at ONE display scale, each named
+     under (columns) or beside (rows) it. Derived from T11 'columns' (same view, shared scale, shared baseline, a label
+     per column) without its offer chip and not-to-scale note: the poses are one product, so the shared scale is true. */
+  #canvas{--bg:#F5F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--wm:rgba(0,0,0,.045);
+    --acc-small:color-mix(in srgb,var(--accent) 70%,#000);
+    background:radial-gradient(120% 90% at 50% 58%,#FFFFFF 0%,var(--bg) 74%)}
+  .kick{position:absolute;background:var(--accent)}
+  #canvas.acc-light .eyebrow,#canvas.acc-light .p-num{color:var(--muted)}
+  .eyebrow{font:700 26px/1 var(--f-text);letter-spacing:.12em;text-transform:uppercase;color:var(--acc-small);white-space:nowrap}
+  .headline{font-family:var(--f-display);font-weight:850;font-stretch:114%;font-size:88px;line-height:.95;letter-spacing:-.005em;
+    text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .p-num{font-family:var(--f-cond);font-weight:800;font-size:34px;line-height:1;letter-spacing:.06em;color:var(--acc-small);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .p-label{font-family:var(--f-display);font-weight:800;font-stretch:108%;font-size:46px;line-height:1.02;letter-spacing:0;
+    text-transform:uppercase;color:var(--text);text-wrap:balance}
+  .conn{position:absolute;pointer-events:none;overflow:visible}
+  .conn path{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+  .floor{position:absolute;border-radius:50%;background:rgba(0,0,0,.10);filter:blur(22px);pointer-events:none}
+  #canvas[lang=zh] .eyebrow{font-family:var(--f-cjk);font-weight:700;letter-spacing:.04em;font-size:28px}
+  #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:.01em;text-transform:none;text-wrap:wrap}
+  #canvas[lang=zh] .p-label{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;line-height:1.2;letter-spacing:.02em;text-transform:none;text-wrap:wrap}
+</style></head>
+<body><div id="canvas"></div>
+<script src="engine/runtime.js"></script>
+<script>
+(function(){
+const T = TPL, job = T.job, W = T.W, H = T.H;
+T.init();
+const zh = (job.lang || 'en') === 'zh';
+const G = 8, bandH = job.demo ? 40 : 0, cap = 1.25;
+const m = Math.max(job.min_margin ?? 60, job.safe_margin ?? 84);
+const P = (job.poses || []).filter(p => p && p.asset && (job.assets || {})[p.asset]).slice(0, 3);
+const n = P.length;
+if ((job.poses || []).length > 3) T.notes.push('more than 3 poses: only the first 3 are shown');
+if (n < 2) T.notes.push('fewer than 2 poses: nothing to compare');
+const minSecondary = Math.ceil(W / 36) + 1;          // secondary text stays >= 10px on a 360 px wide phone
+const lineCount = e => { const rg = document.createRange(); rg.selectNodeContents(e); let k = 0, bottom = -1e9;
+  for (const q of [...rg.getClientRects()].filter(q => q.height > 0).sort((a, b) => a.top - b.top)) { if ((q.top + q.bottom) / 2 > bottom) { k++; bottom = q.bottom; } else bottom = Math.max(bottom, q.bottom); }
+  return k; };
+const fits = (e, lines) => e.scrollWidth <= e.clientWidth + 1 && lineCount(e) <= lines;
+
+/* --accent-ink and a light accent's small type, from the accent's luminance */
+(function(){
+  const hx = String(getComputedStyle(T.root).getPropertyValue('--accent')).trim().replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hx)) return;
+  const c = [0, 2, 4].map(i => parseInt(hx.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4));
+  if (.2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4) T.root.classList.add('acc-light');
+})();
+
+/* ---------- header: accent kick, eyebrow, headline ---------- */
+let y = m;
+T.box(T.el('div', {class: 'kick'}), m, y, 64, 8); y += 8 + 3 * G;
+if (job.eyebrow) { const e = T.text('eyebrow', job.eyebrow, m, y, W - 2 * m, 'eyebrow', {tier: 'meta', maxLines: 1}); y += T.rect(e).h + 2 * G; }
+const written = Math.max(1, String(job.headline || '').split('\n').length);
+const hlLines = zh ? written : 2;
+const hl = T.text('headline', job.headline || '', m, y, W - 2 * m, 'headline', {tier: 'headline', maxLines: hlLines});
+for (const s of (zh ? [92, 84, 76, 68, 62] : [88, 78, 72, 66, 60]).map(v => Math.round(v * Math.min(1, W / 1500 + .1)))) {
+  hl.style.fontSize = s + 'px';
+  if (fits(hl, hlLines) && (zh || lineCount(hl) === 1 || s <= 78)) break;     // en: a two-line headline steps down to the compact size
+}
+y = T.rect(hl).y + T.rect(hl).h;
+const top = y + 6 * G, floor = H - bandH - m;
+const areaH = floor - top;
+
+/* ---------- the pictures: one frame for all poses ----------
+   The set builder cuts every pose from the same camera with the same window, so the pictures are the same size and the
+   parts that do not move line up; their content box is then the union of all poses. Pictures of other sizes fall back
+   to each one's own content box at one shared scale. */
+const A = P.map(p => T.asset(p.asset));
+const framed = n > 1 && job.shared_frame !== false && A.every(a => Math.abs(a.width - A[0].width) <= 1 && Math.abs(a.height - A[0].height) <= 1);
+const own = a => a.content_bbox || [0, 0, 1, 1];
+const union = A.reduce((u, a) => { const b = own(a); return [Math.min(u[0], b[0]), Math.min(u[1], b[1]), Math.max(u[2], b[2]), Math.max(u[3], b[3])]; }, [1, 1, 0, 0]);
+const box = i => { const b = framed ? union : own(A[i]); return {x0: b[0] * A[i].width, y0: b[1] * A[i].height, w: (b[2] - b[0]) * A[i].width, h: (b[3] - b[1]) * A[i].height}; };
+const B = P.map((_, i) => box(i));
+/* an image size whose rounded pixels keep the aspect (the QA reads integer offsets) */
+function snap(a, s) {
+  let best = null;
+  for (let w = Math.floor(a.width * s), k = 0; k < 24 && w > 1; k++, w--) {
+    const h = w * a.height / a.width, err = Math.abs((w / Math.round(h)) / (a.width / a.height) - 1);
+    if (!best || err < best.err - 1e-6) best = {w, h: Math.round(h), err};
+    if (err < 0.0015) break;
+  }
+  return best;
+}
+
+/* ---------- labels: a step number and the state's name, one size for all ---------- */
+const blocks = P.map((p, i) => {
+  const num = T.text('p' + (i + 1) + '_num', String(i + 1).padStart(2, '0'), 0, 0, 200, 'p-num', {tier: 'meta', maxLines: 1});
+  const lab = p.label ? T.text('p' + (i + 1) + '_label', p.label, 0, 0, 200, 'p-label', {tier: 'secondary', maxLines: 2}) : null;
+  return {num, lab};
+});
+const labelSizes = [50, 46, 44, 42, 40, 38, 36, 34].filter(v => v >= minSecondary);
+function setBlocks(width, align) {           // one size for all labels: the largest that keeps every label on one line, else two
+  let size = labelSizes[labelSizes.length - 1];
+  for (const b of blocks) for (const e of [b.num, b.lab]) if (e) { e.style.width = width + 'px'; e.style.textAlign = align; }
+  search: for (const lines of [1, 2]) {
+    for (const s of labelSizes) {
+      if (lines === 1 && s < Math.max(minSecondary, 40)) continue;
+      let ok = true;
+      for (const b of blocks) if (b.lab) { b.lab.style.fontSize = s + 'px'; if (!fits(b.lab, lines)) ok = false; }
+      if (ok) { size = s; break search; }
+    }
+  }
+  for (const b of blocks) if (b.lab) b.lab.style.fontSize = size + 'px';
+  return {size, h: blocks.map(b => T.rect(b.num).h + (b.lab ? 1.5 * G + T.rect(b.lab).h : 0))};
+}
+function placeBlock(b, x, yy) {
+  b.num.style.left = x + 'px'; b.num.style.top = yy + 'px';
+  if (b.lab) { b.lab.style.left = x + 'px'; b.lab.style.top = (yy + T.rect(b.num).h + 1.5 * G) + 'px'; }
+}
+function naturalWidth() {                    // the widest label on one line at the smallest size it may take
+  const probe = T.el('div', {class: 'txt p-label'}); probe.style.cssText = 'position:absolute;white-space:nowrap;visibility:hidden;width:auto';
+  const sizes = blocks.map(b => b.lab ? parseFloat(getComputedStyle(b.lab).fontSize) : 0);
+  let widest = 0;
+  P.forEach((p, i) => { if (!p.label) return; probe.style.fontSize = (sizes[i] || 46) + 'px'; probe.textContent = p.label; widest = Math.max(widest, probe.scrollWidth); });
+  probe.remove();
+  return widest;
+}
+
+/* ---------- the two arrangements, measured before one is drawn ---------- */
+function columns() {
+  const gap = n > 1 ? 9 * G : 0, colW = (W - 2 * m - (n - 1) * gap) / n;
+  const lab = setBlocks(colW, 'center'), labH = Math.max(...lab.h);
+  const band = areaH - labH - 5 * G;
+  const s = Math.min(cap, ...B.map(b => Math.min((colW - 2 * G) / b.w, band / b.h)));
+  return {mode: 'columns', s, gap, colW, labH, labSize: lab.size};
+}
+function rows() {
+  setBlocks(Math.round((W - 2 * m) * .3), 'left');           // sizes first, then the column the widest name needs
+  const labW = Math.round(Math.max((W - 2 * m) * .17, Math.min((W - 2 * m) * .3, naturalWidth() + 2 * G)));
+  const lab = setBlocks(labW, 'left');
+  const imgX = m + labW + 5 * G, imgW = W - m - imgX, gapMin = 4 * G;
+  const rowH = (areaH - (n - 1) * gapMin) / n;
+  const s = Math.min(cap, ...B.map((b, i) => Math.min(imgW / b.w, Math.max(rowH, lab.h[i] + 2 * G) / b.h)));
+  return {mode: 'rows', s, labW, imgX, imgW, gapMin, labSize: lab.size, labH: lab.h};
+}
+let mode = job.mode === 'rows' || job.mode === 'columns' ? job.mode : 'auto';
+let L, compared = null;
+if (mode === 'auto') {
+  const c = columns(), r = rows();
+  // Side by side reads as a sequence; the stack wins only when it shows the product clearly larger (a long caliper, a tape).
+  L = r.s > c.s * 1.18 ? r : c;
+  compared = {columns: +c.s.toFixed(4), rows: +r.s.toFixed(4)};
+} else L = mode === 'rows' ? rows() : columns();
+if (L.mode === 'columns') L = columns(); else L = rows();     // the labels set for the arrangement drawn
+
+/* keep every picture's frame (its white margin too) on the canvas: shrink a little when one would cross the edge */
+function onCanvas(rects) { return rects.every(r => r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H - bandH); }
+
+function connector(kind, x, yy, len) {         // a thin accent arrow from one pose to the next (not measured: no text, no picture)
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  el.setAttribute('class', 'conn');
+  const w = kind === 'right' ? len : 24, h = kind === 'right' ? 24 : len;
+  el.setAttribute('width', w); el.setAttribute('height', h); el.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  el.style.left = (kind === 'right' ? x : x - 12) + 'px'; el.style.top = (kind === 'right' ? yy - 12 : yy) + 'px';
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', kind === 'right' ? `M2 12 H${w - 3} M${w - 13} 3 L${w - 3} 12 L${w - 13} 21` : `M12 2 V${h - 3} M3 ${h - 13} L12 ${h - 3} L21 ${h - 13}`);
+  el.appendChild(path); T.root.appendChild(el);
+}
+
+const placed = [];
+if (L.mode === 'columns') {
+  let s = L.s, rects;
+  for (let k = 0; k < 40; k++) {
+    const hb = Math.max(...B.map(b => b.h * s)), total = hb + 5 * G + L.labH;
+    const y0 = top + Math.max(0, (areaH - total) * .45), base = y0 + hb;
+    rects = P.map((p, i) => {
+      const a = A[i], b = B[i], cx = m + i * (L.colW + L.gap) + L.colW / 2, sz = snap(a, s);
+      const k2 = sz.w / a.width;
+      return {x: Math.round(cx - (b.x0 + b.w / 2) * k2), y: Math.round(base - (b.y0 + b.h) * k2), w: sz.w, h: sz.h, cx, base, hb};
+    });
+    if (onCanvas(rects) || k === 39) break;
+    s *= .97;
+  }
+  rects.forEach((r, i) => {
+    const img = T.img('p' + (i + 1) + '_img', P[i].asset, r, {blend: 'multiply'});
+    placeBlock(blocks[i], m + i * (L.colW + L.gap), r.base + 5 * G);
+    placed.push(img);
+  });
+  const mid = rects[0].base - rects[0].hb / 2;
+  for (let i = 0; i + 1 < n; i++) connector('right', m + (i + 1) * L.colW + i * L.gap + 1.5 * G, mid, L.gap - 3 * G);
+  T.layoutInfo = {mode: 'columns', framed, scale: +s.toFixed(4), column_width: Math.round(L.colW), label_px: L.labSize, compared};
+} else {
+  let s = L.s, rects, gapR, y0;
+  for (let k = 0; k < 40; k++) {
+    const hb = Math.max(...B.map((b, i) => Math.max(b.h * s, L.labH[i])));
+    gapR = Math.min(14 * G, Math.max(L.gapMin, (areaH - n * hb) / (n + 1)));
+    const total = n * hb + (n - 1) * gapR;
+    y0 = top + Math.max(0, (areaH - total) / 2);
+    rects = P.map((p, i) => {
+      const a = A[i], b = B[i], sz = snap(a, s), k2 = sz.w / a.width;
+      const rowTop = y0 + i * (hb + gapR), cy = rowTop + hb / 2, cx = L.imgX + L.imgW / 2;
+      return {x: Math.round(cx - (b.x0 + b.w / 2) * k2), y: Math.round(cy - (b.y0 + b.h / 2) * k2), w: sz.w, h: sz.h, cy, hb};
+    });
+    if (onCanvas(rects) || k === 39) break;
+    s *= .97;
+  }
+  rects.forEach((r, i) => {
+    const img = T.img('p' + (i + 1) + '_img', P[i].asset, r, {blend: 'multiply'});
+    placeBlock(blocks[i], m, Math.round(r.cy - L.labH[i] / 2));
+    placed.push(img);
+  });
+  for (let i = 0; i + 1 < n; i++) {           // down the label column, from one name to the next
+    const b = blocks[i], from = T.rect(b.lab || b.num), to = T.rect(blocks[i + 1].num);
+    const y1 = from.y + from.h + 2 * G, y2 = to.y - 2 * G;
+    if (y2 - y1 >= 4 * G) connector('down', m + 12, y1, y2 - y1);
+  }
+  T.layoutInfo = {mode: 'rows', framed, scale: +s.toFixed(4), label_width: L.labW, label_px: L.labSize, compared};
+}
+T.watermark();
+T.finish();
+})();
+</script></body></html>

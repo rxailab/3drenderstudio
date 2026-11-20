@@ -34,9 +34,10 @@ CRITERIA = {'product': 25, 'hierarchy': 20, 'composition': 20, 'task': 15, 'colo
 VETOES = ('product_distorted', 'product_cropped', 'text_unreadable', 'text_broken', 'claim_not_in_facts', 'scene_product_mismatch', 'wrong_pointer')
 ACTIONS = ('shorten_text', 'remove_text', 'default_text', 'drop_item', 'refocus_scene', 'swap_scene', 'next_layout', 'none')
 TEXT_FIELDS = ('eyebrow', 'headline', 'support', 'subhead', 'table_note', 'note')
-LISTS = {'T01': ('features', 2), 'T02': ('features', 1), 'T03': ('details', 2), 'T04': ('specs', 2), 'T05': ('items', 1), 'T08': ('items', 2)}
+LISTS = {'T01': ('features', 2), 'T02': ('features', 1), 'T03': ('details', 2), 'T04': ('specs', 2), 'T05': ('items', 1), 'T08': ('items', 2),
+         'T13': ('poses', 2)}
 ITEM_TEXT = ('title', 'body', 'name', 'label', 'text')
-COPY_KINDS = ('T01', 'T02', 'T03', 'T04', 'T08')
+COPY_KINDS = ('T01', 'T02', 'T03', 'T13', 'T04', 'T08')
 COPY_LIMITS = {'zh': {'eyebrow': 6, 'headline': 16}, 'en': {'eyebrow': 22, 'headline': 44}}
 _LOCK = threading.Lock()
 _BRIEFS = None
@@ -176,6 +177,9 @@ def facts_of(product, measured_mm=None):
     facts = {'title': product['title'], 'model': product.get('model', ''), 'headline': product['headline'], 'subline': product['subline'],
              'selling_points': [{'title': row['title'], 'detail': row.get('detail', '')} for row in product['features']],
              'specs': product['specs'], 'figures': product['figures'], 'longest_side_mm': product.get('size_mm')}
+    if product.get('_poses'):          # the states the pose agent found on the 3D model (articulation.py), as the pages name them
+        facts['poses'] = {'states': list(product['_poses']), 'note': 'The states the product is shown in, worked out from its 3D model; '
+                                                                      'they say how it moves, not how far.'}
     if measured_mm:
         facts['measured_on_3d_model_mm'] = {key: round(value, 1) for key, value in measured_mm.items()}
         facts['measurement_note'] = 'Sizes on the dimensions page are measured on the 3D model, scaled to the longest side the user gave; they are facts.'
@@ -259,10 +263,13 @@ def write_copy(product, kinds):
     return written, ('有 %d 条模型写的标题改写后仍没有采用（%s），这些页的标题改用产品资料。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
 
 
-_LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2}
+_LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2, 'T13': 2}
 _SHOWS = {'T01': 'the whole product with callout lines to its parts', 'T02': 'dark close-ups of one or two parts',
           'T03': 'the product with a column of part close-ups (headline is the product name; only the eyebrow is used)',
-          'T04': 'a usage scene above a band of up to three key figures', 'T08': 'two or three usage scenes side by side'}
+          'T04': 'a usage scene above a band of up to three key figures', 'T08': 'two or three usage scenes side by side',
+          'T13': 'the product itself in two or three states of its moving parts (facts.poses, e.g. closed / open), same view and '
+                 'scale, each state named under it: the headline says what the movement does for the buyer, never a range, angle '
+                 'or capacity the facts do not give'}
 
 
 # ---- art director ----

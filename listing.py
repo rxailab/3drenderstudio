@@ -26,6 +26,7 @@ from pathlib import Path
 
 from studio_store import DATA, LOCK, get, put, all_records
 
+import articulation
 import brand_kit
 import brandkit_assets
 import brandkit_render
@@ -287,7 +288,7 @@ def ready_components(project):
 def planned(project, product, parts):
     """The images this listing gets: [{'kind', 'index', 'reason' or None when skipped}] in order. Kinds are brand-kit templates."""
     has, why = brandkit_set.requirements(product, parts, product_size(project, product)[1],
-                                         brandkit_set.scene_supply(product, 1 if _photo(project) else 0))
+                                         brandkit_set.scene_supply(product, 1 if _photo(project) else 0), len(articulation.states(project)))
     # Left to itself the set has every page there is something for; the ones it cannot make yet are listed with the reason.
     wanted = product['pages'] if product['pages'] is not None else list(AUTO_ORDER)
     rows = []
@@ -732,6 +733,8 @@ def picture_requests(project, product, size_mm, rows, parts=()):
                     'camera': {'azimuth': azimuth, 'elevation': 22, 'focal_length': focal, 'margin': margin, 'focus': names,
                                'azimuths': [azimuth, -azimuth, azimuth + 90, azimuth - 90, azimuth + 180]},
                     'ground': 'none', 'size': [pixels, pixels], 'samples': 48}
+    if 'T13' in kinds:
+        requests.update(pose_requests(project, requests['hero']))
     if product['usecase']['enabled'] and kinds & {'T04', 'T08', 'T12'}:
         use = product['usecase']
         workpiece = {'kind': use['kind'], 'material': use['material'],
@@ -743,6 +746,64 @@ def picture_requests(project, product, size_mm, rows, parts=()):
                                'camera': {'azimuth': azimuth, 'elevation': 20, 'focal_length': 85, 'margin': .15, 'auto': 'workpiece', 'offset': [0, -.02]},
                                'ground': 'shadow', 'size': [1600, 1600], 'samples': 48}
     return requests
+
+
+def pose_requests(project, hero):
+    """The product in each state of its moving parts (the pose agent's, ``articulation``), from the main picture's camera:
+    {'pose_<state id>': request}, or {} with fewer than two states. Every pose carries the envelope of all states, so the
+    camera frames them alike (one scale, one framing) and the pictures can be compared side by side."""
+    states = articulation.states(project)
+    if len(states) < 2:
+        return {}
+    envelope = [articulation.plan_for(project, state['id']) or {} for state in states]
+    requests = {}
+    for state in states:
+        request = copy.deepcopy(hero)
+        request['plan']['articulation_envelope'] = copy.deepcopy(envelope)
+        posed = articulation.plan_for(project, state['id'])
+        if posed:
+            request['plan']['articulation'] = posed
+        requests['pose_' + state['id']] = request
+    return requests
+
+
+def _pose_label(state, language):
+    """A state's name in the page's language (the pose agent writes both)."""
+    label = state.get('label_zh') if language == 'zh' else state.get('label_en')
+    return ' '.join(str(label or '').split())
+
+
+def pose_agent_ready():
+    """Whether the pose agent can look at a model: it needs the vision model."""
+    return brandkit_review.available()[1]
+
+
+def _moving_parts(project_id, project, product, size_mm, cancelled, say):
+    """The pose agent's record of this model's moving parts (``articulation.analyse``), worked out once per model file when a
+    vision model can look at it; a stored record is used as long as the model file is the same. Returns (project, notes):
+    the project as the build should see it (without a record that does not hold for this model) and notes in Chinese.
+    The set is built without poses whenever this fails."""
+    record = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
+    if not pose_agent_ready() or project_id in articulation.RUNNING:      # (already being asked from the 活动部件 tab: its last answer)
+        try:
+            fresh = bool(record) and record.get('key') == articulation.key_of(project, size_mm)
+        except (OSError, KeyError, TypeError, ValueError):
+            fresh = False
+        return (project if fresh else {**project, 'articulation': None}), []
+    notes = []
+    articulation.RUNNING[project_id] = True
+    try:
+        record = articulation.analyse(project_id, product, size_mm, cancelled, say)
+    except components.ComponentCancelled:
+        raise ListingCancelled() from None
+    except Exception as exc:
+        return {**project, 'articulation': None}, ['活动部件识别失败（%s），套图按静止姿态生成。' % str(exc)[:120]]
+    finally:
+        articulation.RUNNING.pop(project_id, None)
+    if record.get('status') == 'failed':
+        notes.append('活动部件的姿态没有通过检查，套图按静止姿态生成%s' % ('：' + '；'.join(str(note) for note in record.get('notes') or [])[:200]
+                                                              if record.get('notes') else '。'))
+    return {**get('project', project_id), 'articulation': record}, notes
 
 
 def _photo(project):
@@ -790,12 +851,14 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     project = get('project', project_id)
     product, brand_record, listing = stored(project)
     parts = ready_components(project); size_mm, known = product_size(project, product)
+    # Which parts of the model move and the states worth showing (pliers closed / open): asked once per model file.
+    project, notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))
     rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
     if not rows:
         raise ValueError('没有可以生成的图片。')
     kinds = {row['kind'] for row in rows}
     requests = picture_requests(project, product, size_mm, rows, parts)
-    shots = {}; names = list(requests); notes = []
+    shots = {}; names = list(requests)
     waiting = [row.get('name') for row in components.components(project) if row.get('status') in ('queued', 'processing')]
     if waiting:
         notes.append('有 %d 个组件还在处理，本次套图没有包含：%s。' % (len(waiting), '、'.join(str(name) for name in waiting[:4])))
@@ -932,6 +995,14 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
         for index, part in enumerate(parts):
             assets['part%d' % index], _ = brandkit_set.flatten(part['path'], assets_folder / ('part%d.png' % index), pad=.04)
+        # The poses, cut with one window so they stay at one scale, named in the page's language.
+        posed = [state for state in articulation.states(project) if 'pose_' + state['id'] in shots]
+        poses = []
+        if len(posed) >= 2:
+            fields = brandkit_set.pose_assets([shots['pose_' + state['id']]['path'] for state in posed], assets_folder / 'poses')
+            for state, field in zip(posed, fields):
+                assets['pose_' + state['id']] = field
+                poses.append({'asset': 'pose_' + state['id'], 'label': _pose_label(state, product['language'])})
         for index, scene in enumerate(scenes):
             assets['scene%d' % (index + 1)] = brandkit_set.scene_asset(scene['path'], assets_folder / ('scene%d.png' % (index + 1)))
             product_box = brandkit_set.scene_box(scene)
@@ -942,15 +1013,18 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         written, made_scenes = product, scenes          # kept as the user wrote them; only the pages use the translation
         product, scenes, parts, localised = brandkit_set.localise(product, scenes, parts, translations)
         notes += localised
+        if poses:
+            product = {**product, '_poses': [row['label'] for row in poses if row['label']]}      # facts for the copywriter and the review
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
-               'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit,
+               'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit, 'poses': poses,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
         ctx['flat'] = bool(ctx['dims_mm']) and _flat(ctx['dims_mm'])
         ctx['light_product'] = _light_share(shots['hero']['path']) > .35
         ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
-        has, why = brandkit_set.requirements(product, parts, known, len(scenes))
+        has, why = brandkit_set.requirements(product, parts, known, len(scenes), len(poses))
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
-        why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写')
+        why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写',
+                   T13='活动部件的姿态图没有渲染出 2 张以上')
         work = folder / '_layout'
         made = [row for row in rows if has.get(row['kind'])]
         for row in rows:

@@ -36,7 +36,7 @@ async function listingActivate(refresh=true) {
 }
 // Called when the user leaves the tab: words still being typed are saved, polling stops.
 function listingDeactivate() {
-  clearTimeout(listingTimer);
+  clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);
   if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
 async function listingLoad(reset) {
@@ -68,6 +68,7 @@ function listingRenderPanel() {
   if(listingTab==='product')listingRenderProduct();
   else if(listingTab==='components')listingRenderComponents();
   else if(listingTab==='brand')listingRenderBrand();
+  else if(listingTab==='articulation')listingRenderArticulation();
   else listingRenderUsecase();
 }
 function listingPartsHTML(index,chosen) {
@@ -209,6 +210,41 @@ function listingRenderUsecase() {
     <div class="listing-save"><button type="button" class="button secondary" data-action="save-product">保存场景设置</button></div>`;
 }
 
+// ---- moving parts: what the pose agent (articulation.py) found, and asking it again ----
+let listingArticulation=null,listingArticulationTimer=null;
+const listingArticulationStatus={ready:'有活动部件',none:'没有活动部件',failed:'识别失败',unknown:'尚未识别'};
+const listingRoleNames={rest:'静止',open:'打开',working:'使用中'};
+async function listingRenderArticulation(reload=true) {
+  const id=listingOpenFor();if(!id)return;
+  clearTimeout(listingArticulationTimer);
+  if(reload || !listingArticulation || listingArticulation.project!==id){
+    if(!listingArticulation || listingArticulation.project!==id)$('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';
+    let data;
+    try{data=await api(`/api/projects/${id}/articulation`);}
+    catch(error){if(listingTab==='articulation' && listingOpenFor()===id)$('listingPanel').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;return;}
+    const was=listingArticulation && listingArticulation.project===id && listingArticulation.data.running;
+    listingArticulation={project:id,data};
+    if(was && !data.running)listingLoad(false).catch(()=>{});      // the planned pages may change with the result
+  }
+  if(listingTab!=='articulation' || listingOpenFor()!==id)return;
+  const a=listingArticulation.data,running=!!a.running;
+  const status=running?'识别中':(listingArticulationStatus[a.status] || a.status || '尚未识别');
+  const states=(a.states || []).map((row,index)=>`<li><span class="listing-pose-num">${String(index+1).padStart(2,'0')}</span><strong>${esc(row.label_zh || row.id)}</strong> <span>${esc(row.label_en || '')}</span>${row.role?`<span class="listing-pose-role">${esc(listingRoleNames[row.role] || row.role)}</span>`:''}</li>`).join('');
+  const usage=((a.usage || {}).zh || []).map(rule=>`<li>${esc(rule)}</li>`).join('');
+  const notes=(a.notes || []).map(note=>`<li>${esc(note)}</li>`).join('');
+  const picture=(url,alt)=>url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Math.round((a.at || 0)*1000)}" alt="${esc(alt)}" loading="lazy"></a>`:'';
+  $('listingPanel').innerHTML=`
+    <p class="field-help">钳子、卡尺、卷尺、美工刀、工具箱这类产品有活动部件。视觉模型看模型的部件图，判断哪些部件会动、怎么动，再由 Blender 摆出各个姿态并检查。识别出 2 个以上姿态时，套图会多一张「多姿态展示」，场景图也会按正确的用法摆放产品。每个模型文件只识别一次。</p>
+    <div class="listing-articulation-status" data-status="${esc(running?'running':a.status || 'unknown')}" role="status"><span class="field-label">状态</span><strong>${esc(status)}</strong>${a.product_kind?`<span>${esc(a.product_kind)}</span>`:''}</div>
+    ${a.reasoning?`<p class="listing-articulation-reason">${esc(a.reasoning)}</p>`:''}
+    ${states?`<h3 class="listing-heading">姿态</h3><ol class="listing-poses">${states}</ol>`:''}
+    ${usage?`<h3 class="listing-heading">正确用法</h3><ul class="listing-usage">${usage}</ul>`:''}
+    ${notes?`<h3 class="listing-heading">说明</h3><ul class="listing-usage">${notes}</ul>`:''}
+    ${a.parts_sheet || a.previews?`<div class="listing-articulation-pictures">${picture(a.parts_sheet,'部件编号图')}${picture(a.previews,'各姿态预览')}</div>`:''}
+    <div class="listing-save"><button type="button" class="button secondary" data-action="articulation-run" ${running?'disabled':''}>${running?'识别中…':'重新识别'}</button></div>`;
+  if(running && listingVisible())listingArticulationTimer=setTimeout(()=>listingRenderArticulation(true),2000);
+}
+
 // ---- right side ----
 function listingRenderMain() {
   const state=listingState;if(!state)return;
@@ -336,6 +372,12 @@ async function listingOnClick(event) {
     else if(action==='component-turn'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'PUT',body:{turn:button.dataset.turn}});await listingLoad(false);}
     else if(action==='component-refresh'){await api(`/api/projects/${listingProject}/components/${id}/refresh`,{method:'POST'});await listingLoad(false);}
     else if(action==='component-remove'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
+    else if(action==='articulation-run'){
+      button.disabled=true;button.textContent='识别中…';
+      const id=listingProject,data=await api(`/api/projects/${id}/articulation`,{method:'POST',body:{}});
+      if(listingOpenFor()!==id)return;
+      listingArticulation={project:id,data};listingRenderArticulation(false);toast('已开始重新识别活动部件');
+    }
     else if(action==='logo-remove'){listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingRenderBrand();}
   }catch(error){toast(error.message,true);}
 }
