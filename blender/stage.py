@@ -474,6 +474,10 @@ def run(request):
     margin = float(view.get('margin', .05)); elevation = float(view.get('elevation', 18)); azimuth = float(view.get('azimuth', 35))
     focus = [ob for ob in meshes if ob.name in set(view.get('focus') or [])]
     framed = corners(focus or meshes); passing = None
+    if not focus and plan.get('articulation_envelope'):
+        # every state of the product framed alike: the camera takes in all of them, so they are drawn at one scale
+        from blender import articulate
+        framed += articulate.ENVELOPE
     for entry in companions:
         framed += corners(entry['meshes'])
     if piece is not None and facts['mode'] == 'under' and view.get('frame') != 'all':

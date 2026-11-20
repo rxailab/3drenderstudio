@@ -484,6 +484,50 @@ class LayoutTests(StoreCase):
         self.assertFalse([row for row in qa['issues'] if row['check'] in ('overlap', 'font_missing', 'safe_margin', 'out_of_canvas')])
         self.assertIn('Anton', {row['family'] for row in qa['fonts']})
 
+    def test_the_poses_page_is_laid_out_and_passes_its_checks(self):
+        """T13: two or three states of a product cut with one window, side by side or stacked, in either language."""
+        import brand_kit
+        work = self.data / 'poses'; work.mkdir()
+        shapes = {'long': ((1800, 1800), [(300, 820, 1500, 900), (300, 820, 1500, 900), (300, 820, 1500, 900)],
+                           [(300, 760, 420, 820), (520, 760, 640, 820), (1300, 760, 1420, 820)]),        # a beam, its jaw sliding along it
+                  'compact': ((1800, 1800), [(600, 600, 1100, 1100)] * 3, [(1100, 980, 1150, 1000), (1100, 980, 1400, 1080), (1100, 980, 1600, 1150)])}
+        labels = {'en': ['Closed', 'Measuring', 'Fully open'], 'zh': ['闭合', '测量中', '全开']}
+        for shape, (size, bodies, moving) in shapes.items():
+            sources = []
+            for index, (body, part) in enumerate(zip(bodies, moving)):
+                path = work / ('%s-%d.png' % (shape, index))
+                image = Image.new('RGBA', size, (0, 0, 0, 0)); pen = ImageDraw.Draw(image)
+                pen.rectangle(body, fill=(60, 64, 70, 255)); pen.rectangle(part, fill=(200, 90, 40, 255)); image.save(path)
+                sources.append(path)
+            assets = brandkit_set.pose_assets(sources, work / shape)
+            self.assertEqual(len({(row['width'], row['height']) for row in assets}), 1)               # one window for every pose
+            for language, aspect, count in (('en', '1:1', 3), ('zh', '4:5', 3), ('en', '4:5', 2), ('zh', '1:1', 2)):
+                with self.subTest(shape=shape, language=language, aspect=aspect, count=count):
+                    use = [0, 1, 2][:count] if count == 3 else [0, 2]
+                    ctx = {'language': language, 'aspect': aspect, 'brand': brand_kit.Brand(brand_kit.validate({}), '#d0612a'), 'copy': {},
+                           'product': {'title': '数显卡尺' if language == 'zh' else 'Digital Caliper', 'headline': '', 'subline': '', 'features': [],
+                                       'specs': [], 'figures': []},
+                           'assets': {'pose%d' % index: assets[index] for index in use},
+                           'poses': [{'asset': 'pose%d' % index, 'label': labels[language][index]} for index in use]}
+                    jobs = brandkit_set.jobs_for('T13', ctx)
+                    self.assertEqual(jobs[0]['mode'], 'auto'); self.assertEqual(len(jobs[0]['poses']), count)
+                    out = self.data / ('T13-%s-%s-%s-%d.png' % (shape, language, aspect.replace(':', 'x'), count))
+                    qa, notes, review = brandkit_set.lay_out('T13', ctx, out, self.data / '_layout')
+                    self.assertEqual(brandkit_render.layout_issues(qa), [], (qa['issues'], notes))
+                    self.assertFalse([row for row in qa['issues'] if row['check'] in ('min_size_at_360', 'upscale', 'font_missing')], qa['issues'])
+                    ids = {row['id'] for row in qa['elements']}
+                    self.assertTrue({'headline', 'eyebrow'} | {'p%d_img' % (index + 1) for index in range(count)} | {'p%d_label' % (index + 1) for index in range(count)} <= ids, ids)
+                    self.assertEqual(review['status'], 'not_verified')
+                    printed = [row['text'] for row in qa['elements'] if row['kind'] == 'text']
+                    self.assertTrue(set(labels[language][index] for index in use) <= set(printed), printed)
+                    # every pose at one scale, and a long product is stacked
+                    scales = {row['scale'] for row in qa['elements'] if row['kind'] == 'product_image'}
+                    self.assertEqual(len(scales), 1, scales)
+                    if shape == 'long':
+                        self.assertEqual(qa['layout']['mode'], 'rows')
+                    with Image.open(out) as image:
+                        self.assertEqual(image.size, brandkit_set.CANVAS[aspect])
+
     def test_text_on_the_product_is_caught(self):
         out = self.data / 'probe.png'; hero = cut_out(self.data / 'hero-src.png', size=(800, 800), box=(0, 0, 800, 800))
         fields, _ = brandkit_set.flatten(hero, self.data / 'hero.png')

@@ -663,6 +663,69 @@ def listing_download(ident):
     data,name=listing.archive(ident)
     return send_file(io.BytesIO(data),mimetype='application/zip',as_attachment=True,download_name=name)
 
+# ---- the pose agent: which parts of the model move, and the states the listing shows (articulation.py) ----
+ARTICULATION_FILE=re.compile(r'(parts|states[12])\.png')
+
+def _articulation_url(ident,path):
+    """The address of one of the pose agent's pictures, or None: only parts.png / states1-2.png in its own folder."""
+    if not path: return None
+    path=Path(path)
+    if not ARTICULATION_FILE.fullmatch(path.name) or not re.fullmatch(r'[0-9a-f]{16}',path.parent.name): return None
+    if path.resolve().parent.parent!=(DATA/ident/'articulation').resolve() or not path.is_file(): return None
+    return '/api/projects/%s/articulation/files/%s/%s'%(ident,path.parent.name,path.name)
+
+def _articulation_view(ident):
+    import articulation
+    project=get('project',ident)
+    record=project.get('articulation') if isinstance(project.get('articulation'),dict) else {}
+    view=articulation.public(project)
+    view['running']=ident in articulation.RUNNING
+    view['parts_sheet']=_articulation_url(ident,record.get('parts_sheet'))
+    view['previews']=_articulation_url(ident,record.get('previews'))
+    view['at']=record.get('at')
+    return view
+
+@app.get('/api/projects/<ident>/articulation')
+def articulation_state(ident):
+    return jsonify(_articulation_view(ident))
+
+@app.post('/api/projects/<ident>/articulation')
+def articulation_run(ident):
+    """Ask the pose agent again (a vision model looks at the model's parts; Blender poses and checks them), in the background."""
+    import threading
+    import articulation
+    import listing
+    project=get('project',ident)
+    if not project.get('analysis') or project.get('status')!='ready': raise ValueError('请先等待模型分析完成')
+    if ident in articulation.RUNNING: return jsonify(_articulation_view(ident)),202
+    product,_,_=listing.stored(project)
+    size_mm,_=listing.product_size(project,product)
+    articulation.RUNNING[ident]=True
+
+    def run():
+        try: articulation.analyse(ident,product,size_mm,force=True)
+        except Exception as exc:
+            app.logger.warning('articulation failed: %s',exc)
+            with LOCK:
+                try:
+                    current=get('project',ident)
+                    record=current.get('articulation') if isinstance(current.get('articulation'),dict) else {'status':'failed','states':[],'joints':[]}
+                    if record.get('status') not in ('ready','none'): record['status']='failed'
+                    record['notes']=(list(record.get('notes') or [])+['识别失败：'+str(exc)[:200]])[-6:]
+                    current['articulation']=record; put('project',current)
+                except KeyError: pass
+        finally: articulation.RUNNING.pop(ident,None)
+    threading.Thread(target=run,name='articulation',daemon=True).start()
+    return jsonify(_articulation_view(ident)),202
+
+@app.get('/api/projects/<ident>/articulation/files/<key>/<name>')
+def articulation_file(ident,key,name):
+    get('project',ident)
+    if not re.fullmatch(r'[0-9a-f]{16}',key) or not ARTICULATION_FILE.fullmatch(name): abort(404)
+    path=DATA/ident/'articulation'/key/name
+    if not path.is_file(): abort(404)
+    return send_file(path,mimetype='image/png',max_age=0)
+
 @app.post('/api/projects/<ident>/scene/<task_id>/cancel')
 def scene_cancel(ident,task_id):
     import scene_stylist

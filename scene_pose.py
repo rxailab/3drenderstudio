@@ -59,6 +59,7 @@ Choose the pose the product really has at that moment of the scene. Work it out 
 - contact: where in the chosen cell the working part meets the work, in a few words such as "the disc, at the lower left", or "none".
 - work_side: where the thing it works on lies relative to the product, seen from the camera: below, above, left, right, front, behind, around (passing through or round the product) or none.
 - reason: one sentence in reason_language.
+usage_rules, when present, say how this very product is used correctly (from its own analysis): the chosen pose must allow it (a caliper's beam square to the faces it measures, never tilted across them).
 hint, when present, is the user's own wish and takes priority.'''
 
 FIRST_STEP = {'held': 'every way up the product can be turned, each from two sides; the top-left cell is how it stands for its main image',
@@ -175,7 +176,7 @@ def kept(base, mode, source, reason, started=None):
             'seconds': round(time.time() - started, 1) if started else 0.0}
 
 
-def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=None, progress=None, mode='auto', hint=''):
+def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=None, progress=None, mode='auto', hint='', usage=None):
     """The pose for the product in this scene. Returns a record; its 'rotation' replaces plan['rotation'] for the scene's render.
 
     ``hold`` is 'hands', 'person', 'nobody' or 'scene' (people left to the scene description). ``plan`` is the plan the
@@ -194,6 +195,8 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
                             if isinstance(item, dict) and item.get('name')]}
     if hint:
         facts['hint'] = _line(hint, 300)
+    if usage:
+        facts['usage_rules'] = [_line(rule, 200) for rule in usage[:4]]
     sheets = []
     try:
         say('渲染候选使用姿态')

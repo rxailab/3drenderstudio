@@ -389,6 +389,16 @@ def prepare(objects,meshes,plan):
     bpy.context.view_layer.update();lo,hi,_=bounds(meshes)
     root.location=-Vector(((lo.x+hi.x)/2,(lo.y+hi.y)/2,lo.z))
     bpy.context.view_layer.update()
+    if plan.get('articulation_envelope'):
+        from blender import articulate
+        articulate.envelope(plan['articulation_envelope'],root)
+    if plan.get('articulation'):
+        # moving parts in the chosen state (articulation.py): posed after the rest pose set the scale and the ground,
+        # so every state of a product is drawn at the same size
+        from blender import articulate
+        made=articulate.apply(plan['articulation'],root)
+        objects.extend(made);meshes.extend(made)
+        operations.append(dict(operation='articulation',state=plan['articulation'].get('state'),added=[ob.name for ob in made]))
     operations.append(dict(operation='working_transform',rotation_degrees=plan.get('rotation',[0,0,0]),uniform_scale=scale,translation=list(root.location)))
     dims=plan.get('dimensions_mm',plan.get('dimension_mm'))
     if dims:

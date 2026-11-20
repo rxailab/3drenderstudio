@@ -650,7 +650,7 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
                                     size_mm if basis != 'category' else None, folder, cancelled, progress,
                                     people=proposal['people'] if type(proposal.get('people')) is bool else None,
                                     framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None,
-                                    pose=pose, hint=hint)
+                                    pose=pose, hint=hint, **{name: proposal[key] for key, name in (('articulation', 'articulation'), ('usage', 'usage_rules')) if proposal.get(key)})
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')
