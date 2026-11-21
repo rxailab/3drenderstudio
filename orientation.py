@@ -64,8 +64,11 @@ TOP_WORDS = ('顶盖', '上盖', '顶板', '台面', 'lid', 'top', 'worktop', 'c
 # Products that may stand on end although they are long or thin: a drill on its battery, a bottle, a lamp. A long or
 # flat product named with none of these lies on its largest face (see lies_flat). "driver" alone is a screwdriver too,
 # so only an impact or cordless driver counts.
+# A ladder, a screen or a tripod is long or thin as well, and is photographed standing (the folding ladder reference).
 STAND_WORDS = ('drill', 'grinder', 'vacuum', 'kettle', 'bottle', 'lamp', 'flask', 'thermos', 'vase', 'speaker', 'fan',
-               '电钻', '起子机', '角磨', '磨光机', '吸尘器', '水壶', '热水壶', '瓶', '灯', '保温杯', '花瓶', '音箱', '风扇')
+               'ladder', 'stepladder', 'monitor', 'tv', 'television', 'tripod',
+               '电钻', '起子机', '角磨', '磨光机', '吸尘器', '水壶', '热水壶', '瓶', '灯', '保温杯', '花瓶', '音箱', '风扇',
+               '梯', '显示器', '电视', '三脚架')
 LONG = 3.0          # longest side at least this many times the middle one: a screwdriver, a wrench, a saw
 THIN = .2           # thinnest side at most this share of the middle one: a saw blade, a caliper, a knife
 STANDING = 1.5      # a pose more than this many times as tall as the lowest one stands the product up

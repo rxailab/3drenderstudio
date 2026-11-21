@@ -531,6 +531,16 @@ class RecordTests(StoreCase):
                 self.assertEqual(requests['side']['camera']['elevation'], 89 if hero == 60 else 0)     # the outline shot is unchanged
                 self.assertEqual(listing._hero_view(record)[1], 18.0)                  # the stored view the rest of the listing keys on
 
+    def test_points_found_on_an_earlier_main_picture_are_not_kept_once_a_flat_tool_is_shown_as_a_flat_lay(self):
+        record = store.get('project', 'fixture'); record['plan']['rotation'] = [0, 0, 0]
+        record['analysis']['features']['dimensions'] = [1.0, .3, 1.25]                       # standing: the key is as it was
+        plan = record['plan']; shot = next(row for row in plan['shots'] if row['id'] == 'hero')
+        old = listing.hashlib.sha256(listing.json.dumps([record.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')],
+                                                        sort_keys=True, default=str).encode()).hexdigest()[:16]
+        self.assertEqual(listing._view_key(record), old)
+        record['analysis']['features']['dimensions'] = [.154, .643, .020]                    # a saw: its main picture is now from 60 degrees
+        self.assertNotEqual(listing._view_key(record), old)
+
     def test_a_line_the_copy_writer_cut_short_ends_on_a_whole_word(self):
         self.assertEqual(listing.whole('Battery powered, for cutting and grinding without a…', 120), 'Battery powered, for cutting and grinding without')
         self.assertEqual(listing.whole('Cuts PVC, PEX and copper pipe, one-hand…', 120), 'Cuts PVC, PEX and copper pipe')

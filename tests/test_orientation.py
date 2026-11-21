@@ -375,7 +375,8 @@ class LyingFlatTests(Fixture):
             with self.subTest(size=size):
                 self.assertFalse(orientation.lies_flat(self.measured(size)))     # the pose agent still decides these
         # Named as standing, a long or thin product is left to the pose agent: names are often just file names.
-        for words in (('12_cordless_drill_red',), ('冲击起子机',), ('Impact Driver',), ('', '台灯'), ('water bottle',)):
+        for words in (('12_cordless_drill_red',), ('冲击起子机',), ('Impact Driver',), ('', '台灯'), ('water bottle',),
+                      ('Folding Ladder',), ('多功能折叠梯',), ('27in Monitor',), ('Camera tripod',)):
             with self.subTest(words=words):
                 self.assertFalse(orientation.lies_flat(self.measured(self.WRENCH), words))
         for words in (('Phillips Screwdriver',), ('screw driver',), ('十字螺丝刀',)):
