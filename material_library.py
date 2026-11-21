@@ -33,7 +33,11 @@ AVOID_WORDS = ('logo', 'label', 'decal', 'sticker', 'text', 'glass', 'lens', 'cl
                'mirror', 'gloss', 'glossy', 'rubber', 'silicone', 'screen', 'display',
                '标签', '标志', '商标', '铭牌', '印字', '贴纸', '文字', '玻璃', '镜片', '透明', '镀铬', '电镀', '镜面',
                '亮面', '亮光', '高光', '橡胶', '硅胶', '屏幕', '显示')
-REFLECTIVE_WORDS = ('反光', 'reflective', 'retroreflective', 'reflector')
+REFLECTIVE_WORDS = ('反光', 'reflective', 'retroreflective')
+# 反光 also names a lamp's reflector cup (反光杯/反光罩) or a mirror (反光镜):
+# polished parts that must never be covered in safety tape.
+NOT_TAPE_WORDS = ('reflector', 'mirror', 'cup', 'lamp', 'light', 'chrome', 'polished',
+                  '镜', '罩', '杯', '碗', '灯', '镀铬', '电镀', '抛光')
 
 
 def _words(name, words):
@@ -135,7 +139,7 @@ def decal(value):
 
 def is_reflective_part(name):
     """A part whose own name says it is reflective tape (反光条, reflective strip)."""
-    return bool(_words(name, REFLECTIVE_WORDS))
+    return bool(_words(name, REFLECTIVE_WORDS)) and not _words(name, NOT_TAPE_WORDS)
 
 
 def decal_for(part_name, color=None):

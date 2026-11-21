@@ -95,6 +95,9 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(material_library.is_reflective_part('红色反光条_2'))
         self.assertTrue(material_library.is_reflective_part('Reflective_Strip'))
         self.assertFalse(material_library.is_reflective_part('reflection_probe'))
+        # a lamp reflector or mirror is polished, not taped
+        for name in ('反光杯', '手电筒反光罩', '后视反光镜', 'Reflector', 'reflective_mirror', 'LED_reflective_cup'):
+            self.assertFalse(material_library.is_reflective_part(name), name)
         self.assertEqual(material_library.decal_for('红色反光条'), 'reflective_tape_red')
         self.assertEqual(material_library.decal_for('reflective strip', [.8, .05, .04]), 'reflective_tape_red')
         self.assertEqual(material_library.decal_for('reflective strip', [.5, .6, .1]), 'reflective_tape_yellowgreen')
@@ -156,11 +159,12 @@ def baked(name, noisy=True, metal=0.0):
     mat = bpy.data.materials.new(name); mat.use_nodes = True
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bs = nodes.get('Principled BSDF')
-    image = bpy.data.images.new(name + '_orm', 256, 256, float_buffer=True); image.colorspace_settings.name = 'Non-Color'
-    rng = np.random.default_rng(1); px = np.zeros((256, 256, 4), np.float32); px[..., 3] = 1
-    blocks = rng.random((32, 32)) * (.12 if noisy else 0)
-    px[..., 1] = .16 + np.kron(blocks, np.ones((8, 8)))
-    px[..., 1] += rng.random((256, 256)) * (.06 if noisy else 0)
+    size = 4 if mode == 'tiny' else 256
+    image = bpy.data.images.new(name + '_orm', size, size, float_buffer=True); image.colorspace_settings.name = 'Non-Color'
+    rng = np.random.default_rng(1); px = np.zeros((size, size, 4), np.float32); px[..., 3] = 1
+    blocks = rng.random((max(size // 8, 1),) * 2) * (.12 if noisy else 0)
+    px[..., 1] = .16 + np.kron(blocks, np.ones((8, 8)))[:size, :size]
+    px[..., 1] += rng.random((size, size)) * (.06 if noisy else 0)
     px[..., 2] = metal
     image.pixels.foreach_set(px.ravel())
     tex = nodes.new('ShaderNodeTexImage'); tex.image = image
@@ -185,6 +189,7 @@ plan = {'rotation': [0, 0, 0], 'repair': {}, 'object_material_overrides': [],
         'material_overrides': [{'name': 'Lid_Baked', 'preset': 'matte_plastic', 'preserve_original': True,
                                 'surface_detail': {'id': 'textured_coarse_stipple'}}]}
 if mode == 'off': plan['roughness_sanitise'] = False
+if mode == 'star': plan['material_overrides'].append({'name': '*', 'roughness_sanitise': False})
 operations, warnings = worker.prepare(objects, objects, plan)
 out = {'sanitised': [o['material'] for o in operations if o['operation'] == 'roughness_sanitise'],
        'library': [r for o in operations for res in o.get('resources', []) for r in res.get('library', [])],
@@ -238,6 +243,13 @@ class WorkerLibraryRuntimeTests(unittest.TestCase):
         out = self.run_scene('off')
         self.assertEqual(out['sanitised'], [])
         self.assertNotEqual(out['roughness_from'], 'Studio roughness metal guard')
+
+    def test_flag_on_an_all_materials_override_turns_the_remap_off(self):
+        self.assertEqual(self.run_scene('star')['sanitised'], [])
+
+    def test_tiny_roughness_image_is_left_alone(self):
+        # smaller than one 8 px block: no statistics, no remap, no crash
+        self.assertEqual(self.run_scene('tiny')['sanitised'], [])
 
     def test_reflective_part_gets_tape_on_its_own_copy(self):
         out = self.run_scene('reflective')

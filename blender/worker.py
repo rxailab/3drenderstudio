@@ -81,13 +81,16 @@ def image_channel(socket):
     return None,None
 
 
-def roughness_map_stats(mat, meshes, count=20000, block=8):
+def roughness_map_stats(mat, meshes, count=20000, block=8, read=None):
     """Roughness of a linked map measured where the mesh actually uses it.
 
     A baked atlas is mostly gutter, so the whole image says little. Points are
     sampled area-weighted inside the material's UV triangles (fixed seed, so
     analysis and every render agree), and noise is the median std of the 8 px
     blocks they land in. Returns None when roughness is not an image.
+    ``read`` caches decoded pixels by image name across the materials of one
+    pass: atlas models share one 4k ORM between many slots, and decoding it
+    once per slot cost 2.6 s per render on a 15-slot toolbox.
     """
     import numpy as np
     bs=bsdf_of(mat)
@@ -122,20 +125,30 @@ def roughness_map_stats(mat, meshes, count=20000, block=8):
     r1=np.sqrt(rng.random(count));r2=rng.random(count)
     t=tri[pick];points=(1-r1)[:,None]*t[:,0]+(r1*(1-r2))[:,None]*t[:,1]+(r1*r2)[:,None]*t[:,2]
 
+    read={} if read is None else read
+
     def channel(node,ch):
-        image=node.image;w,h=image.size
-        if not w or not h: return None
-        pixels=np.empty(w*h*4,np.float32);image.pixels.foreach_get(pixels)
-        return pixels.reshape(h,w,4)[...,ch]
+        # Images are not always RGBA (a grey float map can have 1 channel), and
+        # an ORM image feeds roughness and metallic: read each image once.
+        image=node.image;w,h=image.size;depth=image.channels
+        if not w or not h or not depth: return None
+        if image.name not in read:
+            pixels=np.empty(w*h*depth,np.float32);image.pixels.foreach_get(pixels)
+            read[image.name]=pixels.reshape(h,w,depth)
+        pixels=read[image.name]
+        return pixels[...,min(ch,depth-1)]
 
     rough=channel(rough_node,rough_channel)
     if rough is None: return None
     h,w=rough.shape
+    if h<block or w<block: return None          # a constant-ish swatch, not a baked atlas
     x=np.clip((np.mod(points[:,0],1)*w).astype(int),0,w-1);y=np.clip((np.mod(points[:,1],1)*h).astype(int),0,h-1)
     values=rough[y,x]
     hb,wb=h//block,w//block
-    blocks=rough[:hb*block,:wb*block].reshape(hb,block,wb,block).std(axis=(1,3))
+    # Only the blocks the samples land in: the std of every block of a 4k
+    # atlas took ~0.09 s per material, most of it gutter nobody renders.
     used=np.unique(np.minimum(y//block,hb-1)*wb+np.minimum(x//block,wb-1))
+    blocks=rough[:hb*block,:wb*block].reshape(hb,block,wb,block)[used//wb,:,used%wb,:].std(axis=(1,2))
     if metal_node:
         metal=channel(metal_node,metal_channel)
         metal_values=metal[np.clip((np.mod(points[:,1],1)*metal.shape[0]).astype(int),0,metal.shape[0]-1),
@@ -143,9 +156,10 @@ def roughness_map_stats(mat, meshes, count=20000, block=8):
     else:
         metal_values=np.array([float(input_value(bs,'Metallic',0))])
     p5,p50,p95=np.percentile(values,[5,50,95])
+    if not np.all(np.isfinite([p5,p50,p95])): return None
     return dict(source='texture',image=rough_node.image.name,channel='RGB'[rough_channel] if rough_channel<3 else 'A',
                 size=[w,h],samples=int(count),p5=round(float(p5),4),p50=round(float(p50),4),p95=round(float(p95),4),
-                block_std=round(float(np.median(blocks.reshape(-1)[used])),4),metallic_p50=round(float(np.median(metal_values)),4))
+                block_std=round(float(np.median(blocks)),4),metallic_p50=round(float(np.median(metal_values)),4))
 
 
 def analyze(objects, meshes, path):
@@ -180,6 +194,7 @@ def analyze(objects, meshes, path):
             if row['degenerate_faces']: warnings.append(ob.name + '：存在退化面，可在建模软件中检查')
         rows.append(row)
     mats = []
+    pixel_cache = {}
     fallback_names=fallback_material_names(path)
     materials = list({m.name: m for ob in meshes for m in ob.data.materials if m}.values())
     for mat in materials:
@@ -198,7 +213,9 @@ def analyze(objects, meshes, path):
                          roughness=rough, metallic=metal, transmission=transmission, emission=emission, textures=textures))
         # Cached for the project: the render recomputes the same seeded numbers
         # itself (a render request carries no analysis), this copy explains it.
-        stats=roughness_map_stats(mat,meshes)
+        try: stats=roughness_map_stats(mat,meshes,read=pixel_cache)
+        except Exception as exc:                # statistics only explain; they must never fail an analysis
+            stats=None;warnings.append(mat.name+'：粗糙度贴图统计失败（'+str(exc)[:80]+'），渲染时不整理粗糙度')
         if stats:
             import lookdev
             mats[-1]['roughness_stats']=stats
@@ -515,13 +532,15 @@ def sanitise_baked_roughness(meshes,plan):
     """
     if plan.get('roughness_sanitise',True) is False: return []
     import lookdev
-    off={m.get('name') for m in plan.get('material_overrides',[]) if isinstance(m,dict) and m.get('roughness_sanitise') is False}
-    operations=[]
+    off={m.get('name','*') for m in plan.get('material_overrides',[]) if isinstance(m,dict) and m.get('roughness_sanitise') is False}
+    if off & {'*','all'}: return []
+    operations=[];pixel_cache={}
     for mat in {m.name:m for ob in meshes for m in ob.data.materials if m}.values():
         bs=bsdf_of(mat)
         if mat.name in off or not bs or not bs.inputs['Roughness'].is_linked: continue
         if mat.node_tree.nodes.get('Studio roughness sanitiser'): continue
-        stats=roughness_map_stats(mat,meshes)
+        try: stats=roughness_map_stats(mat,meshes,read=pixel_cache)
+        except Exception: stats=None            # unreadable map: keep it as authored
         material=dict(name=mat.name,transmission=input_value(bs,'Transmission Weight',0),roughness_stats=stats)
         fix=lookdev.baked_roughness_fix(material,[ob.name for ob in meshes if mat in list(ob.data.materials)])
         if not fix: continue
