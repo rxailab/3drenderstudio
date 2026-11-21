@@ -40,6 +40,7 @@ class Store(unittest.TestCase):
         with contextlib.closing(sqlite3.connect(str(self.data / 'studio.sqlite'))) as c:
             c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))'); c.commit()
         moved = patch.object(studio_store, 'DATA', self.data); moved.start(); self.addCleanup(moved.stop)
+        logged = patch.object(ai_client, 'USAGE_DIR', None); logged.start(); self.addCleanup(logged.stop)     # the log beside it
         knobs = patch('ai_config.read_env', return_value={}); knobs.start(); self.addCleanup(knobs.stop)
 
     def picture(self, colour=(200, 40, 30)):
@@ -82,6 +83,19 @@ class UsageLog(Store):
             brandkit_review._ask(CONFIG, 'Set review', {'n': 1}, SCHEMA, image_path=self.picture(), caller='brandkit_review.review_set')
         row = json.loads((self.data / ai_client.USAGE_LOG).read_text(encoding='utf-8').splitlines()[-1])
         self.assertEqual((row['caller'], row['cached'], row['n_images']), ('brandkit_review.review_set', True, 1))
+
+    def test_a_usage_block_in_an_odd_shape_never_fails_a_good_answer(self):
+        odd = {'input_tokens': {'text': 5}, 'output_tokens': 7}
+        with ai_client.tally() as used:
+            ai_client._record_usage(CONFIG, {'model': 'm', 'messages': []}, {'usage': odd})
+        self.assertEqual((used['input_tokens'], used['output_tokens'], used['calls']), (0, 7, 1))
+
+    def test_the_log_goes_where_usage_dir_says_so_test_runs_leave_the_real_one_alone(self):
+        other = self.data / 'elsewhere'; other.mkdir()
+        with patch.object(ai_client, 'USAGE_DIR', str(other)):
+            ai_client.log_usage({'caller': 'x', 'usage': {}})
+        self.assertTrue((other / ai_client.USAGE_LOG).is_file())
+        self.assertFalse((self.data / ai_client.USAGE_LOG).exists())
 
 
 class AnswerCache(Store):
@@ -207,7 +221,8 @@ class ModelKnobs(Store):
     def test_the_cheaper_models_are_used_only_by_the_calls_routed_to_them_and_only_when_named(self):
         self.assertIs(brandkit_review.model_for(CONFIG, 'brandkit_set.localise'), CONFIG)          # off by default
         with patch('ai_config.read_env', return_value={'AI_COPY_MODEL': 'claude-haiku-5-5', 'AI_LIGHT_VISION_MODEL': 'claude-haiku-5-5'}):
-            for caller in ('brandkit_set.localise', 'brandkit_review.write_copy', 'brandkit_set.seen_captions', 'brandkit_review.review_set'):
+            for caller in ('brandkit_set.localise', 'brandkit_review.write_copy', 'brandkit_set.captions', 'brandkit_set.seen_captions',
+                           'brandkit_review.review_set'):
                 self.assertEqual(brandkit_review.model_for(CONFIG, caller)['model'], 'claude-haiku-5-5')
             for caller in ('brandkit_review.review', 'brandkit_review.verify', 'brandkit_set.locate', 'articulation.analyse'):
                 self.assertEqual(brandkit_review.model_for(CONFIG, caller)['model'], 'claude-sonnet-4-6')
@@ -226,6 +241,26 @@ class ModelKnobs(Store):
                 patch.object(ai_client, '_post', return_value=reply({'notes': 'ok'})) as sent:
             localise()
         self.assertEqual(sent.call_args.args[1]['model'], 'claude-haiku-5-5')
+
+    def test_the_scene_captions_follow_the_copy_model_and_a_helper_named_ask_is_not_the_caller(self):
+        import brandkit_set, scene_stylist
+        briefs = [{'role': 'use', 'proposal': {'scene': 'a workbench'}}]
+        product = {'language': 'en', 'title': 'Caliper'}
+        raw = json.dumps(reply({'scenes': [{'title': 'At the bench', 'body': 'Measuring a dowel'}]})).encode()
+
+        class Response(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+
+        class Opener:
+            def open(self, request, timeout): return Response(raw)
+        with patch('ai_config.read_env', return_value={'AI_COPY_MODEL': 'claude-haiku-5-5'}), \
+                patch.object(scene_stylist, '_config', return_value=CONFIG), \
+                patch.object(ai_client.urllib.request, 'build_opener', return_value=Opener()):
+            rows = brandkit_set.captions({}, product, briefs)
+        self.assertEqual(rows[0]['title'], 'At the bench')
+        row = json.loads((self.data / ai_client.USAGE_LOG).read_text(encoding='utf-8').splitlines()[-1])
+        self.assertEqual((row['model'], row['caller']), ('claude-haiku-5-5', 'brandkit_set.captions'))   # not scene_stylist._ask
 
 
 if __name__ == '__main__':

@@ -6,12 +6,12 @@
 
 ### AI 用量与成本
 
-- **用量记录**：每次 AI 请求得到回应后，在 `data/ai_usage.jsonl` 追加一行：时间、模型、调用步骤（如 `brandkit_review.review`、`scene_imagegen.check`、`orientation._look`）、服务商返回的 token 数（含 `cache_read_input_tokens` / `cache_creation_input_tokens`）和图片张数。不记录请求内容和密钥；超过 20 MB 时移到 `ai_usage.jsonl.1`。场景图记录里带上图像服务的 `usage` 和尝试次数，活动部件记录的 `usage_tokens` 填上实际用量。
-- **相同的请求不再问第二次**：文案、逐页审核、复核、整套检查的回答按完整请求体（图片、资料、提示词、schema、模型）的 sha256 存在 `studio.sqlite`（`ai_cache`，最多 4000 条、90 天）。只存通过 schema 检查的回答。没有改动时重新生成套图，页面逐像素相同（已用一次真实套图的排版任务验证两次排版 PNG 完全一致），这几步就不再发请求。需要新标题时，`POST .../listing/build` 带 `{"fresh": true}`，文案和审核重新询问。翻译、场景图注、姿态 agent 不走这个缓存：它们自己只保存采用的结果，被拒的回答需要重新问。
+- **用量记录**：每次 AI 请求得到回应后，在 `data/ai_usage.jsonl` 追加一行：时间、模型、调用步骤（如 `brandkit_review.review`、`scene_imagegen.check`、`orientation._look`；各模块自己的 `_ask` 辅助函数记为调用它的函数）、服务商返回的 token 数（含 `cache_read_input_tokens` / `cache_creation_input_tokens`）和图片张数。不记录请求内容和密钥；超过 20 MB 时移到 `ai_usage.jsonl.1`；用量字段格式异常时只跳过记录，不影响请求。pytest 运行时写到临时目录（`tests/conftest.py`），测试的假请求不会混进真实记录。场景图记录里带上图像服务的 `usage` 和尝试次数，活动部件记录的 `usage_tokens` 填上实际用量。
+- **相同的请求不再问第二次**：文案、逐页审核、复核、整套检查的回答按完整请求体（图片、资料、提示词、schema、模型）的 sha256 存在 `studio.sqlite`（`ai_cache`，最多 4000 条、90 天）。只存通过 schema 检查的回答。没有改动时重新生成套图，页面逐像素相同（已用一次真实套图的排版任务验证两次排版 PNG 完全一致），这几步就不再发请求。需要新标题时，点套图页的「重写标题并生成」（即 `POST .../listing/build` 带 `{"fresh": true}`），文案和审核重新询问；普通的「重新生成套图」沿用上次的标题。翻译、场景图注、姿态 agent 不走这个缓存：它们自己只保存采用的结果，被拒的回答需要重新问。
 - **文案一次写三条候选**：每页要 3 条候选 `{eyebrow, headline}`，按顺序取第一条通过本地检查的；都不通过的页才带着各条的问题重写一次。模型按旧格式只回一条时照旧处理。
 - **长产品的核对特写上下排列**：产品框宽高比超过 1.6 时，核对特写改为上面渲染图、下面生成图，每块 1280 px 宽。卡尺原来左右并排的长条被缩到约 40%，现在约 70%，每次核对多约 1k 图片 token。提示词写明两种排法里哪块是渲染图。
-- **按调用指定便宜模型（默认关闭）**：`.env` 里的 `AI_COPY_MODEL` 用于翻译和文案，`AI_LIGHT_VISION_MODEL` 用于场景图注和整套检查；读取方式同 `AI_POSE_MODEL`。没有设置时一律用已配置的模型。审核、复核、场景核对和姿态判断不受影响。改用前要先对比（A/B）文案拒用数和审核分，这需要付费调用。
-- **没有做**：提示词缓存（`cache_control`）要等用量记录说明还剩多少可省，而且 HAI 是否转发尚未确认；listing 场景图改 1536 px 要先量各模板的裁切。两项都暂缓。场景图标题（`brandkit_set.captions`）走 `scene_stylist._ask`，暂未接入 `AI_COPY_MODEL`。
+- **按调用指定便宜模型（默认关闭）**：`.env` 里的 `AI_COPY_MODEL` 用于翻译、文案和场景图标题，`AI_LIGHT_VISION_MODEL` 用于场景图注和整套检查；读取方式同 `AI_POSE_MODEL`。没有设置时一律用已配置的模型。审核、复核、场景核对和姿态判断不受影响。改用前要先对比（A/B）文案拒用数和审核分，这需要付费调用。
+- **没有做**：提示词缓存（`cache_control`）要等用量记录说明还剩多少可省，而且 HAI 是否转发尚未确认；listing 场景图改 1536 px 要先量各模板的裁切。两项都暂缓。
 
 ## 活动部件姿态 agent、多姿态展示、场景按正确方式使用 v39
 

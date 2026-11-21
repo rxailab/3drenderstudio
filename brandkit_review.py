@@ -174,7 +174,7 @@ FRESH = contextvars.ContextVar('brandkit_fresh', default=False)
 # Calls whose output the code checks closely itself can run on a cheaper model, named in the settings (off by default,
 # see README v40): AI_COPY_MODEL for the text calls, AI_LIGHT_VISION_MODEL for the light vision calls. The review, its
 # verifier, the scene check and the pose agent stay on the configured vision model.
-MODEL_KNOBS = {'brandkit_set.localise': 'AI_COPY_MODEL', 'brandkit_review.write_copy': 'AI_COPY_MODEL',
+MODEL_KNOBS = {'brandkit_set.localise': 'AI_COPY_MODEL', 'brandkit_review.write_copy': 'AI_COPY_MODEL', 'brandkit_set.captions': 'AI_COPY_MODEL',
                'brandkit_set.seen_captions': 'AI_LIGHT_VISION_MODEL', 'brandkit_review.review_set': 'AI_LIGHT_VISION_MODEL'}
 
 

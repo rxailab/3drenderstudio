@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 import target_evidence
 from lighting_controls import LIGHTING_DEFAULTS, LIGHT_DIRECTION_LIMITS
 from ai_model_policy import assert_model_allowed, prepare_request_body, resolve_endpoint
@@ -58,6 +59,8 @@ def endpoint(config):
 # so a saving can be measured instead of estimated. Never the request body, the key or the answer.
 USAGE_LOG = 'ai_usage.jsonl'
 USAGE_LOG_LIMIT = 20 * 1024 * 1024        # past this the log is moved aside once (ai_usage.jsonl.1), so it cannot grow without end
+USAGE_DIR = None                          # the log's folder; None is studio_store.DATA. The tests point it elsewhere so fake
+                                          # transports never add lines to the real log (tests/conftest.py).
 CALLER = contextvars.ContextVar('ai_caller', default='')
 _TALLIES = contextvars.ContextVar('ai_tallies', default=())
 _USAGE_LOCK = threading.Lock()
@@ -87,12 +90,14 @@ def tally():
 
 def _caller():
     """The step that made the request: the one named with ``calling``, else the function that called ``_post``
-    (scene_imagegen.check, orientation._look, material_agent...), so every caller is named without touching it."""
+    (scene_imagegen.check, orientation._look, material_agent...), so every caller is named without touching it. A module's own
+    ``_ask`` helper (scene_stylist, layer_icons, info_layer...) is passed over: its name would say nothing about the step."""
     named = CALLER.get()
     if named:
         return named
     frame = sys._getframe(1)
-    while frame is not None and frame.f_globals.get('__name__') == __name__ and frame.f_code.co_name in ('_caller', '_record_usage', '_post'):
+    while frame is not None and (frame.f_globals.get('__name__') == __name__ and frame.f_code.co_name in ('_caller', '_count_usage', '_record_usage', '_post')
+                                 or frame.f_code.co_name == '_ask'):
         frame = frame.f_back
     return '%s.%s' % (frame.f_globals.get('__name__', '?'), frame.f_code.co_name) if frame is not None else '?'
 
@@ -121,7 +126,7 @@ def log_usage(entry):
     """Append one line to data/ai_usage.jsonl. A log that cannot be written never fails the request."""
     try:
         import studio_store
-        path = studio_store.DATA / USAGE_LOG
+        path = Path(USAGE_DIR or studio_store.DATA) / USAGE_LOG
         line = json.dumps({'ts': round(time.time(), 3), **entry}, ensure_ascii=False, allow_nan=False) + '\n'
         with _USAGE_LOCK:
             if path.is_file() and path.stat().st_size > USAGE_LOG_LIMIT:
@@ -133,10 +138,19 @@ def log_usage(entry):
 
 
 def _record_usage(config, body, data):
+    """Count and log an answered request; a usage block in an unexpected shape is skipped, never an error on a good answer."""
+    try:
+        _count_usage(config, body, data)
+    except Exception:
+        pass
+
+
+def _count_usage(config, body, data):
     usage = _usage_numbers(data.get('usage'))
     # Anthropic's input_tokens leave out the cached part (its own two fields); OpenAI-style prompt_tokens include it.
     read = usage.get('cache_read_input_tokens', 0); made = usage.get('cache_creation_input_tokens', 0)
     tokens_in = usage.get('input_tokens', usage.get('prompt_tokens', 0)); tokens_out = usage.get('output_tokens', usage.get('completion_tokens', 0))
+    read, made, tokens_in, tokens_out = (value if type(value) in (int, float) else 0 for value in (read, made, tokens_in, tokens_out))
     for used in _TALLIES.get():
         used['input_tokens'] += tokens_in; used['output_tokens'] += tokens_out
         used['cache_read_input_tokens'] += read; used['cache_creation_input_tokens'] += made
