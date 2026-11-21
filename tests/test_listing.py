@@ -519,6 +519,18 @@ class RecordTests(StoreCase):
         self.assertEqual(requests['side']['camera']['azimuth'], 0)                              # the long side, face on
         self.assertEqual(record['plan']['rotation'], [0, 0, 0])                                 # the project's own pose is not changed
 
+    def test_a_tool_lying_flat_is_shown_from_above_and_anything_else_from_the_hero_view(self):
+        record = store.get('project', 'fixture'); record.update(name='Hand saw'); record['plan']['rotation'] = [0, 0, 0]
+        kinds = [{'kind': 'T03', 'index': 0}, {'kind': 'T06', 'index': 0}]
+        for dims, hero in (([.154, .643, .020], 60.0), ([.381, 2.0, .134], 60.0),           # a saw, a wrench: flat lays
+                           ([.448, 2.0, .463], 18.0), ([1.0, .3, 1.25], 18.0)):              # a round screwdriver, a drill
+            with self.subTest(dims=dims):
+                record['analysis']['features']['dimensions'] = dims
+                requests = listing.picture_requests(record, listing.stored(record)[0], 330, kinds)
+                self.assertEqual(requests['hero']['camera']['elevation'], hero)
+                self.assertEqual(requests['side']['camera']['elevation'], 89 if hero == 60 else 0)     # the outline shot is unchanged
+                self.assertEqual(listing._hero_view(record)[1], 18.0)                  # the stored view the rest of the listing keys on
+
     def test_a_line_the_copy_writer_cut_short_ends_on_a_whole_word(self):
         self.assertEqual(listing.whole('Battery powered, for cutting and grinding without a…', 120), 'Battery powered, for cutting and grinding without')
         self.assertEqual(listing.whole('Cuts PVC, PEX and copper pipe, one-hand…', 120), 'Cuts PVC, PEX and copper pipe')

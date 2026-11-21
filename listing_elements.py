@@ -240,12 +240,18 @@ def frame(brand, height, title=None, mark=None, fallback=None):
     return items, [40, top, 960, bottom]
 
 
-def cutout(src, x, y, w, h, anchor=(.5, 1), shadow=True, crop=None, flip=False, opacity=1, reflection=True):
-    """A cut-out picture fitted into a box, standing on its own soft shadow, with its reflection on the floor."""
+def cutout(src, x, y, w, h, anchor=(.5, 1), shadow=True, crop=None, flip=False, opacity=1, reflection=True, flat=False):
+    """A cut-out picture fitted into a box, standing on its own soft shadow, with its reflection on the floor.
+
+    ``flat`` is a product lying flat, seen from above (a saw, a wrench): its whole outline rests on the floor, so its
+    shadow is the whole silhouette a little below it, and it has no reflection. The ground shadow squashes the lower part
+    of the outline into a strip under it, which is right only for a product standing, seen from the side.
+    """
     item = {'type': 'image', 'src': str(src), 'x': x, 'y': y, 'w': w, 'h': h, 'fit': 'contain', 'anchor': anchor}
     if shadow:
-        item['shadow'] = {'kind': 'ground', 'opacity': .26, 'blur': 9, 'squash': .1}
-    if reflection:
+        item['shadow'] = ({'dx': 0, 'dy': 6, 'blur': 12, 'opacity': .18} if flat
+                          else {'kind': 'ground', 'opacity': .26, 'blur': 9, 'squash': .1})
+    if reflection and not flat:
         item['reflection'] = {'opacity': .3, 'length': .4}
     if crop:
         item['crop'] = crop
@@ -378,8 +384,8 @@ def icon_tile(brand, glyph, title, detail, x, y, w, ground=None, size=64, align=
     return items, total
 
 
-def grid_cell(brand, src, heading, lines, x, y, w, h, quantity=1, ground=None):
-    """One thing in the box: its picture over a heading and up to two short lines."""
+def grid_cell(brand, src, heading, lines, x, y, w, h, quantity=1, ground=None, flat=False):
+    """One thing in the box: its picture over a heading and up to two short lines. ``flat`` as for ``cutout``."""
     ground = ground or brand.ground; items = []
     heading_style = brand.label(min(26, w * .075), ground, align='center')
     line_style = brand.body(min(17, w * .05), ground, align='center')
@@ -391,10 +397,10 @@ def grid_cell(brand, src, heading, lines, x, y, w, h, quantity=1, ground=None):
     if quantity > 1:
         # Two of them: one behind and to the side of the other, as kits show a pair of batteries.
         size_w = (w - 40) * .72; size_h = picture_h * .74
-        items.append(cutout(src, x + 20, top, size_w, size_h, (.5, 1)))
-        items.append(cutout(src, x + w - 20 - size_w, top + picture_h - size_h, size_w, size_h, (.5, 1)))
+        items.append(cutout(src, x + 20, top, size_w, size_h, (.5, 1), flat=flat))
+        items.append(cutout(src, x + w - 20 - size_w, top + picture_h - size_h, size_w, size_h, (.5, 1), flat=flat))
     else:
-        items.append(cutout(src, x + 26, top, w - 52, picture_h, (.5, .5 if picture_h > w else 1)))
+        items.append(cutout(src, x + 26, top, w - 52, picture_h, (.5, .5 if picture_h > w else 1), flat=flat))
     at = y + h - text_height - 18
     for item, height in built:
         item['y'] = at; items.append(item); at += height + 7

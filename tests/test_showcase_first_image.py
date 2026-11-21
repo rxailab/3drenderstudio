@@ -377,7 +377,10 @@ for ob in scene.objects:
     receivers = ob.light_linking.receiver_collection
     lights[ob.name] = {'casts_shadow': ob.data.use_shadow, 'hidden': ob.hide_render,
                        'receivers': sorted(o.name for o in receivers.all_objects) if receivers else None}
-print('LIGHTING_REPORT' + json.dumps({'lights': lights, 'products': json.loads(scene['studio_product_objects'])}, ensure_ascii=False))
+glossy = scene.world.node_tree.nodes.get('Glossy environment')
+world = {'glossy': glossy.inputs['Strength'].default_value if glossy else None,
+         'diffuse': scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value}
+print('LIGHTING_REPORT' + json.dumps({'lights': lights, 'world': world, 'products': json.loads(scene['studio_product_objects'])}, ensure_ascii=False))
 ''', encoding='utf-8')
         for shot_id in ('hero', 'campaign'):
             shot = next(shot for shot in plan['shots'] if shot['id'] == shot_id)
@@ -400,12 +403,24 @@ print('LIGHTING_REPORT' + json.dumps({'lights': lights, 'products': json.loads(s
         self.assertNotIn('Backdrop wash', names)
         key = next(lamp for lamp in studio['lights'] if lamp['name'] == 'Key softbox')
         fill = next(lamp for lamp in studio['lights'] if lamp['name'] == 'Fill softbox')
-        self.assertGreater(key['energy'], 5 * fill['energy'])
+        # On white the fill is opened up (v40) so dark rubber keeps its shape; the key still leads by almost two stops.
+        self.assertGreater(key['energy'], 3 * fill['energy'])
         self.assertTrue(key['casts_shadow']); self.assertTrue(fill['casts_shadow'])
         with Image.open(self.results['hero']['png']) as image:
             self.assertEqual(image.convert('RGB').getpixel((2, 2)), (255, 255, 255))
         operations = json.dumps(self.results['hero'].get('operations', []), ensure_ascii=False)
         self.assertIn('edge_highlight', operations)
+
+    def test_metal_on_white_mirrors_a_bright_sky_and_the_key_stands_high(self):
+        environment = self.plan.get('lighting', {}).get('environment', 1)
+        hero = self.saved_lights['hero']['world']
+        self.assertAlmostEqual(hero['glossy'], .8 * environment, places=4)          # scaled by the user's environment setting too
+        self.assertAlmostEqual(hero['diffuse'], .08 * environment, places=4)
+        self.assertIsNone(self.saved_lights['campaign']['world']['glossy'])          # the grey studio set is unchanged
+        key = next(lamp for lamp in self.results['hero']['studio']['lights'] if lamp['name'] == 'Key softbox')
+        self.assertEqual((key['elevation'], key['relative_azimuth']), (62, -30))
+        key = next(lamp for lamp in self.results['campaign']['studio']['lights'] if lamp['name'] == 'Key softbox')
+        self.assertEqual((key['elevation'], key['relative_azimuth']), (42, -46))
 
     def test_saved_shaping_lamps_occlude_geometry_without_lighting_the_floor(self):
         product_only = ('Fill softbox', 'Edge softbox', 'Edge strip left', 'Back reflection card', 'Front sweep card')

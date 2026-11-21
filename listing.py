@@ -698,6 +698,9 @@ def _light_share(path):
     return sum(1 for pixel in pixels if min(pixel[:3]) > 185) / max(1, len(pixels))
 
 
+FLAT_HERO_ELEVATION = 60.0      # the listing's main picture of a product lying flat; the T06 outline stays straight down (89)
+
+
 def _flat(dims):
     """A product lying flat: its height well under the shorter of its two sides on the ground."""
     return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
@@ -708,11 +711,15 @@ def picture_requests(project, product, size_mm, rows, parts=()):
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
     plan['rotation'], _ = display_rotation(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
+    import orientation
+    measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
+    dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
+    if _flat(dims):
+        # A tool lying flat (a saw, a wrench) is shown as a flat lay, its big face to the camera: seen from 24 degrees its
+        # blade is a sliver that mirrors the bright studio behind it and vanishes into the white.
+        elevation = FLAT_HERO_ELEVATION
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1800)}
     if 'T06' in kinds:
-        import orientation
-        measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
-        dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
         side_elevation = 89 if _flat(dims) else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),

@@ -95,7 +95,7 @@ class RotationTests(unittest.TestCase):
         as_filed = planner.enrich(planner.default_plan(), analysis)
         self.assertNotIn('auto_framing', as_filed)
         plan = planner.default_plan(); plan['rotation'] = [90, 0, 0]
-        self.assertEqual(planner.enrich(plan, analysis)['auto_framing']['shape'], 'flat')
+        self.assertEqual(planner.enrich(plan, analysis)['auto_framing']['shape'], 'flat_long')
 
 
 class NameTests(unittest.TestCase):
@@ -284,7 +284,9 @@ class Fixture(unittest.TestCase):
         for ident, label, rotation in poses:
             path = folder / ('pose_%s.png' % ident); path.parent.mkdir(parents=True, exist_ok=True)
             Image.new('RGB', (orientation.SIZE, orientation.SIZE), (200, 200, 210)).save(path)
-            made.append({'id': ident, 'label': label, 'rotation': [float(value) for value in rotation], 'path': path, 'dimensions': [1.0, 1.0, 2.0],
+            size = getattr(self, 'size', None)          # the model's own sides: each pose then measures as it would
+            made.append({'id': ident, 'label': label, 'rotation': [float(value) for value in rotation], 'path': path,
+                         'dimensions': orientation.oriented_dimensions(size, rotation) if size else [1.0, 1.0, 2.0],
                          'support_ratio': .2, 'weight_height': .5, 'tip_angle': 10.0, 'parts': []})
         return made
 
@@ -349,6 +351,75 @@ class DecisionTests(Fixture):
             self.assertEqual(orientation.first_pose(stored, stored['analysis'], self.data / 'x')['status'], 'failed')
         with patch.object(orientation, 'picture', side_effect=InterruptedError()), self.assertRaises(InterruptedError):
             orientation.first_pose(stored, stored['analysis'], self.data / 'x')
+
+
+class LyingFlatTests(Fixture):
+    """Long and flat tools lie on their largest face, by measurement, without asking the pose agent."""
+    SAW = [.154, .643, .020]; WRENCH = [.381, 2.0, .134]; SCREWDRIVER = [.448, 2.0, .463]; CALIPER = [.5, 2.0, .0625]
+    HAMMER = [.791, 1.999, .183]; PLIERS = [.68, 2.0, .297]; DRILL = [2.0, 1.56, .459]          # measured from the test models
+
+    def measured(self, size, flat=None):
+        result = rows(flat=flat)
+        for row in result: row['dimensions'] = orientation.oriented_dimensions(size, row['rotation'])
+        return result
+
+    def decide(self, name='手锯', category=''):
+        record = store.get('project', 'fixture'); record['name'] = name; record['metadata'] = {'product_category': category}
+        return orientation.decide(record, record['plan'], self.data / 'fixture' / 'orientation' / 'job')
+
+    def test_long_or_thin_tools_lie_flat_and_a_drill_stays_free_to_stand(self):
+        for size in (self.SAW, self.WRENCH, self.SCREWDRIVER, self.CALIPER):
+            with self.subTest(size=size):
+                self.assertTrue(orientation.lies_flat(self.measured(size)))
+        for size in (self.HAMMER, self.PLIERS, self.DRILL, [1, 1, 2]):
+            with self.subTest(size=size):
+                self.assertFalse(orientation.lies_flat(self.measured(size)))     # the pose agent still decides these
+        # Named as standing, a long or thin product is left to the pose agent: names are often just file names.
+        for words in (('12_cordless_drill_red',), ('冲击起子机',), ('Impact Driver',), ('', '台灯'), ('water bottle',)):
+            with self.subTest(words=words):
+                self.assertFalse(orientation.lies_flat(self.measured(self.WRENCH), words))
+        for words in (('Phillips Screwdriver',), ('screw driver',), ('十字螺丝刀',)):
+            with self.subTest(words=words):
+                self.assertTrue(orientation.lies_flat(self.measured(self.WRENCH), words))
+        self.assertFalse(orientation.lies_flat(rows()))                         # unmeasured candidates tell nothing
+
+    def test_the_lowest_pose_is_kept_or_found_and_its_resting_twin_preferred(self):
+        flat = self.measured(self.SAW)
+        self.assertIs(orientation.lowest(flat), flat[0])
+        # A saw stored on its edge: of the two lying poses, the one with more of a flat face on the floor.
+        edge = self.measured([.154, .020, .643], flat={'forward': .03, 'backward': .13})
+        self.assertEqual(orientation.lowest(edge)['id'], 'backward')
+        self.assertTrue(orientation.standing(edge, edge[0])); self.assertFalse(orientation.standing(edge, edge[3]))
+
+    def test_a_flat_tool_is_decided_without_the_pose_agent(self):
+        self.size = self.SAW
+        record = self.decide()
+        self.assertEqual((record['chosen'], record['changed'], record['source'], record['rotation']), ('file', False, 'file', [0.0, 0.0, 0.0]))
+        self.assertIn('平放', record['reason']); orientation.by_vision.assert_not_called()
+        self.assertEqual(len(self.pictured), 1)                                 # no second look either
+        # Stored standing on its edge, it is laid down by measurement, still without asking.
+        self.size = [.154, .020, .643]
+        record = self.decide()
+        self.assertEqual((record['changed'], record['source']), (True, 'geometry'))
+        chosen = next(row for row in record['candidates'] if row['id'] == record['chosen'])
+        self.assertAlmostEqual(chosen['dimensions'][2], .020)
+        orientation.by_vision.assert_not_called(); self.assertEqual(self.second_looks, [])
+
+    def test_a_drill_is_still_stood_up_by_the_pose_agent(self):
+        self.size = self.DRILL; self.upright['row'] = 'forward'
+        record = self.decide('12_cordless_drill_red')
+        self.assertEqual((record['chosen'], record['source']), ('forward', 'vision')); orientation.by_vision.assert_called_once()
+
+    def test_the_pose_agent_cannot_stand_a_flat_tool_on_its_edge(self):
+        saw = self.measured(self.SAW)
+        on_edge = {**self.upright, 'row': saw[4], 'reason': '锯片竖立。'}
+        with patch.object(orientation, 'by_vision', return_value=on_edge):
+            row, source, reason, seen = orientation.choose(saw, None, flat=True)
+            self.assertEqual((row['id'], source), ('file', 'file')); self.assertIn('平放', reason); self.assertIs(seen, on_edge)
+            self.assertEqual(orientation.choose(saw, None)[0]['id'], 'right')       # without the guard it would be taken
+        # A pick that lies flat too (the other face up) is still the agent's to make.
+        with patch.object(orientation, 'by_vision', return_value={**on_edge, 'row': saw[1]}):
+            self.assertEqual(orientation.choose(saw, None, flat=True)[:2], (saw[1], 'vision'))
 
 
 class ApplyTests(Fixture):
