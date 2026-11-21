@@ -73,14 +73,15 @@ Compare the product in GENERATED with the references. Return data only:
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
 - nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
 - held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. True when no hand touches it.
-- contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
+- contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; a screw, bolt or nail being driven is on the same straight line as the bit or driver, head against its tip; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
 - used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; pliers hold the wire inside the jaws). True when the product is at rest or no rules are given.
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
 - issues: up to 5 short, concrete differences in English, each naming the part and what is wrong ("top surface is black, should be light brushed steel"). Empty when there are none.
 - note: one sentence in the language of note_language giving the verdict.
-Judge only what can be seen. A side that faces away is not a difference, and a part hidden behind a person or an object is not missing.'''
+Judge only what can be seen. A side that faces away is not a difference, and a part hidden behind a person or an object is not missing.
+When a CLOSE-UP is given, judge shape, parts and colours there first: it shows the product larger than GENERATED does, the render's panel (left, or top for a long product) beside the generated one (right, or below).'''
 
 
 # What the request says about people, and what a picture that got it wrong is told to fix.
@@ -293,7 +294,9 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
         'signs, captions or other text anywhere in the picture, and no watermark.%s Nothing is added to the product: no extra grip, '
         'sleeve, cover, cap, strap or bracket on it. Whatever it touches (a wire, pipe, branch, board) meets it as one whole piece, '
-        'in front of it, behind it or between its jaws, never through it, with no stray ends or strands around it. Composition for a %s frame.'
+        'in front of it, behind it or between its jaws, never through it, with no stray ends or strands around it. A screw, bolt or '
+        'nail being driven sits exactly on the line of the bit or driver, its head on the bit\'s tip and its point going straight into '
+        'the work along that same line. Composition for a %s frame.'
         % (((' and its surroundings', '') if people is False else
             (', the hands and the surroundings', ' The hands are an ordinary adult\'s, bare or in plain work gloves suited to the task, '
              'holding the product by the parts made to be held, from the user\'s side, its working end pointing at the work.') if hands else
@@ -513,7 +516,9 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
             blocks += [{'type': 'text', 'text': 'REFERENCE %d: render of the real product.' % index}, ai._image(path, value['provider'])]
         blocks += [{'type': 'text', 'text': 'GENERATED: the photograph to check.'}, ai._image(generated_path, value['provider'], max_size=1536)]
         if closeup:
-            blocks += [{'type': 'text', 'text': 'CLOSE-UP: on the left the render, on the right the same part of GENERATED at the same scale. '
+            blocks += [{'type': 'text', 'text': 'CLOSE-UP: two panels with a white gap between them, the same box at the same scale: the render '
+                                                'first, then the same part of GENERATED. Side by side the render is on the left and GENERATED on '
+                                                'the right; stacked (a long product) the render is on top and GENERATED below. '
                                                 'Compare the product part by part here; anything in front of it (a hand, the workpiece) is not a difference.'},
                        ai._image(closeup, value['provider'], max_size=1536)]
         message = body['messages'][-1]

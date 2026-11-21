@@ -273,8 +273,19 @@ def describe(report, box):
     return list(dict.fromkeys(places))
 
 
+STACK_RATIO = 1.6          # a product box wider than this (a caliper, a long tool) is stacked: render on top, picture below
+# Each stacked panel's width: about 1.7 times what each half of a side-by-side strip arrives at, for about 1k more image
+# tokens per check; the full 1536 the check could send costs twice that again.
+STACK_WIDTH = 1280
+
+
 def side_by_side(layer, generated, report, pad=.06, height=640):
-    """The product's box in the render (on white) beside the same box in the picture, for a visual check."""
+    """The product's box in the render (on white) beside the same box in the picture, for a visual check.
+
+    Side by side a long product makes a strip three or four times wider than tall, and the check, which sends images at most
+    1536 px wide, sees each half at about 40 % scale: a bent jaw or a missing button is then a few pixels. A box wider than
+    ``STACK_RATIO`` is therefore stacked instead, render on top and the picture below, each ``STACK_WIDTH`` wide, so the
+    two line up part by part and arrive at about 70 % of the render's scale instead of 40 %."""
     width, full_height = layer.size
     bounds = layer.getchannel('A').getbbox()
     grow = round(max(bounds[2] - bounds[0], bounds[3] - bounds[1]) * pad)
@@ -286,6 +297,12 @@ def side_by_side(layer, generated, report, pad=.06, height=640):
     dx, dy = report.get('shift') or [0, 0]
     moved = (round(box[0] + dx * width), round(box[1] + dy * full_height), round(box[2] + dx * width), round(box[3] + dy * full_height))
     left = render.crop(box); right = picture.crop(moved)
+    if left.width / left.height > STACK_RATIO:
+        size = (STACK_WIDTH, max(1, round(left.height * STACK_WIDTH / left.width)))
+        left = left.resize(size, Image.Resampling.LANCZOS); right = right.resize(size, Image.Resampling.LANCZOS)
+        sheet = Image.new('RGB', (size[0], size[1] * 2 + 24), (255, 255, 255))
+        sheet.paste(left, (0, 0)); sheet.paste(right, (0, size[1] + 24))
+        return sheet
     scale = height / left.height
     left = left.resize((max(1, round(left.width * scale)), height), Image.Resampling.LANCZOS)
     right = right.resize(left.size, Image.Resampling.LANCZOS)

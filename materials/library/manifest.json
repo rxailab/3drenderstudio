@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "license": "user-supplied, internal use",
+  "notes": "Only what the renderer uses is shipped. Heights were integrated from the source normal maps (FFT) and are used through a box-projected Bump node, so they need no UVs or tangents. tile_mm and height_mm have no physical reference in the source files: they are estimates.",
+  "materials": [
+    {
+      "id": "textured_coarse_stipple",
+      "kind": "surface_detail",
+      "label": "粗颗粒纹理",
+      "maps": {"height": "textures/textured_coarse_stipple/height_16.png"},
+      "bit_depth": 16,
+      "size_px": [1024, 1024],
+      "tile_mm": 80,
+      "tile_mm_estimate": true,
+      "height_mm": 0.15,
+      "height_mm_estimate": true,
+      "bump_strength": 0.6,
+      "applies_to_finishes": ["satin_plastic", "matte_plastic", "satin"],
+      "tags": ["textured", "stipple", "powder coat", "powdercoat", "toolbox", "grain", "纹理", "颗粒", "喷塑", "磨砂", "工具箱"],
+      "use_when": "注塑工具箱、喷塑钢箱柜、手柄防滑区等带颗粒的哑光表面",
+      "avoid_when": "亮面喷漆、亮面塑料、金属件、玻璃/透明件、橡胶、小于 30 mm 的部件、标签与印字区域、缩略图与预览",
+      "source": "user texture pack 2.jpg (= tex/1.jpg = 3.jpg), DirectX normal map; integrated to height, made seamless by a variance-preserving crossfade (seam ratio 1.62 -> 1.02)",
+      "license": "user-supplied, internal use",
+      "sha256": {"height": "1c8b987e5dc8fc63ea0cb26c4a65a3498edc1756ad72a128254a845f2d012ec3"}
+    },
+    {
+      "id": "reflective_tape_red",
+      "kind": "decal",
+      "label": "红色反光膜",
+      "maps": {"base_color": "textures/reflective_tape_red/basecolor_srgb.jpg"},
+      "size_px": [748, 1710],
+      "tile_mm": [50, 114],
+      "tile_mm_estimate": true,
+      "roughness": 0.35,
+      "tags": ["red", "红"],
+      "use_when": "只在明确要求，或部件名含「反光」/reflective 时使用",
+      "avoid_when": "默认不用；材质规则从不自动选择",
+      "source": "user texture pack 2.png (prismatic retroreflective sheeting), cropped to 11x18 lattice periods and crossfaded",
+      "license": "user-supplied, internal use",
+      "sha256": {"base_color": "c948d8f7db48a77a8f85304bcf408bbb6deaeece8b57d8dd78fc9f1f74c66406"}
+    },
+    {
+      "id": "reflective_tape_yellowgreen",
+      "kind": "decal",
+      "label": "荧光黄绿反光膜",
+      "maps": {"base_color": "textures/reflective_tape_yellowgreen/basecolor_srgb.jpg"},
+      "size_px": [770, 1683],
+      "tile_mm": [50, 113],
+      "tile_mm_estimate": true,
+      "roughness": 0.35,
+      "tags": ["yellow", "green", "fluorescent", "黄", "绿", "荧光"],
+      "use_when": "只在明确要求，或部件名含「反光」/reflective 时使用",
+      "avoid_when": "默认不用；材质规则从不自动选择",
+      "source": "user texture pack 未标题-1.png (prismatic retroreflective sheeting), cropped to 11x17 lattice periods and crossfaded",
+      "license": "user-supplied, internal use",
+      "sha256": {"base_color": "7b34e38a50cd59b2854b31fa73b47f6be2c4f2dad43987cd34df44d240dce229"}
+    }
+  ]
+}

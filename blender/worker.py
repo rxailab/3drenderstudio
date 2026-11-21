@@ -66,6 +66,102 @@ def input_value(node, name, fallback):
     return fallback
 
 
+def image_channel(socket):
+    """(image node, channel) feeding a socket directly or through an RGB Separate Color.
+
+    glTF imports metallicRoughness as one image split into G (roughness) and
+    B (metallic); a plain grey map links its Color straight in (channel 0).
+    """
+    if not socket.is_linked: return None,None
+    link=socket.links[0];node=link.from_node
+    if node.type=='TEX_IMAGE' and node.image and link.from_socket.name=='Color': return node,0
+    if node.type=='SEPARATE_COLOR' and getattr(node,'mode','RGB')=='RGB' and node.inputs[0].is_linked:
+        source=node.inputs[0].links[0].from_node;index={'Red':0,'Green':1,'Blue':2}.get(link.from_socket.name)
+        if source.type=='TEX_IMAGE' and source.image and index is not None: return source,index
+    return None,None
+
+
+def roughness_map_stats(mat, meshes, count=20000, block=8, read=None):
+    """Roughness of a linked map measured where the mesh actually uses it.
+
+    A baked atlas is mostly gutter, so the whole image says little. Points are
+    sampled area-weighted inside the material's UV triangles (fixed seed, so
+    analysis and every render agree), and noise is the median std of the 8 px
+    blocks they land in. Returns None when roughness is not an image.
+    ``read`` caches decoded pixels by image name across the materials of one
+    pass: atlas models share one 4k ORM between many slots, and decoding it
+    once per slot cost 2.6 s per render on a 15-slot toolbox.
+    """
+    import numpy as np
+    bs=bsdf_of(mat)
+    if not bs or 'Roughness' not in bs.inputs: return None
+    rough_node,rough_channel=image_channel(bs.inputs['Roughness'])
+    if not rough_node: return None
+    metal_node,metal_channel=image_channel(bs.inputs['Metallic']) if 'Metallic' in bs.inputs else (None,None)
+    uv_name=None
+    vector=rough_node.inputs['Vector']
+    if vector.is_linked and vector.links[0].from_node.type=='UVMAP': uv_name=vector.links[0].from_node.uv_map or None
+    uvs=[]
+    for ob in meshes:
+        if ob.type!='MESH' or not ob.data.uv_layers: continue
+        slots=[i for i,m in enumerate(ob.data.materials) if m==mat]
+        if not slots: continue
+        mesh=ob.data;mesh.calc_loop_triangles()
+        layer=mesh.uv_layers.get(uv_name) if uv_name else None
+        layer=layer or mesh.uv_layers.active or mesh.uv_layers[0]
+        tris=len(mesh.loop_triangles)
+        if not tris: continue
+        loops=np.empty(tris*3,np.int32);mesh.loop_triangles.foreach_get('loops',loops)
+        index=np.empty(tris,np.int32);mesh.loop_triangles.foreach_get('material_index',index)
+        uv=np.empty(len(mesh.loops)*2,np.float32);layer.data.foreach_get('uv',uv)
+        tri=uv.reshape(-1,2)[loops].reshape(-1,3,2)[np.isin(index,slots)]
+        if len(tri): uvs.append(tri)
+    if not uvs: return None
+    tri=np.concatenate(uvs)
+    area=np.abs(np.cross(tri[:,1]-tri[:,0],tri[:,2]-tri[:,0]))/2
+    if area.sum()<=0: return None
+    rng=np.random.default_rng(0)
+    pick=rng.choice(len(tri),size=count,p=area/area.sum())
+    r1=np.sqrt(rng.random(count));r2=rng.random(count)
+    t=tri[pick];points=(1-r1)[:,None]*t[:,0]+(r1*(1-r2))[:,None]*t[:,1]+(r1*r2)[:,None]*t[:,2]
+
+    read={} if read is None else read
+
+    def channel(node,ch):
+        # Images are not always RGBA (a grey float map can have 1 channel), and
+        # an ORM image feeds roughness and metallic: read each image once.
+        image=node.image;w,h=image.size;depth=image.channels
+        if not w or not h or not depth: return None
+        if image.name not in read:
+            pixels=np.empty(w*h*depth,np.float32);image.pixels.foreach_get(pixels)
+            read[image.name]=pixels.reshape(h,w,depth)
+        pixels=read[image.name]
+        return pixels[...,min(ch,depth-1)]
+
+    rough=channel(rough_node,rough_channel)
+    if rough is None: return None
+    h,w=rough.shape
+    if h<block or w<block: return None          # a constant-ish swatch, not a baked atlas
+    x=np.clip((np.mod(points[:,0],1)*w).astype(int),0,w-1);y=np.clip((np.mod(points[:,1],1)*h).astype(int),0,h-1)
+    values=rough[y,x]
+    hb,wb=h//block,w//block
+    # Only the blocks the samples land in: the std of every block of a 4k
+    # atlas took ~0.09 s per material, most of it gutter nobody renders.
+    used=np.unique(np.minimum(y//block,hb-1)*wb+np.minimum(x//block,wb-1))
+    blocks=rough[:hb*block,:wb*block].reshape(hb,block,wb,block)[used//wb,:,used%wb,:].std(axis=(1,2))
+    if metal_node:
+        metal=channel(metal_node,metal_channel)
+        metal_values=metal[np.clip((np.mod(points[:,1],1)*metal.shape[0]).astype(int),0,metal.shape[0]-1),
+                           np.clip((np.mod(points[:,0],1)*metal.shape[1]).astype(int),0,metal.shape[1]-1)] if metal is not None else np.zeros(1)
+    else:
+        metal_values=np.array([float(input_value(bs,'Metallic',0))])
+    p5,p50,p95=np.percentile(values,[5,50,95])
+    if not np.all(np.isfinite([p5,p50,p95])): return None
+    return dict(source='texture',image=rough_node.image.name,channel='RGB'[rough_channel] if rough_channel<3 else 'A',
+                size=[w,h],samples=int(count),p5=round(float(p5),4),p50=round(float(p50),4),p95=round(float(p95),4),
+                block_std=round(float(np.median(blocks)),4),metallic_p50=round(float(np.median(metal_values)),4))
+
+
 def analyze(objects, meshes, path):
     lo, hi, _ = bounds(meshes)
     dims = list(hi - lo)
@@ -98,6 +194,7 @@ def analyze(objects, meshes, path):
             if row['degenerate_faces']: warnings.append(ob.name + '：存在退化面，可在建模软件中检查')
         rows.append(row)
     mats = []
+    pixel_cache = {}
     fallback_names=fallback_material_names(path)
     materials = list({m.name: m for ob in meshes for m in ob.data.materials if m}.values())
     for mat in materials:
@@ -114,6 +211,18 @@ def analyze(objects, meshes, path):
         mats.append(dict(name=mat.name, source='fallback' if is_fallback else 'model', confidence=0.0 if is_fallback else 1.0, suggested_preset=None if is_fallback else preset,
                          suggestion_source='rules', suggestion_confidence=0.0 if is_fallback else .55, color=input_value(node, 'Base Color', list(mat.diffuse_color)),
                          roughness=rough, metallic=metal, transmission=transmission, emission=emission, textures=textures))
+        # Cached for the project: the render recomputes the same seeded numbers
+        # itself (a render request carries no analysis), this copy explains it.
+        try: stats=roughness_map_stats(mat,meshes,read=pixel_cache)
+        except Exception as exc:                # statistics only explain; they must never fail an analysis
+            stats=None;warnings.append(mat.name+'：粗糙度贴图统计失败（'+str(exc)[:80]+'），渲染时不整理粗糙度')
+        if stats:
+            import lookdev
+            mats[-1]['roughness_stats']=stats
+            fix=lookdev.baked_roughness_fix(mats[-1],[ob.name for ob in meshes if mat in list(ob.data.materials)])
+            if fix:
+                mats[-1]['roughness_fix']=fix
+                warnings.append(mat.name+'：'+fix['reason']+'，渲染时整理到 0.42–0.52；方案中设 roughness_sanitise=false 可关闭')
         warnings += [mat.name + '：缺失贴图 ' + t['name'] for t in textures if t['missing']]
     if (not mats or any(row.get('default_material_assigned') for row in rows)) and not any(m['name']=='Default material' for m in mats):
         mats.append(dict(name='Default material', source='default', confidence=0.0, suggested_preset='matte_plastic',
@@ -286,12 +395,192 @@ def configure_material(mat, override, plan):
                                   mapping='UV' if has_uv else 'Generated box',scale=scale,rotation_degrees=rotation))
     if resource_maps and not has_uv and not resource_warnings:
         resource_warnings.append(mat.name+'：缺少 UV，外部贴图使用盒式投影，请检查接缝与纹理尺度')
+    library=[]
+    if override.get('decal'):
+        library.append(add_decal(mat,bs,override,users))
+    if override.get('surface_detail'):
+        library.append(add_surface_detail(mat,bs,override['surface_detail'],users))
+    resource_warnings.extend(w for record in library for w in record.pop('warnings',[]))
     provenance=dict(source='user',preset=preset,resource_source=override.get('source'),license=override.get('license'))
+    if library: provenance['library']=library
     if override.get('textures'):
         provenance.update(resource=override.get('resource'),maps=resource_maps,warnings=resource_warnings,
                           preserves_original_color='color' not in override and 'base_color' not in override['textures'])
     mat['provenance']=json.dumps(provenance,ensure_ascii=False)
-    return dict(material=mat.name,maps=resource_maps,warnings=resource_warnings)
+    return dict(material=mat.name,maps=resource_maps,warnings=resource_warnings,library=library)
+
+
+SD_ATTRIBUTE='studio_mm_per_unit'
+DETAIL_MIN_LONG_EDGE=1024
+
+
+def millimetres_per_unit(ob):
+    """(mm per object-local unit, scale source) for real-size texture tiling.
+
+    Object coordinates are per object and imported GLBs are arbitrarily
+    scaled, so the scale is stored on every object as an attribute instead of
+    baked into one shared material. Known dimensions are exact; otherwise
+    glTF's declared metres are used when they give a believable product size,
+    and a 300 mm product is assumed when they do not.
+    """
+    local=sum(abs(v) for v in ob.matrix_world.to_scale())/3
+    root=ob
+    while root.parent: root=root.parent
+    if not root.name.startswith('Studio asset transform'): return local*1000,'model_metres'
+    physical=root.get('physical_meters_per_work_unit')
+    if physical: return local*float(physical)*1000,'dimensions'
+    unit=1/max(sum(abs(v) for v in root.scale)/3,1e-9)       # source units per work unit
+    if .02<=2*unit<=5: return local*unit*1000,'model_metres'
+    return local*150,'assumed_300mm'
+
+
+def library_coordinates(mat,users,scale_xyz):
+    """Object coordinates in tiles: Object × (mm per unit attribute) × per-axis 1/tile."""
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    scale='dimensions'
+    for ob in users:
+        mm,source=millimetres_per_unit(ob);ob[SD_ATTRIBUTE]=mm
+        if scale!='assumed_300mm' and (source=='assumed_300mm' or scale=='dimensions'): scale=source
+    coords=nodes.new('ShaderNodeTexCoord');attribute=nodes.new('ShaderNodeAttribute')
+    attribute.attribute_type='OBJECT';attribute.attribute_name=SD_ATTRIBUTE
+    millimetres=nodes.new('ShaderNodeVectorMath');millimetres.operation='SCALE'
+    links.new(coords.outputs['Object'],millimetres.inputs[0]);links.new(attribute.outputs['Fac'],millimetres.inputs['Scale'])
+    tiles=nodes.new('ShaderNodeVectorMath');tiles.operation='MULTIPLY';tiles.inputs[1].default_value=scale_xyz
+    links.new(millimetres.outputs['Vector'],tiles.inputs[0])
+    return tiles.outputs['Vector'],scale
+
+
+def add_surface_detail(mat,bs,value,users):
+    """Box-projected library height into a Bump node, on top of the existing normal.
+
+    Baked atlases scatter a tiled map across their islands at random scale
+    and angle, and tangent maps need clean UVs, so the height map is projected
+    from object coordinates at real millimetres instead. It is additive: a
+    linked normal map feeds Bump.Normal and colour is untouched. Metal texels
+    get none of it (strength × (1 − metallic)). Preview and thumbnail renders
+    skip it: denoising erases the grain at 512 px, and the render request does
+    not carry its quality to material code, so the long edge it set decides.
+    """
+    import material_library
+    spec=material_library.surface_detail(value)
+    record=dict(kind='surface_detail',id=spec['id'],strength=spec['strength'],tile_mm=spec['tile_mm'],applied=False,warnings=[])
+    scene=bpy.context.scene
+    if max(scene.render.resolution_x,scene.render.resolution_y)<DETAIL_MIN_LONG_EDGE:
+        record['reason']='preview';return record
+    if not users:
+        record['reason']='no_mesh';return record
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    vector,scale=library_coordinates(mat,users,(1/spec['tile_mm'],)*3)
+    image=bpy.data.images.load(spec['path'],check_existing=True);image.colorspace_settings.name='Non-Color'
+    height=nodes.new('ShaderNodeTexImage');height.name='Studio surface detail';height.image=image
+    height.projection='BOX';height.projection_blend=.3;height.interpolation='Cubic'
+    links.new(vector,height.inputs['Vector'])
+    bump=nodes.new('ShaderNodeBump');bump.name='Studio surface detail bump'
+    mm,_=millimetres_per_unit(users[0]);local=sum(abs(v) for v in users[0].matrix_world.to_scale())/3
+    bump.inputs['Distance'].default_value=spec['height_mm']/max(mm/max(local,1e-9),1e-9)   # world units
+    links.new(height.outputs['Color'],bump.inputs['Height'])
+    if bs.inputs['Normal'].is_linked: links.new(bs.inputs['Normal'].links[0].from_socket,bump.inputs['Normal'])
+    if bs.inputs['Metallic'].is_linked:
+        fade=nodes.new('ShaderNodeMath');fade.operation='MULTIPLY_ADD'
+        fade.inputs[1].default_value=-spec['strength'];fade.inputs[2].default_value=spec['strength']
+        links.new(bs.inputs['Metallic'].links[0].from_socket,fade.inputs[0]);links.new(fade.outputs[0],bump.inputs['Strength'])
+    else:
+        bump.inputs['Strength'].default_value=spec['strength']*(1-float(bs.inputs['Metallic'].default_value))
+    links.new(bump.outputs['Normal'],bs.inputs['Normal'])
+    record.update(applied=True,distance=bump.inputs['Distance'].default_value,scale_source=scale,tile_estimate=spec['estimate'])
+    if scale=='assumed_300mm': record['warnings'].append(mat.name+'：模型单位不可信且未提供真实尺寸，表面纹理按 300 mm 产品估计大小')
+    return record
+
+
+def add_decal(mat,bs,override,users):
+    """Reflective tape over the whole slot: library colour, satin film, no metal.
+
+    Only applied when a plan names it or the part is called 反光/reflective;
+    finish rules never choose it. The tape's lattice is 50 × 114 mm, so X/Y
+    use the width and Z the length: correct on side faces, where strips go.
+    """
+    import material_library
+    spec=material_library.decal(override['decal'])
+    record=dict(kind='decal',id=spec['id'],tile_mm=spec['tile_mm'],applied=False,warnings=[])
+    if not users:
+        record['reason']='no_mesh';return record
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    width,length=spec['tile_mm']
+    vector,scale=library_coordinates(mat,users,(1/width,1/width,1/length))
+    image=bpy.data.images.load(spec['path'],check_existing=True);image.colorspace_settings.name='sRGB'
+    tape=nodes.new('ShaderNodeTexImage');tape.name='Studio decal';tape.image=image
+    tape.projection='BOX';tape.projection_blend=.1
+    links.new(vector,tape.inputs['Vector'])
+    for link in list(bs.inputs['Base Color'].links): links.remove(link)
+    links.new(tape.outputs['Color'],bs.inputs['Base Color'])
+    for key,socket,value in (('roughness','Roughness',spec['roughness']),('metallic','Metallic',0)):
+        if key in override: continue
+        for link in list(bs.inputs[socket].links): links.remove(link)
+        bs.inputs[socket].default_value=value
+    record.update(applied=True,scale_source=scale,tile_estimate=spec['estimate'])
+    if scale=='assumed_300mm': record['warnings'].append(mat.name+'：模型单位不可信且未提供真实尺寸，反光膜按 300 mm 产品估计大小')
+    return record
+
+
+def sanitise_baked_roughness(meshes,plan):
+    """Remap low, blotchy baked roughness into a satin band (lookdev.baked_roughness_fix).
+
+    The same seeded statistics as the analysis decide it, at every quality,
+    so preview, AI review and final agree. Metal texels keep their own value
+    (Mix by metallic). Off with plan ``roughness_sanitise: false`` or that
+    flag on a material override.
+    """
+    if plan.get('roughness_sanitise',True) is False: return []
+    import lookdev
+    off={m.get('name','*') for m in plan.get('material_overrides',[]) if isinstance(m,dict) and m.get('roughness_sanitise') is False}
+    if off & {'*','all'}: return []
+    operations=[];pixel_cache={}
+    for mat in {m.name:m for ob in meshes for m in ob.data.materials if m}.values():
+        bs=bsdf_of(mat)
+        if mat.name in off or not bs or not bs.inputs['Roughness'].is_linked: continue
+        if mat.node_tree.nodes.get('Studio roughness sanitiser'): continue
+        try: stats=roughness_map_stats(mat,meshes,read=pixel_cache)
+        except Exception: stats=None            # unreadable map: keep it as authored
+        material=dict(name=mat.name,transmission=input_value(bs,'Transmission Weight',0),roughness_stats=stats)
+        fix=lookdev.baked_roughness_fix(material,[ob.name for ob in meshes if mat in list(ob.data.materials)])
+        if not fix: continue
+        nodes=mat.node_tree.nodes;links=mat.node_tree.links
+        source=bs.inputs['Roughness'].links[0].from_socket
+        remap=nodes.new('ShaderNodeMapRange');remap.name='Studio roughness sanitiser';remap.clamp=True
+        for socket,value in zip(('From Min','From Max','To Min','To Max'),fix['from']+fix['to']): remap.inputs[socket].default_value=value
+        links.new(source,remap.inputs['Value'])
+        guard=nodes.new('ShaderNodeMix');guard.data_type='FLOAT';guard.name='Studio roughness metal guard'
+        sockets={s.identifier:s for s in guard.inputs}
+        if bs.inputs['Metallic'].is_linked: links.new(bs.inputs['Metallic'].links[0].from_socket,sockets['Factor_Float'])
+        else: sockets['Factor_Float'].default_value=float(bs.inputs['Metallic'].default_value)
+        links.new(remap.outputs['Result'],sockets['A_Float']);links.new(source,sockets['B_Float'])
+        links.new(next(s for s in guard.outputs if s.identifier=='Result_Float'),bs.inputs['Roughness'])
+        mat['studio_roughness_fix']=json.dumps(fix,ensure_ascii=False)
+        operations.append(dict(operation='roughness_sanitise',material=mat.name,stats=stats,**fix))
+    return operations
+
+
+def reflective_decals(meshes,plan):
+    """Parts named 反光/reflective get the tape, unless the plan already decides them."""
+    import material_library
+    if plan.get('reflective_decal',True) is False: return []
+    decided={m.get('object_name') for m in plan.get('object_material_overrides',[]) if isinstance(m,dict)}
+    operations=[]
+    for ob in meshes:
+        if ob.name in decided or not material_library.is_reflective_part(ob.name): continue
+        slots=[slot for slot in ob.material_slots if slot.material]
+        if not slots: continue
+        ob.data=ob.data.copy();applied=[]
+        for slot in slots:
+            original=slot.material;mat=original.copy()
+            mat['_studio_source_material']=original.get('_studio_source_material',original.name)
+            slot.material=mat
+            color=input_value(bsdf_of(mat),'Base Color',list(mat.diffuse_color))
+            ident=material_library.decal_for(ob.name,color)
+            configure_material(mat,{'preserve_original':True,'decal':{'id':ident}},plan);applied.append(mat.name)
+        operations.append(dict(operation='reflective_decal',object=ob.name,decal=ident,applied_to=applied,
+                               reason='部件名称含反光'))
+    return operations
 
 
 def apply_material_overrides(meshes,plan):
@@ -305,13 +594,15 @@ def apply_material_overrides(meshes,plan):
             else:
                 for index in range(len(ob.data.materials)):
                     if ob.data.materials[index] is None: ob.data.materials[index]=mat
+    # Before any override: an explicit roughness edit then simply replaces the remap.
+    operations.extend(sanitise_baked_roughness(meshes,plan))
     for override in plan.get('material_overrides',[]):
         name=override.get('name','*')
         mats={m.name:m for ob in meshes for m in ob.data.materials if m and (name in ('*','all') or m.name==name)}
         resources=[]
         for mat in mats.values():
             configured=configure_material(mat,override,plan)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+            if override.get('textures') or configured['library']: resources.append(configured);warnings.extend(configured['warnings'])
         operation=dict(operation='material_override',parameters=override,applied_to=list(mats))
         if resources: operation['resources']=resources
         operations.append(operation)
@@ -342,11 +633,12 @@ def apply_material_overrides(meshes,plan):
             original=slot.material
             mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
             slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+            if override.get('textures') or configured['library']: resources.append(configured);warnings.extend(configured['warnings'])
         if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
         operation=dict(operation='object_material_override',object=ob.name,parameters=override,applied_to=applied)
         if resources: operation['resources']=resources
         operations.append(operation)
+    operations.extend(reflective_decals(meshes,plan))
     return operations,warnings
 
 
@@ -516,8 +808,16 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
     # The key faces the camera-left side, the fill only opens the other side:
     # roughly two stops apart, which is what gives a box its volume.
     level=.12 if white else .11 if not dark else .1
-    lights=[lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93)),
-            lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),product_only=True),
+    if white:
+        # On white the key is high and large: a flat lay's shadow falls under the tool, not as a dark streak beside it
+        # (a hammer at 40 degrees seemed to stand on its handle end). The fill is brighter so dark plastics and rubber
+        # keep their shape against the white.
+        key=lamp('Key softbox',-30,62,5.0,1500*level,5.0*soft,5.0*soft,(1,.965,.93))
+        fill=lamp('Fill softbox',55,25,6,400*level,5*soft,4*soft,(.93,.96,1),product_only=True)
+    else:
+        key=lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93))
+        fill=lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),product_only=True)
+    lights=[key,fill,
             lamp('Edge softbox',140,32,6,1200*level,.75*soft,4*soft,(1,1,1),product_only=True),
             lamp('Edge strip left',-130,24,6,1000*level,.6*soft,4*soft,(1,1,1),product_only=True),
             lamp('Top reflection',0,82,5.4,420*level,4.2*soft,4.2*soft,(1,1,1))]
@@ -552,6 +852,36 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
             wash.light_linking.receiver_collection=backdrop
             lights.append(dict(name='Backdrop wash',position=[0,0,9],energy=1.1,size=0,color=[1,1,1],casts_shadow=True,shape='SUN'))
     return lights
+
+
+GLOSSY_WORLD='Glossy environment'
+
+
+def white_metal_environment(world):
+    """What metal mirrors on a white showcase set: a bright sky over a darker horizon.
+
+    Metal shows nothing but its surroundings. Under the dim surround a showcase uses to model plastics, a saw blade or
+    a wrench mirrors near-black and reads as dark grey plastic. Glossy rays alone therefore see a gradient (grey .18
+    below the horizon to white overhead), which reads as polished or brushed steel. Diffuse light keeps the dim
+    surround, only neutral instead of bluish: the shadow catcher also reports the sky a product hides from the floor,
+    and a brighter diffuse world (.35) laid a grey wash round every flat lay (a screwdriver's 230-249 grey band: 5% ->
+    19% of the frame). The camera still sees pure white (the mix set up in studio()), and the user's environment
+    multiplier scales this node as well as 'Background'.
+    """
+    nodes=world.node_tree.nodes;links=world.node_tree.links
+    nodes['Background'].inputs['Color'].default_value=(1,1,1,1)
+    glossy=nodes.new('ShaderNodeBackground');glossy.name=GLOSSY_WORLD;glossy.inputs['Strength'].default_value=.8
+    coordinates=nodes.new('ShaderNodeTexCoord');axes=nodes.new('ShaderNodeSeparateXYZ');ramp=nodes.new('ShaderNodeValToRGB')
+    links.new(coordinates.outputs['Generated'],axes.inputs[0]);links.new(axes.outputs['Z'],ramp.inputs['Fac'])
+    low,high=ramp.color_ramp.elements
+    low.position=.10;low.color=(.18,.18,.187,1);high.position=.85;high.color=(1,1,1,1)
+    links.new(ramp.outputs['Color'],glossy.inputs['Color'])
+    path=nodes.new('ShaderNodeLightPath');choice=nodes.new('ShaderNodeMixShader')
+    links.new(path.outputs['Is Glossy Ray'],choice.inputs[0])
+    links.new(nodes['Background'].outputs[0],choice.inputs[1]);links.new(glossy.outputs[0],choice.inputs[2])
+    camera_mix=next(node for node in nodes if node.type=='MIX_SHADER' and node is not choice)
+    links.new(choice.outputs[0],camera_mix.inputs[1])
+    return glossy
 
 
 def studio(plan,shot,meshes,set_meshes=()):
@@ -589,6 +919,7 @@ def studio(plan,shot,meshes,set_meshes=()):
         # A dim neutral surround: enough for open shadows, never a flat wash.
         scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.9,.93,1,1) if not dark else (.3,.36,.48,1)
         scene.world.node_tree.nodes['Background'].inputs[1].default_value=.08 if not dark else .04
+        if white: white_metal_environment(scene.world)
         # A white sweep throws a lot of bounce back into the product and veils its
         # colour. The catcher only reports shadow, so a darker floor costs nothing.
         if white: bs.inputs['Base Color'].default_value=(.45,.45,.45,1)
@@ -649,6 +980,8 @@ def studio(plan,shot,meshes,set_meshes=()):
             lights.append(reflection)
             rationale.append('根据相机与可见金属面的反射方向放置反射软箱：'+reflection['target_object'])
     scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value*=lighting['environment']
+    glossy_world=scene.world.node_tree.nodes.get(GLOSSY_WORLD)
+    if glossy_world: glossy_world.inputs['Strength'].default_value*=lighting['environment']
     if any(value!=1 for value in lighting.values()):
         rationale.append('已应用确认的主光、补光、轮廓光与物理环境倍率；白底相机背景保持不变')
     for entry in lights:
@@ -817,17 +1150,23 @@ def render(req,objects,meshes):
         scene.render.film_transparent=False;bpy.ops.wm.save_as_mainfile(filepath=str(blend));scene.render.film_transparent=reflect_white
     reflection=None
     if reflect_white:
-        event('正在渲染地面倒影',sample_target=max(16,scene.cycles.samples//2),
-              render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
-        from blender.reflection import finish_white,mirror_pass
+        from blender.reflection import finish_white,mirror_pass,lies_flat
         mirrored=out/(stem+'.mirror.png');rendered=False
+        lo,hi,_=bounds(meshes)
+        # A product lying flat (a saw, a wrench) has no reflection worth showing: only a sliver of its edge would mirror,
+        # as a grey streak. It is laid on its ground with its shadow alone, and the reflection render is not made.
+        flat=lies_flat(hi-lo)
+        if not flat:
+            event('正在渲染地面倒影',sample_target=max(16,scene.cycles.samples//2),
+                  render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+            try:
+                report_render_progress()
+                rendered=mirror_pass(scene,mirrored,checks.get('ground_contact',0.0) or 0.0,max(16,scene.cycles.samples//2))
+            except Exception as exc:
+                event('倒影渲染失败，改用平面倒影',error=str(exc)[:200])
         try:
-            report_render_progress()
-            rendered=mirror_pass(scene,mirrored,checks.get('ground_contact',0.0) or 0.0,max(16,scene.cycles.samples//2))
-        except Exception as exc:
-            event('倒影渲染失败，改用平面倒影',error=str(exc)[:200])
-        try:
-            reflection=finish_white(png,jpg,kind=reflect_ground,mirror=mirrored if rendered and mirrored.is_file() else None)
+            reflection=finish_white(png,jpg,kind=reflect_ground,mirror=mirrored if rendered and mirrored.is_file() else None,
+                                    strength=0 if flat else None)
         finally:
             mirrored.unlink(missing_ok=True)
         scene.render.image_settings.color_mode='RGB'

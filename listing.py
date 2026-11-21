@@ -225,8 +225,13 @@ def _view_key(project):
     """The model and the way the main picture shows it: points found on that picture hold while this stays the same."""
     plan = project.get('plan') or {}
     shot = next((row for row in plan.get('shots', []) if row.get('id') == 'hero'), {})
-    return hashlib.sha256(json.dumps([project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')],
-                                     sort_keys=True, default=str).encode()).hexdigest()[:16]
+    key = [project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')]
+    if plan and _flat_lay(project)[0]:
+        # A flat lay's main picture is taken from FLAT_HERO_ELEVATION, not the hero shot's angle: points found on an
+        # earlier picture from 24 degrees are not where the product is now. Only flat products get the extra entry, so
+        # every other project keeps its key and its points.
+        key.append(FLAT_HERO_ELEVATION)
+    return hashlib.sha256(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def stored(project):
@@ -600,9 +605,12 @@ def state(project_id):
 
 
 def submit(project_id, body=None):
-    """Start building the listing's images. One build per project at a time."""
+    """Start building the listing's images. One build per project at a time.
+    ``body['fresh']`` true asks the copy and the reviews again instead of reusing the answers to the same requests
+    (brandkit_review keeps them), for when the user wants new headlines."""
     import engine
     engine.require_runtime('render')
+    fresh = isinstance(body, dict) and body.get('fresh') is True
     with LOCK:
         project = get('project', project_id)
         if not project.get('analysis') or project.get('status') != 'ready':
@@ -611,7 +619,7 @@ def submit(project_id, body=None):
         if running:
             raise engine.JobConflictError('这个项目的套图正在生成，请等待完成或先取消。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
-                'created_at': time.time(), 'pages': 0}
+                'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
     thread = threading.Thread(target=_run, args=(task['id'],), name='listing', daemon=True)
     TASKS[task['id']] = thread; thread.start()
@@ -698,23 +706,36 @@ def _light_share(path):
     return sum(1 for pixel in pixels if min(pixel[:3]) > 185) / max(1, len(pixels))
 
 
+FLAT_HERO_ELEVATION = 60.0      # the listing's main picture of a product lying flat; the T06 outline stays straight down (89)
+
+
 def _flat(dims):
     """A product lying flat: its height well under the shorter of its two sides on the ground."""
     return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
 
 
+def _flat_lay(project):
+    """(whether the listing shows the product lying flat, the rotation it is shown in, its dimensions in that pose)."""
+    import orientation
+    rotation, _ = display_rotation(project)
+    measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
+    dims = orientation.oriented_dimensions(measured, rotation)
+    return _flat(dims), rotation, dims
+
+
 def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
-    plan['rotation'], _ = display_rotation(project)
+    flat, plan['rotation'], dims = _flat_lay(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
+    if flat:
+        # A tool lying flat (a saw, a wrench) is shown as a flat lay, its big face to the camera: seen from 24 degrees its
+        # blade is a sliver that mirrors the bright studio behind it and vanishes into the white.
+        elevation = FLAT_HERO_ELEVATION
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1800)}
     if 'T06' in kinds:
-        import orientation
-        measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
-        dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
-        side_elevation = 89 if _flat(dims) else 0
+        side_elevation = 89 if flat else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': side_elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
@@ -842,9 +863,9 @@ def _scene_on_white(source, target):
     return target
 
 
-def build(project_id, cancelled=lambda: False, progress=lambda stage, share, detail='': None):
+def build(project_id, cancelled=lambda: False, progress=lambda stage, share, detail='': None, fresh=False):
     """Stage the pictures, make the usage scenes, lay out every page with the brand-kit templates and write the PNG files.
-    Returns the stored page rows and notes."""
+    ``fresh`` asks the copy and the reviews again rather than reusing kept answers. Returns the stored page rows and notes."""
     import info_layer
     if not brandkit_render.available():
         raise ValueError('没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。请安装 Chrome，或在 .env 中设置 BRANDKIT_CHROME。')
@@ -1034,7 +1055,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         text_ready, vision_ready = brandkit_review.available()
         if text_ready:
             progress('compose', 0, '文案模型撰写各页标题')
-            ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
+            with brandkit_review.fresh_answers(fresh):
+                ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
             if copy_note:
                 notes.append(copy_note)
         ctx['review'] = vision_ready
@@ -1049,7 +1071,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 raise ListingCancelled()
             kind = row['kind']
             try:
-                result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
+                with brandkit_review.fresh_answers(fresh):          # set in this worker thread: it does not inherit the build's
+                    result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
             except brandkit_render.RenderError:
                 raise
             except Exception as exc:
@@ -1082,7 +1105,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
             progress('compose', 1, '视觉模型检查整套图')
             try:
-                set_review = brandkit_review.review_set(pages, folder, product)
+                with brandkit_review.fresh_answers(fresh):
+                    set_review = brandkit_review.review_set(pages, folder, product)
             except Exception as exc:
                 set_review = None; notes.append('整套图的视觉检查没有完成（%s）。' % str(exc)[:80])
             if set_review:
@@ -1101,7 +1125,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
                    'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
-                   'captions': row.get('captions') or {}}
+                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts')}
                   for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
@@ -1140,7 +1164,7 @@ def _run(task_id):
             if task['status'] != 'queued':          # cancelled before it started
                 return
             task['status'] = 'running'; put(KIND, task)
-        pages, _ = build(project_id, cancelled, progress)
+        pages, _ = build(project_id, cancelled, progress, fresh=task.get('fresh') is True)
         if not cancelled():
             _task_update(task_id, status='completed', stage='done', progress=100, detail='', pages=len(pages))
     except ListingCancelled:
