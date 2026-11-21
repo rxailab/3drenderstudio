@@ -256,6 +256,8 @@ function listingRenderMain() {
   }).join('')+(explicit?`<button type="button" class="button subtle" data-action="pages-auto" ${active?'disabled':''}>恢复自动</button>`:'');
   const build=$('listingBuild');build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false;
   build.textContent=pages.length?'重新生成套图':'生成套图';
+  // A rebuild reuses the headlines and reviews of the same request (v40); this one asks for new ones.
+  const rewrite=$('listingRewrite');if(rewrite){rewrite.hidden=!pages.length || active;rewrite.disabled=build.disabled;}
   $('listingCancel').hidden=!active;
   const download=$('listingDownload');download.hidden=!pages.length || active;download.href=`/api/projects/${encodeURIComponent(listingProject)}/listing/download`;
   const progress=$('listingProgress');progress.hidden=!active;
@@ -327,11 +329,11 @@ async function listingSaveBrand(quiet) {
   listingDirty.brand=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }
 async function listingSavePending() { if(listingDirty.product)await listingSaveProduct(true);if(listingDirty.brand)await listingSaveBrand(true); }
-async function listingBuildNow() {
+async function listingBuildNow(fresh=false) {
   if(listingBusy)return;listingBusy=true;listingRenderMain();
   try{
     await listingSavePending();
-    await api(`/api/projects/${listingProject}/listing/build`,{method:'POST',body:{}});
+    await api(`/api/projects/${listingProject}/listing/build`,{method:'POST',body:fresh?{fresh:true}:{}});
     await listingLoad(false);
   }catch(error){toast(error.message,true);}
   finally{listingBusy=false;listingRenderMain();}
@@ -388,6 +390,7 @@ function listingInit() {
   panel.addEventListener('input',listingOnInput);
   panel.addEventListener('change',event=>{listingOnChange(event);});
   $('listingBuild').onclick=()=>listingBuildNow();
+  if($('listingRewrite'))$('listingRewrite').onclick=()=>listingBuildNow(true);
   $('listingCancel').onclick=async()=>{const task=listingState?.task;if(!task)return;try{await api(`/api/projects/${listingProject}/listing/${task.id}/cancel`,{method:'POST'});await listingLoad(false);}catch(error){toast(error.message,true);}};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',listingInit);else listingInit();

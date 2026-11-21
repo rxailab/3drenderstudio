@@ -112,6 +112,20 @@ test('built images are shown with their notes and downloads, and nothing a user 
   assert.match(h.node('listingStatus').textContent,/^共 2 张/);
 });
 
+test('a rebuild reuses the kept headlines; asking for new ones is its own button and sends fresh',async t=>{
+  const empty=await setup(t);await empty.open();
+  assert.equal(empty.node('listingRewrite').hidden,true,'nothing built yet: there are no headlines to rewrite');
+  const pages=[{id:'p1',kind:'main',file:'01-main.png',url:'/files/a/listing/build-1/01-main.png',width:2000,height:2000,notes:[]}];
+  const h=await setup(t,state({pages,built_at:1700000000,task:{id:'t0',status:'completed',progress:100}}));await h.open();
+  assert.equal(h.node('listingRewrite').hidden,false);assert.equal(h.node('listingRewrite').disabled,false);
+  h.node('listingBuild').click();await tick();await tick();await tick();
+  assert.deepEqual(plain(h.calls.find(call=>call.method==='POST').body),{},'the plain rebuild asks for nothing new');
+  assert.equal(h.node('listingRewrite').hidden,true,'hidden while a build runs');
+  const again=await setup(t,state({pages,built_at:1700000000,task:{id:'t0',status:'completed',progress:100}}));await again.open();
+  again.node('listingRewrite').click();await tick();await tick();await tick();
+  assert.deepEqual(plain(again.calls.find(call=>call.method==='POST').body),{fresh:true});
+});
+
 test('choosing which images to make is an explicit list that can be handed back to the planner',async t=>{
   const h=await setup(t);await h.open();
   const box=kind=>h.node('listingPlan').querySelector(`input[value="${kind}"]`);

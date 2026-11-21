@@ -267,6 +267,7 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
     known = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
     if known and known.get('key') == key and known.get('status') in ('ready', 'none') and not force:
         return known
+    import ai_client
     import brandkit_review
     _, vision = brandkit_review._configs()
     folder = DATA / project_id / 'articulation' / key; folder.mkdir(parents=True, exist_ok=True)
@@ -285,9 +286,11 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
         ask = dict(facts, **({'previous_attempt': {k: v for k, v in feedback.items() if k != 'states_picture'},
                               'note': 'The second picture shows how your previous answer posed the product; fix what the check found.'}
                              if feedback else {}))
-        answer = _clean_answer(brandkit_review._ask(vision, ARTICULATOR, ask, _schema(), image_path=str(sheet),
-                                                    reference_path=str(feedback['states_picture']) if feedback else None,
-                                                    clean=_tidy), probe)
+        with ai_client.tally() as used:          # the tokens both questions of each attempt cost, in usage_tokens
+            answer = _clean_answer(brandkit_review._ask(vision, ARTICULATOR, ask, _schema(), image_path=str(sheet),
+                                                        reference_path=str(feedback['states_picture']) if feedback else None,
+                                                        clean=_tidy), probe)
+        record['usage_tokens'] += used['tokens']
         record.update(product_kind=answer['product_kind'], reasoning=answer['reasoning'], usage=answer['usage'])
         if not answer['articulated']:
             record.update(status='none', joints=[], states=[])
@@ -306,9 +309,11 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
             joints = solved['joints']
         picture = state_sheet(where, solved['previews'], states, folder / ('states%d.png' % attempt))
         say('正在检查姿态是否合理')
-        verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en']} for s in states],
-                                                          'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max']} for j in joints]},
-                                       _verify_schema(), image_path=str(picture))
+        with ai_client.tally() as used:
+            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en']} for s in states],
+                                                              'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max']} for j in joints]},
+                                           _verify_schema(), image_path=str(picture))
+        record['usage_tokens'] += used['tokens']
         record.update(joints=joints, states=states, previews=str(picture), verdict=verdict)
         if verdict.get('ok') and all(row.get('ok') for row in verdict.get('states') or []):
             record['status'] = 'ready'
