@@ -66,6 +66,88 @@ def input_value(node, name, fallback):
     return fallback
 
 
+def image_channel(socket):
+    """(image node, channel) feeding a socket directly or through an RGB Separate Color.
+
+    glTF imports metallicRoughness as one image split into G (roughness) and
+    B (metallic); a plain grey map links its Color straight in (channel 0).
+    """
+    if not socket.is_linked: return None,None
+    link=socket.links[0];node=link.from_node
+    if node.type=='TEX_IMAGE' and node.image and link.from_socket.name=='Color': return node,0
+    if node.type=='SEPARATE_COLOR' and getattr(node,'mode','RGB')=='RGB' and node.inputs[0].is_linked:
+        source=node.inputs[0].links[0].from_node;index={'Red':0,'Green':1,'Blue':2}.get(link.from_socket.name)
+        if source.type=='TEX_IMAGE' and source.image and index is not None: return source,index
+    return None,None
+
+
+def roughness_map_stats(mat, meshes, count=20000, block=8):
+    """Roughness of a linked map measured where the mesh actually uses it.
+
+    A baked atlas is mostly gutter, so the whole image says little. Points are
+    sampled area-weighted inside the material's UV triangles (fixed seed, so
+    analysis and every render agree), and noise is the median std of the 8 px
+    blocks they land in. Returns None when roughness is not an image.
+    """
+    import numpy as np
+    bs=bsdf_of(mat)
+    if not bs or 'Roughness' not in bs.inputs: return None
+    rough_node,rough_channel=image_channel(bs.inputs['Roughness'])
+    if not rough_node: return None
+    metal_node,metal_channel=image_channel(bs.inputs['Metallic']) if 'Metallic' in bs.inputs else (None,None)
+    uv_name=None
+    vector=rough_node.inputs['Vector']
+    if vector.is_linked and vector.links[0].from_node.type=='UVMAP': uv_name=vector.links[0].from_node.uv_map or None
+    uvs=[]
+    for ob in meshes:
+        if ob.type!='MESH' or not ob.data.uv_layers: continue
+        slots=[i for i,m in enumerate(ob.data.materials) if m==mat]
+        if not slots: continue
+        mesh=ob.data;mesh.calc_loop_triangles()
+        layer=mesh.uv_layers.get(uv_name) if uv_name else None
+        layer=layer or mesh.uv_layers.active or mesh.uv_layers[0]
+        tris=len(mesh.loop_triangles)
+        if not tris: continue
+        loops=np.empty(tris*3,np.int32);mesh.loop_triangles.foreach_get('loops',loops)
+        index=np.empty(tris,np.int32);mesh.loop_triangles.foreach_get('material_index',index)
+        uv=np.empty(len(mesh.loops)*2,np.float32);layer.data.foreach_get('uv',uv)
+        tri=uv.reshape(-1,2)[loops].reshape(-1,3,2)[np.isin(index,slots)]
+        if len(tri): uvs.append(tri)
+    if not uvs: return None
+    tri=np.concatenate(uvs)
+    area=np.abs(np.cross(tri[:,1]-tri[:,0],tri[:,2]-tri[:,0]))/2
+    if area.sum()<=0: return None
+    rng=np.random.default_rng(0)
+    pick=rng.choice(len(tri),size=count,p=area/area.sum())
+    r1=np.sqrt(rng.random(count));r2=rng.random(count)
+    t=tri[pick];points=(1-r1)[:,None]*t[:,0]+(r1*(1-r2))[:,None]*t[:,1]+(r1*r2)[:,None]*t[:,2]
+
+    def channel(node,ch):
+        image=node.image;w,h=image.size
+        if not w or not h: return None
+        pixels=np.empty(w*h*4,np.float32);image.pixels.foreach_get(pixels)
+        return pixels.reshape(h,w,4)[...,ch]
+
+    rough=channel(rough_node,rough_channel)
+    if rough is None: return None
+    h,w=rough.shape
+    x=np.clip((np.mod(points[:,0],1)*w).astype(int),0,w-1);y=np.clip((np.mod(points[:,1],1)*h).astype(int),0,h-1)
+    values=rough[y,x]
+    hb,wb=h//block,w//block
+    blocks=rough[:hb*block,:wb*block].reshape(hb,block,wb,block).std(axis=(1,3))
+    used=np.unique(np.minimum(y//block,hb-1)*wb+np.minimum(x//block,wb-1))
+    if metal_node:
+        metal=channel(metal_node,metal_channel)
+        metal_values=metal[np.clip((np.mod(points[:,1],1)*metal.shape[0]).astype(int),0,metal.shape[0]-1),
+                           np.clip((np.mod(points[:,0],1)*metal.shape[1]).astype(int),0,metal.shape[1]-1)] if metal is not None else np.zeros(1)
+    else:
+        metal_values=np.array([float(input_value(bs,'Metallic',0))])
+    p5,p50,p95=np.percentile(values,[5,50,95])
+    return dict(source='texture',image=rough_node.image.name,channel='RGB'[rough_channel] if rough_channel<3 else 'A',
+                size=[w,h],samples=int(count),p5=round(float(p5),4),p50=round(float(p50),4),p95=round(float(p95),4),
+                block_std=round(float(np.median(blocks.reshape(-1)[used])),4),metallic_p50=round(float(np.median(metal_values)),4))
+
+
 def analyze(objects, meshes, path):
     lo, hi, _ = bounds(meshes)
     dims = list(hi - lo)
@@ -114,6 +196,16 @@ def analyze(objects, meshes, path):
         mats.append(dict(name=mat.name, source='fallback' if is_fallback else 'model', confidence=0.0 if is_fallback else 1.0, suggested_preset=None if is_fallback else preset,
                          suggestion_source='rules', suggestion_confidence=0.0 if is_fallback else .55, color=input_value(node, 'Base Color', list(mat.diffuse_color)),
                          roughness=rough, metallic=metal, transmission=transmission, emission=emission, textures=textures))
+        # Cached for the project: the render recomputes the same seeded numbers
+        # itself (a render request carries no analysis), this copy explains it.
+        stats=roughness_map_stats(mat,meshes)
+        if stats:
+            import lookdev
+            mats[-1]['roughness_stats']=stats
+            fix=lookdev.baked_roughness_fix(mats[-1],[ob.name for ob in meshes if mat in list(ob.data.materials)])
+            if fix:
+                mats[-1]['roughness_fix']=fix
+                warnings.append(mat.name+'：'+fix['reason']+'，渲染时整理到 0.42–0.52；方案中设 roughness_sanitise=false 可关闭')
         warnings += [mat.name + '：缺失贴图 ' + t['name'] for t in textures if t['missing']]
     if (not mats or any(row.get('default_material_assigned') for row in rows)) and not any(m['name']=='Default material' for m in mats):
         mats.append(dict(name='Default material', source='default', confidence=0.0, suggested_preset='matte_plastic',
@@ -286,12 +378,190 @@ def configure_material(mat, override, plan):
                                   mapping='UV' if has_uv else 'Generated box',scale=scale,rotation_degrees=rotation))
     if resource_maps and not has_uv and not resource_warnings:
         resource_warnings.append(mat.name+'：缺少 UV，外部贴图使用盒式投影，请检查接缝与纹理尺度')
+    library=[]
+    if override.get('decal'):
+        library.append(add_decal(mat,bs,override,users))
+    if override.get('surface_detail'):
+        library.append(add_surface_detail(mat,bs,override['surface_detail'],users))
+    resource_warnings.extend(w for record in library for w in record.pop('warnings',[]))
     provenance=dict(source='user',preset=preset,resource_source=override.get('source'),license=override.get('license'))
+    if library: provenance['library']=library
     if override.get('textures'):
         provenance.update(resource=override.get('resource'),maps=resource_maps,warnings=resource_warnings,
                           preserves_original_color='color' not in override and 'base_color' not in override['textures'])
     mat['provenance']=json.dumps(provenance,ensure_ascii=False)
-    return dict(material=mat.name,maps=resource_maps,warnings=resource_warnings)
+    return dict(material=mat.name,maps=resource_maps,warnings=resource_warnings,library=library)
+
+
+SD_ATTRIBUTE='studio_mm_per_unit'
+DETAIL_MIN_LONG_EDGE=1024
+
+
+def millimetres_per_unit(ob):
+    """(mm per object-local unit, scale source) for real-size texture tiling.
+
+    Object coordinates are per object and imported GLBs are arbitrarily
+    scaled, so the scale is stored on every object as an attribute instead of
+    baked into one shared material. Known dimensions are exact; otherwise
+    glTF's declared metres are used when they give a believable product size,
+    and a 300 mm product is assumed when they do not.
+    """
+    local=sum(abs(v) for v in ob.matrix_world.to_scale())/3
+    root=ob
+    while root.parent: root=root.parent
+    if not root.name.startswith('Studio asset transform'): return local*1000,'model_metres'
+    physical=root.get('physical_meters_per_work_unit')
+    if physical: return local*float(physical)*1000,'dimensions'
+    unit=1/max(sum(abs(v) for v in root.scale)/3,1e-9)       # source units per work unit
+    if .02<=2*unit<=5: return local*unit*1000,'model_metres'
+    return local*150,'assumed_300mm'
+
+
+def library_coordinates(mat,users,scale_xyz):
+    """Object coordinates in tiles: Object × (mm per unit attribute) × per-axis 1/tile."""
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    scale='dimensions'
+    for ob in users:
+        mm,source=millimetres_per_unit(ob);ob[SD_ATTRIBUTE]=mm
+        if scale!='assumed_300mm' and (source=='assumed_300mm' or scale=='dimensions'): scale=source
+    coords=nodes.new('ShaderNodeTexCoord');attribute=nodes.new('ShaderNodeAttribute')
+    attribute.attribute_type='OBJECT';attribute.attribute_name=SD_ATTRIBUTE
+    millimetres=nodes.new('ShaderNodeVectorMath');millimetres.operation='SCALE'
+    links.new(coords.outputs['Object'],millimetres.inputs[0]);links.new(attribute.outputs['Fac'],millimetres.inputs['Scale'])
+    tiles=nodes.new('ShaderNodeVectorMath');tiles.operation='MULTIPLY';tiles.inputs[1].default_value=scale_xyz
+    links.new(millimetres.outputs['Vector'],tiles.inputs[0])
+    return tiles.outputs['Vector'],scale
+
+
+def add_surface_detail(mat,bs,value,users):
+    """Box-projected library height into a Bump node, on top of the existing normal.
+
+    Baked atlases scatter a tiled map across their islands at random scale
+    and angle, and tangent maps need clean UVs, so the height map is projected
+    from object coordinates at real millimetres instead. It is additive: a
+    linked normal map feeds Bump.Normal and colour is untouched. Metal texels
+    get none of it (strength × (1 − metallic)). Preview and thumbnail renders
+    skip it: denoising erases the grain at 512 px, and the render request does
+    not carry its quality to material code, so the long edge it set decides.
+    """
+    import material_library
+    spec=material_library.surface_detail(value)
+    record=dict(kind='surface_detail',id=spec['id'],strength=spec['strength'],tile_mm=spec['tile_mm'],applied=False,warnings=[])
+    scene=bpy.context.scene
+    if max(scene.render.resolution_x,scene.render.resolution_y)<DETAIL_MIN_LONG_EDGE:
+        record['reason']='preview';return record
+    if not users:
+        record['reason']='no_mesh';return record
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    vector,scale=library_coordinates(mat,users,(1/spec['tile_mm'],)*3)
+    image=bpy.data.images.load(spec['path'],check_existing=True);image.colorspace_settings.name='Non-Color'
+    height=nodes.new('ShaderNodeTexImage');height.name='Studio surface detail';height.image=image
+    height.projection='BOX';height.projection_blend=.3;height.interpolation='Cubic'
+    links.new(vector,height.inputs['Vector'])
+    bump=nodes.new('ShaderNodeBump');bump.name='Studio surface detail bump'
+    mm,_=millimetres_per_unit(users[0]);local=sum(abs(v) for v in users[0].matrix_world.to_scale())/3
+    bump.inputs['Distance'].default_value=spec['height_mm']/max(mm/max(local,1e-9),1e-9)   # world units
+    links.new(height.outputs['Color'],bump.inputs['Height'])
+    if bs.inputs['Normal'].is_linked: links.new(bs.inputs['Normal'].links[0].from_socket,bump.inputs['Normal'])
+    if bs.inputs['Metallic'].is_linked:
+        fade=nodes.new('ShaderNodeMath');fade.operation='MULTIPLY_ADD'
+        fade.inputs[1].default_value=-spec['strength'];fade.inputs[2].default_value=spec['strength']
+        links.new(bs.inputs['Metallic'].links[0].from_socket,fade.inputs[0]);links.new(fade.outputs[0],bump.inputs['Strength'])
+    else:
+        bump.inputs['Strength'].default_value=spec['strength']*(1-float(bs.inputs['Metallic'].default_value))
+    links.new(bump.outputs['Normal'],bs.inputs['Normal'])
+    record.update(applied=True,distance=bump.inputs['Distance'].default_value,scale_source=scale,tile_estimate=spec['estimate'])
+    if scale=='assumed_300mm': record['warnings'].append(mat.name+'：模型单位不可信且未提供真实尺寸，表面纹理按 300 mm 产品估计大小')
+    return record
+
+
+def add_decal(mat,bs,override,users):
+    """Reflective tape over the whole slot: library colour, satin film, no metal.
+
+    Only applied when a plan names it or the part is called 反光/reflective;
+    finish rules never choose it. The tape's lattice is 50 × 114 mm, so X/Y
+    use the width and Z the length: correct on side faces, where strips go.
+    """
+    import material_library
+    spec=material_library.decal(override['decal'])
+    record=dict(kind='decal',id=spec['id'],tile_mm=spec['tile_mm'],applied=False,warnings=[])
+    if not users:
+        record['reason']='no_mesh';return record
+    nodes=mat.node_tree.nodes;links=mat.node_tree.links
+    width,length=spec['tile_mm']
+    vector,scale=library_coordinates(mat,users,(1/width,1/width,1/length))
+    image=bpy.data.images.load(spec['path'],check_existing=True);image.colorspace_settings.name='sRGB'
+    tape=nodes.new('ShaderNodeTexImage');tape.name='Studio decal';tape.image=image
+    tape.projection='BOX';tape.projection_blend=.1
+    links.new(vector,tape.inputs['Vector'])
+    for link in list(bs.inputs['Base Color'].links): links.remove(link)
+    links.new(tape.outputs['Color'],bs.inputs['Base Color'])
+    for key,socket,value in (('roughness','Roughness',spec['roughness']),('metallic','Metallic',0)):
+        if key in override: continue
+        for link in list(bs.inputs[socket].links): links.remove(link)
+        bs.inputs[socket].default_value=value
+    record.update(applied=True,scale_source=scale,tile_estimate=spec['estimate'])
+    if scale=='assumed_300mm': record['warnings'].append(mat.name+'：模型单位不可信且未提供真实尺寸，反光膜按 300 mm 产品估计大小')
+    return record
+
+
+def sanitise_baked_roughness(meshes,plan):
+    """Remap low, blotchy baked roughness into a satin band (lookdev.baked_roughness_fix).
+
+    The same seeded statistics as the analysis decide it, at every quality,
+    so preview, AI review and final agree. Metal texels keep their own value
+    (Mix by metallic). Off with plan ``roughness_sanitise: false`` or that
+    flag on a material override.
+    """
+    if plan.get('roughness_sanitise',True) is False: return []
+    import lookdev
+    off={m.get('name') for m in plan.get('material_overrides',[]) if isinstance(m,dict) and m.get('roughness_sanitise') is False}
+    operations=[]
+    for mat in {m.name:m for ob in meshes for m in ob.data.materials if m}.values():
+        bs=bsdf_of(mat)
+        if mat.name in off or not bs or not bs.inputs['Roughness'].is_linked: continue
+        if mat.node_tree.nodes.get('Studio roughness sanitiser'): continue
+        stats=roughness_map_stats(mat,meshes)
+        material=dict(name=mat.name,transmission=input_value(bs,'Transmission Weight',0),roughness_stats=stats)
+        fix=lookdev.baked_roughness_fix(material,[ob.name for ob in meshes if mat in list(ob.data.materials)])
+        if not fix: continue
+        nodes=mat.node_tree.nodes;links=mat.node_tree.links
+        source=bs.inputs['Roughness'].links[0].from_socket
+        remap=nodes.new('ShaderNodeMapRange');remap.name='Studio roughness sanitiser';remap.clamp=True
+        for socket,value in zip(('From Min','From Max','To Min','To Max'),fix['from']+fix['to']): remap.inputs[socket].default_value=value
+        links.new(source,remap.inputs['Value'])
+        guard=nodes.new('ShaderNodeMix');guard.data_type='FLOAT';guard.name='Studio roughness metal guard'
+        sockets={s.identifier:s for s in guard.inputs}
+        if bs.inputs['Metallic'].is_linked: links.new(bs.inputs['Metallic'].links[0].from_socket,sockets['Factor_Float'])
+        else: sockets['Factor_Float'].default_value=float(bs.inputs['Metallic'].default_value)
+        links.new(remap.outputs['Result'],sockets['A_Float']);links.new(source,sockets['B_Float'])
+        links.new(next(s for s in guard.outputs if s.identifier=='Result_Float'),bs.inputs['Roughness'])
+        mat['studio_roughness_fix']=json.dumps(fix,ensure_ascii=False)
+        operations.append(dict(operation='roughness_sanitise',material=mat.name,stats=stats,**fix))
+    return operations
+
+
+def reflective_decals(meshes,plan):
+    """Parts named 反光/reflective get the tape, unless the plan already decides them."""
+    import material_library
+    if plan.get('reflective_decal',True) is False: return []
+    decided={m.get('object_name') for m in plan.get('object_material_overrides',[]) if isinstance(m,dict)}
+    operations=[]
+    for ob in meshes:
+        if ob.name in decided or not material_library.is_reflective_part(ob.name): continue
+        slots=[slot for slot in ob.material_slots if slot.material]
+        if not slots: continue
+        ob.data=ob.data.copy();applied=[]
+        for slot in slots:
+            original=slot.material;mat=original.copy()
+            mat['_studio_source_material']=original.get('_studio_source_material',original.name)
+            slot.material=mat
+            color=input_value(bsdf_of(mat),'Base Color',list(mat.diffuse_color))
+            ident=material_library.decal_for(ob.name,color)
+            configure_material(mat,{'preserve_original':True,'decal':{'id':ident}},plan);applied.append(mat.name)
+        operations.append(dict(operation='reflective_decal',object=ob.name,decal=ident,applied_to=applied,
+                               reason='部件名称含反光'))
+    return operations
 
 
 def apply_material_overrides(meshes,plan):
@@ -305,13 +575,15 @@ def apply_material_overrides(meshes,plan):
             else:
                 for index in range(len(ob.data.materials)):
                     if ob.data.materials[index] is None: ob.data.materials[index]=mat
+    # Before any override: an explicit roughness edit then simply replaces the remap.
+    operations.extend(sanitise_baked_roughness(meshes,plan))
     for override in plan.get('material_overrides',[]):
         name=override.get('name','*')
         mats={m.name:m for ob in meshes for m in ob.data.materials if m and (name in ('*','all') or m.name==name)}
         resources=[]
         for mat in mats.values():
             configured=configure_material(mat,override,plan)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+            if override.get('textures') or configured['library']: resources.append(configured);warnings.extend(configured['warnings'])
         operation=dict(operation='material_override',parameters=override,applied_to=list(mats))
         if resources: operation['resources']=resources
         operations.append(operation)
@@ -342,11 +614,12 @@ def apply_material_overrides(meshes,plan):
             original=slot.material
             mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
             slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
-            if override.get('textures'): resources.append(configured);warnings.extend(configured['warnings'])
+            if override.get('textures') or configured['library']: resources.append(configured);warnings.extend(configured['warnings'])
         if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
         operation=dict(operation='object_material_override',object=ob.name,parameters=override,applied_to=applied)
         if resources: operation['resources']=resources
         operations.append(operation)
+    operations.extend(reflective_decals(meshes,plan))
     return operations,warnings
 
 

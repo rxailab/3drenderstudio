@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 node_modules/
 brandkit/vendor/
+# material library: no HDRI/EXR sources in git (the 319 MB pack stays outside)
+materials/**/*.exr
+materials/**/*.hdr
