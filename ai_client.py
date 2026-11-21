@@ -2157,7 +2157,7 @@ def _automatic_material_context(plan, analysis, metrics):
         if isinstance(actual,dict) and actual.get('editable') is False:
             blocked.append({**identity,'reason':'实际着色器不是可安全修改的直接 Principled，保留当前材质。'})
             continue
-        if any(m.get('textures') or m.get('resource') for m in (local,shared)):
+        if any(m.get('textures') or m.get('resource') or m.get('surface_detail') for m in (local,shared)):
             blocked.append({**identity,'reason':'已有外部材质资源；自动流程不重复替换，请检查映射或其他成因。'})
             continue
         explicit=next((m for m in (local,shared) if m.get('preset') and not m.get('preserve_original',False)),None)

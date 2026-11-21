@@ -254,3 +254,49 @@ def apply(plan, analysis, model_path=''):
                        'summary': '、'.join('%s ×%d' % item for item in summary.items()),
                        'decisions': proposal['decisions'][:200]}
     return plan, plan['lookdev']
+
+
+# Baked-atlas roughness (v40). Scanned or AI-baked GLBs often carry a roughness
+# map that is both too low and blotchy (a moulded PP lid at 0.15-0.29 with 8 px
+# patches); rendered, it reads as wet plastic. Remapping the linked map into a
+# satin band keeps its variation and costs nothing, so it runs at every quality
+# and the preview the AI review sees already shows it.
+ROUGHNESS_REMAP = {'from': [.10, .40], 'to': [.42, .52]}
+ROUGHNESS_LIMITS = {'metallic_p50': .2, 'p95': .35, 'block_std': .015}
+_GLOSS_WORDS = ('gloss', 'glossy', 'shiny', 'clear', 'transparent', 'chrome', 'mirror', 'lacquer', 'piano', 'polished',
+                '亮面', '亮光', '高光', '镜面', '透明', '镀铬', '电镀', '钢琴', '抛光')
+_PLASTIC_FINISHES = {'gloss_plastic', 'satin_plastic'}
+
+
+def baked_roughness_fix(material, part_names=()):
+    """The roughness remap for a baked plastic map, or None with the map kept.
+
+    ``material`` is an analysis material carrying ``roughness_stats`` measured
+    in Blender (the linked roughness map sampled inside its UV islands). The
+    remap applies only when every test agrees: the map is low (p95 < 0.35) and
+    noisy (median 8 px block std > 0.015), the surface is not metal (median
+    metallic < 0.2) or transmissive, and neither the material nor its parts
+    name a family other than plastic or a gloss finish. A glossy part that was
+    meant to be glossy is therefore left alone; when the rules guess wrong the
+    plan's ``roughness_sanitise: false`` (or the same flag on one material
+    override) turns it off.
+    """
+    stats = material.get('roughness_stats') if isinstance(material, dict) else None
+    if not isinstance(stats, dict):
+        return None
+    try:
+        metal, high, noise = float(stats['metallic_p50']), float(stats['p95']), float(stats['block_std'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if metal >= ROUGHNESS_LIMITS['metallic_p50'] or high >= ROUGHNESS_LIMITS['p95'] or noise <= ROUGHNESS_LIMITS['block_std']:
+        return None
+    if (material.get('transmission') or 0) > .3:
+        return None
+    names = [str(material.get('name') or '')] + [str(name) for name in part_names]
+    if any(_match(name, _GLOSS_WORDS) for name in names):
+        return None
+    finishes = {finish for name in names for finish in (_rule(name, MATERIAL_RULES)[0], _rule(name, PART_RULES)[0]) if finish}
+    if finishes - _PLASTIC_FINISHES:
+        return None
+    return {**{key: list(value) for key, value in ROUGHNESS_REMAP.items()},
+            'reason': '烘焙粗糙度偏低且斑驳（p95 %.2f，块内波动 %.3f），非金属塑料表面按缎面整理' % (high, noise)}
