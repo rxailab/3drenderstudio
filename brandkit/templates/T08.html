@@ -180,10 +180,13 @@ function aspectRange(it) {
   return [A * (b[2] - b[0]) * 1.005, A / ((b[3] - b[1]) * 1.005)];
 }
 /* Shrink a cell to the nearest rect whose aspect keeps the product whole; ax/ay = which side it hugs. */
+const voids = [];   // canvas share each cell gave up to keep its product whole (empty ground left on the page)
 function fitCell(c, it, ax = 0.5, ay = 0.5) {
   const [lo, hi] = aspectRange(it); let {x, y, w, h} = c;
   if (w / h < lo) { const nh = w / lo; y += (h - nh) * ay; h = nh; }
   else if (w / h > hi) { const nw = h * hi; x += (w - nw) * ax; w = nw; }
+  const lost = (c.w * c.h - w * h) / (W * H);
+  if (lost > 0.005) voids.push({asset: it.asset, share: +lost.toFixed(3)});
   return {x, y, w, h};
 }
 const frames = [];
@@ -283,7 +286,7 @@ function captions(list) {
     g.forEach(o => { o.c = caption(o.i, items[o.i], o.x, o.bottom, o.w, o.onPhoto, [o.t.frame], k0); });
     if (g.length > 1) { const top = Math.min(...g.map(o => o.c.top)); g.forEach(o => o.c.move(top - o.c.top)); }
   }
-  list.forEach(o => { o.t.capTop = o.c.top; });
+  list.forEach(o => { o.t.capTop = o.c.top; o.t.cap = o.c; });
 }
 function captionArea(t) {   // text inset inside a tile: m at a canvas edge, IN inside
   const l = t.x <= 1 ? m : t.x + IN, r = t.x + t.w >= W - 1 ? W - m : t.x + t.w - IN;
@@ -334,6 +337,22 @@ function placeAll() {
     const under = hdr && t.y < hdr.bottom && t.x < hdr.right && t.x + t.w > hdr.left;
     const topLim = under ? hdr.bottom - t.y + 28 : 6, capLim = (t.capTop ?? t.y + t.h) - t.y - 12;
     if (!t.place(capLim, topLim)) {
+      // no free floor under the product: the caption goes to the top of the photo (when the headline is not there) and
+      // the product sits below it, rather than the words lying across the product
+      const c = t.cap;
+      if (!under && c) {
+        const top0 = (t.y <= 1 ? m : t.y + IN);
+        c.move(top0 - c.top);
+        const below = c.top + c.h - t.y + 24;
+        if (t.place(t.h - 12, below)) {
+          t.capTop = null; t.capTopAt = c.top;
+          const sh = Math.min(t.h, Math.max(t.h * 0.36, c.top + c.h - t.y + 120));
+          T.scrim('scrim' + (i + 1), t.x, t.y, t.w, sh, 'down', 0.7, L.scrim);
+          T.notes.push(t.id + ': caption set at the top of the photo, the product below it');
+          return;
+        }
+        c.move(t.y + t.h - (t.y + t.h >= floorY - 1 ? m : IN) - (c.top + c.h));     // back to the foot
+      }
       T.notes.push(t.id + ': the scene has too little free floor; the caption overlaps the lower product');
       t.aim(t.w / 2, (topLim + Math.max(topLim + 1, capLim)) / 2, Math.max(capLim - topLim, t.h * 0.55));
     }
@@ -445,6 +464,7 @@ if (bleed) {
 T.layoutInfo = {...(T.layoutInfo || {}), mode, requested_mode: job.mode || 'auto', semantics: sem, n,
   tiles: tiles.map(t => ({id: t.id, box: [t.x, t.y, t.w, t.ph].map(v => Math.round(v)), scale: +t.s.toFixed(3)}))};
 T.watermark();
+T.layoutInfo = Object.assign(T.layoutInfo || {}, {voids});
 T.finish();
 })();
 </script></body></html>

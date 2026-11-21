@@ -489,7 +489,9 @@ def scene_box(row, slack=.15):
         if not found:
             return None
         box = [found[0] / width, found[1] / height, found[2] / width, found[3] / height]
-    dx = (box[2] - box[0]) * slack; dy = (box[3] - box[1]) * slack
+    # at most 6 % of the picture each side: a long tool held across the frame (80 % of it) would otherwise grow to the full
+    # width, and no tile could then crop the scene without cutting the product
+    dx = min((box[2] - box[0]) * slack, .06); dy = min((box[3] - box[1]) * slack, .06)
     return [round(max(0.0, box[0] - dx), 4), round(max(0.0, box[1] - dy), 4), round(min(1.0, box[2] + dx), 4), round(min(1.0, box[3] + dy), 4)]
 
 
@@ -614,8 +616,8 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
-SCENE_PLAN = 3        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
-                      # 3: moving parts set and usage rules from the pose agent)
+SCENE_PLAN = 4        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
+                      # 3: moving parts set and usage rules from the pose agent; 4: long tools held larger in hand close-ups)
 
 
 def scene_key(project, product, settings):
@@ -1299,12 +1301,15 @@ def _jobs_for(kind, ctx):
         for count in (3, 2):
             if len(items) >= count:
                 use = items[:count]
-                # Big photos first: a mosaic of three or two halves; tall columns only when those cannot hold the product.
-                for mode in (('stagger', 'columns') if count == 3 else ('split', 'columns')):
-                    out.append(_job(kind, ctx, mode=mode, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'], items=use,
-                                    assets={row['asset']: assets[row['asset']] for row in use}))
-                    out.append(_job(kind, ctx, mode=mode, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'],
-                                    items=[{**row, 'body': None} for row in use], assets={row['asset']: assets[row['asset']] for row in use}))
+                # Big photos first: a mosaic of three or two halves; then one wide row per scene (a long tool held across the
+                # picture cannot be cropped into a tall tile); tall columns last.
+                layouts = (({'mode': 'stagger'}, {'mode': 'stagger', 'stagger_style': 'rows'}, {'mode': 'columns'}) if count == 3 else
+                           ({'mode': 'split'}, {'mode': 'split', 'split_dir': 'rows'}, {'mode': 'columns'}))
+                for layout in layouts:
+                    out.append(_job(kind, ctx, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'], items=use,
+                                    assets={row['asset']: assets[row['asset']] for row in use}, **layout))
+                    out.append(_job(kind, ctx, semantics='uses', eyebrow=t['T08_eyebrow'], headline=t['T08_headline'],
+                                    items=[{**row, 'body': None} for row in use], assets={row['asset']: assets[row['asset']] for row in use}, **layout))
         return out
     if kind == 'T06':
         side = assets['side']; box = side['content_bbox']

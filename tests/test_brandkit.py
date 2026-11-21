@@ -334,6 +334,11 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(requests['zoom']['camera'], requests['hero']['camera'])
         self.assertEqual(requests['zoom']['size'], [3600, 3600])
 
+    def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
+        # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges
+        self.assertEqual(brandkit_set.scene_box({'box': [.1, .42, .9, .64]}), [.04, .387, .96, .673])
+        self.assertEqual(brandkit_set.scene_box({'box': [.3, .4, .5, .6]}), [.27, .37, .53, .63])        # small ones keep 15 %
+
     def test_a_scene_mismatch_is_not_a_veto_on_a_page_without_a_scene(self):
         import brandkit_review
         answer = {'scores': {key: value for key, value in brandkit_review.CRITERIA.items()}, 'issues': [], 'summary': '',
@@ -542,3 +547,26 @@ class LayoutTests(StoreCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(brandkit_render.available(), 'No Chrome/Chromium/Edge: template layout not run')
+class SceneMosaicTests(unittest.TestCase):
+    """Scenes whose product is held across the whole picture (a caliper in a hands close-up)."""
+
+    def test_a_tall_tile_that_would_leave_bare_ground_gives_way_to_one_row_per_scene(self):
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        assets = {}
+        for index in range(3):
+            picture = Image.new('RGB', (1024, 1024), (120 + 30 * index, 90, 60))
+            ImageDraw.Draw(picture).rectangle([60, 430, 960, 620], fill=(235, 235, 235))
+            path = folder / ('scene%d.png' % (index + 1)); picture.save(path)
+            assets['scene%d' % (index + 1)] = {**brandkit_render.asset(path), '_product': [.04, .39, .96, .66]}
+        items = [{'asset': name, 'title': title, 'body': None, 'focus': [.5, .5], 'box': [.04, .39, .96, .66]}
+                 for name, title in zip(assets, ('Measuring a dowel', 'At the bench', 'In the plant room'))]
+        base = {'template_id': 'T08', 'variant': 'studio', 'canvas': {'width': 1500, 'height': 1500}, 'lang': 'en', 'safe_margin': 72,
+                'min_margin': 60, 'palette': brandkit_render.template_info('T08')['tokens']['palette'], 'semantics': 'uses',
+                'eyebrow': 'Four modes', 'headline': 'One tool for every job', 'items': items, 'assets': assets}
+        mosaic = brandkit_render.render('T08', {**base, 'mode': 'stagger'}, folder / 'a.png', work=folder)
+        rows = brandkit_render.render('T08', {**base, 'mode': 'stagger', 'stagger_style': 'rows'}, folder / 'b.png', work=folder)
+        self.assertIn('empty_area', [row['check'] for row in brandkit_render.layout_issues(mosaic)])
+        self.assertEqual(brandkit_render.layout_issues(rows), [])
