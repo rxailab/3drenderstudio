@@ -1,5 +1,7 @@
 """Bounded, data-only photography requests using native provider protocols."""
 import base64
+import contextlib
+import contextvars
 import copy
 from camera_controls import CAMERA_FIELDS, ORTHO_SCALE_LIMITS, PROJECTIONS
 import io
@@ -7,6 +9,9 @@ import json
 import math
 import re
 import socket
+import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -45,6 +50,99 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def endpoint(config):
     return resolve_endpoint(config)
+
+
+# ---- what each call cost ----
+# The gateway's bill only says how much was spent in total. One line per answered request in data/ai_usage.jsonl
+# says which step spent it (the caller), with the provider's own token counts, including the prompt-cache fields,
+# so a saving can be measured instead of estimated. Never the request body, the key or the answer.
+USAGE_LOG = 'ai_usage.jsonl'
+USAGE_LOG_LIMIT = 20 * 1024 * 1024        # past this the log is moved aside once (ai_usage.jsonl.1), so it cannot grow without end
+CALLER = contextvars.ContextVar('ai_caller', default='')
+_TALLIES = contextvars.ContextVar('ai_tallies', default=())
+_USAGE_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def calling(name):
+    """Name the step whose requests follow (brandkit_review._ask names the function that asked it)."""
+    token = CALLER.set(str(name)[:80])
+    try:
+        yield
+    finally:
+        CALLER.reset(token)
+
+
+@contextlib.contextmanager
+def tally():
+    """Count the tokens of the requests answered inside the block: {'input_tokens', 'output_tokens', 'cache_read_input_tokens',
+    'cache_creation_input_tokens', 'tokens', 'calls'}; ``tokens`` is everything billed. Nested blocks each count."""
+    used = {'input_tokens': 0, 'output_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'tokens': 0, 'calls': 0}
+    token = _TALLIES.set(_TALLIES.get() + (used,))
+    try:
+        yield used
+    finally:
+        _TALLIES.reset(token)
+
+
+def _caller():
+    """The step that made the request: the one named with ``calling``, else the function that called ``_post``
+    (scene_imagegen.check, orientation._look, material_agent...), so every caller is named without touching it."""
+    named = CALLER.get()
+    if named:
+        return named
+    frame = sys._getframe(1)
+    while frame is not None and frame.f_globals.get('__name__') == __name__ and frame.f_code.co_name in ('_caller', '_record_usage', '_post'):
+        frame = frame.f_back
+    return '%s.%s' % (frame.f_globals.get('__name__', '?'), frame.f_code.co_name) if frame is not None else '?'
+
+
+def _usage_numbers(usage):
+    """The provider's usage, numbers only (one level of detail objects kept, anything else dropped)."""
+    if not isinstance(usage, dict):
+        return {}
+    out = {}
+    for key, value in list(usage.items())[:40]:
+        if type(value) in (int, float):
+            out[str(key)[:60]] = value
+        elif isinstance(value, dict):
+            inner = {str(k)[:60]: v for k, v in list(value.items())[:20] if type(v) in (int, float)}
+            if inner:
+                out[str(key)[:60]] = inner
+    return out
+
+
+def _image_count(body):
+    return sum(1 for message in body.get('messages') or [] if isinstance(message, dict) and isinstance(message.get('content'), list)
+               for block in message['content'] if isinstance(block, dict) and block.get('type') in ('image', 'image_url'))
+
+
+def log_usage(entry):
+    """Append one line to data/ai_usage.jsonl. A log that cannot be written never fails the request."""
+    try:
+        import studio_store
+        path = studio_store.DATA / USAGE_LOG
+        line = json.dumps({'ts': round(time.time(), 3), **entry}, ensure_ascii=False, allow_nan=False) + '\n'
+        with _USAGE_LOCK:
+            if path.is_file() and path.stat().st_size > USAGE_LOG_LIMIT:
+                path.replace(path.with_name(USAGE_LOG + '.1'))
+            with open(path, 'a', encoding='utf-8') as handle:
+                handle.write(line)
+    except Exception:
+        pass
+
+
+def _record_usage(config, body, data):
+    usage = _usage_numbers(data.get('usage'))
+    # Anthropic's input_tokens leave out the cached part (its own two fields); OpenAI-style prompt_tokens include it.
+    read = usage.get('cache_read_input_tokens', 0); made = usage.get('cache_creation_input_tokens', 0)
+    tokens_in = usage.get('input_tokens', usage.get('prompt_tokens', 0)); tokens_out = usage.get('output_tokens', usage.get('completion_tokens', 0))
+    for used in _TALLIES.get():
+        used['input_tokens'] += tokens_in; used['output_tokens'] += tokens_out
+        used['cache_read_input_tokens'] += read; used['cache_creation_input_tokens'] += made
+        used['tokens'] += tokens_in + tokens_out + read + made; used['calls'] += 1
+    log_usage({'model': str(body.get('model') or config.get('model') or '')[:120], 'caller': _caller(), 'usage': usage,
+               'n_images': _image_count(body)})
 
 
 def _json(text):
@@ -86,6 +184,7 @@ def _post(config, body):
         data = _json(raw.decode('utf-8'))
         if not isinstance(data, dict) or data.get('error'):
             raise ValueError('AI 服务返回了无效响应，请检查接口配置。')
+        _record_usage(config, body, data)
         return data
     except urllib.error.HTTPError as error:
         messages = {418:'AI 服务拒绝了当前网络地址（多次使用无效的 Key 后可能被临时屏蔽）；请核对 Key，稍后再试。',

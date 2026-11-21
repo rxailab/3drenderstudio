@@ -600,9 +600,12 @@ def state(project_id):
 
 
 def submit(project_id, body=None):
-    """Start building the listing's images. One build per project at a time."""
+    """Start building the listing's images. One build per project at a time.
+    ``body['fresh']`` true asks the copy and the reviews again instead of reusing the answers to the same requests
+    (brandkit_review keeps them), for when the user wants new headlines."""
     import engine
     engine.require_runtime('render')
+    fresh = isinstance(body, dict) and body.get('fresh') is True
     with LOCK:
         project = get('project', project_id)
         if not project.get('analysis') or project.get('status') != 'ready':
@@ -611,7 +614,7 @@ def submit(project_id, body=None):
         if running:
             raise engine.JobConflictError('这个项目的套图正在生成，请等待完成或先取消。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
-                'created_at': time.time(), 'pages': 0}
+                'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
     thread = threading.Thread(target=_run, args=(task['id'],), name='listing', daemon=True)
     TASKS[task['id']] = thread; thread.start()
@@ -842,9 +845,9 @@ def _scene_on_white(source, target):
     return target
 
 
-def build(project_id, cancelled=lambda: False, progress=lambda stage, share, detail='': None):
+def build(project_id, cancelled=lambda: False, progress=lambda stage, share, detail='': None, fresh=False):
     """Stage the pictures, make the usage scenes, lay out every page with the brand-kit templates and write the PNG files.
-    Returns the stored page rows and notes."""
+    ``fresh`` asks the copy and the reviews again rather than reusing kept answers. Returns the stored page rows and notes."""
     import info_layer
     if not brandkit_render.available():
         raise ValueError('没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。请安装 Chrome，或在 .env 中设置 BRANDKIT_CHROME。')
@@ -1034,7 +1037,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         text_ready, vision_ready = brandkit_review.available()
         if text_ready:
             progress('compose', 0, '文案模型撰写各页标题')
-            ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
+            with brandkit_review.fresh_answers(fresh):
+                ctx['copy'], copy_note = brandkit_review.write_copy(product, [row['kind'] for row in made])
             if copy_note:
                 notes.append(copy_note)
         ctx['review'] = vision_ready
@@ -1049,7 +1053,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 raise ListingCancelled()
             kind = row['kind']
             try:
-                result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
+                with brandkit_review.fresh_answers(fresh):          # set in this worker thread: it does not inherit the build's
+                    result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
             except brandkit_render.RenderError:
                 raise
             except Exception as exc:
@@ -1082,7 +1087,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
             progress('compose', 1, '视觉模型检查整套图')
             try:
-                set_review = brandkit_review.review_set(pages, folder, product)
+                with brandkit_review.fresh_answers(fresh):
+                    set_review = brandkit_review.review_set(pages, folder, product)
             except Exception as exc:
                 set_review = None; notes.append('整套图的视觉检查没有完成（%s）。' % str(exc)[:80])
             if set_review:
@@ -1101,7 +1107,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
                    'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
-                   'captions': row.get('captions') or {}}
+                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts')}
                   for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
@@ -1140,7 +1146,7 @@ def _run(task_id):
             if task['status'] != 'queued':          # cancelled before it started
                 return
             task['status'] = 'running'; put(KIND, task)
-        pages, _ = build(project_id, cancelled, progress)
+        pages, _ = build(project_id, cancelled, progress, fresh=task.get('fresh') is True)
         if not cancelled():
             _task_update(task_id, status='completed', stage='done', progress=100, detail='', pages=len(pages))
     except ListingCancelled:

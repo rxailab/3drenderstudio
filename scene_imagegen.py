@@ -80,7 +80,8 @@ Compare the product in GENERATED with the references. Return data only:
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
 - issues: up to 5 short, concrete differences in English, each naming the part and what is wrong ("top surface is black, should be light brushed steel"). Empty when there are none.
 - note: one sentence in the language of note_language giving the verdict.
-Judge only what can be seen. A side that faces away is not a difference, and a part hidden behind a person or an object is not missing.'''
+Judge only what can be seen. A side that faces away is not a difference, and a part hidden behind a person or an object is not missing.
+When a CLOSE-UP is given, judge shape, parts and colours there first: it shows the product larger than GENERATED does, the render's panel (left, or top for a long product) beside the generated one (right, or below).'''
 
 
 # What the request says about people, and what a picture that got it wrong is told to fix.
@@ -513,7 +514,9 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
             blocks += [{'type': 'text', 'text': 'REFERENCE %d: render of the real product.' % index}, ai._image(path, value['provider'])]
         blocks += [{'type': 'text', 'text': 'GENERATED: the photograph to check.'}, ai._image(generated_path, value['provider'], max_size=1536)]
         if closeup:
-            blocks += [{'type': 'text', 'text': 'CLOSE-UP: on the left the render, on the right the same part of GENERATED at the same scale. '
+            blocks += [{'type': 'text', 'text': 'CLOSE-UP: two panels with a white gap between them, the same box at the same scale: the render '
+                                                'first, then the same part of GENERATED. Side by side the render is on the left and GENERATED on '
+                                                'the right; stacked (a long product) the render is on top and GENERATED below. '
                                                 'Compare the product part by part here; anything in front of it (a hand, the workpiece) is not a difference.'},
                        ai._image(closeup, value['provider'], max_size=1536)]
         message = body['messages'][-1]

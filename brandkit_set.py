@@ -861,7 +861,9 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
         rows.append({'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
                      'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
                      'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
-                     'check': (record.get('check') or {}).get('status') or 'unchecked'})
+                     'check': (record.get('check') or {}).get('status') or 'unchecked',
+                     # what the picture cost: the image service's token counts over all attempts, and how many there were
+                     'usage': record.get('usage'), 'attempts': record.get('attempts')})
     rows, _ = seen_captions(product, rows)
     return rows, key if rows else None, notes
 

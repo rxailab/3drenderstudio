@@ -38,6 +38,16 @@ def all_records(kind):
         rows = c.execute('SELECT payload FROM records WHERE kind=? ORDER BY rowid DESC',(kind,)).fetchall()
     return [json.loads(r[0]) for r in rows]
 
+def prune(kind, keep, older_than=None):
+    """Drop the oldest records of ``kind`` beyond the newest ``keep``, and any written before ``older_than`` (a time).
+    For caches only: their records are rebuilt when needed. Returns how many were dropped."""
+    with LOCK, connection() as c:
+        dropped = c.execute('DELETE FROM records WHERE kind=? AND rowid NOT IN '
+                            '(SELECT rowid FROM records WHERE kind=? ORDER BY rowid DESC LIMIT ?)', (kind, kind, int(keep))).rowcount
+        if older_than is not None:
+            dropped += c.execute("DELETE FROM records WHERE kind=? AND json_extract(payload,'$.updated_at')<?", (kind, float(older_than))).rowcount
+    return dropped
+
 def atomic_json(path, obj):
     path = Path(path)
     temp = path.with_suffix(path.suffix+'.tmp')

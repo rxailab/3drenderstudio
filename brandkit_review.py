@@ -17,10 +17,16 @@ Three roles, each bounded and each with a plain fallback when no model is config
 
 The models never write pixels or layout: every change goes through the templates and their checks.
 """
+import contextlib
+import contextvars
 import copy
+import hashlib
 import json
+import os
 import re
+import sys
 import threading
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -80,7 +86,9 @@ COPYWRITER = (
     '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
     'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently. The eyebrow is a '
     'short kicker that adds information (the product type, the job, the material), never a generic label such as "In use", "Specs" '
-    'or "Part overview". When rewrite_because is given, fix exactly those problems in those pages.')
+    'or "Part overview". For each page give candidates_per_page different candidates, best first, each one a complete eyebrow and '
+    'headline that keeps every rule and limit on its own (the first one that does is used). When rewrite_because is given, fix '
+    'exactly those problems in those pages.')
 VERIFIER = (
     'You check another reviewer\'s claims about one listing image. For each numbered claim, look at CURRENT_RENDER (and REFERENCE_IMAGE, '
     'the product\'s own render, for fidelity claims) and the measured layout, and say whether the claim is clearly true. measured_layout '
@@ -152,24 +160,115 @@ def _decoded(value, schema):
     return value
 
 
-def _ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None):
-    """One call; an answer that does not fit the schema is asked for once more. ``clean`` tidies an answer before it is checked."""
+# ---- what is asked, and what is kept ----
+# A rebuild with nothing changed lays every page out pixel for pixel the same (the browser is deterministic, renders and
+# scenes are reused by key), so it would ask the same questions again. The supervision answers are kept by the exact
+# request: any change to a picture, a fact, a prompt, the schema or the model is a new request and is asked. Only answers
+# that fitted the schema are kept. The pose agent, translations and scene captions are not: they keep what they accept
+# themselves, and asking them again is how a refused answer gets another chance.
+CACHE_KIND = 'ai_cache'
+CACHED_CALLERS = ('brandkit_review.write_copy', 'brandkit_review.review', 'brandkit_review.verify', 'brandkit_review.review_set')
+CACHE_KEEP = 4000                           # answers kept (a 7-page build asks about 12 questions)
+CACHE_DAYS = 90
+FRESH = contextvars.ContextVar('brandkit_fresh', default=False)
+# Calls whose output the code checks closely itself can run on a cheaper model, named in the settings (off by default,
+# see README v40): AI_COPY_MODEL for the text calls, AI_LIGHT_VISION_MODEL for the light vision calls. The review, its
+# verifier, the scene check and the pose agent stay on the configured vision model.
+MODEL_KNOBS = {'brandkit_set.localise': 'AI_COPY_MODEL', 'brandkit_review.write_copy': 'AI_COPY_MODEL',
+               'brandkit_set.seen_captions': 'AI_LIGHT_VISION_MODEL', 'brandkit_review.review_set': 'AI_LIGHT_VISION_MODEL'}
+
+
+@contextlib.contextmanager
+def fresh_answers(on=True):
+    """Inside the block the kept answers are not used: copy and reviews are asked again (and the new answers kept)."""
+    token = FRESH.set(bool(on))
+    try:
+        yield
+    finally:
+        FRESH.reset(token)
+
+
+def knob_model(name):
+    """The model named by setting ``name`` (read like AI_POSE_MODEL in orientation.py), or '' when it is not set."""
+    try:
+        import ai_config
+        values = ai_config.read_env()
+    except Exception:
+        values = {}
+    return str(values.get(name, os.getenv(name, ''))).strip()[:120]
+
+
+def model_for(config, caller):
+    """``config`` with the cheaper model its caller is routed to, when one is named; else ``config`` itself."""
+    knob = MODEL_KNOBS.get(caller)
+    named = knob_model(knob) if knob and config else ''
+    return {**config, 'model': named} if named else config
+
+
+def cache_key(body):
+    """The exact request, as sent: its sha256 over the JSON with sorted keys (images are in it as base64)."""
+    return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False, allow_nan=False).encode('utf-8')).hexdigest()
+
+
+def _kept(key):
+    try:
+        import studio_store
+        return copy.deepcopy(studio_store.get(CACHE_KIND, key)['output'])
+    except Exception:
+        return None
+
+
+def _keep(key, caller, model, output):
+    try:
+        import studio_store
+        studio_store.put(CACHE_KIND, {'id': key, 'caller': caller, 'model': model, 'output': output, 'created_at': time.time()})
+        with _LOCK:
+            global _PUTS
+            _PUTS += 1; due = _PUTS % 50 == 1
+        if due:                              # now and then, not on every answer
+            studio_store.prune(CACHE_KIND, CACHE_KEEP, time.time() - CACHE_DAYS * 86400)
+    except Exception:
+        pass
+
+
+_PUTS = 0
+
+
+def _ask(config, system, facts, schema, image_path=None, reference_path=None, clean=None, fresh=None, caller=None):
+    """One call; an answer that does not fit the schema is asked for once more. ``clean`` tidies an answer before it is checked.
+    ``caller`` names the step in data/ai_usage.jsonl and picks its model setting and cache (default: the function that called).
+    The supervision steps reuse the answer to the same request unless ``fresh`` (default: ``fresh_answers``) is on."""
     import ai_client as ai
+    if caller is None:
+        frame = sys._getframe(1)
+        caller = '%s.%s' % (frame.f_globals.get('__name__', '?'), frame.f_code.co_name)
+    config = model_for(config, caller)
     body = ai._payload(config, system, facts, schema, image_path=image_path, reference_path=reference_path,
                        label_images=bool(image_path), max_tokens=3000)
-    for attempt in (1, 2):
-        output = _decoded(ai._response(ai._post(config, body), config, ai.TOOL_NAME), schema)
-        if clean:
+    cached = caller in CACHED_CALLERS
+    key = cache_key(body) if cached else None
+    if cached and not (FRESH.get() if fresh is None else fresh):
+        kept = _kept(key)
+        if kept is not None:
+            ai.log_usage({'model': config.get('model', ''), 'caller': caller, 'cached': True, 'usage': {}, 'n_images': ai._image_count(body)})
+            return kept
+    with ai.calling(caller):
+        for attempt in (1, 2):
+            output = _decoded(ai._response(ai._post(config, body), config, ai.TOOL_NAME), schema)
+            if clean:
+                try:
+                    output = clean(output)
+                except (TypeError, AttributeError):
+                    pass
             try:
-                output = clean(output)
-            except (TypeError, AttributeError):
-                pass
-        try:
-            ai._check_schema(output, schema)
+                ai._check_schema(output, schema)
+            except ai.SchemaValidationError:
+                if attempt == 2:
+                    raise
+                continue
+            if cached:
+                _keep(key, caller, config.get('model', ''), copy.deepcopy(output))
             return output
-        except ai.SchemaValidationError:
-            if attempt == 2:
-                raise
 
 
 def facts_of(product, measured_mm=None):
@@ -214,11 +313,8 @@ def write_copy(product, kinds):
     if not text:
         return {}, None
     language = product['language']; limits = COPY_LIMITS[language]; facts = facts_of(product)
-    schema = {'type': 'object', 'additionalProperties': False, 'required': ['pages'],
-              'properties': {'pages': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['template', 'eyebrow', 'headline'],
-                                                                  'properties': {'template': {'type': 'string', 'enum': kinds}, 'eyebrow': {'type': 'string'},
-                                                                                 'headline': {'type': 'string'}}}}}}
     request = {'language': 'Simplified Chinese' if language == 'zh' else 'English', 'limits_in_characters': limits, 'facts': facts,
+               'candidates_per_page': CANDIDATES,
                'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind],
                           'max_lines': _LINES.get(kind, 2)} for kind in kinds]}
     written = {}; refused = 0; why_refused = []
@@ -226,8 +322,16 @@ def write_copy(product, kinds):
     stated = _numbers_in(json.dumps(facts, ensure_ascii=False))
     reasons_en = {'超长': 'too long for the page', '行数不对': 'more lines than max_lines', '含资料里没有的数字': 'a number the facts do not contain',
                   '眉题与标题重复': 'the eyebrow repeats the headline', '照抄卖点标题': 'repeats a selling point title printed on the page'}
+    def problems(kind, eyebrow, headline):
+        too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
+        # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
+        repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
+        return [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
+                                     ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
+                                     ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
+
     feedback = None
-    for attempt in (1, 2):                  # a line that fails a check is written again once, told why
+    for attempt in (1, 2):                  # when no candidate of a page passes the checks, it is written again once, told why
         wanted = [kind for kind in kinds if kind not in written]
         if not wanted:
             break
@@ -235,7 +339,7 @@ def write_copy(product, kinds):
         if feedback:
             ask['rewrite_because'] = feedback
         try:
-            answer = _ask(text, COPYWRITER, ask, schema)
+            answer = _ask(text, COPYWRITER, ask, _copy_schema(kinds))
         except Exception as exc:
             if attempt == 1:
                 return {}, '文案模型没有回应（%s），标题改用产品资料。' % str(exc)[:80]
@@ -243,24 +347,49 @@ def write_copy(product, kinds):
         feedback = []
         for row in answer.get('pages', []):
             kind = row.get('template')
-            eyebrow = ' '.join(str(row.get('eyebrow', '')).split())
-            headline = '\n'.join(' '.join(line.split()) for line in str(row.get('headline', '')).split('\n') if line.strip())
-            if kind not in wanted or not headline:
+            if kind not in wanted or kind in written:
                 continue
-            too_many_lines = headline.count('\n') + 1 > _LINES.get(kind, 2)
-            # The callout and close-up pages print the selling points' titles under the headline: it must not say one again.
-            repeats = kind in ('T01', 'T02') and any(len(title) >= 4 and title.lower() in headline.replace('\n', '').lower() for title in titles)
-            reasons = [why for why, bad in (('超长', len(headline.replace('\n', '')) > limits['headline'] or len(eyebrow) > limits['eyebrow']),
-                                            ('行数不对', too_many_lines), ('含资料里没有的数字', not _numbers_in(headline + eyebrow) <= stated),
-                                            ('眉题与标题重复', bool(eyebrow and eyebrow in headline)), ('照抄卖点标题', repeats)) if bad]
-            if reasons:
-                if attempt == 2:
-                    refused += 1; why_refused.extend(reasons)
-                feedback.append({'template': kind, 'you_wrote': {'eyebrow': eyebrow, 'headline': headline},
-                                 'problems': [reasons_en[why] for why in reasons]})
+            tried = []
+            for option in _options(row):
+                eyebrow = ' '.join(str(option.get('eyebrow', '')).split())
+                headline = '\n'.join(' '.join(line.split()) for line in str(option.get('headline', '')).split('\n') if line.strip())
+                if not headline:
+                    continue
+                reasons = problems(kind, eyebrow, headline)
+                if not reasons:
+                    written[kind] = {'eyebrow': eyebrow, 'headline': headline}
+                    break
+                tried.append((eyebrow, headline, reasons))
+            if kind in written or not tried:
                 continue
-            written[kind] = {'eyebrow': eyebrow, 'headline': headline}
+            if attempt == 2:
+                refused += 1; why_refused.extend(tried[0][2])
+            feedback.append({'template': kind, 'you_wrote': [{'eyebrow': eyebrow, 'headline': headline, 'problems': [reasons_en[why] for why in reasons]}
+                                                             for eyebrow, headline, reasons in tried]})
     return written, ('有 %d 条模型写的标题改写后仍没有采用（%s），这些页的标题改用产品资料。' % (refused, '、'.join(sorted(set(why_refused))))) if refused else None
+
+
+CANDIDATES = 3
+
+
+def _copy_schema(kinds):
+    """Each page with its candidates ({eyebrow, headline}, best first). The single eyebrow and headline of the earlier shape are
+    still accepted, so an answer in that shape is used as before."""
+    line = {'type': 'object', 'additionalProperties': False, 'required': ['eyebrow', 'headline'],
+            'properties': {'eyebrow': {'type': 'string'}, 'headline': {'type': 'string'}}}
+    return {'type': 'object', 'additionalProperties': False, 'required': ['pages'],
+            'properties': {'pages': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['template'],
+                                                                'properties': {'template': {'type': 'string', 'enum': kinds},
+                                                                               'candidates': {'type': 'array', 'maxItems': 5, 'items': line},
+                                                                               'eyebrow': {'type': 'string'}, 'headline': {'type': 'string'}}}}}}
+
+
+def _options(row):
+    """A page's candidate lines in the order written: its candidates, or its single line in the earlier shape."""
+    options = [option for option in row.get('candidates') or [] if isinstance(option, dict)]
+    if 'headline' in row:
+        options.append({'eyebrow': row.get('eyebrow', ''), 'headline': row['headline']})
+    return options[:5]
 
 
 _LINES = {'T01': 2, 'T02': 2, 'T03': 2, 'T04': 2, 'T08': 2, 'T13': 2}
