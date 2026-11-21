@@ -519,10 +519,18 @@ class SmartFramingTests(unittest.TestCase):
                                                                 'materials': [], 'warnings': []})
 
     def test_flat_and_tall_products_get_their_own_first_angles(self):
-        flat = self.enrich([.4, .3, .05])
+        flat = self.enrich([.4, .3, .12])
         self.assertEqual(flat['auto_framing']['shape'], 'flat')
         self.assertEqual({shot['id']: shot['elevation'] for shot in flat['shots'] if shot['kind'] == 'full'},
                          {'hero': 40, 'campaign': 36, 'side': 20, 'back': 34})
+        # A tool lying flat and thin (a saw, a wrench, a hammer) is a flat lay: nearly from above, its big face to the camera.
+        for dimensions in ([.4, .3, .05], [.154, .643, .020], [.183, .791, .19]):
+            with self.subTest(dimensions=dimensions):
+                lay = self.enrich(dimensions)
+                self.assertEqual(lay['auto_framing']['shape'], 'flat_long')
+                self.assertEqual({shot['id']: shot['elevation'] for shot in lay['shots'] if shot['kind'] == 'full'},
+                                 {'hero': 72, 'campaign': 60, 'side': 20, 'back': 60})
+                self.assertEqual([shot['elevation'] for shot in lay['shots'] if shot['kind'] == 'detail'], [25, 35])
         tall = self.enrich([.195, .196, .67])
         self.assertEqual(tall['shots'][0]['elevation'], 12)
         self.assertEqual([shot['elevation'] for shot in tall['shots'] if shot['kind'] == 'detail'], [25, 35])

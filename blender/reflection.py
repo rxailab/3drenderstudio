@@ -21,7 +21,8 @@ numpy is needed, which Blender ships with; the images are read and written with 
 import numpy
 
 STRENGTH = .5              # opacity of the reflection where it meets the product
-MIRROR_STRENGTH = .38      # opacity of a rendered (mirror-pass) reflection where it meets the product: acrylic, not a mirror
+MIRROR_STRENGTH = .20      # opacity of a rendered (mirror-pass) reflection where it meets the product: faint, as catalogue photographs show it
+FLAT = .25                 # a product whose height is at most this share of its larger side on the floor lies flat: no reflection
 LENGTH = .55               # how far it reaches, as a share of the product's height in that column
 SOLID = .97                # alpha above which a pixel is the product, not its shadow
 SMOOTH = 9                 # columns over which the product's lowest edge is smoothed
@@ -88,16 +89,26 @@ def ground(kind, height, width):
     return numpy.ones((height, width, 3), dtype=numpy.float32)
 
 
+def lies_flat(size):
+    """Whether a product of ``size`` (width, depth, height as it stands) lies flat: its reflection would be a sliver."""
+    width, depth, height = (float(value) for value in size)
+    return height <= FLAT * max(width, depth)
+
+
 def onto_white(rgba, strength=STRENGTH, length=LENGTH, kind='white'):
     """A float RGBA image (rows from the top, straight alpha, display values 0-1) laid on its ground with the product's reflection.
 
     Returns (RGB array, report). The shadow in the alpha is kept; the reflection is added below the product only.
+    A ``strength`` of 0 lays it on its ground with no reflection.
     """
     rgb = rgba[..., :3]; alpha = rgba[..., 3:4]
     out = rgb * alpha + ground(kind, rgba.shape[0], rgba.shape[1]) * (1.0 - alpha)
     solid = rgba[..., 3] > SOLID
     present, lowest, highest = _lowest(solid)
     report = {'ground': kind, 'reflected_columns': int(present.sum()), 'strength': strength, 'length': length}
+    if strength <= 0:
+        report.update(method='none', reflected_columns=0)
+        return out, report
     if not present.any():
         return out, report
     lowest = _smoothed(lowest, present, SMOOTH)
@@ -232,22 +243,25 @@ def mirror_pass(scene, target, floor_z=0.0, samples=None):
          scene.cycles.time_limit, scene.camera) = saved
 
 
-def finish_white(path, jpg=None, quality=95, kind='white', mirror=None):
+def finish_white(path, jpg=None, quality=95, kind='white', mirror=None, strength=None):
     """Read a transparent-film PNG written by Blender, lay it on its ground with its reflection, and write it back as RGB.
 
     ``jpg``, when given, is written from the same pixels. Returns the report. The pixels of an 8-bit PNG are read and
-    written as they are stored, so no colour transform is applied twice.
+    written as they are stored, so no colour transform is applied twice. ``strength`` overrides the reflection's
+    opacity; 0 (a product lying flat) means none at all. Without it the stand-in used when there is no mirror render
+    would be the stronger pixel-column reflection, not no reflection.
     """
     import bpy
     rgba, width, height = _read(path)
-    if mirror is not None:
+    chosen = {} if strength is None else {'strength': float(strength)}
+    if mirror is not None and strength != 0:
         reflected, mirror_width, mirror_height = _read(mirror)
         if (mirror_width, mirror_height) == (width, height):
-            out, report = with_mirror(rgba, reflected, kind=kind)
+            out, report = with_mirror(rgba, reflected, kind=kind, **chosen)
         else:
-            out, report = onto_white(rgba, kind=kind)
+            out, report = onto_white(rgba, kind=kind, **chosen)
     else:
-        out, report = onto_white(rgba, kind=kind)
+        out, report = onto_white(rgba, kind=kind, **chosen)
     result = numpy.ones((height, width, 4), dtype=numpy.float32); result[..., :3] = numpy.clip(out, 0, 1)
     image = bpy.data.images.new('Studio reflection', width, height, alpha=False)
     try:

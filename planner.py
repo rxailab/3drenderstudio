@@ -154,6 +154,9 @@ def validate(plan):
     return p
 
 SHAPE_FRAMING={
+    # A tool lying flat (a saw, a wrench, a hammer) is photographed nearly from above, as a flat lay: at 40 degrees an
+    # orthographic view gives no depth cue and a hammer resting on its head and handle end reads as standing on end.
+    'flat_long':({'hero':72,'campaign':60,'side':20,'back':60},'模型平放且很薄：完整镜头接近俯拍（平铺展示），让最大的一面朝向镜头。'),
     'flat':({'hero':40,'campaign':36,'side':20,'back':34},'模型较扁平：完整镜头抬高为俯视角度，让顶面成为主展示面。'),
     'tall':({'hero':12,'campaign':14,'side':8,'back':14},'模型细高：完整镜头降低视角，保持主体挺拔并减少顶部变形。'),
 }
@@ -173,7 +176,7 @@ def frame_for_shape(plan, features):
         from orientation import oriented_dimensions
         dims=oriented_dimensions(dims,plan['rotation'])
     footprint=max(dims[0],dims[1]);height=dims[2]
-    shape='flat' if height<=footprint*.4 else 'tall' if height>=footprint*2.2 else None
+    shape='flat_long' if height<=footprint*.25 else 'flat' if height<=footprint*.4 else 'tall' if height>=footprint*2.2 else None
     if shape is None: return None
     angles,reason=SHAPE_FRAMING[shape]
     for shot in plan['shots']:

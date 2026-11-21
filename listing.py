@@ -225,8 +225,13 @@ def _view_key(project):
     """The model and the way the main picture shows it: points found on that picture hold while this stays the same."""
     plan = project.get('plan') or {}
     shot = next((row for row in plan.get('shots', []) if row.get('id') == 'hero'), {})
-    return hashlib.sha256(json.dumps([project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')],
-                                     sort_keys=True, default=str).encode()).hexdigest()[:16]
+    key = [project.get('model_path'), plan.get('rotation'), shot.get('azimuth'), shot.get('elevation')]
+    if plan and _flat_lay(project)[0]:
+        # A flat lay's main picture is taken from FLAT_HERO_ELEVATION, not the hero shot's angle: points found on an
+        # earlier picture from 24 degrees are not where the product is now. Only flat products get the extra entry, so
+        # every other project keeps its key and its points.
+        key.append(FLAT_HERO_ELEVATION)
+    return hashlib.sha256(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def stored(project):
@@ -698,23 +703,36 @@ def _light_share(path):
     return sum(1 for pixel in pixels if min(pixel[:3]) > 185) / max(1, len(pixels))
 
 
+FLAT_HERO_ELEVATION = 60.0      # the listing's main picture of a product lying flat; the T06 outline stays straight down (89)
+
+
 def _flat(dims):
     """A product lying flat: its height well under the shorter of its two sides on the ground."""
     return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
 
 
+def _flat_lay(project):
+    """(whether the listing shows the product lying flat, the rotation it is shown in, its dimensions in that pose)."""
+    import orientation
+    rotation, _ = display_rotation(project)
+    measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
+    dims = orientation.oriented_dimensions(measured, rotation)
+    return _flat(dims), rotation, dims
+
+
 def picture_requests(project, product, size_mm, rows, parts=()):
     """The staged pictures these pages need: {name: request}."""
     plan = copy.deepcopy(project['plan']); model = project['model_path']; azimuth, elevation = _hero_view(project)
-    plan['rotation'], _ = display_rotation(project)
+    flat, plan['rotation'], dims = _flat_lay(project)
     kinds = {row['kind'] for row in rows if not row.get('skipped')}
+    if flat:
+        # A tool lying flat (a saw, a wrench) is shown as a flat lay, its big face to the camera: seen from 24 degrees its
+        # blade is a sliver that mirrors the bright studio behind it and vanishes into the white.
+        elevation = FLAT_HERO_ELEVATION
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1800)}
     if 'T06' in kinds:
-        import orientation
-        measured = ((project.get('analysis') or {}).get('features') or {}).get('dimensions') or [1, 1, 1]
-        dims = orientation.oriented_dimensions(measured, plan.get('rotation', [0, 0, 0]))
         # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
-        side_elevation = 89 if _flat(dims) else 0
+        side_elevation = 89 if flat else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': side_elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}

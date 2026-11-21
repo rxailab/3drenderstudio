@@ -516,8 +516,16 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
     # The key faces the camera-left side, the fill only opens the other side:
     # roughly two stops apart, which is what gives a box its volume.
     level=.12 if white else .11 if not dark else .1
-    lights=[lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93)),
-            lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),product_only=True),
+    if white:
+        # On white the key is high and large: a flat lay's shadow falls under the tool, not as a dark streak beside it
+        # (a hammer at 40 degrees seemed to stand on its handle end). The fill is brighter so dark plastics and rubber
+        # keep their shape against the white.
+        key=lamp('Key softbox',-30,62,5.0,1500*level,5.0*soft,5.0*soft,(1,.965,.93))
+        fill=lamp('Fill softbox',55,25,6,400*level,5*soft,4*soft,(.93,.96,1),product_only=True)
+    else:
+        key=lamp('Key softbox',-46,42,4.2,980*level,3.2*soft,2.4*soft,(1,.965,.93))
+        fill=lamp('Fill softbox',50,16,7,125*level,4.4*soft,3.4*soft,(.93,.96,1),product_only=True)
+    lights=[key,fill,
             lamp('Edge softbox',140,32,6,1200*level,.75*soft,4*soft,(1,1,1),product_only=True),
             lamp('Edge strip left',-130,24,6,1000*level,.6*soft,4*soft,(1,1,1),product_only=True),
             lamp('Top reflection',0,82,5.4,420*level,4.2*soft,4.2*soft,(1,1,1))]
@@ -552,6 +560,36 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
             wash.light_linking.receiver_collection=backdrop
             lights.append(dict(name='Backdrop wash',position=[0,0,9],energy=1.1,size=0,color=[1,1,1],casts_shadow=True,shape='SUN'))
     return lights
+
+
+GLOSSY_WORLD='Glossy environment'
+
+
+def white_metal_environment(world):
+    """What metal mirrors on a white showcase set: a bright sky over a darker horizon.
+
+    Metal shows nothing but its surroundings. Under the dim surround a showcase uses to model plastics, a saw blade or
+    a wrench mirrors near-black and reads as dark grey plastic. Glossy rays alone therefore see a gradient (grey .18
+    below the horizon to white overhead), which reads as polished or brushed steel. Diffuse light keeps the dim
+    surround, only neutral instead of bluish: the shadow catcher also reports the sky a product hides from the floor,
+    and a brighter diffuse world (.35) laid a grey wash round every flat lay (a screwdriver's 230-249 grey band: 5% ->
+    19% of the frame). The camera still sees pure white (the mix set up in studio()), and the user's environment
+    multiplier scales this node as well as 'Background'.
+    """
+    nodes=world.node_tree.nodes;links=world.node_tree.links
+    nodes['Background'].inputs['Color'].default_value=(1,1,1,1)
+    glossy=nodes.new('ShaderNodeBackground');glossy.name=GLOSSY_WORLD;glossy.inputs['Strength'].default_value=.8
+    coordinates=nodes.new('ShaderNodeTexCoord');axes=nodes.new('ShaderNodeSeparateXYZ');ramp=nodes.new('ShaderNodeValToRGB')
+    links.new(coordinates.outputs['Generated'],axes.inputs[0]);links.new(axes.outputs['Z'],ramp.inputs['Fac'])
+    low,high=ramp.color_ramp.elements
+    low.position=.10;low.color=(.18,.18,.187,1);high.position=.85;high.color=(1,1,1,1)
+    links.new(ramp.outputs['Color'],glossy.inputs['Color'])
+    path=nodes.new('ShaderNodeLightPath');choice=nodes.new('ShaderNodeMixShader')
+    links.new(path.outputs['Is Glossy Ray'],choice.inputs[0])
+    links.new(nodes['Background'].outputs[0],choice.inputs[1]);links.new(glossy.outputs[0],choice.inputs[2])
+    camera_mix=next(node for node in nodes if node.type=='MIX_SHADER' and node is not choice)
+    links.new(choice.outputs[0],camera_mix.inputs[1])
+    return glossy
 
 
 def studio(plan,shot,meshes,set_meshes=()):
@@ -589,6 +627,7 @@ def studio(plan,shot,meshes,set_meshes=()):
         # A dim neutral surround: enough for open shadows, never a flat wash.
         scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.9,.93,1,1) if not dark else (.3,.36,.48,1)
         scene.world.node_tree.nodes['Background'].inputs[1].default_value=.08 if not dark else .04
+        if white: white_metal_environment(scene.world)
         # A white sweep throws a lot of bounce back into the product and veils its
         # colour. The catcher only reports shadow, so a darker floor costs nothing.
         if white: bs.inputs['Base Color'].default_value=(.45,.45,.45,1)
@@ -649,6 +688,8 @@ def studio(plan,shot,meshes,set_meshes=()):
             lights.append(reflection)
             rationale.append('根据相机与可见金属面的反射方向放置反射软箱：'+reflection['target_object'])
     scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value*=lighting['environment']
+    glossy_world=scene.world.node_tree.nodes.get(GLOSSY_WORLD)
+    if glossy_world: glossy_world.inputs['Strength'].default_value*=lighting['environment']
     if any(value!=1 for value in lighting.values()):
         rationale.append('已应用确认的主光、补光、轮廓光与物理环境倍率；白底相机背景保持不变')
     for entry in lights:
@@ -817,17 +858,23 @@ def render(req,objects,meshes):
         scene.render.film_transparent=False;bpy.ops.wm.save_as_mainfile(filepath=str(blend));scene.render.film_transparent=reflect_white
     reflection=None
     if reflect_white:
-        event('正在渲染地面倒影',sample_target=max(16,scene.cycles.samples//2),
-              render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
-        from blender.reflection import finish_white,mirror_pass
+        from blender.reflection import finish_white,mirror_pass,lies_flat
         mirrored=out/(stem+'.mirror.png');rendered=False
+        lo,hi,_=bounds(meshes)
+        # A product lying flat (a saw, a wrench) has no reflection worth showing: only a sliver of its edge would mirror,
+        # as a grey streak. It is laid on its ground with its shadow alone, and the reflection render is not made.
+        flat=lies_flat(hi-lo)
+        if not flat:
+            event('正在渲染地面倒影',sample_target=max(16,scene.cycles.samples//2),
+                  render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
+            try:
+                report_render_progress()
+                rendered=mirror_pass(scene,mirrored,checks.get('ground_contact',0.0) or 0.0,max(16,scene.cycles.samples//2))
+            except Exception as exc:
+                event('倒影渲染失败，改用平面倒影',error=str(exc)[:200])
         try:
-            report_render_progress()
-            rendered=mirror_pass(scene,mirrored,checks.get('ground_contact',0.0) or 0.0,max(16,scene.cycles.samples//2))
-        except Exception as exc:
-            event('倒影渲染失败，改用平面倒影',error=str(exc)[:200])
-        try:
-            reflection=finish_white(png,jpg,kind=reflect_ground,mirror=mirrored if rendered and mirrored.is_file() else None)
+            reflection=finish_white(png,jpg,kind=reflect_ground,mirror=mirrored if rendered and mirrored.is_file() else None,
+                                    strength=0 if flat else None)
         finally:
             mirrored.unlink(missing_ok=True)
         scene.render.image_settings.color_mode='RGB'

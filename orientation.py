@@ -5,6 +5,7 @@ upside-down or lying on its back, and every picture then shows it that way. At
 analysis, and again whenever the user asks, the model is pictured in six
 candidate poses (blender/orient.py) and one of them is chosen:
 
+    geometry a long or flat tool (a saw, a wrench, a screwdriver) lies on its largest face, by measurement alone
     vision   the pose agent looks at the six pictures and decides how the product rests
     names    without one, parts called wheel, foot or base belong at the bottom, lid or top at the top
     file     with neither, the file's own orientation is kept
@@ -60,6 +61,17 @@ BOTTOM_WORDS = ('脚轮', '轮子', '车轮', '万向轮', '底座', '底板', '
                 'caster', 'castor', 'wheel', 'foot', 'feet', 'leg', 'legs', 'base', 'bottom', 'stand', 'pedestal', 'skid')
 # A cover or a cap can be anywhere on a product (a battery cover is underneath), so only names that mean "the top" count.
 TOP_WORDS = ('顶盖', '上盖', '顶板', '台面', 'lid', 'top', 'worktop', 'countertop', 'tabletop', 'roof')
+# Products that may stand on end although they are long or thin: a drill on its battery, a bottle, a lamp. A long or
+# flat product named with none of these lies on its largest face (see lies_flat). "driver" alone is a screwdriver too,
+# so only an impact or cordless driver counts.
+# A ladder, a screen or a tripod is long or thin as well, and is photographed standing (the folding ladder reference).
+STAND_WORDS = ('drill', 'grinder', 'vacuum', 'kettle', 'bottle', 'lamp', 'flask', 'thermos', 'vase', 'speaker', 'fan',
+               'ladder', 'stepladder', 'monitor', 'tv', 'television', 'tripod',
+               '电钻', '起子机', '角磨', '磨光机', '吸尘器', '水壶', '热水壶', '瓶', '灯', '保温杯', '花瓶', '音箱', '风扇',
+               '梯', '显示器', '电视', '三脚架')
+LONG = 3.0          # longest side at least this many times the middle one: a screwdriver, a wrench, a saw
+THIN = .2           # thinnest side at most this share of the middle one: a saw blade, a caliper, a knife
+STANDING = 1.5      # a pose more than this many times as tall as the lowest one stands the product up
 
 POSE_PROMPT = '''You decide how a product's 3D model should stand for product photographs. The model file may have been exported upside-down or lying on a side, so you are shown the SAME model in several candidate poses, as a grid of lettered cells. In every cell it rests on the same grey floor and is seen from the same camera.
 Work in this order and return data only:
@@ -301,6 +313,53 @@ def by_names(rows):
     return best, '按部件名称判断：%s 应在%s。' % ('、'.join(names), '底部' if any(_cue(name) < 0 for name in names) else '顶部')
 
 
+def _height(row):
+    size = row.get('dimensions')
+    if isinstance(size, list) and len(size) == 3 and all(type(value) in (int, float) and value > 0 for value in size):
+        return float(size[2])
+    return None
+
+
+def may_stand(words):
+    """Whether the product's name or category says it may stand on end: a drill on its battery, a bottle, a lamp."""
+    text = ' '.join(str(word) for word in words if word).casefold(); found = _words(text)
+    if any(word in text if not word.isascii() else word in found for word in STAND_WORDS):
+        return True
+    # A screwdriver lies flat; a cordless or impact driver stands on its battery like a drill.
+    return 'driver' in found and bool(found & {'impact', 'cordless'})
+
+
+def lies_flat(rows, words=()):
+    """Whether this is a long or flat product that lies on its largest face and is never stood on an edge or an end.
+
+    A saw blade, a wrench, a screwdriver, a caliper or a knife: the longest side at least LONG times the middle one,
+    or the thinnest at most THIN of it. The sides do not depend on the pose, so the file's own candidate tells. A
+    drill lying on its side in the file is neither (.29 thin, 1.3 long) and stays free to stand; so does anything
+    named as standing (may_stand), since names such as "12_cordless_drill_red" are often all there is.
+    """
+    heights = [_height(row) for row in rows]
+    if not rows or any(value is None for value in heights) or may_stand(words):
+        return False
+    a, b, c = sorted((float(value) for value in rows[0]['dimensions']), reverse=True)
+    return a >= LONG * b or c <= THIN * b
+
+
+def lowest(rows):
+    """The lying pose: the lowest candidate, the file's own when it is as low as any. Between a pose and the same pose
+    upside-down the one with more of a flat face on the floor rests, then the one that would tip less."""
+    floor = min(_height(row) for row in rows)
+    low = [row for row in rows if _height(row) <= floor * 1.05]
+    if rows[0] in low:
+        return rows[0]
+    number = lambda value: float(value) if type(value) in (int, float) else 0.0
+    return max(low, key=lambda row: (number(row.get('flat_contact')), number(row.get('tip_angle'))))
+
+
+def standing(rows, row):
+    """Whether ``row`` stands the product up: more than STANDING times as tall as its lowest pose."""
+    return _height(row) > STANDING * min(_height(other) for other in rows)
+
+
 def pose_model():
     """The model named for judging poses (AI_POSE_MODEL), or '' for the configured vision model."""
     import os
@@ -447,7 +506,7 @@ def front_by_vision(rows, image, product=None, rests_on=None):
             'reason': _line(answer['reason'], 300)}
 
 
-def choose(rows, sheet_path, part_names=()):
+def choose(rows, sheet_path, part_names=(), flat=False):
     """Pick a pose from the pictured candidates: (row, source, reason, seen).
 
     The file's own pose is left only on evidence: a pose agent that is
@@ -455,6 +514,10 @@ def choose(rows, sheet_path, part_names=()):
     where no vision model can be asked, unambiguous part names. ``source`` is
     'file' when nothing could be told, and the caller then changes nothing.
     ``seen`` is the pose agent's full answer, or None when it gave none.
+
+    ``flat`` says the product lies on its largest face (lies_flat). A pose
+    that stands it on an edge or an end is then refused whoever proposed it:
+    a hand saw stood on its back edge is one small picture away from lying flat.
     """
     own = rows[0]
     seen = by_vision(rows, sheet_path, part_names)
@@ -465,9 +528,12 @@ def choose(rows, sheet_path, part_names=()):
             why = ('视觉模型选的姿态与测量不符（它认为产品靠平整底面承托，但测得平面着地的是相反的一面），'
                    if seen.get('doubt') else '视觉模型不能确定哪一面朝上，')
             return own, 'file', why + '朝向未自动调整；可在下方改选姿态。', seen
+        if flat and standing(rows, seen['row']):
+            row = lowest(rows)
+            return row, 'geometry' if row is not own else 'file', '视觉模型选的姿态把细长或扁平的产品立了起来，已改为平放在最大的一面上。', seen
         return seen['row'], 'vision', seen['reason'], seen
     named = by_names(rows)
-    if named:
+    if named and not (flat and standing(rows, named[0])):
         return named[0], 'names', named[1], None
     return own, 'file', '未能调用视觉模型，部件名称也没有说明上下，朝向未自动调整；可在下方改选姿态。', None
 
@@ -489,10 +555,21 @@ def decide(project, plan, folder, cancelled=None, progress=None):
     analysis = project.get('analysis') or {}
     names = [item.get('name') for item in analysis.get('objects', []) if isinstance(item, dict) and item.get('type', 'MESH') == 'MESH']
     names = names or [part.get('name') for part in rows[0]['parts']]
-    if _vision(): say('由视觉模型判断产品应如何摆放')
-    chosen, source, reason, seen = choose(rows, sheet_path, names)
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    flat = lies_flat(rows, (project.get('name'), metadata.get('product_category'), Path(str(project.get('model_path') or '')).stem))
+    if flat:
+        # A long or flat tool lies on its largest face; the measurements say which pose that is, so the pose agent is
+        # not asked (one vision call saved per upload) and cannot stand it on an edge. Turning it to the camera is
+        # the framing's job, so the second look is skipped as well.
+        chosen = lowest(rows); seen = None
+        source = 'geometry' if chosen is not rows[0] else 'file'
+        reason = ('细长或扁平的产品：按测量平放在最大的一面上。' if chosen is not rows[0]
+                  else '细长或扁平的产品：文件中已平放在最大的一面上，保持原始朝向。')
+    else:
+        if _vision(): say('由视觉模型判断产品应如何摆放')
+        chosen, source, reason, seen = choose(rows, sheet_path, names, flat=flat)
     rotation = list(chosen['rotation']); front = None; rejected = None
-    if chosen is not rows[0]:
+    if chosen is not rows[0] and not flat:
         # Before the pose is changed it is looked at again from four sides; a file that was
         # not the right way up says nothing reliable about its front either.
         front = _front(project, plan, rotation, folder, cancelled, say, seen)

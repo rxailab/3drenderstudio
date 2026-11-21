@@ -27,7 +27,32 @@ white, report = reflection.onto_white(rgba)
 grey, _ = reflection.onto_white(rgba, kind='soft')
 print('RESULT' + json.dumps({'report': report, 'background': white[5, 5].tolist(), 'shadow': white[61, 17].tolist(),
     'product': white[40, 40].tolist(), 'below': white[62, 40].tolist(), 'far': white[95, 40].tolist(), 'beside': white[62, 70].tolist(),
-    'grey_top': grey[0, 70].tolist(), 'grey_bottom': grey[99, 70].tolist(), 'empty': reflection.onto_white(numpy.zeros((10, 10, 4), dtype=numpy.float32))[1]}))
+    'grey_top': grey[0, 70].tolist(), 'grey_bottom': grey[99, 70].tolist(), 'empty': reflection.onto_white(numpy.zeros((10, 10, 4), dtype=numpy.float32))[1],
+    'off': reflection.onto_white(rgba, strength=0)[1], 'off_below': reflection.onto_white(rgba, strength=0)[0][66, 40].tolist(), 'on_below': white[66, 40].tolist(),
+    'off_shadow': reflection.onto_white(rgba, strength=0)[0][61, 17].tolist(), 'mirror_strength': reflection.MIRROR_STRENGTH,
+    'flat': [reflection.lies_flat(size) for size in ((.154, .643, .020), (.4, .3, .05), (.219, .171, .5), (.3, .3, .3))]}))
+'''
+
+# A flat lay is finished with no reflection at all, even when a mirror render is at hand; by default the faint mirror is used.
+FINISH = r'''
+import json, sys
+sys.path.insert(0, sys.argv[sys.argv.index('--') + 1]); folder = sys.argv[sys.argv.index('--') + 2]
+import bpy, numpy
+from blender import reflection
+def write(name, rgba):
+    image = bpy.data.images.new(name, rgba.shape[1], rgba.shape[0], alpha=True)
+    image.pixels.foreach_set(rgba[::-1].reshape(-1)); image.filepath_raw = folder + '/' + name; image.file_format = 'PNG'; image.save()
+    return folder + '/' + name
+rgba = numpy.zeros((100, 80, 4), dtype=numpy.float32)
+rgba[20:60, 20:60, :3] = (.8, .1, .1); rgba[20:60, 20:60, 3] = 1
+mirror = numpy.zeros_like(rgba); mirror[60:100, 20:60, :3] = (.8, .1, .1); mirror[60:100, 20:60, 3] = 1
+found = {}
+for label, strength in (('flat', 0), ('default', None)):
+    path = write(label + '.png', rgba); reflected = write(label + '.mirror.png', mirror)
+    report = reflection.finish_white(path, kind='white', mirror=reflected, strength=strength)
+    image = bpy.data.images.load(path); px = numpy.empty(80 * 100 * 4, dtype=numpy.float32); image.pixels.foreach_get(px)
+    found[label] = {'report': report, 'below': px.reshape(100, 80, 4)[::-1][62, 40, :3].tolist()}
+print('RESULT' + json.dumps(found))
 '''
 
 MIRROR = r'''
@@ -98,9 +123,38 @@ class FinishTests(unittest.TestCase):
         self.assertGreater(found['report']['reach_px'], 10)
         self.assertLess(found['grey_top'][0], found['grey_bottom'][0])               # the grey studio gradient, darker at the top
         self.assertEqual(found['empty']['reflected_columns'], 0)
+        # Strength 0 (a flat lay): laid on white with its shadow, and nothing reflected.
+        self.assertEqual((found['off']['method'], found['off']['reflected_columns']), ('none', 0))
+        self.assertEqual([round(value, 3) for value in found['off_below']], [1.0, 1.0, 1.0])
+        self.assertGreater(found['on_below'][0], found['on_below'][1] + .02)     # where the default reflection shows
+        self.assertLess(found['off_shadow'][0], .7)
+        self.assertEqual(found['mirror_strength'], .2)
+        self.assertEqual(found['flat'], [True, True, False, False])           # a saw, a tray lie flat; a drill, a box do not
+
+    def test_a_flat_lay_is_finished_without_a_reflection_even_with_a_mirror_render(self):
+        found = _blender(FINISH, '.')
+        self.assertEqual(found['flat']['report']['method'], 'none')
+        self.assertEqual([round(value, 2) for value in found['flat']['below']], [1.0, 1.0, 1.0])
+        self.assertEqual((found['default']['report']['method'], found['default']['report']['strength']), ('mirror_pass', .2))
+        below = found['default']['below']; self.assertGreater(below[0], below[1] + .05)
 
 
 class PageTests(unittest.TestCase):
+    def test_a_flat_lay_casts_its_whole_silhouette_and_has_no_reflection(self):
+        standing = el.cutout('x.png', 0, 0, 100, 100)
+        self.assertEqual(standing['shadow']['kind'], 'ground'); self.assertIn('reflection', standing)
+        lying = el.cutout('x.png', 0, 0, 100, 100, flat=True)
+        self.assertEqual(lying['shadow'], {'dx': 0, 'dy': 6, 'blur': 12, 'opacity': .18}); self.assertNotIn('reflection', lying)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'cut.png'
+            cut = Image.new('RGBA', (300, 60), (0, 0, 0, 0)); ImageDraw.Draw(cut).rectangle((10, 10, 290, 50), fill=(30, 30, 200, 255)); cut.save(path)
+            page = draw.render({'height': 1000, 'items': [el.cutout(path, 100, 400, 800, 160, (.5, .5), flat=True)]}, 500)
+            ground = draw.render({'height': 1000, 'items': [el.cutout(path, 100, 400, 800, 160, (.5, .5), reflection=False)]}, 500)
+        # Seen from above, the shadow follows the whole outline, round its top edge too; the ground shadow is only a strip under it.
+        self.assertLess(sum(page.getpixel((250, 210))), 3 * 255)
+        self.assertEqual(ground.getpixel((250, 210)), (255, 255, 255))
+        self.assertLess(sum(page.getpixel((55, 240))), 3 * 255)                  # beside its left end as well
+
     def test_a_cut_out_on_a_page_is_reflected_below_where_it_stands(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'cut.png'
