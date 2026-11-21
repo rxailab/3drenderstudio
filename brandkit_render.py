@@ -29,7 +29,7 @@ TIMEOUT = 90
 FLAGS = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
          '--disable-extensions', '--no-first-run', '--mute-audio', '--no-default-browser-check']
 # Checks that mean the layout itself is wrong; the others (a font fallback, a mild upscale) are only reported.
-LAYOUT_CHECKS = ('lang_mismatch', 'phrase_break', 'leader_over_product', 'frame_cuts_part', 'scene_product_cropped', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
+LAYOUT_CHECKS = ('lang_mismatch', 'phrase_break', 'empty_area', 'leader_over_product', 'frame_cuts_part', 'scene_product_cropped', 'text_overflow', 'text_max_lines', 'overlap', 'leader_crosses_text', 'leader_crossing', 'text_over_product', 'safe_margin',
                  'product_cropped', 'out_of_canvas', 'product_distortion', 'image_loaded', 'render_error', 'js_error')
 _HEADLESS = {}
 
@@ -278,6 +278,10 @@ def render(template_id, job, out, work=None):
         raise RenderError('排版浏览器没有输出图片：%s' % shot_result.stderr.decode('utf-8', 'replace')[-300:])
     pixel_checks(qa, job)
     frame_checks(qa, job)
+    # A tile cut short to keep its product whole leaves bare ground on the page: past 6 % of it, another layout is better.
+    for row in (qa.get('layout') or {}).get('voids') or []:
+        if row.get('share', 0) > .06:
+            qa['issues'].append({'check': 'empty_area', 'id': row.get('asset'), 'detail': '%.0f%% of the page left empty' % (row['share'] * 100)})
     phrase_checks(qa, job)
     with Image.open(out) as image:
         if image.size != (width, height):
