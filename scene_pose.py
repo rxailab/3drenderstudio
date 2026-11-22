@@ -38,6 +38,7 @@ COLUMNS = 4
 TIPS_OVER = -15.0          # degrees: a weight this far outside what the product stands on cannot rest, even leaning onto a second point
 FLAT_BASE = .15            # share of the footprint a flat face on the floor must cover for a tall pose to stand on its base
 STEADY = 5.0               # degrees a tall pose's weight must be inside what it stands on
+EDGEWISE = 6.0             # a main pose this many times as tall as lying is a thin tool on its edge or a tip, not trusted
 MODES = ('auto', 'keep')
 HOLDS = ('hands', 'person', 'nobody', 'scene')
 SIDES = ('below', 'above', 'left', 'right', 'front', 'behind', 'around', 'none')
@@ -71,7 +72,7 @@ hint, when present, is the user's own wish and takes priority.'''
 FIRST_STEP = {'held': 'every way up the product can be turned, each from two sides; the top-left cell is how it stands for its main image',
               'rest': ('the ways up the product can be set down on a surface and really rest in, each from two sides: lying on a side, or standing on a '
                        'flat base with its weight well inside it; poses that would balance it on a tip, an edge, its jaws or a handle end '
-                       'are not shown. The top-left cell is how it stands for its main image. cell_facts says what was measured of each: stance (lies level or stands tall), the parts on the '
+                       'are not shown. The top-left cell is how it stands for its main image, unless that pose is one it cannot rest in. cell_facts says what was measured of each: stance (lies level or stands tall), the parts on the '
                        'floor, and tips_over when it would fall over. A tool is usually laid down on its side or its flat back, the way '
                        'a person puts it down on a bench; something made to stand stands on its base.')}
 SECOND_STEP = ('the pose chosen a moment ago (top-left) and small changes to it: turned round, leaning left or right, the top tipped toward '
@@ -130,6 +131,10 @@ def stable(rows):
     its battery: the battery's underside measures barely flat, so only its main pose keeps it standing). Anything else
     stands on a point: pliers on a jaw tip and a handle end measure 6.5 times as tall as lying, 0.3% of a flat face on
     the floor. Unmeasured poses are kept only when nothing was measured at all.
+
+    The main image's pose is trusted only up to EDGEWISE times the lying height: a hand saw whose main image stands it
+    on its teeth measures 7.6 times (a caliper on its edge 8, a hammer on its head 11), a drill on its battery 4.4. A
+    thin tool stood on an edge in its main image must still lie down in a scene with nobody holding it.
     """
     heights = [orientation._height(row) for row in rows]
     known = [value for value in heights if value is not None]
@@ -140,7 +145,8 @@ def stable(rows):
     result = []
     for row, height in zip(rows, heights):
         flat, tip = number(row.get('flat_contact')), number(row.get('tip_angle'))
-        result.append(str(row.get('id', '')).startswith('as_is@') or (height is not None and (
+        main = str(row.get('id', '')).startswith('as_is@') and (height is None or height <= EDGEWISE * floor)
+        result.append(main or (height is not None and (
             height <= orientation.STANDING * floor or (flat is not None and tip is not None and flat >= FLAT_BASE and tip >= STEADY))))
     return result
 

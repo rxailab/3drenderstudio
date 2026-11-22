@@ -102,6 +102,15 @@ class StableTests(unittest.TestCase):
         unmeasured = [{'id': 'top_left@0'}, {'id': 'top_away@0', 'dimensions': None}]
         self.assertEqual(scene_pose.stable(unmeasured), [True, True])          # nothing measured: nothing is ruled out
 
+    def test_a_main_pose_standing_a_thin_tool_on_its_edge_is_not_trusted(self):
+        # Measured on 15_hand_saw.glb: its main image stood on the teeth (0.479 tall) against 0.063 lying flat.
+        saw = (('as_is@0', .479, .041, -7.6), ('as_is@90', .479, .041, -7.6),
+               ('upside_down@0', .063, .002, -82.6), ('upside_down@90', .063, .002, -82.6))
+        self.assertEqual(scene_pose.stable(self.rows(saw)), [False, False, True, True])
+        # A drill on its battery (12_cordless_drill_red.glb: 2.0 tall against 0.459) is still its own main pose.
+        drill = (('as_is@0', 2.0, .103, -9.3), ('top_left@0', .459, .035, -44.3))
+        self.assertEqual(scene_pose.stable(self.rows(drill)), [True, True])
+
 
 class DecideTests(unittest.TestCase):
     def setUp(self):
