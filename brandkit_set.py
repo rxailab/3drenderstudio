@@ -1736,8 +1736,9 @@ def _jobs_for(kind, ctx):
         items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20),
                   'body': _clause_lines(_clip(ctx['scenes'][index].get('body'), 44), ctx['language'], 8) or None,
                   'focus': ctx['scenes'][index]['focus'], 'box': assets['scene%d' % (index + 1)].get('_product')} for index in sorted(ranked)]
-        if not all(row['body'] for row in items):
-            # Captions under some tiles only would break the row's rhythm.
+        if not all(row['body'] for row in items) or not (product['features'] or product.get('headline') or product.get('subline')):
+            # Captions under some tiles only would break the row's rhythm; and with no selling points or description a line
+            # saying what the product does there ("slides out smooth") is a claim the user never made.
             items = [{**row, 'body': None} for row in items]
         out = []
         for count in (3, 2):

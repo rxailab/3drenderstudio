@@ -72,7 +72,8 @@ ART_DIRECTOR = (
     'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
     'stated_sizes_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
     'A close-up or cropped frame (T02, the T03 rail, circle insets) shows part of the product on purpose: missing body colours or '
-    'parts outside the crop are not scene_product_mismatch. '
+    'parts outside the crop are not scene_product_mismatch. Things kept in an open drawer, box or cabinet (tools, sockets, parts) '
+    'are props of the scene, not a change to the product. '
     'Never praise; be specific. Write evidence and summary in Simplified Chinese (the app\'s language), whatever the page\'s language; '
     'quote page text with 「」, never with double quotes.')
 COPYWRITER = (

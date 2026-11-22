@@ -73,7 +73,7 @@ FIDELITY_PROMPT = '''You check a generated photograph against renders of the rea
 Compare the product in GENERATED with the references. Return data only:
 - product_present: the product is in the picture exactly once and recognisable; a second copy, a doubled outline or a ghost of it counts as false.
 - shape_consistent: its overall shape and proportions match, allowing for perspective; every drawer, door, lid, jaw and blade is open or closed exactly as in the references (one shown open that is shut in the references counts as false).
-- parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
+- parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped. Things kept inside an open drawer, box or cabinet (tools, sockets, parts) are the scene's props, not parts of the product.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
 - nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
