@@ -187,7 +187,8 @@ def mesh_named(title, product, strict=True):
     raw = ' '.join(str(title or '').split())
     if not raw:
         return None
-    if '_' in raw or re.search(r'\.\d{2,}\b', raw):
+    # "Cube.001" (a letter before the dot), not a measurement such as "0.01 mm accuracy".
+    if '_' in raw or re.search(r'[A-Za-z]\.\d{2,}\b', raw):
         return '带有文件名的写法'
     told = ' '.join(str(product.get(key) or '') for key in ('source', 'headline', 'subline'))
     key = _mesh_key(raw)
@@ -207,10 +208,15 @@ NO_FEATURES = '没有填写卖点。请在「产品信息」里写下卖点（�
 
 def printable(product):
     """(product, notes): the record with only the selling points a page may print. A point whose title is a mesh name
-    (``mesh_named``) is left out and said, so the set never labels a part with what the file called it."""
+    (``mesh_named``) is left out and said, so the set never labels a part with what the file called it.
+
+    Only a record that was drafted or extracted (``drafted``) can carry a point the seller did not write. Points typed by
+    hand into a record that was never drafted are the seller's own: "Hydraulic cylinder" or a part named "Trigger" stays,
+    and only a file name's marks ("Handle_L", "Cube.001") are refused there."""
     kept, notes = [], []
+    machine = bool(product.get('drafted'))
     for row in product.get('features') or []:
-        why = mesh_named(row.get('title'), product)
+        why = mesh_named(row.get('title'), product) if machine else mesh_named(row.get('title'), {}, strict=False)
         if why:
             notes.append('卖点「%s」%s，不是你写的卖点，没有印到图上；请在「产品信息」里改成产品真正的卖点。' % (row.get('title'), why))
         else:
@@ -1347,7 +1353,7 @@ def _data_line(kind, ctx):
     """A headline made of the product's own facts for a page the copywriter did not write: the selling line the seller gave,
     the parts a close-up shows, the strongest figure, the occasions the scenes show. None when the data has nothing to say."""
     product = ctx['product']; zh = ctx['language'] == 'zh'; name = _clip(humanised(product['title']), 26)
-    features = [row for row in product['features'] if row.get('title') and not mesh_named(row['title'], product, strict=False)]
+    features = [row for row in product['features'] if row.get('title') and not _not_printed(row['title'], product)]
     if kind == 'T01':
         line = product.get('subline') or product.get('headline')
         return _clip(line, 44) if line else None
@@ -1393,10 +1399,16 @@ def TPL_PLAIN(text):
     return re.sub(r'\[\[|\]\]|[{}]', '', str(text or ''))
 
 
+def _not_printed(title, product):
+    """Why a page builder leaves this selling point out, or None: as ``printable`` decides, a record never drafted is
+    checked only for a file name's marks (its points were typed by the seller)."""
+    return mesh_named(title, product if product.get('drafted') else {}, strict=False)
+
+
 def _printable_rows(ctx, rows):
     """(feature index, …) rows whose selling point may be printed: never one titled with a mesh name (``mesh_named``)."""
     features = ctx['product']['features']
-    return [row for row in rows if row[0] < len(features) and not mesh_named(features[row[0]].get('title'), ctx['product'], strict=False)]
+    return [row for row in rows if row[0] < len(features) and not _not_printed(features[row[0]].get('title'), ctx['product'])]
 
 
 def _jobs_for(kind, ctx):
@@ -1610,6 +1622,13 @@ def _better(a, b):
     return (len(a['vetoes']), -a['score']) < (len(b['vetoes']), -b['score'])
 
 
+def _cut_text(qa, problems):
+    """The ids of the texts a page cannot hold (wider than their box, or past the canvas edge): sorted, empty when none."""
+    texts = {row.get('id') for row in qa.get('elements', []) if row.get('kind') == 'text'}
+    return sorted({str(row.get('id')) for row in problems
+                   if row.get('check') == 'text_overflow' or (row.get('check') == 'out_of_canvas' and row.get('id') in texts)})
+
+
 def lay_out(kind, ctx, out, work):
     """Lay a page out: the first version that passes the layout checks (or the one with the fewest problems), then,
     when a vision model is configured, the art director's review and up to two rounds of fixes.
@@ -1625,14 +1644,16 @@ def lay_out(kind, ctx, out, work):
         pass
     best = None; best_key = None
     for number, job in enumerate(candidates):
-        if best_key and best_key[0] == 0 and job.get('_group', number) != best_key[1]:
+        if best_key and best_key[1] == 0 and job.get('_group', number) != best_key[2]:
             break           # a version without hard problems, and none of its other crops is clean: keep it, not a leaner layout
         target = out if number == 0 else out.with_name('%s.try%d.png' % (out.stem, number))
         qa = brandkit_render.render(kind, job, target, work)
         problems = brandkit_render.layout_issues(qa)
         # A crop that clips a small part only decides between crops of one layout; it never trades away content.
         hard = [row for row in problems if row.get('check') not in SOFT_CHECKS]
-        key = (len(hard), job.get('_group', number), len(problems) - len(hard))
+        # A version whose words are cut off is never made (below): any version that holds its words wins over it, even one
+        # with more of the other problems.
+        key = (bool(_cut_text(qa, problems)), len(hard), job.get('_group', number), len(problems) - len(hard))
         if best is None or key < best_key:
             if best and best[2] != out:
                 best[2].unlink(missing_ok=True)
@@ -1716,9 +1737,7 @@ def lay_out(kind, ctx, out, work):
     problems = hard_issues(qa)
     # Text the page cannot hold is cut off at the canvas edge ("06_DIAGONAL_C…" on the poster): the browser measured it
     # (text_overflow), but the page with the fewest problems used to be kept anyway. A page whose words do not fit is not made.
-    texts = {row.get('id') for row in qa.get('elements', []) if row.get('kind') == 'text'}
-    clipped = sorted({str(row.get('id')) for row in problems
-                      if row.get('check') == 'text_overflow' or (row.get('check') == 'out_of_canvas' and row.get('id') in texts)})
+    clipped = _cut_text(qa, problems)
     if clipped:
         out.unlink(missing_ok=True)
         raise ValueError('文字放不下（%s），试过的排法都会把字截断，这张图没有生成；请把这段文字改短' % '、'.join(clipped))

@@ -886,6 +886,8 @@ class BuildTests(StoreCase):
         import brandkit_review
         listing.save_product('fixture', {'features': [{'title': 'Hardened cutting wheel', 'parts': [PARTS[0]]}, {'title': 'Cylinder grip', 'parts': [PARTS[1]]},
                                                       {'title': 'Twin guide rollers', 'parts': [PARTS[1]]}]})
+        project = store.get('project', 'fixture')           # an old drafted record: "Cylinder grip" came from the mesh name
+        project['listing']['product']['drafted'] = {'source': 'ai', 'at': 0, 'notes': []}; store.put('project', project)
 
         def ask(config, system, facts, schema, image_path=None, **kwargs):
             if system is brandkit_set.POINT_CHECK:

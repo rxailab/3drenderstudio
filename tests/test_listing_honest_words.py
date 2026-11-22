@@ -52,7 +52,8 @@ class NameTests(unittest.TestCase):
 
 
 class MeshNameTests(unittest.TestCase):
-    product = {'_model_parts': ['Cylinder', 'Handle_L', 'Plane.001', 'Jaw'], 'source': '', 'headline': '', 'subline': ''}
+    product = {'_model_parts': ['Cylinder', 'Handle_L', 'Plane.001', 'Jaw'], 'source': '', 'headline': '', 'subline': '',
+               'drafted': {'source': 'ai'}}
 
     def test_a_mesh_name_is_never_a_selling_point(self):
         for title in ('Cylinder grip', 'Handle_L', 'Cube.001', 'Plane', 'jaw'):
@@ -69,6 +70,24 @@ class MeshNameTests(unittest.TestCase):
         printed, notes = brandkit_set.printable({**self.product, 'features': [{'title': 'Cylinder grip'}, {'title': 'Insulated handles'}]})
         self.assertEqual([row['title'] for row in printed['features']], ['Insulated handles'])
         self.assertIn('Cylinder grip', notes[0])
+
+    def test_a_measurement_is_not_a_file_mark(self):
+        for title in ('0.01 mm accuracy', 'Reads to 0.02 mm', '1.25 in jaw opening', '精度 0.01 mm'):
+            with self.subTest(title=title):
+                self.assertIsNone(brandkit_set.mesh_named(title, self.product))
+        self.assertTrue(brandkit_set.mesh_named('Cube.001', self.product))
+
+    def test_points_typed_into_a_record_never_drafted_are_the_sellers_own(self):
+        typed = {**self.product, 'drafted': None,
+                 'features': [{'title': 'Hydraulic cylinder'}, {'title': 'Jaw'}, {'title': 'Handle_L'}, {'title': '0.01 mm accuracy'}]}
+        printed, notes = brandkit_set.printable(typed)
+        self.assertEqual([row['title'] for row in printed['features']], ['Hydraulic cylinder', 'Jaw', '0.01 mm accuracy'])
+        self.assertEqual(len(notes), 1); self.assertIn('Handle_L', notes[0])
+        ctx = {'product': typed}
+        self.assertEqual(brandkit_set._printable_rows(ctx, [(0, 'a'), (1, 'b'), (2, 'c')]), [(0, 'a'), (1, 'b')])
+        # the same points in a drafted record were made from the file: left out
+        drafted, _ = brandkit_set.printable({**typed, 'drafted': {'source': 'ai'}})
+        self.assertEqual([row['title'] for row in drafted['features']], ['0.01 mm accuracy'])
 
     def test_the_callout_close_up_and_detail_builders_skip_a_mesh_named_point(self):
         features = [{'title': 'Handle_L', 'detail': ''}, {'title': 'Sharp jaws', 'detail': ''}, {'title': 'Soft grips', 'detail': ''}]
@@ -195,6 +214,25 @@ class PointCheckTests(unittest.TestCase):
                 patch.object(brandkit_review, '_ask', side_effect=ValueError('timeout')):
             features, notes = brandkit_set.check_points(self.hero, self.picture, self.product, self.original, cache, self.folder)
         self.assertEqual(features, self.product['features']); self.assertIn('未经核对', notes[0]); self.assertEqual(cache, {})
+
+
+class CutTextRankingTests(unittest.TestCase):
+    """A version whose words are cut off is never made, so it never wins over one that holds them (renderer stood in for)."""
+
+    def test_a_version_that_holds_its_words_wins_over_fewer_other_problems(self):
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup); folder = Path(temp.name)
+        texts = [{'id': 'headline', 'kind': 'text'}, {'id': 'body', 'kind': 'text'}]
+        answers = [{'issues': [{'check': 'text_overflow', 'id': 'headline'}], 'elements': texts},          # one hard problem: cut off
+                   {'issues': [{'check': 'overlap', 'id': 'body'}, {'check': 'safe_margin', 'id': 'body'}], 'elements': texts}]
+        jobs = [{'headline': 'first', '_group': 0}, {'headline': 'second', '_group': 1}]
+
+        def render(kind, job, target, work):
+            Image.new('RGB', (10, 10)).save(target)
+            return answers[jobs.index(job)]
+        with patch.object(brandkit_set, 'jobs_for', return_value=jobs), patch.object(brandkit_render, 'render', side_effect=render):
+            qa, notes, _ = brandkit_set.lay_out('T12', {'product': {}}, folder / 'page.png', folder / '_layout')
+        self.assertIs(qa, answers[1]); self.assertTrue((folder / 'page.png').is_file())
+        self.assertTrue(any('版式检查仍有 2 处问题' in note for note in notes), notes)
 
 
 @unittest.skipUnless(brandkit_render.available(), 'No Chrome/Chromium/Edge: template layout not run')
