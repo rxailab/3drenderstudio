@@ -658,6 +658,7 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     made = picture['record']
     record = {'summary': _line(proposal.get('summary'), 400) or '由图像模型生成的使用场景', 'source': proposal.get('source', 'rules'),
               'method': 'generate', 'model': made['model'], 'attempts': made['attempts'], 'check': made['check'],
+              'usage_retry': made.get('usage_retry'),
               'people': made.get('people'), 'framing': made.get('framing'), 'pose': _pose_summary(made.get('pose')),
               'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height']}
     return plan, record, picture

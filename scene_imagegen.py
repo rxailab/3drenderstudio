@@ -50,6 +50,10 @@ REFERENCE_VERSION = 1          # part of the cache key: raise it when reference 
 REFERENCE_QUALITY = 'reference'
 REFERENCE_TIMEOUT = 900
 MAX_ATTEMPTS = 2               # the first picture, and one correction when the product changed
+# A picture that kept the product but got its use wrong (held by one handle, the wire at the tip, balanced on a point)
+# is the image model's commonest miss and the one a correction most often fixes: it gets one try more.
+USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible'))
+USAGE_RETRY = 1                # recorded on a scene made with that extra try, so older failed scenes are tried again once
 RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
 RENDER_SAMPLES = 48
 LOCK_FIXES = {'moved': 'the product was moved, resized or drawn again somewhere else: it must stay exactly where it is in image 1, at the '
@@ -616,7 +620,9 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     buffer = io.BytesIO(); scene_lock.mask(layer).save(buffer, 'PNG'); masked = buffer.getvalue()
     box_share = [round(box[0] / size[0], 4), round(box[1] / size[1], 4), round(box[2] / size[0], 4), round(box[3] / size[1], 4)]
     attempts = []; corrections = None; usage = {}; retry = ''; lowered = None
-    for number in range(1, MAX_ATTEMPTS + 1):
+    number = 0; limit = MAX_ATTEMPTS
+    while number < limit:
+        number += 1
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
         text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
@@ -671,6 +677,9 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                  '画面里出现了人脸或整个人，正在重新生成手部特写' if hands and verdict['people'].get('visible') else
                  '画面里没有操作产品的手，正在重新生成' if hands else
                  '画面里没有人物，正在重新生成' if people else '画面里出现了人物，正在重新生成')
+        wrong = {name for name, ok in (verdict.get('flags') or {}).items() if ok is False}
+        if number == limit == MAX_ATTEMPTS and lock['status'] == 'kept' and not wrong_people and wrong and wrong <= USAGE_FLAGS:
+            limit += 1; retry = '握持、用法或摆放还不对，按核对意见再试一次'
     # A passing picture wins; otherwise one that kept the product, then got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
     if chosen is None:
@@ -685,6 +694,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
     import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
+              'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),
               'references': [{'url': url(staged['path']), 'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation)}],

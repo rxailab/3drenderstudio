@@ -1048,6 +1048,11 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     kept = []
     if previous and previous.get('key') == key:
         rows = [row for row in previous.get('items', []) if Path(row.get('path', '')).is_file()]
+        import scene_imagegen
+        stale = [row for row in rows if row.get('check') == 'failed' and (row.get('usage_retry') or 0) < scene_imagegen.USAGE_RETRY]
+        if stale and len(rows) - len(stale) > 0:
+            # a scene that failed its check before the extra try for a wrong grip or use existed is made once more
+            rows = [row for row in rows if row not in stale]
         if rows and len(rows) < settings['count']:
             # Same settings, but the last run stopped short (the image service refused one, the quota ran out): the
             # pictures it made are kept and only the missing ones are made, rather than paying for the whole set again.
@@ -1106,7 +1111,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
                      'check_issues': [str(item)[:200] for item in (checked.get('issues') or [])[:5]],
                      'check_flags': [name for name, ok in (checked.get('flags') or {}).items() if ok is False],
                      # what the picture cost: the image service's token counts over all attempts, and how many there were
-                     'usage': record.get('usage'), 'attempts': record.get('attempts')})
+                     'usage': record.get('usage'), 'attempts': record.get('attempts'), 'usage_retry': record.get('usage_retry')})
     rows, _ = seen_captions(product, rows)
     return rows, key if rows else None, notes
 

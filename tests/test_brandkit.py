@@ -366,6 +366,29 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual([row['role'] for row in rows], ['use', 'place', 'other'])
         self.assertIn('补生成缺少的 1 张', notes[0])
 
+    def test_a_scene_that_failed_before_the_extra_try_is_made_once_more(self):
+        import scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        rows = []
+        for role, check in (('use', 'failed'), ('place', 'passed'), ('other', 'failed')):
+            path = folder / (role + '.png'); Image.new('RGB', (8, 8)).save(path)
+            rows.append({'path': str(path), 'role': role, 'title': role, 'body': '', 'focus': [.5, .5], 'box': [.3, .3, .7, .7], 'check': check})
+        rows[2]['usage_retry'] = 1                        # already had its extra try: kept as it is
+        made = []
+        def generate(project, proposal, *args):
+            made.append(proposal['scene']); picture = folder / 'new.png'; Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'passed'}, 'usage_retry': 1}, {'png': picture, 'record': {}}
+        settings = {'enabled': True, 'count': 3, 'hint': '', 'audience': 'auto', 'people': 'auto'}
+        with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                patch.object(brandkit_set, 'scene_briefs', return_value=[{'role': r, 'proposal': {'scene': r}} for r in ('use', 'place', 'other')]), \
+                patch.object(brandkit_set, 'captions', return_value=[{'title': 't', 'body': ''}] * 3), \
+                patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                patch.object(scene_stylist, 'generate', side_effect=generate):
+            out, _, _ = brandkit_set.make_scenes({'id': 'p'}, {'scenes': settings, 'language': 'en'}, folder, lambda: False,
+                                                 lambda *a: None, {'key': 'k', 'items': rows})
+        self.assertEqual(made, ['use'])
+        self.assertEqual([(row['role'], row['check']) for row in out], [('use', 'passed'), ('place', 'passed'), ('other', 'failed')])
+
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
         # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges
         self.assertEqual(brandkit_set.scene_box({'box': [.1, .42, .9, .64]}), [.04, .387, .96, .673])
