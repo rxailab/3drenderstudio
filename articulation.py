@@ -69,8 +69,14 @@ ARTICULATOR = (
     'Only a part modelled already out (a tape or knife blade showing) takes a negative value to pull it in, no more than '
     'it is out. role: rest, open or working.\n'
     'usage: 2-4 short, concrete rules for showing the product used correctly in a photo, in English and in Simplified '
-    'Chinese: how it is held and how it meets the work (e.g. a caliper\'s jaws close squarely on both faces of the workpiece, '
-    'the beam perpendicular to the measured faces, not tilted; pliers grip the wire in the jaws, handles in the palm). '
+    'Chinese, each one checkable in a picture: name the part and where it is, never just "properly" or "correctly". '
+    'First where the hand goes and where it never goes (pliers and cutters: both handles in the palm, the fingers wrapped '
+    'round them, never pinched at the head or the pivot; a hammer: the lower half of the handle; a screwdriver: the '
+    'handle, the shaft in line with the forearm). Then exactly how the working part meets the work: where (cutters: the '
+    'wire deep in the jaws near the pivot, never at the tips; a hammer\'s claw: the nail shank seated in the claw\'s slot, '
+    'the handle levered back), at what angle (square to the blades, perpendicular to the surface, on the screw\'s axis; a '
+    'caliper\'s jaws square on both faces of the workpiece, the beam perpendicular to them, not tilted) and what the work '
+    'is (only a wire thin enough for the jaws). '
     'Keep labels short (zh at most 6 characters, en at most 16).')
 
 VERIFIER = (

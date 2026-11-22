@@ -72,6 +72,37 @@ class RotationTests(unittest.TestCase):
         self.assertEqual([ident for ident, _, _ in scene_pose.first_poses([0, 0, 0], 20, ['as_is'], (0, 90))], ['as_is@0', 'as_is@90'])
 
 
+# Measured by blender/orient.py on 06_diagonal_cutting_pliers.glb, the twelve resting candidates of scene_pose (fix4/scenes/rest.jpg):
+# (id, height, flat_contact, tip_angle). Lying on either face is 0.245 tall; everything else stands the pliers on points.
+PLIERS = (('as_is@0', .245, .0152, 58.77), ('as_is@90', .245, .0152, 58.68), ('upside_down@0', .245, .001, -69.33),
+          ('upside_down@90', .245, .001, -69.33), ('top_left@0', 1.592, 0.0, -45.82), ('top_left@90', 1.592, 0.0, -43.96),
+          ('top_right@0', 1.592, .0023, -19.74), ('top_right@90', 1.592, .0023, -19.74), ('top_to_camera@0', 1.864, .003, -2.6),
+          ('top_to_camera@90', 1.864, .003, -2.83), ('top_away@0', 1.864, 0.0, -28.18), ('top_away@90', 1.864, 0.0, -27.57))
+
+
+class StableTests(unittest.TestCase):
+    def rows(self, table):
+        return [{'id': ident, 'dimensions': [1.9, 1.3, height], 'flat_contact': flat, 'tip_angle': tip} for ident, height, flat, tip in table]
+
+    def test_pliers_may_only_lie_on_a_face_never_stand_on_a_jaw_tip_and_a_handle_end(self):
+        allowed = scene_pose.stable(self.rows(PLIERS))
+        self.assertEqual([ident for (ident, _, _, _), ok in zip(PLIERS, allowed) if ok], ['as_is@0', 'as_is@90', 'upside_down@0', 'upside_down@90'])
+        # top_to_camera leans only 2.6 degrees, which the old tips_over rule (-15) let through: the user's picture.
+        self.assertFalse(scene_pose.rest_facts(self.rows(PLIERS))[8]['tips_over'])
+
+    def test_a_tall_pose_rests_on_a_flat_base_with_its_weight_inside_and_the_main_pose_always_does(self):
+        table = (('as_is@0', 2.0, 0.0, -40.0),                  # the main image's own pose (a drill on its battery): kept
+                 ('upside_down@0', 1.0, .0, -30.0),             # lying: settles onto a side
+                 ('top_left@0', 1.0 * orientation.STANDING + .01, .36, 24.0),     # tall, on a flat foot, weight well inside: a tape measure
+                 ('top_right@0', 3.0, .36, 2.0),                # flat foot but the weight near its edge
+                 ('top_away@0', 3.0, .05, 30.0),                # weight inside, but only points on the floor
+                 ('top_to_camera@0', None, None, None))         # not measured while others were
+        rows = self.rows(table); rows[-1]['dimensions'] = None
+        self.assertEqual(scene_pose.stable(rows), [True, True, True, False, False, False])
+        unmeasured = [{'id': 'top_left@0'}, {'id': 'top_away@0', 'dimensions': None}]
+        self.assertEqual(scene_pose.stable(unmeasured), [True, True])          # nothing measured: nothing is ruled out
+
+
 class DecideTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
@@ -133,6 +164,38 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(facts['people'], 'nobody'); self.assertIn('set down on a surface', facts['cells_are'])
         self.assertEqual(len(facts['cell_facts']), 12); self.assertIn('tips_over', facts['cell_facts'][0])
         self.assertEqual((pose['source'], pose['changed'], pose['candidate']), ('ai', True, 'as_is@90'))
+    def test_a_product_set_down_is_only_offered_the_poses_it_can_rest_in(self):
+        measured = dict((ident, (height, flat, tip)) for ident, height, flat, tip in PLIERS)
+        def picture(project, plan, poses, folder, cancelled=None, view=None, floor=True, size=orientation.SIZE, samples=16, render=True):
+            rows = self.picture(project, plan, poses, folder, cancelled, view, floor, size, samples, render)
+            for row in rows:
+                height, flat, tip = measured.get(row['id'], (.245, .01, 10.0))
+                row.update(dimensions=[1.9, 1.3, height], flat_contact=flat, tip_angle=tip)
+            return rows
+        self.answers = ['C']
+        with patch.object(orientation, 'picture', side_effect=picture), patch.object(orientation, '_look', side_effect=self.look), \
+                patch.object(orientation, '_vision', return_value={'model': 'vision-x', 'provider': 'openai'}):
+            pose = scene_pose.decide(self.project, self.plan, 30, 20, 'Pliers on a bench.', 'diagonal cutting pliers', 'nobody')
+        facts = self.asked[0]
+        self.assertEqual(facts['cells'], ['A', 'B', 'C', 'D'])                  # twelve rendered, four shown
+        self.assertEqual(len(facts['cell_facts']), 4)
+        self.assertIn('poses that would balance it on a tip, an edge, its jaws or a handle end are not shown', facts['cells_are'])
+        self.assertEqual(pose['candidate'], 'upside_down@0')
+        self.assertEqual(pose['refused'], [ident for ident, _, _, _ in PLIERS[4:]])
+        with Image.open(self.data / 'p1' / 'scene_ai' / 'poses' / next((self.data / 'p1' / 'scene_ai' / 'poses').iterdir()).name / 'sheet.png') as sheet:
+            self.assertEqual(sheet.size[1], scene_pose.SIZE + 20)               # one row of four cells
+        # Held, every way up is still offered: a hand holds it in the air.
+        self.answers = ['K', 'A']; self.asked = []
+        with patch.object(orientation, 'picture', side_effect=picture), patch.object(orientation, '_look', side_effect=self.look), \
+                patch.object(orientation, '_vision', return_value={'model': 'vision-x', 'provider': 'openai'}):
+            held = scene_pose.decide(self.project, self.plan, 30, 20, 'Cutting a wire.', 'diagonal cutting pliers', 'hands')
+        self.assertEqual(len(self.asked[0]['cells']), 12); self.assertEqual(held['source'], 'ai'); self.assertNotIn('refused', held)
+
+    def test_the_pose_agent_is_told_how_hand_tools_are_held_and_set_down(self):
+        for words in ('pliers and cutters are gripped by both handles, the wire deep in the jaws near the pivot',
+                      'a hammer is gripped by the lower half of its handle', 'never balanced on a tip, an edge, its jaws or a handle end'):
+            self.assertIn(words, scene_pose.POSE_PROMPT)
+
     def test_the_plans_pose_is_kept_when_asked_or_when_no_model_can_choose(self):
         kept = self.decide(mode='keep')
         self.assertEqual((kept['source'], kept['changed'], kept['rotation'], kept['description']), ('user', False, [180.0, 0.0, 0.0], None))
