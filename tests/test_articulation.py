@@ -1,5 +1,6 @@
 """The pose agent: what the vision model may say about moving parts, how a state becomes a render plan, and the
 geometry it is solved with (when Blender is installed)."""
+import copy
 import json
 import shutil
 import subprocess
@@ -155,6 +156,12 @@ bpy.ops.export_scene.gltf(filepath=sys.argv[-1], export_format='GLB')
         hinge = next(j for j in solved['joints'] if j['name'] == 'jaws')
         self.assertLess(abs(hinge['pivot'][0]), .02)                                # the bars cross at the middle
         self.assertEqual(len(solved['previews']), 2)
+        rest, opened = solved['previews']
+        for row in solved['previews']:                                              # each state from both front corners
+            self.assertTrue((self.folder / 'solve' / row['image']).is_file() and (self.folder / 'solve' / row['other']).is_file())
+        self.assertEqual(rest['measured'], {'crossing': 'none', 'moved_away_mm': None})
+        self.assertNotEqual(opened['measured']['crossing'], 'yes')                  # nothing passes through anything
+        self.assertGreater(opened['measured']['moved_away_mm'], 0)                  # the slider went away from the parts it rides on
 
 
 if __name__ == '__main__':
@@ -190,6 +197,65 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(record['status'], 'ready')
 
 
+class MeasuredTests(unittest.TestCase):
+    """A cabinet door opened towards the camera is seen edge-on and was judged to swing into the cabinet. The geometry
+    was right; what is measured on it now outweighs what the picture seems to show."""
+
+    def analysed(self, verdict_rows, measured):
+        project = {'id': 'p', 'model_path': __file__, 'name': 'cart'}
+        answer_ = {'articulated': True, 'product_kind': 'cart', 'reasoning': '', 'usage': {'en': [], 'zh': []},
+                   'joints': [{'name': 'door', 'type': 'hinge', 'moving': [2], 'counter': [], 'stretch': [], 'axis': 'z',
+                               'pivot': {'kind': 'edge', 'part': 0, 'side': '+x'}, 'away_from': 1, 'max': 110}],
+                   'states': [{'id': 'closed', 'label_zh': '关', 'label_en': 'Closed', 'role': 'rest', 'values': [{'joint': 'door', 'value': 0}]},
+                              {'id': 'open', 'label_zh': '开', 'label_en': 'Open', 'role': 'open', 'values': [{'joint': 'door', 'value': 110}]}]}
+        part = {'size_mm': [1, 1, 1], 'centroid_mm': [0, 0, 0], 'materials': [], 'pieces': None}
+        probe = {'parts': [{**part, 'id': 1, 'object': 'Body'}, {**part, 'id': 2, 'object': 'Door'}], 'objects': [], 'views': [],
+                 'unit_mm': 1000.0, 'bbox_mm': [[0, 0, 0], [1, 1, 1]]}
+        solved = {'joints': [{'name': 'door', 'type': 'hinge', 'max': 110.0, 'min': 0.0}],
+                  'previews': [{'state': 'closed', 'image': 'a.png', 'other': 'b.png', 'measured': {'crossing': 'none', 'moved_away_mm': None}},
+                               {'state': 'open', 'image': 'c.png', 'other': 'd.png', 'measured': measured}]}
+        verdict = {'ok': False, 'fix': 'door', 'states': [{'id': 'closed', 'ok': True, 'issue': '', 'fault': 'none'}, *verdict_rows]}
+        asked = []; answers = iter([answer_, copy.deepcopy(verdict), answer_, copy.deepcopy(verdict)])
+        import brandkit_review, components
+        def ask(config, system, facts, *args, **kwargs):
+            asked.append(facts); return next(answers)
+        with patch.object(articulation, 'get', return_value=project), patch.object(articulation, 'key_of', return_value='k'), \
+                patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'v'})), patch.object(brandkit_review, '_ask', side_effect=ask), \
+                patch.object(components, 'run_blender', side_effect=lambda script, request, *a, **k: probe if request['action'] == 'probe' else solved), \
+                patch.object(articulation, 'labelled_sheet', return_value='parts.png'), patch.object(articulation, 'state_sheet', return_value='states.png'), \
+                patch.object(articulation, '_store', side_effect=lambda pid, record: record):
+            return articulation.analyse('p', force=True), asked
+
+    def test_a_door_measured_to_open_outward_is_not_failed_for_seeming_to_swing_inward(self):
+        seen = [{'id': 'open', 'ok': False, 'issue': '右门向内旋转并穿入柜体', 'fault': 'wrong_direction'}]
+        record, asked = self.analysed(seen, {'crossing': 'at the hinge only', 'moved_away_mm': 323.2})
+        self.assertEqual(record['status'], 'ready')
+        opened = record['verdict']['states'][1]
+        self.assertTrue(opened['ok']); self.assertIn('向内', opened['overruled'])
+        self.assertEqual(asked[1]['states'][1]['measured'], {'crossing': 'at the hinge only', 'moved_away_mm': 323.2})      # the check was told
+        self.assertEqual(len(asked), 2)                                                                                 # and not asked again
+
+    def test_a_part_that_really_passes_through_another_or_comes_off_is_still_failed(self):
+        through = [{'id': 'open', 'ok': False, 'issue': '门穿过柜体', 'fault': 'passes_through'}]
+        self.assertEqual(self.analysed(through, {'crossing': 'yes', 'moved_away_mm': 160.7})[0]['status'], 'failed')
+        inward = [{'id': 'open', 'ok': False, 'issue': '向内', 'fault': 'wrong_direction'}]
+        self.assertEqual(self.analysed(inward, {'crossing': 'none', 'moved_away_mm': -40.0})[0]['status'], 'failed')
+        detached = [{'id': 'open', 'ok': False, 'issue': '把手留在原处', 'fault': 'detached'}]
+        self.assertEqual(self.analysed(detached, {'crossing': 'none', 'moved_away_mm': 323.2})[0]['status'], 'failed')
+
+    def test_the_check_sees_each_state_from_both_front_corners(self):
+        from PIL import Image
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        for name in ('a.png', 'a2.png', 'b.png'):
+            Image.new('RGB', (64, 64), 'white').save(folder / name)
+        sheet = articulation.state_sheet(folder, [{'state': 'closed', 'image': 'a.png', 'other': 'a2.png'}, {'state': 'open', 'image': 'b.png'}],
+                                         [{'id': 'closed', 'label_en': 'Closed'}, {'id': 'open', 'label_en': 'Open'}], folder / 'sheet.png')
+        with Image.open(sheet) as image:
+            self.assertEqual(image.size, (64 + 16 + 64, 128))          # two views under each other where there are two
+        self.assertIn('edge-on', articulation.VERIFIER); self.assertIn('measured', articulation.VERIFIER)
+        self.assertIn('fault', articulation._verify_schema()['properties']['states']['items']['required'])
+
+
 class HintTests(unittest.TestCase):
     def test_a_scene_hint_that_asks_for_a_pose_is_recognised(self):
         for hint in ('车间/车房的工具柜，拉开前两个抽屉', '打开柜门', 'lid open on the bench', 'drawers pulled out'):
@@ -197,17 +263,45 @@ class HintTests(unittest.TestCase):
         for hint in ('车间/车房的工具柜', 'on a workbench at dusk', ''):
             self.assertFalse(articulation.asks_for_pose(hint), hint)
 
-    def test_the_hinted_state_holds_in_every_scene(self):
-        record = {'status': 'ready', 'key': 'k', 'usage': {'en': []},
-                  'joints': [{'name': 'd1', 'type': 'slide', 'axis': [0, 1, 0], 'sign': -1, 'max': 250, 'moving': [{'object': 'A', 'pieces': None}]}],
-                  'states': [{'id': 'closed', 'label_en': 'Closed', 'role': 'rest', 'values': {'d1': 0}, 'matches_scene_hint': False},
-                             {'id': 'top2', 'label_en': 'Top two open', 'role': 'open', 'values': {'d1': 180}, 'matches_scene_hint': True},
-                             {'id': 'all', 'label_en': 'All open', 'role': 'working', 'values': {'d1': 250}, 'matches_scene_hint': False}]}
-        project = {'id': 'p', 'articulation': record}
-        with patch('studio_store.get', return_value=project):
-            for role in ('use', 'place', 'other'):
-                brief = brandkit_set._with_moving_parts(project, {'role': role, 'proposal': {'scene': 'x'}})
-                self.assertEqual(brief['proposal']['articulation']['state'], 'top2', role)
+    RECORD = {'status': 'ready', 'key': 'k', 'usage': {'en': []},
+              'joints': [{'name': 'd1', 'type': 'slide', 'axis': [0, 1, 0], 'sign': -1, 'max': 250, 'moving': [{'object': 'A', 'pieces': None}]}],
+              'states': [{'id': 'closed', 'label_en': 'Closed', 'role': 'rest', 'values': {'d1': 0}, 'matches_scene_hint': False},
+                         {'id': 'top2', 'label_en': 'Top two open', 'role': 'working', 'values': {'d1': 180}, 'matches_scene_hint': False},
+                         {'id': 'all', 'label_en': 'All open', 'role': 'open', 'values': {'d1': 250}, 'matches_scene_hint': False}]}
+
+    def shown(self, record, roles=('use', 'place', 'other')):
+        import scene_audience, scene_stylist
+        project = {'id': 'p', 'name': 'Cabinet', 'articulation': record}
+        first = {'scene': 'x', 'segment_id': 'workshop_hobbyist', 'people': True, 'framing': 'hands'}
+        with patch('studio_store.get', return_value=project), patch.object(scene_stylist, 'propose', return_value=first), \
+                patch.object(scene_stylist, '_source_image', return_value=None), patch.object(scene_audience, 'rank', return_value=['site_team']):
+            briefs = brandkit_set.scene_briefs(project, {'hint': '', 'audience': 'auto', 'people': 'auto'}, len(roles))
+        return [(brief['role'], (brief['proposal'].get('articulation') or {}).get('state')) for brief in briefs]
+
+    def test_a_set_of_scenes_shows_the_product_closed_and_open_by_default(self):
+        """Drawers, doors, lids: the scenes do not all show one state. At work it is open the working way, at rest it is closed
+        (no articulation: the model as delivered), and the third picture shows it fully open."""
+        self.assertEqual(self.shown(self.RECORD), [('use', 'top2'), ('place', None), ('other', 'all')])
+        two = {**self.RECORD, 'states': self.RECORD['states'][:2]}                     # only closed and one open state
+        self.assertEqual(self.shown(two), [('use', 'top2'), ('place', None), ('other', 'top2')])
+        self.assertEqual(self.shown({'status': 'none'}), [('use', None), ('place', None), ('other', None)])
+
+    def test_a_pose_asked_for_in_the_hint_is_shown_at_work_and_the_product_is_still_shown_closed(self):
+        asked = copy.deepcopy(self.RECORD); asked['states'][2]['matches_scene_hint'] = True
+        self.assertEqual(self.shown(asked), [('use', 'all'), ('place', None), ('other', 'all')])
+        project = {'id': 'p', 'articulation': asked}
+        with patch('studio_store.get', return_value=project):                          # one scene on its own (the single-scene tool)
+            brief = brandkit_set._with_moving_parts(project, {'role': 'use', 'proposal': {'scene': 'x'}})
+        self.assertEqual(brief['proposal']['articulation']['state'], 'all')
+
+    def test_scenes_of_a_product_with_moving_parts_are_made_again_once(self):
+        product = {'title': 'Cabinet'}; settings = {'hint': ''}
+        still = {'id': 'p', 'model_path': 'm.glb', 'plan': {}}
+        moving = {**still, 'articulation': self.RECORD}
+        with patch.object(brandkit_set, 'POSES_SHOWN', brandkit_set.POSES_SHOWN + 1):
+            changed = (brandkit_set.scene_key(still, product, settings), brandkit_set.scene_key(moving, product, settings))
+        self.assertEqual(changed[0], brandkit_set.scene_key(still, product, settings))          # nothing moves: its scenes are kept
+        self.assertNotEqual(changed[1], brandkit_set.scene_key(moving, product, settings))
 
 
 class PromptTests(unittest.TestCase):

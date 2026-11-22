@@ -95,7 +95,14 @@ VERIFIER = (
     'delivered: never fail it, even if the product was modelled half open. Be strict about detached or intersecting parts, not '
     'about rendering style. If something is wrong, say in fix which part moved wrongly and how (e.g. "parts 1 and 2 turn '
     'about the wrong point: the rivet is part 5", "the slider should move toward +x, away from the fixed jaw"). Write '
-    'issues in Simplified Chinese.')
+    'issues in Simplified Chinese. When a state is drawn twice, the upper picture is from the front right and the lower one '
+    'from the front left: judge a door, lid or flap in the picture that shows it broad, never in the one that shows it '
+    'edge-on. `measured` is what was measured on the geometry in that state, not an opinion: crossing "none" or "at the '
+    'hinge only" (a door\'s edge meeting the cabinet along its hinge line) means no moving part passes through any other '
+    'part, and moved_away_mm above 0 means the moving parts went away from the body (outward). Do not report a part '
+    'passing through another, or opening inward, when the measurement rules it out. Give each state its fault: none, '
+    'passes_through, wrong_direction, detached, past_range or other.')
+MEASURABLE = ('passes_through', 'wrong_direction')        # faults the geometry answers for itself
 
 
 def _schema():
@@ -126,8 +133,10 @@ def _schema():
 
 def _verify_schema():
     return {'type': 'object', 'additionalProperties': False, 'required': ['states', 'ok', 'fix'],
-            'properties': {'states': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['id', 'ok', 'issue'],
-                                                                 'properties': {'id': {'type': 'string'}, 'ok': {'type': 'boolean'}, 'issue': {'type': 'string'}}}},
+            'properties': {'states': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['id', 'ok', 'issue', 'fault'],
+                                                                 'properties': {'id': {'type': 'string'}, 'ok': {'type': 'boolean'}, 'issue': {'type': 'string'},
+                                                                                'fault': {'type': 'string', 'enum': ['none', 'passes_through', 'wrong_direction',
+                                                                                                                     'detached', 'past_range', 'other']}}}},
                            'ok': {'type': 'boolean'}, 'fix': {'type': 'string'}}}
 
 
@@ -177,6 +186,7 @@ def labelled_sheet(folder, probe, out):
 
 
 def state_sheet(folder, previews, states, out, language='zh'):
+    """Every state side by side, labelled; under each, the same pose from the other front corner when it was rendered."""
     tiles = []
     for preview in previews:
         state = next((row for row in states if row['id'] == preview['state']), {})
@@ -186,6 +196,12 @@ def state_sheet(folder, previews, states, out, language='zh'):
         label = '%s · %s' % (state.get('id', ''), state.get('label_en', ''))
         draw.rectangle([0, 0, image.width, image.width // 12], fill='white')
         draw.text((14, image.width // 24), label, fill='black', font=font, anchor='lm')
+        second = Path(folder) / preview['other'] if preview.get('other') else None
+        if second and second.is_file():
+            with Image.open(second) as opened:
+                below = opened.convert('RGB')
+            both = Image.new('RGB', (max(image.width, below.width), image.height + below.height), 'white')
+            both.paste(image, (0, 0)); both.paste(below, (0, image.height)); image = both
         tiles.append(image)
     if not tiles:
         return None
@@ -276,6 +292,18 @@ def _clean_answer(answer, probe):
             'usage': {lang: [str(rule)[:200] for rule in (answer.get('usage') or {}).get(lang) or []][:4] for lang in ('en', 'zh')}}
 
 
+def _measured_wins(row, measured):
+    """A state the check failed for a part passing through another or opening the wrong way, when the geometry was measured
+    and shows neither: the check misread the picture (a door opened towards the camera is seen edge-on and looks as if it
+    stood inside the cabinet). Faults that cannot be measured (a detached part, a pose past the real range) stand."""
+    if row.get('ok') or not measured or row.get('fault') not in MEASURABLE:
+        return row
+    away = measured.get('moved_away_mm')
+    if measured.get('crossing') in ('none', 'at the hinge only') and (away is None or away > 0):
+        return {**row, 'ok': True, 'overruled': row.get('issue', ''), 'issue': ''}
+    return row
+
+
 def _clamped(states, joints):
     """State values inside each joint's solved range: up to its maximum; down to its minimum (a slide pulled in as far
     as flush; a hinge no further shut than the model is)."""
@@ -340,11 +368,15 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
             joints = solved['joints']
         picture = state_sheet(where, solved['previews'], states, folder / ('states%d.png' % attempt))
         say('正在检查姿态是否合理')
+        measured = {row.get('state'): row['measured'] for row in solved.get('previews') or [] if isinstance(row.get('measured'), dict)}
         with ai_client.tally() as used:
-            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en'], 'values': s['values']} for s in states],
+            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'],
+                                                              'states': [{'id': s['id'], 'label': s['label_en'], 'values': s['values'],
+                                                                          **({'measured': measured[s['id']]} if s['id'] in measured else {})} for s in states],
                                                               'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max']} for j in joints]},
                                            _verify_schema(), image_path=str(picture))
         record['usage_tokens'] += used['tokens']
+        verdict['states'] = [_measured_wins(row, measured.get(row.get('id'))) for row in verdict.get('states') or []]
         record.update(joints=joints, states=states, previews=str(picture), verdict=verdict)
         # A state with every value 0 is the model exactly as delivered: whatever the check thinks of how it was modelled
         # (cutters modelled with their handles spread), it is not a pose this agent made, so it cannot be wrong.

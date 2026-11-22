@@ -786,6 +786,11 @@ def soften_edges(meshes):
     return dict(operation='edge_highlight',radius=radius,materials=count)
 
 
+MIRROR_SAFE=1.05    # watts per square metre of an area lamp: the brightest a lamp may be where polished steel mirrors it on white
+                    # (a .78 steel top then renders at about .86; at the lamps' own strength it rendered pure white and was lost
+                    # against the background)
+
+
 def showcase_rig(scene,shot,soft,white,dark,meshes=()):
     """A product-photography set: contrast from a key, shape from rear strips.
 
@@ -823,7 +828,19 @@ def showcase_rig(scene,shot,soft,white,dark,meshes=()):
             lamp('Top reflection',0,82,5.4,420*level,4.2*soft,4.2*soft,(1,1,1))]
     # Horizontal metal seen from the front mirrors what stands low behind the set.
     # A wide card there is what makes a steel top read as steel.
-    card=lamp('Back reflection card',180,14,7.5,900*level,7*soft,3*soft,(1,1,1),product_only=True)
+    card_power=900*level
+    if white:
+        # On white (no highlight roll-off) a flat steel face mirrors a lamp at the lamp's full brightness. The two lamps a
+        # horizontal face mirrors, the card behind the set from a low camera and the top lamp from a high one, turned a
+        # stainless worktop pure white: it could not be told from the background. What a mirror sees of them is held
+        # at MIRROR_SAFE; the light the top lamp gives to everything else is unchanged.
+        card_power=min(card_power,MIRROR_SAFE*(7*soft)*(3*soft))
+        top=lights[-1];holder=bpy.data.objects[top['name']];holder.visible_glossy=False
+        image=lamp('Top reflection mirror',0,82,5.4,min(top['energy'],MIRROR_SAFE*(4.2*soft)**2),4.2*soft,4.2*soft,(1,1,1))
+        seen=bpy.data.objects[image['name']];seen.visible_diffuse=False;bpy.data.lights[image['name']].use_shadow=False
+        image.update(casts_shadow=False,mirror_only=True);top['diffuse_only']=True
+        lights.append(image)
+    card=lamp('Back reflection card',180,14,7.5,card_power,7*soft,3*soft,(1,1,1),product_only=True)
     bpy.data.lights[card['name']].diffuse_factor=.15
     # A vertical glossy panel mirrors the low area on the far side of its normal.
     # A reflection-only card there, placed for the box face nearest the camera,
@@ -1194,7 +1211,7 @@ def render(req,objects,meshes):
             if pair not in visible_materials:
                 visible_materials[pair]={'object_name':pair[0],'material_name':pair[1],
                     'material_info':hit['material_info']}
-    return dict(success=True,render_pipeline_version=3,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name),
+    return dict(success=True,render_pipeline_version=4,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name),
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},

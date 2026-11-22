@@ -339,8 +339,8 @@ def _group_points(rows):
     return np.concatenate(pts) if pts else np.zeros((0, 3))
 
 
-def _bvh(rows):
-    """One BVH tree over the selected geometry, in world space."""
+def _bvh(rows, centres=False):
+    """One BVH tree over the selected geometry, in world space (with ``centres``: and where each of its faces is)."""
     verts, polys = [], []
     for row in rows:
         ob = bpy.data.objects[row['object']]
@@ -352,7 +352,24 @@ def _bvh(rows):
             for poly in item.data.polygons:
                 if keep is None or poly.vertices[0] in keep:
                     polys.append([offset + v for v in poly.vertices])
-    return BVHTree.FromPolygons(verts, polys, epsilon=0.0) if polys else None
+    tree = BVHTree.FromPolygons(verts, polys, epsilon=0.0) if polys else None
+    if not centres:
+        return tree
+    points = np.array(verts, dtype=float) if verts else np.zeros((0, 3))
+    return tree, np.array([points[poly].mean(0) for poly in polys]) if polys else np.zeros((0, 3))
+
+
+def _crossing_points(joint, others):
+    """Where the joint's moving group crosses the rest: the centres of its faces that do."""
+    tree, centres = _bvh(_members(joint, 'moving'), centres=True)
+    if tree is None:
+        return np.zeros((0, 3))
+    hit = set()
+    for rows in others:
+        other = _bvh(rows)
+        if other is not None:
+            hit.update(index for index, _ in tree.overlap(other))
+    return centres[sorted(hit)] if hit else np.zeros((0, 3))
 
 
 def _fixed_rows(joint, all_rows):
@@ -878,14 +895,55 @@ def solve(request):
     allpts = np.concatenate(envelope)
     previews = []
     _workbench('TEXTURE')
+    # what each joint's moving group crosses, and how far it stands from the parts it does not move, before anything is posed
+    at_rest = {}; near = .04 * longest
+    for joint in solved:
+        fixed = _fixed_rows(joint, rows); others = [group for group in (_members(joint, 'counter'), fixed) if group]
+        at_rest[joint['name']] = (len(_crossing_points(joint, others)), _stand_off(joint, fixed))
     for index, state in enumerate(states):
         snap = Snapshot(); apply({'joints': _valued(solved, state)})
         _camera(allpts, 35, 32, False, int(request.get('size', 768)))
-        name = 'state%d.png' % index; _render(out / name); snap.restore()
-        previews.append({'state': state.get('id'), 'image': name})
+        name = 'state%d.png' % index; _render(out / name)
+        # a door that opens towards this camera is seen edge-on: the same pose from the other front corner
+        _camera(allpts, -35, 32, False, int(request.get('size', 768)))
+        other = 'state%d_other.png' % index; _render(out / other)
+        crossing = 'none'; away = []
+        for joint in solved:
+            if not _value_of(joint, state): continue
+            fixed = _fixed_rows(joint, rows); others = [group for group in (_members(joint, 'counter'), fixed) if group]
+            before, stood = at_rest[joint['name']]
+            points = _crossing_points(joint, others)
+            if len(points) > before:
+                # A door's own thickness meets the cabinet along its hinge line: that is how a hinge sits, not a part
+                # passing through another.
+                along = np.array(joint['axis'], dtype=float); along /= max(np.linalg.norm(along), 1e-9)
+                off = points - np.array(joint['pivot'], dtype=float); off -= np.outer(off @ along, along)
+                at_hinge = joint['type'] == 'hinge' and float(np.linalg.norm(off, axis=1).max()) <= near
+                crossing = 'at the hinge only' if at_hinge and crossing != 'yes' else 'yes'
+            now = _stand_off(joint, fixed)
+            if stood is not None and now is not None: away.append((now - stood) * unit_mm)
+        snap.restore()
+        previews.append({'state': state.get('id'), 'image': name, 'other': other,
+                         'measured': {'crossing': crossing, 'moved_away_mm': round(float(min(away)), 1) if away else None}})
     for joint in solved:
         joint.pop('pivot_hint', None)
     return {'success': True, 'joints': solved, 'previews': previews, 'unit_mm': unit_mm}
+
+
+def _value_of(joint, state):
+    values = state.get('values') or {}
+    if isinstance(values, dict):
+        return float(values.get(joint['name']) or 0)
+    return float(next((row.get('value') or 0 for row in values if row.get('joint') == joint['name']), 0))
+
+
+def _stand_off(joint, fixed):
+    """How far the joint's moving group stands from the parts it does not move (centre to centre, model units); None when it
+    moves against a counter group only (the two halves of a pair of pliers have no body to open away from)."""
+    moving = _group_points(_members(joint, 'moving')); body = _group_points(fixed) if fixed else np.zeros((0, 3))
+    if not len(moving) or not len(body):
+        return None
+    return float(np.linalg.norm(moving.mean(0) - body.mean(0)))
 
 
 def _valued(joints, state):

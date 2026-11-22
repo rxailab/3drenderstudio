@@ -142,7 +142,7 @@ class AutomaticMaterialTests(unittest.TestCase):
             out.mkdir(parents=True,exist_ok=True)
             Image.new('RGB',(8,8),'white').save(out/'result.png');Image.new('RGB',(8,8),'white').save(out/'result.jpg')
             (out/'result.blend').write_bytes(b'actual fixture artifact')
-            result={'success':True,'render_pipeline_version':3,'product_samples':[],'visible_materials':[],
+            result={'success':True,'render_pipeline_version':engine.RENDER_PIPELINE_VERSION,'product_samples':[],'visible_materials':[],
                 # This mock represents a newly rendered v17 result. The legacy
                 # input intentionally lacks proof; the refreshed output must
                 # carry its measured projection before it can be reused.

@@ -208,13 +208,30 @@ class PassFixture(unittest.TestCase):
 
     def start(self):
         engine.submit('fixture', 'analyze')
-        self.run_one(); self.run_one()            # analysis, then the first draft
+        self.run_one(); self.run_one()            # analysis, then the upload's quick first look: nothing follows it
+        engine.submit('fixture', 'preview', 'preview', ['hero']); self.run_one()      # the user's first preview: the background work follows
         self.run_one()                            # other shots before 2K polish
 
 
 class BackgroundPassTests(PassFixture):
+    def test_the_uploads_first_look_is_one_quick_preview_and_nothing_else(self):
+        """A new upload shows its first picture as fast as it can be rendered: no vision review, no correction rounds, no
+        thumbnails, no material check and no high-quality pass until the user asks for a preview."""
+        project = store.get('project', 'fixture'); project['plan']['visual_review'] = True; store.put('project', project)
+        engine.submit('fixture', 'analyze')
+        with patch.object(engine, 'review_and_correct') as review:
+            self.run_one(); self.run_one()
+        review.assert_not_called()
+        self.assertEqual(self.rendered, [('preview', 'hero')])
+        self.assertTrue(engine.QUEUE.empty())
+        self.assertEqual([job['kind'] for job in self.jobs()], ['analyze', 'preview'])
+        self.assertEqual(store.get('project', 'fixture')['initial_preview']['status'], 'completed')
+        self.assertTrue(engine.quick_first_look(self.jobs('initial_preview')[0]))
+        self.assertFalse(engine.quick_first_look({'kind': 'preview', 'origin': None}))
+
     def test_failed_thumbnail_does_not_prevent_hero_polish(self):
         engine.submit('fixture','analyze');self.run_one();self.run_one()
+        engine.submit('fixture','preview','preview',['hero']);self.run_one()
         thumb=self.jobs(engine.THUMBNAIL_ORIGIN)[0]
         self.rendered=[]
         with patch.object(engine,'execute',side_effect=RuntimeError('thumbnail failed')):

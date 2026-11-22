@@ -112,8 +112,14 @@ def part_names(project):
 def usecase_for(name):
     """The workpiece a product of this name is usually shown on, or None."""
     lowered = (name or '').lower()
+
+    def named(word):
+        # a whole word, singular or plural: "vice" is not in "service cart", nor "saw" in "seesaw"; Chinese has no word breaks
+        if re.search(r'[\u4e00-\u9fff]', word):
+            return word in lowered
+        return re.search(r'(?<![a-z])%s(?:e?s)?(?![a-z])' % re.escape(word), lowered) is not None
     for words, plan in USECASE_RULES:
-        if any(word in lowered for word in words):
+        if any(named(word) for word in words):
             return dict(plan)
     return None
 
