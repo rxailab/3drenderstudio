@@ -400,6 +400,8 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(brandkit_set._data_line('T04', ctx), 'Rolling Tool Cabinet')
         self.assertEqual(brandkit_set._data_line('T08', ctx), 'Rolling Tool Cabinet')        # not "From use to the workbench"
         ctx['scenes'][0]['title'] = 'In the garage'
+        self.assertEqual(brandkit_set._data_line('T08', ctx), 'Rolling Tool Cabinet')        # nor a story of its use: nothing was said of it
+        ctx['product'] = {**product, 'features': [{'title': 'Soft-close drawers', 'detail': ''}]}
         self.assertEqual(brandkit_set._data_line('T08', ctx), 'From the garage\n[[to the workbench]]')
 
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):

@@ -23,7 +23,7 @@ QUEUE=queue.Queue()
 PROCESSES={}
 RUNNING_JOBS=set()
 DEVICE={'status':'尚未执行设备探测'}
-RENDER_PIPELINE_VERSION=3
+RENDER_PIPELINE_VERSION=4      # 4: on white, steel no longer mirrors the top lamp and the back card at full strength
 
 def cycles_sample_batch(line):
     """Read only Cycles' completed batches, not its duplicate final report."""
@@ -290,6 +290,11 @@ def _record_initial_preview_state(job):
                  shot_id='hero',quality='preview',error=job.get('error'))
     if job.get('analysis_job_id'): state['analysis_job_id']=job['analysis_job_id']
     put('project',project)
+
+
+def quick_first_look(job):
+    """Whether a job is the one-off preview made when a model is uploaded: rendered once at preview quality and left at that."""
+    return job.get('origin')=='initial_preview' and job.get('kind')=='preview'
 
 
 def schedule_initial_preview(project_id, analysis_job_id=None):
@@ -1141,7 +1146,10 @@ def _run_job(ident):
                 with LOCK:
                     p=get('project',p['id']);p['outputs'].append(record);put('project',p)
                 best=record
-                if j['kind']=='preview' and j['quality']!='thumbnail' and j['plan'].get('visual_review',True):
+                # The first picture of a new upload is a quick look and nothing more: no vision review and no correction
+                # rounds (two reviews took 225 of the 255 seconds a new project needed before it was idle). The review
+                # runs when the user asks for a preview.
+                if j['kind']=='preview' and j['quality']!='thumbnail' and j['plan'].get('visual_review',True) and not quick_first_look(j):
                     best,best_plan,best_round=review_and_correct(j,p,shot,out,record,r)
                     if best_round:
                         adjustments[shot['id']]=best_plan['shot_adjustments'][shot['id']]
@@ -1159,7 +1167,9 @@ def _run_job(ident):
             completed=update_job(ident,status='completed',stage='已完成',progress=100,finished_at=time.time())
             if j['kind']=='analyze' and completed['status']=='completed':
                 schedule_initial_preview(j['project_id'],ident)
-        if j['kind']=='preview' and j['quality']!='thumbnail' and get('job',ident)['status']=='completed':
+        if quick_first_look(j):
+            pass        # the upload's own preview: thumbnails, the material check and the high-quality pass wait for the user's first request
+        elif j['kind']=='preview' and j['quality']!='thumbnail' and get('job',ident)['status']=='completed':
             # Material agents run only after the original group has finished;
             # their own previews remain in the same bounded automatic chain.
             try:

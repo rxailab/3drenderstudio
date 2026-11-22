@@ -849,7 +849,7 @@ def scene_key(project, product, settings):
     plan = project.get('plan') or {}
     moving = project.get('articulation') if isinstance(project.get('articulation'), dict) else {}
     raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN,
-                      moving.get('key'), moving.get('status')],
+                      moving.get('key'), moving.get('status'), *([POSES_SHOWN] if moving.get('states') else [])],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -888,24 +888,51 @@ def scene_briefs(project, settings, count):
             # the third scene's own plan, not the first one's carried over
             third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='', backdrop=not wants)
         briefs.append({'proposal': third, 'role': 'other'})
-    return [_with_moving_parts(project, brief) for brief in briefs[:count]]
+    briefs = briefs[:count]
+    import articulation
+    from studio_store import get
+    try:
+        stored = get('project', project['id'])
+    except (KeyError, TypeError):
+        stored = project
+    shown = _scene_states(articulation.states(stored), [brief['role'] for brief in briefs])
+    return [_with_moving_parts(project, brief, state) for brief, state in zip(briefs, shown)]
 
 
-def _with_moving_parts(project, brief):
-    """A brief with the product's moving parts set for its moment (the pose agent's states: at work the working or
-    open state, at rest the rest pose) and the product's own rules for being used correctly."""
+POSES_SHOWN = 2       # how the scenes share out the product's states; a change makes the scenes of products with moving parts again
+
+
+def _scene_states(states, roles):
+    """Which of the product's states each scene shows, so that the set shows the product in more than one: at rest where it
+    is kept, at work where it is used, and fully open in the third picture when that is another state again. A pose the
+    user asked for in the scene hint ("拉开前两个抽屉") is what the pictures of the product in use show; the picture of it
+    at rest still shows it closed. Returns one state (or None) per role."""
+    def first(*wanted, besides=()):
+        return next((row for role in wanted for row in states if row.get('role') == role and row['id'] not in besides), None)
+    asked = next((row for row in states if row.get('matches_scene_hint')), None)
+    chosen = []
+    for role in roles:
+        if role == 'place':
+            chosen.append(first('rest'))
+        elif role == 'other' and not asked:
+            shown = {row['id'] for row in chosen if row}
+            chosen.append(first('open', 'working', besides=shown) or first('working', 'open'))
+        else:
+            chosen.append(asked or first('working', 'open'))
+    return chosen
+
+
+def _with_moving_parts(project, brief, state=False):
+    """A brief with the product's moving parts set for its moment (the pose agent's states) and the product's own rules for
+    being used correctly. ``state`` is the state to show (None for the rest pose); left out, the scene's own."""
     import articulation
     from studio_store import get
     try:
         project = get('project', project['id'])
     except (KeyError, TypeError):
         pass
-    states = articulation.states(project)
     proposal = dict(brief['proposal'])
-    wanted = ('rest',) if brief['role'] == 'place' else ('working', 'open')
-    # The pose the user asked for in the scene hint ("拉开前两个抽屉"), rendered from the model, holds in every scene.
-    chosen = next((row for row in states if row.get('matches_scene_hint')), None) or \
-        next((row for role in wanted for row in states if row.get('role') == role), None)
+    chosen = _scene_states(articulation.states(project), [brief['role']])[0] if state is False else state
     plan = articulation.plan_for(project, chosen['id']) if chosen else None
     if plan:
         proposal['articulation'] = {**plan, 'label': chosen.get('label_en') or chosen['id']}
@@ -951,7 +978,10 @@ def captions(project, product, briefs):
                                                                        'properties': {'title': {'type': 'string'}, 'body': {'type': 'string'}}}}}}
         facts = {'product': product['title'] or project.get('name', ''), 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                  'title_max_chars': limit[0], 'line_max_chars': limit[1],
-                 'scenes': [str(item['proposal'].get('scene', ''))[:600] for item in briefs]}
+                 'scenes': [str(item['proposal'].get('scene', ''))[:600] for item in briefs],
+                 # nothing is known of what the product is for: the title names the place, and there is no line
+                 **({'titles_name': 'the place only ("In the garage"), never a task, a use or what anyone does there; leave every line empty'}
+                    if bare(product) else {})}
         system = ('You write captions for product listing images. For each scene description, write a short title naming the moment or '
                   'place of use (not words like "展示"/"showcase" that describe the photo) and one short line saying what the buyer sees. '
                   'Describe only what the scene shows; no numbers, no benefits or claims, no prices or brands. Respect the character limits '
@@ -962,7 +992,7 @@ def captions(project, product, briefs):
             title = ' '.join(str(made.get('title', '')).split()); body = _fit_line(' '.join(str(made.get('body', '')).split()), limit[1])
             title = title if len(title) <= limit[0] else ''
             if title:
-                row.update(title=title, body=body)
+                row.update(title=title, body='' if bare(product) else body)
     except Exception:
         pass
     return rows
@@ -972,12 +1002,13 @@ SEEN = ('You caption one picture of a product listing set: a scene the image mod
         'picture. Title: what `shows` asks for (the task being done, or the place), as a shopper would name it ("Stripping wire", '
         '"At the desk", "Weekend away"), only what is in view (no "office" without office things in view, no "job site" for a '
         'bench). Line: what the product is doing for its owner there, as the picture shows it ("Stands upright, ready to grab"), not '
-        'a description of the room. No numbers, prices, brands or claims the picture does not show. The title must name a different '
+        'a description of the room. The title is about the product: never what people elsewhere in the picture are doing. No numbers, prices, brands or claims the picture does not show. The title must name a different '
         'place or task from every title in titles_already_used (workshop, workbench and bench are the same place; so are garage and '
         'shed), and the line must not repeat lines_already_used. Respect the character limits strictly. In Chinese, write the line as '
         'two short clauses joined by "，", each at most 8 characters.')
 SHOWS = {'use': 'the product at work: title the task being done', 'place': 'the product at rest where it is kept or used: title the place',
-         'other': 'a different setting from the other pictures: title the place or the task'}
+         'other': 'a different setting from the other pictures: title the place or the task',
+         'bare': 'the place the picture is set in: title the place only ("In the garage", "On site"), never a task, a use or what anyone is doing; leave the line empty'}
 
 
 PLACE_WORDS = {'workbench': 'shop', 'bench': 'shop', 'workshop': 'shop', 'shop': 'shop', 'garage': 'shed', 'shed': 'shed',
@@ -998,6 +1029,16 @@ def _same_place(title, other):
 
 
 CAPTIONED = 'occasion'          # how the captions were written; older ones are written again once
+PLACE_ONLY = 'place'            # ... for a product with no selling points or description: every scene is titled by its place
+
+
+def bare(product):
+    """Whether the user gave nothing but a name and figures: no selling points, no headline, no description."""
+    return isinstance(product.get('features'), list) and not (product['features'] or product.get('headline') or product.get('subline'))
+
+
+def caption_way(product):
+    return PLACE_ONLY if bare(product) else CAPTIONED
 
 
 def seen_captions(product, rows):
@@ -1015,18 +1056,21 @@ def seen_captions(product, rows):
               'properties': {'title': {'type': 'string'}, 'body': {'type': 'string'}}}
     out = []; done = 0; taken = set(); said = set()
     for row in rows:
-        if ((row.get('captions') or {}).get(language) or {}).get('how') == CAPTIONED:
+        if ((row.get('captions') or {}).get(language) or {}).get('how') == caption_way(product):
             taken.add(row['title']); said.add(row.get('body') or ''); out.append(row); continue          # already captioned in this language
         try:
             facts = {'product': product['title'], 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                      'title_max_chars': limit[0], 'line_max_chars': limit[1], 'titles_already_used': sorted(taken),
-                     'lines_already_used': sorted(said), 'shows': SHOWS.get(row.get('role'), SHOWS['other'])}
+                     'lines_already_used': sorted(said),
+                     # nothing is known of what the product is for: the title names the place, never a task
+                     'shows': SHOWS['bare'] if bare(product) else SHOWS.get(row.get('role'), SHOWS['other'])}
             answer = brandkit_review._ask(vision, SEEN, facts, schema, image_path=row['path'])
             title = ' '.join(str(answer.get('title', '')).split()); body = _fit_line(' '.join(str(answer.get('body', '')).split()), limit[1])
+            if bare(product): body = ''
             if (title and len(title) <= limit[0] and title not in taken and not any(_same_place(title, other) for other in taken)
                     and (not body or body not in said) and not re.search(r'\d', title + body)):
-                captions = {**(row.get('captions') or {}), language: {'title': title, 'body': body, 'how': CAPTIONED}}
-                row = {**row, 'title': title, 'body': body, 'caption': CAPTIONED, 'captions': captions}; done += 1
+                captions = {**(row.get('captions') or {}), language: {'title': title, 'body': body, 'how': caption_way(product)}}
+                row = {**row, 'title': title, 'body': body, 'caption': caption_way(product), 'captions': captions}; done += 1
         except Exception:
             pass
         taken.add(row['title']); said.add(row.get('body') or ''); out.append(row)
@@ -1067,8 +1111,8 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
             # Each language keeps its own captions: a set in another language, or captions written the old way, are read again.
             language = product['language']
             own = lambda row: ((row.get('captions') or {}).get(language) or {})
-            rows = [{**row, 'title': own(row)['title'], 'body': own(row).get('body', '')} if own(row).get('how') == CAPTIONED else row for row in rows]
-            if any(own(row).get('how') != CAPTIONED for row in rows):
+            rows = [{**row, 'title': own(row)['title'], 'body': own(row).get('body', '')} if own(row).get('how') == caption_way(product) else row for row in rows]
+            if any(own(row).get('how') != caption_way(product) for row in rows):
                 rows, done = seen_captions(product, [row for row in rows])
                 if done:
                     notes.append('已按场景图的实际内容重写 %d 条图注。' % done)
@@ -1585,6 +1629,10 @@ def _data_line(kind, ctx):
             return TEXT['zh' if zh else 'en']['T13_from_to'] % (first, last if zh else last.lower())
         return None
     if kind == 'T08':
+        if bare(product):
+            # nothing was said of what the product is for: "from the workshop to the garage" is a story of its use,
+            # and the review holds it to be a claim. The tiles' own titles name the places.
+            return name or None
         places = [row['title'] for row in ctx.get('scenes') or [] if row.get('title') and row.get('role') in ('use', 'place', 'other')][:2]
         # "On the job site" and "In the workshop" read "from the job site to the workshop"; zh "在车间" reads "车间".
         places = [re.sub(r'^(on|in|at|by|for|inside|around)\s+', '', place.strip(), flags=re.I) if not zh else re.sub(r'^[在于]', '', place.strip())

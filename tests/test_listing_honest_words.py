@@ -263,3 +263,21 @@ class HeadlineFitTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BareSceneWordsTests(unittest.TestCase):
+    """A product with nothing but a name: its scenes are titled by their place, so the mosaic's headline joins two places, never a task."""
+
+    def test_scenes_are_titled_by_place_only_and_get_no_line(self):
+        import brandkit_review, brandkit_set
+        from unittest.mock import patch
+        rows = [{'path': 'a.png', 'title': 'Workshop Drawer Check', 'body': 'x', 'role': 'use'}]
+        product = {'language': 'en', 'title': 'Tool Cabinet', 'features': [], 'headline': '', 'subline': ''}
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
+                patch.object(brandkit_review, '_ask', return_value={'title': 'In the workshop', 'body': 'Drawers glide open'}) as asked:
+            out, done = brandkit_set.seen_captions(product, rows)
+        self.assertIn('never a task', asked.call_args.args[2]['shows'])
+        self.assertEqual((out[0]['title'], out[0]['body'], done), ('In the workshop', '', 1))
+        self.assertEqual(out[0]['captions']['en']['how'], brandkit_set.PLACE_ONLY)
+        told = {**product, 'features': [{'title': 'Soft-close drawers'}]}
+        self.assertEqual(brandkit_set.caption_way(told), brandkit_set.CAPTIONED)        # captions written the usual way are kept for it

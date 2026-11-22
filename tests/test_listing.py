@@ -1255,5 +1255,18 @@ class RuntimeTests(unittest.TestCase):
         self.assertAlmostEqual(edges['x']['apparent'], .8, delta=.02)
 
 
+class WorkpieceNameTests(unittest.TestCase):
+    def test_a_workpiece_is_matched_by_whole_words(self):
+        """A service cart is not a vice: it was shown standing on a plank, as a clamp would be shown closed round one."""
+        import listing
+        for name in ('Service Cart', 'Advice board', 'Seesaw', 'Device holder'):
+            self.assertIsNone(listing.usecase_for(name), name)
+        self.assertEqual(listing.usecase_for('Bench Vice 6 inch')['kind'], 'board')
+        self.assertEqual(listing.usecase_for('F-Clamps, set of 4')['kind'], 'board')
+        self.assertEqual(listing.usecase_for('Combination wrenches')['kind'], 'pipe')
+        self.assertEqual(listing.usecase_for('台钳 150mm')['kind'], 'board')
+        self.assertFalse(listing.default_product({'name': 'Service Cart'})['usecase']['enabled'])
+
+
 if __name__ == '__main__':
     unittest.main()
