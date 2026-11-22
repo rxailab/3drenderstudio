@@ -393,6 +393,15 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(made, ['use'])
         self.assertEqual([(row['role'], row['check']) for row in out], [('use', 'passed'), ('place', 'passed'), ('other', 'failed')])
 
+    def test_pages_with_no_copy_never_fall_back_to_stock_or_broken_lines(self):
+        product = {'title': 'Rolling Tool Cabinet', 'features': [], 'figures': [], 'specs': [], 'headline': '', 'subline': ''}
+        ctx = {'product': product, 'language': 'en', 'scenes': [{'title': 'In use', 'role': 'use'}, {'title': 'At the workbench', 'role': 'place'},
+                                                                 {'title': 'On the job site', 'role': 'other'}]}
+        self.assertEqual(brandkit_set._data_line('T04', ctx), 'Rolling Tool Cabinet')
+        self.assertEqual(brandkit_set._data_line('T08', ctx), 'Rolling Tool Cabinet')        # not "From use to the workbench"
+        ctx['scenes'][0]['title'] = 'In the garage'
+        self.assertEqual(brandkit_set._data_line('T08', ctx), 'From the garage\n[[to the workbench]]')
+
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
         # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges
         self.assertEqual(brandkit_set.scene_box({'box': [.1, .42, .9, .64]}), [.04, .387, .96, .673])

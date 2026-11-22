@@ -1567,7 +1567,7 @@ def _data_line(kind, ctx):
         figure = next((row for row in product['figures'] if row.get('value')), None)
         if figure:
             return ('[[%s%s]] %s' % (figure['value'], figure.get('unit', ''), figure['label'])) if zh else '[[%s %s]]\n%s' % (figure['value'], figure.get('unit', ''), figure['label'].lower())
-        return None
+        return name or None                  # never the template's stock line ("Key figures"): the product's name
     if kind == 'T13':
         # "Closed to fully open" from the states the pose agent named, in the page's language.
         labels = [' '.join(str(row.get('label') or '').split()) for row in ctx.get('poses') or []]
@@ -1581,10 +1581,15 @@ def _data_line(kind, ctx):
         # "On the job site" and "In the workshop" read "from the job site to the workshop"; zh "在车间" reads "车间".
         places = [re.sub(r'^(on|in|at|by|for|inside|around)\s+', '', place.strip(), flags=re.I) if not zh else re.sub(r'^[在于]', '', place.strip())
                   for place in places]
+        # a title that names no place ("In use", "使用中") would read "from use to …"
+        places = [place for place in places if place.strip().lower() not in GENERIC_PLACES]
         if len(places) == 2 and places[0].lower() != places[1].lower():
             return ('从%s\n[[到%s]]' % (places[0], places[1])) if zh else 'From %s\n[[to %s]]' % (places[0].lower(), places[1].lower())
-        return None
+        return name or None
     return None
+
+
+GENERIC_PLACES = {'use', 'in use', 'at work', 'work', 'action', 'in action', 'use case', '使用中', '使用', '使用场景', '工作中'}
 
 
 def _data_eyebrow(ctx, headline):
