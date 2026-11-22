@@ -11,10 +11,13 @@ the image model paints the scene around it and cannot bend or redraw the product
 Two steps for a product someone holds: which way up and which way round (six ways
 up, each from two sides), then a small adjustment of that pose (turned round,
 leaning, tipped, turned on the spot). A product nobody holds must rest on a
-surface: it is shown the same twelve ways, standing on a floor, with what was
-measured of each (whether it lies level, which parts touch the floor, whether it
-clearly tips over), and is not adjusted afterwards: a tilted product set down
-would fall. Without a vision model, or when anything here fails, the product
+surface: it is pictured the same twelve ways, standing on a floor, and only the
+ways it can really rest in are shown (``stable``: lying on a side, standing on a
+flat base with its weight well inside it, or its main image's own pose), with
+what was measured of each (whether it lies level, which parts touch the floor),
+and is not adjusted afterwards: a tilted product set down would fall. Pliers
+stood on a jaw tip and a handle end were chosen before; that pose is no longer
+on the sheet. Without a vision model, or when anything here fails, the product
 keeps its pose.
 """
 import hashlib
@@ -25,6 +28,7 @@ import time
 from pathlib import Path
 
 import orientation
+import usage_rules
 from studio_store import DATA
 
 VERSION = 1
@@ -32,6 +36,9 @@ SIZE = 288                 # pixels per candidate; the vision model sees the she
 SAMPLES = 10
 COLUMNS = 4
 TIPS_OVER = -15.0          # degrees: a weight this far outside what the product stands on cannot rest, even leaning onto a second point
+FLAT_BASE = .15            # share of the footprint a flat face on the floor must cover for a tall pose to stand on its base
+STEADY = 5.0               # degrees a tall pose's weight must be inside what it stands on
+EDGEWISE = 6.0             # a main pose this many times as tall as lying is a thin tool on its edge or a tip, not trusted
 MODES = ('auto', 'keep')
 HOLDS = ('hands', 'person', 'nobody', 'scene')
 SIDES = ('below', 'above', 'left', 'right', 'front', 'behind', 'around', 'none')
@@ -52,19 +59,20 @@ POSE_PROMPT = '''You pose a product for one photograph of it in use. scene descr
 Choose the pose the product really has at that moment of the scene. Work it out in this order and return data only:
 - product: what the product is, a few plain English words.
 - working_part: the part that does the work (the disc, the bit, the jaws, the blade, the nozzle), or, for something that is not a tool, the part that matters most to its use.
-- use: one sentence on how this product is held or set down for the work in the scene: which part meets the work, from which direction, and where a hand grips it. Know how such a product is really used: a grinder is held with both hands, body roughly level, its disc tilted onto the work below; a drill points its bit straight into the work; a pipe cutter's jaws close round the pipe; a spray gun points its nozzle at the surface; something set down rests on its proper base or lies flat on its side.
+- use: one sentence on how this product is held or set down for the work in the scene: which part meets the work, from which direction, and where a hand grips it. Know how such a product is really used: a grinder is held with both hands, body roughly level, its disc tilted onto the work below; a drill points its bit straight into the work; a pipe cutter's jaws close round the pipe; a spray gun points its nozzle at the surface; pliers and cutters are gripped by both handles, the wire deep in the jaws near the pivot; a hammer is gripped by the lower half of its handle, its face square on the nail head or the nail in its claw's slot; something set down rests on its proper base or lies flat on its side, never balanced on a tip, an edge, its jaws or a handle end.
 - cells: for every cell in order, where its working part points in the picture and whether that pose fits the use.
-- choice: the cell that fits best. With nobody in the picture, a pose it can rest in on a surface. With hands or a person, a pose a hand can hold it in at that moment, its working part toward the work, the product seen well and not end-on.
+- choice: the cell that fits best. With nobody in the picture, a pose it can rest in on a surface: only such poses are shown, and among them the one a person would really leave it in. With hands or a person, a pose a hand can hold it in at that moment, its working part toward the work, the product seen well and not end-on.
 - pose: 12 to 50 words of plain English for an image generator, describing the product exactly as it is in the chosen cell: how it is held or rests, where its working part is in the frame and what it touches there. Do not describe its design or colours.
 - contact: where in the chosen cell the working part meets the work, in a few words such as "the disc, at the lower left", or "none".
 - work_side: where the thing it works on lies relative to the product, seen from the camera: below, above, left, right, front, behind, around (passing through or round the product) or none.
 - reason: one sentence in reason_language.
-usage_rules, when present, say how this very product is used correctly (from its own analysis): the chosen pose must allow it (a caliper's beam square to the faces it measures, never tilted across them).
+usage_rules, when present, say how this very product is held and used correctly: the chosen pose must allow it (a caliper's beam square to the faces it measures, never tilted across them; cutters with the wire deep in the jaws, a hand round both handles).
 hint, when present, is the user's own wish and takes priority.'''
 
 FIRST_STEP = {'held': 'every way up the product can be turned, each from two sides; the top-left cell is how it stands for its main image',
-              'rest': ('every way up the product can be set down on a surface, each from two sides; the top-left cell is how it stands for '
-                       'its main image. cell_facts says what was measured of each: stance (lies level or stands tall), the parts on the '
+              'rest': ('the ways up the product can be set down on a surface and really rest in, each from two sides: lying on a side, or standing on a '
+                       'flat base with its weight well inside it; poses that would balance it on a tip, an edge, its jaws or a handle end '
+                       'are not shown. The top-left cell is how it stands for its main image, unless that pose is one it cannot rest in. cell_facts says what was measured of each: stance (lies level or stands tall), the parts on the '
                        'floor, and tips_over when it would fall over. A tool is usually laid down on its side or its flat back, the way '
                        'a person puts it down on a bench; something made to stand stands on its base.')}
 SECOND_STEP = ('the pose chosen a moment ago (top-left) and small changes to it: turned round, leaning left or right, the top tipped toward '
@@ -111,6 +119,36 @@ def rest_facts(rows):
         tip = row.get('tip_angle')
         fact['tips_over'] = bool(type(tip) in (int, float) and tip < TIPS_OVER and not row['id'].startswith('as_is@'))
     return facts
+
+
+def stable(rows):
+    """For each pose set down, whether it can really rest that way: [bool].
+
+    A pose rests when it lies level (no more than orientation.STANDING times as tall as the lowest pose: whatever touches
+    first, it settles onto a side, as pliers or a hammer lying on either face do), when it stands tall on a flat base
+    with its weight well inside it (flat_contact, tip_angle: a tape measure on its foot, .36 and 24 degrees), or
+    when it is the main image's own pose, which the orientation agent already chose and checked (a drill standing on
+    its battery: the battery's underside measures barely flat, so only its main pose keeps it standing). Anything else
+    stands on a point: pliers on a jaw tip and a handle end measure 6.5 times as tall as lying, 0.3% of a flat face on
+    the floor. Unmeasured poses are kept only when nothing was measured at all.
+
+    The main image's pose is trusted only up to EDGEWISE times the lying height: a hand saw whose main image stands it
+    on its teeth measures 7.6 times (a caliper on its edge 8, a hammer on its head 11), a drill on its battery 4.4. A
+    thin tool stood on an edge in its main image must still lie down in a scene with nobody holding it.
+    """
+    heights = [orientation._height(row) for row in rows]
+    known = [value for value in heights if value is not None]
+    if not known:
+        return [True] * len(rows)
+    floor = min(known)
+    number = lambda value: float(value) if type(value) in (int, float) else None
+    result = []
+    for row, height in zip(rows, heights):
+        flat, tip = number(row.get('flat_contact')), number(row.get('tip_angle'))
+        main = str(row.get('id', '')).startswith('as_is@') and (height is None or height <= EDGEWISE * floor)
+        result.append(main or (height is not None and (
+            height <= orientation.STANDING * floor or (flat is not None and tip is not None and flat >= FLAT_BASE and tip >= STEADY))))
+    return result
 
 
 def schema(count):
@@ -196,12 +234,18 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
     if hint:
         facts['hint'] = _line(hint, 300)
     if usage:
-        facts['usage_rules'] = [_line(rule, 200) for rule in usage[:4]]
+        facts['usage_rules'] = [_line(rule, usage_rules.LENGTH) for rule in usage[:usage_rules.LIMIT]]
     sheets = []
     try:
         say('渲染候选使用姿态')
         # Held, the product is seen in the air; set down, standing on a floor, so that what it rests on shows.
         rows = _pictured(project, plan, first_poses(base, azimuth), view, held, folder, stop)
+        refused = []
+        if not held:
+            # Set down, only the poses it can really rest in are shown: the vision model cannot choose one it would fall from.
+            allowed = stable(rows)
+            refused = [row['id'] for row, ok in zip(rows, allowed) if not ok]
+            rows = [row for row, ok in zip(rows, allowed) if ok]
         sheet = orientation.sheet(rows, rows[0]['path'].parent / 'sheet.png', columns=COLUMNS, cell=SIZE)
         sheets.append(sheet)
         if stop(): raise InterruptedError()
@@ -239,4 +283,5 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
             'description': _line(answer['pose'], 400) or None, 'contact': None if contact.casefold() in ('', 'none') else contact,
             'work_side': answer['work_side'], 'working_part': _line(answer['working_part'], 80), 'use': _line(answer['use'], 400),
             'reason': _line(answer['reason'], 300), 'consistent': chosen['consistent'], 'model': chosen['model'],
+            **({} if held else {'refused': refused}),
             'sheets': [url for url in (_url(path) for path in sheets) if url], 'seconds': round(time.time() - started, 1)}

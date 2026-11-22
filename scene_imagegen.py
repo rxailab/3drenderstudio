@@ -43,6 +43,7 @@ from PIL import Image
 
 import engine
 import scene_audience
+import usage_rules
 from studio_store import DATA, ROOT, atomic_json
 
 REFERENCE_VERSION = 1          # part of the cache key: raise it when reference renders change
@@ -72,9 +73,10 @@ Compare the product in GENERATED with the references. Return data only:
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
 - nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
-- held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. True when no hand touches it.
+- held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. Hand tools are held one way only: pliers, cutters and scissors by both handles, in the palm with the fingers wrapped round them, never pinched at the head, the jaws or the pivot; a hammer by the lower half of its handle, never by the head or the neck; a screwdriver by its handle, the shaft in line with the forearm and the bit in the screw; a saw by its handle. usage_rules, when given, say how this product is held. True when no hand touches it.
 - contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; a screw, bolt or nail being driven is on the same straight line as the bit or driver, head against its tip; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
-- used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; pliers hold the wire inside the jaws). True when the product is at rest or no rules are given.
+- used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; cutting pliers hold the wire deep in the jaws near the pivot, square to the blades, never at the tips; a hammer's face meets the nail head squarely with the nail perpendicular to the surface, or the nail's shank sits in the claw's slot with the handle levered back, never the claw just pressed against a wall). True when the product is at rest or no rules are given.
+- rests_stably: when nothing holds the product, it rests the way it really would on its surface: lying on a side or standing on its base, its weight over what carries it. False when it is balanced on a tip, an edge, a jaw point or a handle end, propped at an angle with nothing holding it, or floating above the surface. True when hands hold it.
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
@@ -90,7 +92,7 @@ PEOPLE_RULES = {
            'and upper body in the frame, in a natural working posture. The person is clearly visible, not a blur at the edge. The '
            'product stays the main subject and is not hidden by the person; hands hold it as it is placed and never change its shape.'),
     False: ('PEOPLE. Nobody is in the picture: no person, no hands or other body parts, no silhouettes, shadows or reflections of '
-            'people. The product stands or lies ready for use in the scene.'),
+            'people. The product lies or stands on its base ready for use in the scene, resting stably.'),
 }
 PEOPLE_FIXES = {True: 'no person is visible: show a person clearly using or handling the product, hands on it, arms and upper body in frame',
                 False: 'a person or a part of one is visible: remove every person, hand and body part from the picture'}
@@ -262,7 +264,13 @@ def product_render(project, plan, azimuth, elevation, size_mm, canvas, cancelled
 
 POSE_LINES = {'held': 'Build the scene around this exact pose: the hands grip the product where a hand naturally holds it in this pose, '
                       'and the thing it works on meets it there, at the right scale.',
-              'rest': 'Build the scene around this exact pose: the product rests on its surface just as it is, with its shadow under it.'}
+              'rest': 'Build the scene around this exact pose: the product rests on its surface just as it is, with its shadow under it, '
+                      'the surface right under the parts that carry it.'}
+# A product set down must rest the way it really would: the pose (scene_pose) is already one it can rest in, and the scene
+# must agree with it. Measured on the user's pictures: pliers stood on a jaw tip and a handle end, which no bench holds.
+REST_RULE = ('It rests stably, the way a person would put it down: lying on a side or standing on its base, its weight over what carries '
+             'it, on a level surface. It is never balanced on a tip, an edge, a jaw point or a handle end, never propped at an angle '
+             'with nothing holding it, and never floating.')
 
 
 def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None):
@@ -289,7 +297,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it stands: what it rests on '
         'or is held by, the shadow it casts, the place around it. The perspective, scale and light of the scene must agree with the '
         'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
-            'A believable place where this product is used, the product standing ready for use.' if people is False
+            'A believable place where this product is used, the product set down there ready for use.' if people is False
             else 'A believable place where this product is used, with a person using it.')),
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
         'signs, captions or other text anywhere in the picture, and no watermark.%s Nothing is added to the product: no extra grip, '
@@ -297,10 +305,13 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'in front of it, behind it or between its jaws, never through it, with no stray ends or strands around it. A screw, bolt or '
         'nail being driven sits exactly on the line of the bit or driver, its head on the bit\'s tip and its point going straight into '
         'the work along that same line. Composition for a %s frame.'
-        % (((' and its surroundings', '') if people is False else
+        % (((' and its surroundings', ' ' + REST_RULE) if people is False else
             (', the hands and the surroundings', ' The hands are an ordinary adult\'s, bare or in plain work gloves suited to the task, '
-             'holding the product by the parts made to be held, from the user\'s side, its working end pointing at the work.') if hands else
-            (', people and surroundings', ' People are ordinary adults in plain clothes suited to the work, shown naturally.'))
+             'holding the product by the parts made to be held, from the user\'s side, its working end pointing at the work: '
+             'pliers and cutters by both handles with the fingers wrapped round them, never pinched at the head; a hammer by the '
+             'lower half of its handle.') if hands else
+            (', people and surroundings', ' People are ordinary adults in plain clothes suited to the work, shown naturally, '
+             'holding the product by the parts made to be held, as the tool is meant to be held.'))
            + ({'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),)),
     ]
     if pose and pose.get('description'):
@@ -312,7 +323,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     if setting:
         use.append('Its moving parts are set as image 1 shows (%s): keep them exactly so; whatever it works on fits that setting '
                    '(the gap between open jaws is the thickness of the piece between them).' % re.sub(r'\s+', ' ', str(setting)).strip()[:120])
-    rules = [re.sub(r'\s+', ' ', str(rule)).strip().rstrip('.')[:200] for rule in (usage or [])[:4] if str(rule).strip()]
+    rules = [re.sub(r'\s+', ' ', str(rule)).strip().rstrip('.')[:usage_rules.LENGTH] for rule in (usage or [])[:usage_rules.LIMIT] if str(rule).strip()]
     if rules and people is not False:
         use.append('Show it used correctly: ' + '; '.join(rules) + '.')
     if use:
@@ -481,7 +492,7 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
 
 
 FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
-                  'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'scale_plausible')
+                  'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'rests_stably', 'scale_plausible')
 
 
 def fidelity_schema():
@@ -509,7 +520,7 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
     try:
         facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN',
                  'size_mm': round(float(size_mm)) if size_mm else None,
-                 'usage_rules': [str(rule)[:200] for rule in (usage or [])[:4]]}
+                 'usage_rules': [str(rule)[:usage_rules.LENGTH] for rule in (usage or [])[:usage_rules.LIMIT]]}
         body = ai._payload(value, FIDELITY_PROMPT, facts, schema, max_tokens=1500)
         blocks = []
         for index, path in enumerate(reference_paths, 1):
@@ -569,12 +580,16 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     ``pose`` 'auto' poses the product the way it is used in the scene
     (scene_pose); 'keep' shows it in the plan's own pose. ``articulation`` sets its moving parts
     (articulation.plan_for: pliers open, a caliper's jaws at the workpiece's thickness), with a 'label' saying how;
-    ``usage_rules`` are the product's own rules for being used correctly, given to the image model and checked after.
+    ``usage_rules`` are the product's own rules for being used correctly, given to the image model and checked after;
+    the written-down rules for its kind of tool (usage_rules.py: how pliers, a hammer, a saw are held and meet the work)
+    come first, so the image model, the pose agent and the check all go by the same, concrete rules.
     """
+    import usage_rules as canon
     import scene_lock
     import scene_pose
     hands = people is True and framing == 'hands'
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
+    usage_rules = canon.merged(canon.words_for(project, product), usage_rules) or None
     value = config()
     if not value:
         raise ImageError('图像模型未配置或已关闭，无法生成含人物或复杂环境的场景。')
