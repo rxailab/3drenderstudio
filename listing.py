@@ -1140,6 +1140,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if has[kind] and not ready:          # a page that had what it needs until now: say what went missing
                 has[kind] = False; why[kind] = reason
         why['T13'] = '活动部件的姿态图没有渲染出 2 张以上'
+        if has.get('T08') and sum(1 for row in scenes if row.get('check') != 'failed') < 2:
+            # a mosaic of scenes whose product check failed (a wrong grip, a tool balanced on a point) is not shown
+            has['T08'] = False; why['T08'] = '通过核对的场景图不到 2 张（没通过的场景图不放进场景拼图页）'
         work = folder / '_layout'
         made = [row for row in rows if has.get(row['kind'])]
         for row in rows:

@@ -84,7 +84,8 @@ VERIFIER = (
     'labelled. For each state say whether it is physically right for this product: the moving parts still joined where '
     'they should be (a pliers half still on its rivet, a slider still on its beam, a lid still on its hinge), nothing '
     'floating or detached, no part passing through another, opened the way the real product opens and not past its real '
-    'range. A state that looks like the model as delivered is fine. Be strict about detached or intersecting parts, not '
+    'range. A state that looks like the model as delivered is fine, and a state whose values are all 0 IS the model as '
+    'delivered: never fail it, even if the product was modelled half open. Be strict about detached or intersecting parts, not '
     'about rendering style. If something is wrong, say in fix which part moved wrongly and how (e.g. "parts 1 and 2 turn '
     'about the wrong point: the rivet is part 5", "the slider should move toward +x, away from the fixed jaw"). Write '
     'issues in Simplified Chinese.')
@@ -316,11 +317,17 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
         picture = state_sheet(where, solved['previews'], states, folder / ('states%d.png' % attempt))
         say('正在检查姿态是否合理')
         with ai_client.tally() as used:
-            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en']} for s in states],
+            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en'], 'values': s['values']} for s in states],
                                                               'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max']} for j in joints]},
                                            _verify_schema(), image_path=str(picture))
         record['usage_tokens'] += used['tokens']
         record.update(joints=joints, states=states, previews=str(picture), verdict=verdict)
+        # A state with every value 0 is the model exactly as delivered: whatever the check thinks of how it was modelled
+        # (cutters modelled with their handles spread), it is not a pose this agent made, so it cannot be wrong.
+        as_delivered = {state['id'] for state in states if not any(state['values'].values())}
+        verdict['states'] = [{**row, 'ok': True} if row.get('id') in as_delivered else row for row in verdict.get('states') or []]
+        if not [row for row in verdict['states'] if not row.get('ok')]:
+            verdict['ok'] = True
         if verdict.get('ok') and all(row.get('ok') for row in verdict.get('states') or []):
             record['status'] = 'ready'
             return _store(project_id, record)

@@ -282,6 +282,11 @@ def facts_of(product, stated_mm=None):
     if product.get('_poses'):          # the states the pose agent found on the 3D model (articulation.py), as the pages name them
         facts['poses'] = {'states': list(product['_poses']), 'note': 'The states the product is shown in, worked out from its 3D model; '
                                                                       'they say how it moves, not how far.'}
+    if not (product['features'] or (product.get('headline') or '').strip() or (product.get('subline') or '').strip()):
+        # Nothing but a name (and perhaps sizes): any use, benefit or capability on a page would be made up.
+        facts['scope'] = ('The user gave no selling points and no description. Write only the product\'s name, what kind of product '
+                          'it is and the stated figures; no uses, tasks, benefits, features or capabilities (not "for tight spaces", '
+                          'not "cuts, strips and snips"). Any such claim on a page is claim_not_in_facts.')
     if stated_mm:
         facts['stated_sizes_mm'] = {key: round(value, 1) for key, value in stated_mm.items()}
         facts['stated_sizes_note'] = ('The overall sizes the user stated, in millimetres; the dimensions page prints only these. '

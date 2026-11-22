@@ -334,6 +334,14 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(requests['zoom']['camera'], requests['hero']['camera'])
         self.assertEqual(requests['zoom']['size'], [3600, 3600])
 
+    def test_a_product_with_nothing_but_a_name_gets_no_made_up_uses(self):
+        import brandkit_review
+        bare = {'title': 'Diagonal Cutting Pliers', 'model': '', 'headline': '', 'subline': '', 'features': [], 'specs': [], 'figures': [],
+                'size_mm': 160}
+        self.assertIn('no uses, tasks, benefits', brandkit_review.facts_of(bare)['scope'])
+        told = {**bare, 'features': [{'title': 'Induction-hardened edges', 'detail': ''}]}
+        self.assertNotIn('scope', brandkit_review.facts_of(told))
+
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
         # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges
         self.assertEqual(brandkit_set.scene_box({'box': [.1, .42, .9, .64]}), [.04, .387, .96, .673])
