@@ -868,7 +868,8 @@ def scene_briefs(project, settings, count):
             # Asked to see people in every picture: the second is still the product at work, a different moment of it.
             second = {**first, 'scene': first.get('scene', '') + ' A different moment of the same job, seen from another side.'}
         else:
-            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False)}
+            # the product at rest in the buyer's place, nobody there: set into a backdrop photograph when one can be had
+            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False), 'backdrop': True}
         briefs.append({'proposal': second, 'role': 'place' if people_allowed else 'use'})
     if count >= 3:
         metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
@@ -885,7 +886,7 @@ def scene_briefs(project, settings, count):
                           (first.get('scene', '') + ' Another setting where the same buyer would use it.')}
         if other:
             # the third scene's own plan, not the first one's carried over
-            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='')
+            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='', backdrop=not wants)
         briefs.append({'proposal': third, 'role': 'other'})
     return [_with_moving_parts(project, brief) for brief in briefs[:count]]
 
@@ -1033,7 +1034,9 @@ def seen_captions(product, rows):
 
 
 def make_scenes(project, product, folder, cancelled, say, previous=None):
-    """Scene pictures for the listing, made by the image model: [{'path', 'title', 'body', 'focus', 'role', 'record'}].
+    """Scene pictures for the listing: [{'path', 'title', 'body', 'focus', 'role', 'record'}]. The product at work is
+    painted by the image model around the product's render; the product at rest in a place is the render itself set
+    into a photograph of that place (scene_backdrop.py), painted only when that cannot be done.
 
     A set made with the same settings for the same model is reused (``previous``: the stored rows with their key).
     Returns (rows, key, notes).
@@ -1105,7 +1108,12 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
             why = [name for name, ok in (checked.get('flags') or {}).items() if ok is False]
             notes.append('第 %d 张场景图的产品核对没有完全通过%s，请检查后再使用。' % (
                 index + 1, '（%s）' % (checked.get('note') or '、'.join(why))[:120] if (checked.get('note') or why) else ''))
+        composite = record.get('model') == 'composite'
+        if composite:
+            notes.append('第 %d 张场景图由产品模型渲染后合成进背景图：产品按实际尺寸摆放，没有经过图像模型重画。' % (index + 1))
         rows.append({'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
+                     # how the picture came to be: the model's render set into a backdrop, or painted by the image model
+                     'placed': 'composite' if composite else 'painted',
                      'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
                      'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
                      'check': checked.get('status') or 'unchecked',

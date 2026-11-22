@@ -631,6 +631,8 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     """A scene made by the image model from renders of the product: returns (plan, record, picture).
 
     ``pose`` 'auto' shows the product held or set down the way it is used in this scene; 'keep' in the plan's own pose.
+    A proposal marked ``backdrop`` with nobody in it is made without the image model when a backdrop can be had
+    (scene_backdrop.py): the record then says 'model': 'composite'.
     """
     import scene_imagegen
     plan = copy.deepcopy(project['plan'])
@@ -645,12 +647,25 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
     if hint and proposal.get('source') != 'ai':
         scene = (scene + ' ' + hint).strip()     # the strategist already read the hint; rules have not
     folder = folder or (DATA / project['id'] / 'scene_ai' / uuid.uuid4().hex / 'scene')
-    # A size guessed from the category alone is not worth telling the image model.
-    picture = scene_imagegen.create(project, plan, azimuth, elevation, scene, proposal.get('product') or project.get('name'),
-                                    size_mm if basis != 'category' else None, folder, cancelled, progress,
-                                    people=proposal['people'] if type(proposal.get('people')) is bool else None,
-                                    framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None,
-                                    pose=pose, hint=hint, **{name: proposal[key] for key, name in (('articulation', 'articulation'), ('usage', 'usage_rules')) if proposal.get(key)})
+    picture = None; painted_because = None
+    if proposal.get('backdrop') and proposal.get('people') is False:
+        # The product at rest in a place, nobody in the picture: its own model is rendered into a photograph of the
+        # empty place (scene_backdrop.py) instead of being drawn again by the image model. A size guessed from the
+        # category alone is not a size to build a picture on.
+        import scene_backdrop
+        try:
+            if basis == 'category':
+                raise scene_backdrop.Unavailable('不知道产品的实际尺寸')
+            picture = scene_backdrop.create(project, plan, proposal, azimuth, size_mm, folder, cancelled, progress)
+        except scene_backdrop.Unavailable as exc:
+            painted_because = str(exc)[:200]
+    if picture is None:
+        # A size guessed from the category alone is not worth telling the image model.
+        picture = scene_imagegen.create(project, plan, azimuth, elevation, scene, proposal.get('product') or project.get('name'),
+                                        size_mm if basis != 'category' else None, folder, cancelled, progress,
+                                        people=proposal['people'] if type(proposal.get('people')) is bool else None,
+                                        framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None,
+                                        pose=pose, hint=hint, **{name: proposal[key] for key, name in (('articulation', 'articulation'), ('usage', 'usage_rules')) if proposal.get(key)})
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')
@@ -660,7 +675,10 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
               'method': 'generate', 'model': made['model'], 'attempts': made['attempts'], 'check': made['check'],
               'usage_retry': made.get('usage_retry'),
               'people': made.get('people'), 'framing': made.get('framing'), 'pose': _pose_summary(made.get('pose')),
-              'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height']}
+              'size_basis': basis, 'max_dimension_mm': round(size_mm, 1), 'width': picture['width'], 'height': picture['height'],
+              # set into a backdrop photograph (which one), or why it was painted by the image model after all
+              **({'backdrop': made['backdrop']} if made.get('backdrop') else {}),
+              **({'painted_because': painted_because} if painted_because else {})}
     return plan, record, picture
 
 

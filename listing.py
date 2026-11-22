@@ -1230,7 +1230,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
     scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
                    'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
-                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts')}
+                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts'),
+                   # what the next build needs to know before it makes a failed scene again: whether it already had its
+                   # extra try and how it was made (without these every rebuild paid for the failed scenes once more)
+                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'people': row.get('people'),
+                   'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or []}
                   for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
