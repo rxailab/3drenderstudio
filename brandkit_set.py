@@ -902,7 +902,9 @@ def _with_moving_parts(project, brief):
     states = articulation.states(project)
     proposal = dict(brief['proposal'])
     wanted = ('rest',) if brief['role'] == 'place' else ('working', 'open')
-    chosen = next((row for role in wanted for row in states if row.get('role') == role), None)
+    # The pose the user asked for in the scene hint ("拉开前两个抽屉"), rendered from the model, holds in every scene.
+    chosen = next((row for row in states if row.get('matches_scene_hint')), None) or \
+        next((row for role in wanted for row in states if row.get('role') == role), None)
     plan = articulation.plan_for(project, chosen['id']) if chosen else None
     if plan:
         proposal['articulation'] = {**plan, 'label': chosen.get('label_en') or chosen['id']}
@@ -1048,6 +1050,11 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     kept = []
     if previous and previous.get('key') == key:
         rows = [row for row in previous.get('items', []) if Path(row.get('path', '')).is_file()]
+        import scene_imagegen
+        stale = [row for row in rows if row.get('check') == 'failed' and (row.get('usage_retry') or 0) < scene_imagegen.USAGE_RETRY]
+        if stale and len(rows) - len(stale) > 0:
+            # a scene that failed its check before the extra try for a wrong grip or use existed is made once more
+            rows = [row for row in rows if row not in stale]
         if rows and len(rows) < settings['count']:
             # Same settings, but the last run stopped short (the image service refused one, the quota ran out): the
             # pictures it made are kept and only the missing ones are made, rather than paying for the whole set again.
@@ -1106,7 +1113,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
                      'check_issues': [str(item)[:200] for item in (checked.get('issues') or [])[:5]],
                      'check_flags': [name for name, ok in (checked.get('flags') or {}).items() if ok is False],
                      # what the picture cost: the image service's token counts over all attempts, and how many there were
-                     'usage': record.get('usage'), 'attempts': record.get('attempts')})
+                     'usage': record.get('usage'), 'attempts': record.get('attempts'), 'usage_retry': record.get('usage_retry')})
     rows, _ = seen_captions(product, rows)
     return rows, key if rows else None, notes
 
@@ -1560,7 +1567,7 @@ def _data_line(kind, ctx):
         figure = next((row for row in product['figures'] if row.get('value')), None)
         if figure:
             return ('[[%s%s]] %s' % (figure['value'], figure.get('unit', ''), figure['label'])) if zh else '[[%s %s]]\n%s' % (figure['value'], figure.get('unit', ''), figure['label'].lower())
-        return None
+        return name or None                  # never the template's stock line ("Key figures"): the product's name
     if kind == 'T13':
         # "Closed to fully open" from the states the pose agent named, in the page's language.
         labels = [' '.join(str(row.get('label') or '').split()) for row in ctx.get('poses') or []]
@@ -1574,10 +1581,15 @@ def _data_line(kind, ctx):
         # "On the job site" and "In the workshop" read "from the job site to the workshop"; zh "在车间" reads "车间".
         places = [re.sub(r'^(on|in|at|by|for|inside|around)\s+', '', place.strip(), flags=re.I) if not zh else re.sub(r'^[在于]', '', place.strip())
                   for place in places]
+        # a title that names no place ("In use", "使用中") would read "from use to …"
+        places = [place for place in places if place.strip().lower() not in GENERIC_PLACES]
         if len(places) == 2 and places[0].lower() != places[1].lower():
             return ('从%s\n[[到%s]]' % (places[0], places[1])) if zh else 'From %s\n[[to %s]]' % (places[0].lower(), places[1].lower())
-        return None
+        return name or None
     return None
+
+
+GENERIC_PLACES = {'use', 'in use', 'at work', 'work', 'action', 'in action', 'use case', '使用中', '使用', '使用场景', '工作中'}
 
 
 def _data_eyebrow(ctx, headline):
@@ -1729,8 +1741,9 @@ def _jobs_for(kind, ctx):
         items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20),
                   'body': _clause_lines(_clip(ctx['scenes'][index].get('body'), 44), ctx['language'], 8) or None,
                   'focus': ctx['scenes'][index]['focus'], 'box': assets['scene%d' % (index + 1)].get('_product')} for index in sorted(ranked)]
-        if not all(row['body'] for row in items):
-            # Captions under some tiles only would break the row's rhythm.
+        if not all(row['body'] for row in items) or not (product['features'] or product.get('headline') or product.get('subline')):
+            # Captions under some tiles only would break the row's rhythm; and with no selling points or description a line
+            # saying what the product does there ("slides out smooth") is a claim the user never made.
             items = [{**row, 'body': None} for row in items]
         out = []
         for count in (3, 2):

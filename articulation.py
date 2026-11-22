@@ -22,6 +22,7 @@ The result is kept on the project (``project['articulation']``) for this model f
 """
 import hashlib
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -68,6 +69,12 @@ ARTICULATOR = (
     'higher). Pliers are usually modelled closed, so closed is 0 and open is positive; never give closed a positive value. '
     'Only a part modelled already out (a tape or knife blade showing) takes a negative value to pull it in, no more than '
     'it is out. role: rest, open or working.\n'
+    'A cabinet, chest or toolbox: each drawer is its own slide joint (the drawer front with its handle and the drawer body, '
+    'moving out of the cabinet, away from it, along the drawer\'s depth), each door and lid its own hinge.\n'
+    'scene_hint, when present, is what the user wants the scene pictures to show. If it asks for moving parts in a pose '
+    '(drawers pulled out, a door or a lid open, a blade out), add one state showing exactly that and only that (\"the first '
+    'two drawers\" are the two top drawers, pulled out about two thirds of their depth; everything else stays shut) and set '
+    'matches_scene_hint true on it; false on every other state.\n'
     'usage: 2-4 short, concrete rules for showing the product used correctly in a photo, in English and in Simplified '
     'Chinese, each one checkable in a picture: name the part and where it is, never just "properly" or "correctly". '
     'First where the hand goes and where it never goes (pliers and cutters: both handles in the palm, the fingers wrapped '
@@ -104,9 +111,9 @@ def _schema():
                                       'properties': {'kind': {'type': 'string', 'enum': ['auto', 'origin', 'part', 'crossing', 'edge']},
                                                      'part': {'type': 'integer'}, 'side': {'type': 'string'}}},
                             'away_from': {'type': 'integer'}, 'max': number}}
-    state = {'type': 'object', 'additionalProperties': False, 'required': ['id', 'label_zh', 'label_en', 'role', 'values'],
+    state = {'type': 'object', 'additionalProperties': False, 'required': ['id', 'label_zh', 'label_en', 'role', 'matches_scene_hint', 'values'],
              'properties': {'id': {'type': 'string'}, 'label_zh': {'type': 'string'}, 'label_en': {'type': 'string'},
-                            'role': {'type': 'string', 'enum': ['rest', 'open', 'working']},
+                            'role': {'type': 'string', 'enum': ['rest', 'open', 'working']}, 'matches_scene_hint': {'type': 'boolean'},
                             'values': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['joint', 'value'],
                                                                   'properties': {'joint': {'type': 'string'}, 'value': number}}}}}
     return {'type': 'object', 'additionalProperties': False, 'required': ['articulated', 'product_kind', 'reasoning', 'joints', 'states', 'usage'],
@@ -192,10 +199,22 @@ def state_sheet(folder, previews, states, out, language='zh'):
 
 # ---------- the agent ----------
 
-def key_of(project, size_mm=None):
+def key_of(project, size_mm=None, hint=''):
+    """The record's identity: this model file, its real size, the solver's code, and the scene hint when it asks for a
+    pose ("pull out the top two drawers"), since the agent then adds a state for it."""
     model = Path(project['model_path']); stat = model.stat()
-    return hashlib.sha256(json.dumps([VERSION, str(model), stat.st_size, stat.st_mtime_ns, size_mm,
-                                      components._digest(SCRIPT)]).encode()).hexdigest()[:16]
+    parts = [VERSION, str(model), stat.st_size, stat.st_mtime_ns, size_mm, components._digest(SCRIPT)]
+    if asks_for_pose(hint):
+        parts.append(' '.join(str(hint).split()))
+    return hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+POSE_WORDS = re.compile(r'拉开|拉出|抽出|打开|开着|掀开|翻开|展开|伸出|张开|开门|开盖|open|pull(?:ed)? out|extend|unfold|lid up|doors? open|drawers? out', re.I)
+
+
+def asks_for_pose(hint):
+    """Whether the user's scene hint asks for moving parts in a pose (drawers pulled out, a door or lid open, a blade out)."""
+    return bool(POSE_WORDS.search(str(hint or '')))
 
 
 def _facts(project, product, probe):
@@ -241,7 +260,8 @@ def _clean_answer(answer, probe):
                   for row in state.get('values') or [] if row.get('joint') in names}
         if state.get('id') and state['id'] not in {row['id'] for row in states}:
             states.append({'id': str(state['id'])[:24], 'label_zh': str(state.get('label_zh', ''))[:12], 'label_en': str(state.get('label_en', ''))[:24],
-                           'role': state.get('role', 'open'), 'values': values})
+                           'role': state.get('role', 'open'), 'values': values,
+                           'matches_scene_hint': bool(state.get('matches_scene_hint')) and any(values.values())})
     # A hinge at rest is as modelled (0): pliers are modelled with their jaws shut, so a "closed" state the model gave an
     # angle would drive the jaws through each other. An opened state left at 0 takes the widest opening it gave.
     for name, limit in hinges.items():
@@ -267,10 +287,12 @@ def _clamped(states, joints):
     return out
 
 
-def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda text: None, force=False):
-    """The project's moving parts, worked out once per model file (``force`` asks again). Returns the stored record."""
+def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda text: None, force=False, hint=''):
+    """The project's moving parts, worked out once per model file (``force`` asks again). ``hint`` is the user's scene hint:
+    when it asks for a pose ("拉开前两个抽屉"), the agent adds a state for exactly that, rendered from the model, so the scene
+    pictures show the real drawers pulled out instead of drawers an image model painted. Returns the stored record."""
     project = get('project', project_id)
-    key = key_of(project, size_mm)
+    key = key_of(project, size_mm, hint)
     known = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
     if known and known.get('key') == key and known.get('status') in ('ready', 'none') and not force:
         return known
@@ -288,6 +310,8 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
         record['notes'].append('没有配置视觉模型，无法识别活动部件。')
         return _store(project_id, record)
     facts = _facts(project, product, probe); feedback = None
+    if asks_for_pose(hint):
+        facts['scene_hint'] = ' '.join(str(hint).split())[:300]
     for attempt in (1, 2):
         say('正在识别活动部件' if attempt == 1 else '按检查意见重新识别活动部件')
         ask = dict(facts, **({'previous_attempt': {k: v for k, v in feedback.items() if k != 'states_picture'},

@@ -572,6 +572,21 @@ class CreateTests(unittest.TestCase):
         self.assertEqual((made['record']['check']['status'], made['record']['check']['issues']), ('failed', ['one']))
         self.assertEqual(made['png'].read_bytes(), png((2048, 2048), (40, 0, 0)))
 
+    def test_a_wrong_grip_gets_one_try_more_but_a_changed_product_does_not(self):
+        flags = lambda **bad: {name: bad.get(name, True) for name in scene_imagegen.FIDELITY_FLAGS}
+        grip = {'status': 'failed', 'issues': ['held by one handle'], 'note': 'a', 'flags': flags(held_correctly=False, used_correctly=False)}
+        fixed = {'status': 'passed', 'issues': [], 'note': 'ok', 'flags': flags()}
+        self.verdicts = [grip, dict(grip), fixed]
+        stages = []
+        made = self.create(progress=stages.append)
+        self.assertEqual((len(self.prompts), made['record']['check']['status'], made['record']['usage_retry']), (3, 'passed', scene_imagegen.USAGE_RETRY))
+        self.assertIn('握持、用法或摆放还不对，按核对意见再试一次', stages)
+        self.prompts.clear()
+        shape = {'status': 'failed', 'issues': ['handle shape changed'], 'note': 'b', 'flags': flags(shape_consistent=False, held_correctly=False)}
+        self.verdicts = [shape, dict(shape), fixed]
+        self.create()
+        self.assertEqual(len(self.prompts), scene_imagegen.MAX_ATTEMPTS)
+
     def test_a_picture_without_the_requested_person_is_made_once_more_and_told_why(self):
         missing = {'status': 'failed', 'issues': [scene_imagegen.PEOPLE_FIXES[True]], 'note': '没有人物。', 'product_consistent': True,
                    'people': {'expected': True, 'visible': False, 'ok': False}}

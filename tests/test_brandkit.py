@@ -341,6 +341,10 @@ class ReviseTests(unittest.TestCase):
         self.assertIn('no uses, tasks, benefits', brandkit_review.facts_of(bare)['scope'])
         told = {**bare, 'features': [{'title': 'Induction-hardened edges', 'detail': ''}]}
         self.assertNotIn('scope', brandkit_review.facts_of(told))
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), patch.object(brandkit_review, '_ask') as asked:
+            copy, note = brandkit_review.write_copy({**bare, 'language': 'en'}, ['T12', 'T04'])
+        self.assertEqual((copy, asked.call_count), ({}, 0))                  # no copywriter: the pages use the product data
+        self.assertIn('没有让文案模型发挥', note)
 
     def test_a_set_cut_short_last_time_makes_only_the_missing_scene(self):
         import scene_stylist
@@ -365,6 +369,38 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(made, ['other'])                                      # only the scene that was never made
         self.assertEqual([row['role'] for row in rows], ['use', 'place', 'other'])
         self.assertIn('补生成缺少的 1 张', notes[0])
+
+    def test_a_scene_that_failed_before_the_extra_try_is_made_once_more(self):
+        import scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        rows = []
+        for role, check in (('use', 'failed'), ('place', 'passed'), ('other', 'failed')):
+            path = folder / (role + '.png'); Image.new('RGB', (8, 8)).save(path)
+            rows.append({'path': str(path), 'role': role, 'title': role, 'body': '', 'focus': [.5, .5], 'box': [.3, .3, .7, .7], 'check': check})
+        rows[2]['usage_retry'] = 1                        # already had its extra try: kept as it is
+        made = []
+        def generate(project, proposal, *args):
+            made.append(proposal['scene']); picture = folder / 'new.png'; Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'passed'}, 'usage_retry': 1}, {'png': picture, 'record': {}}
+        settings = {'enabled': True, 'count': 3, 'hint': '', 'audience': 'auto', 'people': 'auto'}
+        with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                patch.object(brandkit_set, 'scene_briefs', return_value=[{'role': r, 'proposal': {'scene': r}} for r in ('use', 'place', 'other')]), \
+                patch.object(brandkit_set, 'captions', return_value=[{'title': 't', 'body': ''}] * 3), \
+                patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                patch.object(scene_stylist, 'generate', side_effect=generate):
+            out, _, _ = brandkit_set.make_scenes({'id': 'p'}, {'scenes': settings, 'language': 'en'}, folder, lambda: False,
+                                                 lambda *a: None, {'key': 'k', 'items': rows})
+        self.assertEqual(made, ['use'])
+        self.assertEqual([(row['role'], row['check']) for row in out], [('use', 'passed'), ('place', 'passed'), ('other', 'failed')])
+
+    def test_pages_with_no_copy_never_fall_back_to_stock_or_broken_lines(self):
+        product = {'title': 'Rolling Tool Cabinet', 'features': [], 'figures': [], 'specs': [], 'headline': '', 'subline': ''}
+        ctx = {'product': product, 'language': 'en', 'scenes': [{'title': 'In use', 'role': 'use'}, {'title': 'At the workbench', 'role': 'place'},
+                                                                 {'title': 'On the job site', 'role': 'other'}]}
+        self.assertEqual(brandkit_set._data_line('T04', ctx), 'Rolling Tool Cabinet')
+        self.assertEqual(brandkit_set._data_line('T08', ctx), 'Rolling Tool Cabinet')        # not "From use to the workbench"
+        ctx['scenes'][0]['title'] = 'In the garage'
+        self.assertEqual(brandkit_set._data_line('T08', ctx), 'From the garage\n[[to the workbench]]')
 
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
         # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges

@@ -50,6 +50,10 @@ REFERENCE_VERSION = 1          # part of the cache key: raise it when reference 
 REFERENCE_QUALITY = 'reference'
 REFERENCE_TIMEOUT = 900
 MAX_ATTEMPTS = 2               # the first picture, and one correction when the product changed
+# A picture that kept the product but got its use wrong (held by one handle, the wire at the tip, balanced on a point)
+# is the image model's commonest miss and the one a correction most often fixes: it gets one try more.
+USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible'))
+USAGE_RETRY = 1                # recorded on a scene made with that extra try, so older failed scenes are tried again once
 RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
 RENDER_SAMPLES = 48
 LOCK_FIXES = {'moved': 'the product was moved, resized or drawn again somewhere else: it must stay exactly where it is in image 1, at the '
@@ -68,8 +72,8 @@ SIZES_1K = {'1:1': (1024, 1024), '4:3': (1536, 1024), '3:4': (1024, 1536)}
 FIDELITY_PROMPT = '''You check a generated photograph against renders of the real product. The REFERENCE images are renders of the product's 3D model from several sides: they are the truth about its shape, parts, colours and materials. GENERATED is a photograph made by an image model; it should show this same product in a scene.
 Compare the product in GENERATED with the references. Return data only:
 - product_present: the product is in the picture exactly once and recognisable; a second copy, a doubled outline or a ghost of it counts as false.
-- shape_consistent: its overall shape and proportions match, allowing for perspective and for a drawer, door or lid shown open.
-- parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
+- shape_consistent: its overall shape and proportions match, allowing for perspective; every drawer, door, lid, jaw and blade is open or closed exactly as in the references (one shown open that is shut in the references counts as false).
+- parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped. Things kept inside an open drawer, box or cabinet (tools, sockets, parts) are the scene's props, not parts of the product.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
 - nothing_attached: no rigid piece is attached to the product or wrapped round it that the references do not show: an extra grip, sleeve, cover, cap, handle, bracket or strap counts, even where it hides part of the product. Hands, gloves and the workpiece it works on are not attached pieces.
@@ -292,8 +296,9 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'Complete this photograph for an online shop. Image 1 is the unfinished photograph.',
         'THE PRODUCT is a %s.%s It is already in image 1, in its final place, on a plain grey ground. It is finished and fixed: '
         'keep it exactly as it is, in the same position, at the same size and angle, with the same shape, parts, colours and materials. '
-        'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Only the light falling on it may '
-        'change, to match the scene.' % (product, size),
+        'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Its moving parts (drawers, doors, '
+        'lids, jaws, blades, sliders) stay exactly as image 1 shows them: never open, pull out, close, fold or move any of them, '
+        'whatever the scene says. Only the light falling on it may change, to match the scene.' % (product, size),
         'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it stands: what it rests on '
         'or is held by, the shadow it casts, the place around it. The perspective, scale and light of the scene must agree with the '
         'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
@@ -616,7 +621,9 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     buffer = io.BytesIO(); scene_lock.mask(layer).save(buffer, 'PNG'); masked = buffer.getvalue()
     box_share = [round(box[0] / size[0], 4), round(box[1] / size[1], 4), round(box[2] / size[0], 4), round(box[3] / size[1], 4)]
     attempts = []; corrections = None; usage = {}; retry = ''; lowered = None
-    for number in range(1, MAX_ATTEMPTS + 1):
+    number = 0; limit = MAX_ATTEMPTS
+    while number < limit:
+        number += 1
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
         text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
@@ -671,6 +678,9 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                  '画面里出现了人脸或整个人，正在重新生成手部特写' if hands and verdict['people'].get('visible') else
                  '画面里没有操作产品的手，正在重新生成' if hands else
                  '画面里没有人物，正在重新生成' if people else '画面里出现了人物，正在重新生成')
+        wrong = {name for name, ok in (verdict.get('flags') or {}).items() if ok is False}
+        if number == limit == MAX_ATTEMPTS and lock['status'] == 'kept' and not wrong_people and wrong and wrong <= USAGE_FLAGS:
+            limit += 1; retry = '握持、用法或摆放还不对，按核对意见再试一次'
     # A passing picture wins; otherwise one that kept the product, then got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
     if chosen is None:
@@ -685,6 +695,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
     import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
+              'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),
               'references': [{'url': url(staged['path']), 'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation)}],

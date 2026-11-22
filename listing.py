@@ -867,6 +867,10 @@ def pose_agent_ready():
     return brandkit_review.available()[1]
 
 
+def _scene_hint(product):
+    return str(((product or {}).get('scenes') or {}).get('hint') or '')
+
+
 def _moving_parts(project_id, project, product, size_mm, cancelled, say):
     """The pose agent's record of this model's moving parts (``articulation.analyse``), worked out once per model file when a
     vision model can look at it; a stored record is used as long as the model file is the same. Returns (project, notes):
@@ -875,20 +879,24 @@ def _moving_parts(project_id, project, product, size_mm, cancelled, say):
     record = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
     if not pose_agent_ready() or project_id in articulation.RUNNING:      # (already being asked from the 活动部件 tab: its last answer)
         try:
-            fresh = bool(record) and record.get('key') == articulation.key_of(project, size_mm)
+            fresh = bool(record) and record.get('key') == articulation.key_of(project, size_mm, _scene_hint(product))
         except (OSError, KeyError, TypeError, ValueError):
             fresh = False
         return (project if fresh else {**project, 'articulation': None}), []
     notes = []
     articulation.RUNNING[project_id] = True
     try:
-        record = articulation.analyse(project_id, product, size_mm, cancelled, say)
+        record = articulation.analyse(project_id, product, size_mm, cancelled, say, hint=_scene_hint(product))
     except components.ComponentCancelled:
         raise ListingCancelled() from None
     except Exception as exc:
         return {**project, 'articulation': None}, ['活动部件识别失败（%s），套图按静止姿态生成。' % str(exc)[:120]]
     finally:
         articulation.RUNNING.pop(project_id, None)
+    hint = _scene_hint(product)
+    if articulation.asks_for_pose(hint) and not any(state.get('matches_scene_hint') for state in articulation.states({'articulation': record})):
+        notes.append('场景说明要求「%s」，但模型里没有识别出能做出这个姿态的活动部件；场景图保持模型原样，不会让 AI 画出打开或拉出的样子。'
+                     % ' '.join(hint.split())[:40])
     if record.get('status') == 'failed':
         notes.append('活动部件的姿态没有通过检查，套图按静止姿态生成%s' % ('：' + '；'.join(str(note) for note in record.get('notes') or [])[:200]
                                                               if record.get('notes') else '。'))

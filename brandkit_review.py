@@ -72,7 +72,8 @@ ART_DIRECTOR = (
     'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
     'stated_sizes_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
     'A close-up or cropped frame (T02, the T03 rail, circle insets) shows part of the product on purpose: missing body colours or '
-    'parts outside the crop are not scene_product_mismatch. '
+    'parts outside the crop are not scene_product_mismatch. Things kept in an open drawer, box or cabinet (tools, sockets, parts) '
+    'are props of the scene, not a change to the product. '
     'Never praise; be specific. Write evidence and summary in Simplified Chinese (the app\'s language), whatever the page\'s language; '
     'quote page text with 「」, never with double quotes.')
 COPYWRITER = (
@@ -286,7 +287,8 @@ def facts_of(product, stated_mm=None):
         # Nothing but a name (and perhaps sizes): any use, benefit or capability on a page would be made up.
         facts['scope'] = ('The user gave no selling points and no description. Write only the product\'s name, what kind of product '
                           'it is and the stated figures; no uses, tasks, benefits, features or capabilities (not "for tight spaces", '
-                          'not "cuts, strips and snips"). Any such claim on a page is claim_not_in_facts.')
+                          'not "cuts, strips and snips"). Any such claim on a page is claim_not_in_facts. Not claims: the product\'s name, '
+                          'its stated sizes, the pose names, and a scene picture\'s title naming the place it shows ("At the workbench").')
     if stated_mm:
         facts['stated_sizes_mm'] = {key: round(value, 1) for key, value in stated_mm.items()}
         facts['stated_sizes_note'] = ('The overall sizes the user stated, in millimetres; the dimensions page prints only these. '
@@ -322,6 +324,10 @@ def write_copy(product, kinds):
     if not text:
         return {}, None
     language = product['language']; limits = COPY_LIMITS[language]; facts = facts_of(product)
+    if facts.get('scope'):
+        # Nothing but a name and sizes to write from: a copywriter only adds uses and benefits the user never gave (tested:
+        # "built to move with you", "rolls right to the job"). The pages take their lines from the product data instead.
+        return {}, '没有填写卖点和产品介绍，标题只用产品名和给定的数字，没有让文案模型发挥。'
     request = {'language': 'Simplified Chinese' if language == 'zh' else 'English', 'limits_in_characters': limits, 'facts': facts,
                'candidates_per_page': CANDIDATES,
                'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind],
