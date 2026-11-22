@@ -1045,9 +1045,14 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
         notes.append('图像模型未配置，没有生成 AI 场景图；海报改用纯色版，需要场景的页面已跳过。')
         return [], None, notes
     key = scene_key(project, product, settings)
+    kept = []
     if previous and previous.get('key') == key:
         rows = [row for row in previous.get('items', []) if Path(row.get('path', '')).is_file()]
-        if len(rows) == len(previous.get('items', [])) and rows:
+        if rows and len(rows) < settings['count']:
+            # Same settings, but the last run stopped short (the image service refused one, the quota ran out): the
+            # pictures it made are kept and only the missing ones are made, rather than paying for the whole set again.
+            kept = rows
+        elif len(rows) == len(previous.get('items', [])) and rows:
             notes = ['场景图沿用上次生成的 %d 张（设置没有变化）。' % len(rows)]
             # Each language keeps its own captions: a set in another language, or captions written the old way, are read again.
             language = product['language']
@@ -1067,10 +1072,16 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     if briefs[0]['proposal'].get('method') != 'generate' and not image_model_ready():
         return [], None, notes
     titles = captions(project, product, briefs)
-    rows = []
+    rows = []; spare = {}
+    for row in kept:
+        spare.setdefault(row.get('role'), []).append(row)
+    if kept:
+        notes.append('场景图沿用上次生成的 %d 张，补生成缺少的 %d 张。' % (len(kept), max(0, len(briefs) - len(kept))))
     for index, (brief, caption) in enumerate(zip(briefs, titles)):
         if cancelled():
             raise InterruptedError()
+        if spare.get(brief['role']):
+            rows.append(spare[brief['role']].pop(0)); continue
         say(index, len(briefs), '生成第 %d / %d 张场景图' % (index + 1, len(briefs)))
         try:
             _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], cancelled,
