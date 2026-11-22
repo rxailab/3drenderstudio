@@ -188,3 +188,31 @@ class VerdictTests(unittest.TestCase):
                 patch.object(articulation, '_store', side_effect=lambda pid, record: stored.setdefault('r', record)):
             record = articulation.analyse('p', force=True)
         self.assertEqual(record['status'], 'ready')
+
+
+class HintTests(unittest.TestCase):
+    def test_a_scene_hint_that_asks_for_a_pose_is_recognised(self):
+        for hint in ('车间/车房的工具柜，拉开前两个抽屉', '打开柜门', 'lid open on the bench', 'drawers pulled out'):
+            self.assertTrue(articulation.asks_for_pose(hint), hint)
+        for hint in ('车间/车房的工具柜', 'on a workbench at dusk', ''):
+            self.assertFalse(articulation.asks_for_pose(hint), hint)
+
+    def test_the_hinted_state_holds_in_every_scene(self):
+        record = {'status': 'ready', 'key': 'k', 'usage': {'en': []},
+                  'joints': [{'name': 'd1', 'type': 'slide', 'axis': [0, 1, 0], 'sign': -1, 'max': 250, 'moving': [{'object': 'A', 'pieces': None}]}],
+                  'states': [{'id': 'closed', 'label_en': 'Closed', 'role': 'rest', 'values': {'d1': 0}, 'matches_scene_hint': False},
+                             {'id': 'top2', 'label_en': 'Top two open', 'role': 'open', 'values': {'d1': 180}, 'matches_scene_hint': True},
+                             {'id': 'all', 'label_en': 'All open', 'role': 'working', 'values': {'d1': 250}, 'matches_scene_hint': False}]}
+        project = {'id': 'p', 'articulation': record}
+        with patch('studio_store.get', return_value=project):
+            for role in ('use', 'place', 'other'):
+                brief = brandkit_set._with_moving_parts(project, {'role': role, 'proposal': {'scene': 'x'}})
+                self.assertEqual(brief['proposal']['articulation']['state'], 'top2', role)
+
+
+class PromptTests(unittest.TestCase):
+    def test_the_image_model_may_not_open_any_part_itself(self):
+        import scene_imagegen
+        text = scene_imagegen.prompt('rolling tool cabinet', 900, 'A garage, drawers pulled out.', people=False)
+        self.assertIn('never open, pull out, close, fold or move any of them', text)
+        self.assertIn('open or closed exactly as in the references', scene_imagegen.FIDELITY_PROMPT)

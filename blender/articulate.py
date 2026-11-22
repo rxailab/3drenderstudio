@@ -608,7 +608,14 @@ def _slide_limits(joint, fixed, unit_mm):
             guide.append(pts @ a)
     if not guide:
         return 0.0, float('inf')
-    g_hi = max(float(t.max()) for t in guide)
+    g_hi = max(float(t.max()) for t in guide); g_lo = min(float(t.min()) for t in guide)
+    # The parts that run inside the guide (a drawer's body, a knife's blade); the ones already outside it at rest (a drawer
+    # front, a handle) say nothing about how far it can travel.
+    rows = [_group_points([row]) for row in _members(joint, 'moving')]
+    def inside(pts):
+        t = pts @ a; length = float(np.ptp(t)) or 1e-9
+        return (min(float(t.max()), g_hi) - max(float(t.min()), g_lo)) / length >= .5
+    runners = [pts for pts in rows if len(pts) and inside(pts)] or [pts for pts in rows if len(pts)]
     if joint.get('stretch'):
         high = float('inf')                       # a tape's hook is meant to leave its case
     elif _rides_on_rail(joint, fixed):
@@ -616,13 +623,12 @@ def _slide_limits(joint, fixed, unit_mm):
         high = max(0.0, g_hi - float(tm.max()) - .1 * float(np.ptp(tm))) * unit_mm      # short of the end cap
     else:
         # each moving part keeps 40 % of its own length in the guide (the blade, not the thumb button riding with it)
-        high = min(max(0.0, g_hi - float((pts @ a).min()) - .4 * float(np.ptp(pts @ a)))
-                   for pts in (_group_points([row]) for row in _members(joint, 'moving')) if len(pts)) * unit_mm
+        high = min(max(0.0, g_hi - float((pts @ a).min()) - .4 * float(np.ptp(pts @ a))) for pts in runners) * unit_mm
     if joint.get('stretch'):
         blade = _group_points(_members(joint, 'stretch'))
         out = float((blade @ a).max()) - g_hi if len(blade) else 0.0
     else:
-        out = float(tm.max()) - g_hi
+        out = max(float((pts @ a).max()) for pts in runners) - g_hi
     low = -max(0.0, out) * unit_mm
     return low, high
 

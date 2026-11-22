@@ -902,7 +902,9 @@ def _with_moving_parts(project, brief):
     states = articulation.states(project)
     proposal = dict(brief['proposal'])
     wanted = ('rest',) if brief['role'] == 'place' else ('working', 'open')
-    chosen = next((row for role in wanted for row in states if row.get('role') == role), None)
+    # The pose the user asked for in the scene hint ("拉开前两个抽屉"), rendered from the model, holds in every scene.
+    chosen = next((row for row in states if row.get('matches_scene_hint')), None) or \
+        next((row for role in wanted for row in states if row.get('role') == role), None)
     plan = articulation.plan_for(project, chosen['id']) if chosen else None
     if plan:
         proposal['articulation'] = {**plan, 'label': chosen.get('label_en') or chosen['id']}

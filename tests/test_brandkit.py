@@ -341,6 +341,10 @@ class ReviseTests(unittest.TestCase):
         self.assertIn('no uses, tasks, benefits', brandkit_review.facts_of(bare)['scope'])
         told = {**bare, 'features': [{'title': 'Induction-hardened edges', 'detail': ''}]}
         self.assertNotIn('scope', brandkit_review.facts_of(told))
+        with patch.object(brandkit_review, '_configs', return_value=({'model': 'text'}, None)), patch.object(brandkit_review, '_ask') as asked:
+            copy, note = brandkit_review.write_copy({**bare, 'language': 'en'}, ['T12', 'T04'])
+        self.assertEqual((copy, asked.call_count), ({}, 0))                  # no copywriter: the pages use the product data
+        self.assertIn('没有让文案模型发挥', note)
 
     def test_a_set_cut_short_last_time_makes_only_the_missing_scene(self):
         import scene_stylist

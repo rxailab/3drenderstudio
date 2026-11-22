@@ -322,6 +322,10 @@ def write_copy(product, kinds):
     if not text:
         return {}, None
     language = product['language']; limits = COPY_LIMITS[language]; facts = facts_of(product)
+    if facts.get('scope'):
+        # Nothing but a name and sizes to write from: a copywriter only adds uses and benefits the user never gave (tested:
+        # "built to move with you", "rolls right to the job"). The pages take their lines from the product data instead.
+        return {}, '没有填写卖点和产品介绍，标题只用产品名和给定的数字，没有让文案模型发挥。'
     request = {'language': 'Simplified Chinese' if language == 'zh' else 'English', 'limits_in_characters': limits, 'facts': facts,
                'candidates_per_page': CANDIDATES,
                'pages': [{'template': kind, 'goal': briefs().get(kind, {}).get('goal', ''), 'what_it_shows': _SHOWS[kind],

@@ -72,7 +72,7 @@ SIZES_1K = {'1:1': (1024, 1024), '4:3': (1536, 1024), '3:4': (1024, 1536)}
 FIDELITY_PROMPT = '''You check a generated photograph against renders of the real product. The REFERENCE images are renders of the product's 3D model from several sides: they are the truth about its shape, parts, colours and materials. GENERATED is a photograph made by an image model; it should show this same product in a scene.
 Compare the product in GENERATED with the references. Return data only:
 - product_present: the product is in the picture exactly once and recognisable; a second copy, a doubled outline or a ghost of it counts as false.
-- shape_consistent: its overall shape and proportions match, allowing for perspective and for a drawer, door or lid shown open.
+- shape_consistent: its overall shape and proportions match, allowing for perspective; every drawer, door, lid, jaw and blade is open or closed exactly as in the references (one shown open that is shut in the references counts as false).
 - parts_consistent: every distinct part visible from this side is there, in the same number and place (handles, drawers, doors, wheels, buttons, locks, feet); nothing was invented or dropped.
 - colours_consistent: the colours and finishes of the body and of each part match, allowing for the light of the scene.
 - no_added_text: nothing is written or printed on the product that the references do not show, and the scene has no logo, sign or caption.
@@ -296,8 +296,9 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'Complete this photograph for an online shop. Image 1 is the unfinished photograph.',
         'THE PRODUCT is a %s.%s It is already in image 1, in its final place, on a plain grey ground. It is finished and fixed: '
         'keep it exactly as it is, in the same position, at the same size and angle, with the same shape, parts, colours and materials. '
-        'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Only the light falling on it may '
-        'change, to match the scene.' % (product, size),
+        'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Its moving parts (drawers, doors, '
+        'lids, jaws, blades, sliders) stay exactly as image 1 shows them: never open, pull out, close, fold or move any of them, '
+        'whatever the scene says. Only the light falling on it may change, to match the scene.' % (product, size),
         'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it stands: what it rests on '
         'or is held by, the shadow it casts, the place around it. The perspective, scale and light of the scene must agree with the '
         'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
