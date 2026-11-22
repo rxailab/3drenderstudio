@@ -493,6 +493,9 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
     if not isinstance(encoded, str):
         raise ImageError('图像服务返回了无效响应，请检查图像接口配置。')
     content, actual = _decode(encoded)
+    # what the picture cost goes into the same log as the text and vision requests (data/ai_usage.jsonl)
+    import ai_client
+    ai_client.log_usage({'model': str(value['model'])[:120], 'caller': 'scene_imagegen.edit', 'usage': usage or {}, 'n_images': len(files)})
     return {'png': content, 'size': list(actual), 'usage': usage}
 
 
