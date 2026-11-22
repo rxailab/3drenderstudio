@@ -147,7 +147,8 @@ def validate_usecase(value, current=None):
 
 def default_product(project):
     use = usecase_for(project.get('name', '') + ' ' + str((project.get('metadata') or {}).get('product_category', '')))
-    return {'title': str(project.get('name', ''))[:60], 'model': '', 'headline': '', 'subline': '', 'language': 'en', 'size_mm': None,
+    # The project is named after the uploaded file ("06_diagonal_cutting_pliers"): the record starts from a readable name.
+    return {'title': brandkit_set.humanised(project.get('name', ''))[:60], 'model': '', 'headline': '', 'subline': '', 'language': 'en', 'size_mm': None,
             'features': [], 'specs': [], 'figures': [], 'pages': None, 'drafted': None, 'aspect': '1:1', 'scenes': brandkit_set.default_scenes(),
             # Shown by default only where the placement can be worked out from the model: a tool that closes round its work.
             'usecase': validate_usecase({'enabled': bool(use) and use['mode'] == 'through', **(use or {})})}
@@ -292,6 +293,7 @@ def ready_components(project):
 
 def planned(project, product, parts):
     """The images this listing gets: [{'kind', 'index', 'reason' or None when skipped}] in order. Kinds are brand-kit templates."""
+    product, _ = brandkit_set.printable(product)         # a selling point titled with a mesh name is never printed, so plans nothing
     has, why = brandkit_set.requirements(product, parts, product_size(project, product)[1],
                                          brandkit_set.scene_supply(product, 1 if _photo(project) else 0), len(articulation.states(project)))
     # Left to itself the set has every page there is something for; the ones it cannot make yet are listed with the reason.
@@ -364,6 +366,54 @@ def whole(text, limit):
     return text[:limit]
 
 
+STOP_WORDS = {'the', 'and', 'for', 'with', 'from', 'that', 'this', 'your', 'you', 'are', 'its', 'into', 'onto', 'per', 'all', 'one', 'two'}
+
+
+def said_in(title, text):
+    """Whether a selling point's title is in the user's own words: at least half its words (en, by their first five
+    letters) or characters (zh) appear in ``text``."""
+    told = unicodedata.normalize('NFKC', str(text or '')).lower()
+    words = [word for word in re.findall(r'[a-z]{3,}', unicodedata.normalize('NFKC', str(title or '')).lower()) if word not in STOP_WORDS]
+    han = re.findall(r'[一-鿿]', str(title or ''))
+    total = len(words) + len(han)
+    return bool(total) and (sum(1 for word in words if word[:5] in told) + sum(1 for char in han if char in told)) / total >= .5
+
+
+def _own_lines(hint):
+    """The user's own lines as selling points ("title: detail" splits at the colon), for a page language they are not
+    written in: the build translates them (``brandkit_set.localise``)."""
+    rows = []
+    for line in re.split(r'[\n;；]+', hint):
+        line = line.strip(' \t-·•*、,，。.')
+        title, _, detail = line.replace('：', ':').partition(':')
+        if title.strip() and not re.search(r'\d', line):          # a "label: number" line is a specification, not a selling point
+            rows.append({'title': whole(title.strip(), 40), 'detail': whole(detail.strip(), 90), 'parts': [], 'icon': ''})
+    return rows[:MAX_FEATURES]
+
+
+def drafted_features(features, hint, language, product):
+    """(features, notes): the drafted selling points the user actually gave. Pliers uploaded with no description were
+    printed with "Angled cutting edges" and "Cylinder grip": the drafter made points up from the product name and the
+    mesh names. Now a point is kept only when its title is in the user's own words (``said_in`` the hint) and is not a
+    mesh name (``brandkit_set.mesh_named``); with nothing written there are no points, and a note asks for them. A hint
+    in another language than the pages cannot be matched word for word: the user's own lines are taken as they are."""
+    if not hint:
+        return [], ['没有写卖点，所以没有起草卖点（不会根据模型或部件名称编造）：请在上方写下卖点，或粘贴产品介绍后点「提取到各栏」。']
+    other = (language == 'en') == (_language_of(hint) == 'zh')
+    kept = _own_lines(hint) if other else [row for row in features if said_in(row['title'], hint)]
+    notes = []
+    if not other and len(features) > len(kept):
+        notes.append('AI 起草的 %d 条卖点不是你写的内容，已去掉；卖点只采用你写下的要点。' % (len(features) - len(kept)))
+    clean = []
+    for row in kept:
+        why = brandkit_set.mesh_named(row['title'], product)
+        if why:
+            notes.append('卖点「%s」%s，已去掉。' % (row['title'], why))
+        else:
+            clean.append(row)
+    return clean[:MAX_FEATURES], notes
+
+
 def draft(project_id, body):
     """Write the product record's words from the model's names and the user's notes (by the copy model when one is configured)."""
     import info_layer
@@ -380,13 +430,16 @@ def draft(project_id, body):
     if language not in LANGUAGES:
         raise ValueError('文字语言只能是 en（英文）或 zh（中文）')
     names = part_names(project)
-    content, source, notes, _ = info_layer.content_for(project, hint.strip(), None, names, language)
+    hint = hint.strip()
+    content, source, notes, _ = info_layer.content_for(project, hint, None, names, language)
     features = [{'title': whole(point['title'], 40), 'detail': whole(point.get('detail', ''), 90), 'parts': point.get('parts', []), 'icon': point.get('icon', '')}
                 for point in content['points']][:MAX_FEATURES]
+    features, feature_notes = drafted_features(features, hint, language, {**product, 'source': hint})
+    notes = feature_notes + list(notes)
     listed = {row['label'].lower() for row in content['figures']}
     specs = [{'label': spec['label'], 'value': (spec['value'] + (' ' + spec['unit'] if spec.get('unit') else '')).strip()} for spec in content['specs']][:MAX_SPECS]
     figures = [{'value': row['value'], 'unit': row.get('unit', ''), 'label': row['label']} for row in content['figures']][:MAX_FIGURES]
-    update = {'language': language, 'headline': whole(content['headline'], 60), 'subline': whole(content['subline'], 120)}
+    update = {'language': language, 'headline': whole(brandkit_set.humanised(content['headline']), 60), 'subline': whole(content['subline'], 120)}
     # Words the user already wrote are kept; a draft only fills what is empty unless asked to replace.
     replace = body.get('replace') is True
     if replace or not product['features']:
@@ -507,7 +560,8 @@ def extract(project_id, body):
     features = [{'title': whole(item.get('title'), 40), 'detail': whole(item.get('detail'), 90),
                  'parts': list(dict.fromkeys(name for name in item.get('parts') or [] if name in names))[:40]}
                 for item in answer.get('features') or [] if isinstance(item, dict)]
-    features = [item for item in features if item['title'] and keep('卖点「%s」' % item['title'], item['title'], item['detail'])][:MAX_FEATURES]
+    features = [item for item in features if item['title'] and keep('卖点「%s」' % item['title'], item['title'], item['detail'])
+                and not brandkit_set.mesh_named(item['title'], {'_model_parts': names, 'source': text})][:MAX_FEATURES]
     specs = [{'label': whole(item.get('label'), 30), 'value': whole(item.get('value'), 30)} for item in answer.get('specs') or [] if isinstance(item, dict)]
     specs = [item for item in specs if item['label'] and item['value'] and keep('规格「%s」' % item['label'], item['label'], item['value'])][:MAX_SPECS]
     figures = [{'value': whole(item.get('value'), 12), 'unit': whole(item.get('unit'), 8), 'label': whole(item.get('label'), 30)}
@@ -885,9 +939,16 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         raise ValueError('没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。请安装 Chrome，或在 .env 中设置 BRANDKIT_CHROME。')
     project = get('project', project_id)
     product, brand_record, listing = stored(project)
+    # The pages print the seller's words only: a selling point titled with a mesh name is left out, and the product's name
+    # is never the upload's file stem.
+    product, notes = brandkit_set.printable(product)
+    product = {**product, 'title': brandkit_set.humanised(product['title'])}
+    if not product['features']:
+        notes.append('没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请在「产品信息」里写下卖点，或粘贴产品介绍后点「提取到各栏」。')
     parts = ready_components(project); size_mm, known = product_size(project, product)
     # Which parts of the model move and the states worth showing (pliers closed / open): asked once per model file.
-    project, notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))
+    project, moving_notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))
+    notes += moving_notes
     rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
     if not rows:
         raise ValueError('没有可以生成的图片。')
@@ -917,6 +978,12 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             # Selling points the model's part names do not place are found on the main picture; the pages are planned again.
             features, found = brandkit_set.locate(result['path'], picture, product, located)
             refused = any(re.search(r'HTTP 40[123]', note) for note in found)
+            if not refused:
+                # Every spot a callout line would go to is checked by the vision model in one call before it is drawn.
+                checked, verdict = brandkit_set.check_points(result['path'], picture, {**product, 'features': features}, product['features'],
+                                                             located, DATA / project_id / 'listing' / 'points')
+                features = checked; found = found + verdict
+                refused = any(re.search(r'HTTP 40[123]', note) for note in verdict)
             if features != product['features']:
                 product = {**product, 'features': features}; notes += found
                 rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
@@ -963,6 +1030,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
                 anchors.append((index, point))
         for index in brandkit_set.anchored(product):
+            if product['features'][index].get('no_leader'):    # its spot failed the check: shown without a line
+                continue
             if product['features'][index].get('point'):     # found on the picture: the spot itself, not the middle of its mesh
                 point = brandkit_set.remap(product['features'][index]['point'], crop)
                 if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
@@ -1066,9 +1135,11 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         has['T06'] = has['T06'] and bool(ctx['stated'])
         if known and not ctx['stated']:
             why['T06'] = '填写的尺寸都没有通过和模型比例的核对'
-        has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
-        why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写',
-                   T13='活动部件的姿态图没有渲染出 2 张以上')
+        for kind, ready, reason in (('T01', len(anchors) >= 2, '选中的部件在主图里看不到，或引线位置没有通过核对（至少需要 2 处）'),
+                                    ('T03', len(details) >= 2, '没有渲染出 2 张以上的部件特写'), ('T02', bool(macros), '没有渲染出部件特写')):
+            if has[kind] and not ready:          # a page that had what it needs until now: say what went missing
+                has[kind] = False; why[kind] = reason
+        why['T13'] = '活动部件的姿态图没有渲染出 2 张以上'
         work = folder / '_layout'
         made = [row for row in rows if has.get(row['kind'])]
         for row in rows:
