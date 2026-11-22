@@ -714,6 +714,13 @@ def _flat(dims):
     return bool(dims) and float(dims[2]) < .4 * min(float(dims[0]), float(dims[1]))
 
 
+def _seen_from_above(dims):
+    """Whether the dimensions page draws the product from above: a tool lying on its broad face (pliers 200 x 68 x 30 mm,
+    a caliper), whose outline is only seen from there; face on it would be a thin edge nobody recognises. Its thickness
+    is then shown on the same tool seen from the front. Looser than ``_flat``, which only sets the main picture's angle."""
+    return bool(dims) and float(dims[2]) < .6 * min(float(dims[0]), float(dims[1]))
+
+
 def _flat_lay(project):
     """(whether the listing shows the product lying flat, the rotation it is shown in, its dimensions in that pose)."""
     import orientation
@@ -734,11 +741,18 @@ def picture_requests(project, product, size_mm, rows, parts=()):
         elevation = FLAT_HERO_ELEVATION
     requests = {'hero': components.cutout_request(model, plan, size_mm, azimuth, elevation, 1800)}
     if 'T06' in kinds:
-        # A tool lying flat (pliers, a caliper) is measured from above, where its outline is; anything else from the side.
-        side_elevation = 89 if flat else 0
+        # A tool lying on its broad face (pliers, a caliper) is measured from above, where its outline is; anything else face on.
+        above = _seen_from_above(dims)
+        side_elevation = 89 if above else 0
         requests['side'] = {'action': 'render', 'model_path': str(model), 'plan': plan, 'size_mm': float(size_mm),
                             'camera': {'azimuth': 0 if dims[0] >= dims[1] else 90, 'elevation': side_elevation, 'projection': 'orthographic', 'margin': .06},
                             'ground': 'none', 'size': [1500, 1500], 'samples': 48}
+        # A size the user stated that this view hides (a toolbox's depth, the thickness of pliers lying flat) is shown on the
+        # product itself turned a quarter: from the end, or from the front for a flat tool. Never on a drawn box.
+        stated, _ = brandkit_set.stated_dimensions(product, _oriented_mm(project, plan['rotation'], size_mm), above, project['plan'].get('dimensions_mm'))
+        if any(row['view'] == 'end' for row in stated):
+            side = requests['side']['camera']
+            requests['end'] = {**copy.deepcopy(requests['side']), 'camera': {**side, 'azimuth': side['azimuth'] if above else side['azimuth'] + 90, 'elevation': 0}}
     # Selling points found on the main picture are shown close up by cropping round the spot in the same view at twice the size.
     if kinds & {'T03', 'T02'} and any(product['features'][index].get('point') for index, _ in _focus_features(product, 6)):
         # the hero's own camera at twice the size, so a point found on the hero is the same spot here
@@ -1014,6 +1028,8 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 macros.append((index, name))
         if 'side' in shots:
             assets['side'], _ = brandkit_set.flatten(shots['side']['path'], assets_folder / 'side.png', pad=0)
+        if 'end' in shots:
+            assets['end'], _ = brandkit_set.flatten(shots['end']['path'], assets_folder / 'end.png', pad=0)
         for index, part in enumerate(parts):
             assets['part%d' % index], _ = brandkit_set.flatten(part['path'], assets_folder / ('part%d.png' % index), pad=.04)
         # The poses, cut with one window so they stay at one scale, named in the page's language.
@@ -1039,10 +1055,17 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         ctx = {'product': product, 'language': product['language'], 'aspect': product['aspect'], 'brand': brand, 'assets': assets,
                'anchors': anchors, 'alternatives': alternatives, 'details': details, 'macros': macros, 'focus': focus, 'kinds': kinds, 'scenes': scenes, 'parts': parts, 'unit': brand.unit, 'poses': poses,
                'dims_mm': _oriented_mm(project, display_rotation(project)[0], size_mm) if known else None}
-        ctx['flat'] = bool(ctx['dims_mm']) and _flat(ctx['dims_mm'])
+        ctx['flat'] = bool(ctx['dims_mm']) and _seen_from_above(ctx['dims_mm'])       # how the dimensions page draws it
+        # Only the sizes the user stated are printed; the model's own measurements just place them (brandkit_set.stated_dimensions).
+        ctx['stated'], stated_notes = brandkit_set.stated_dimensions(product, ctx['dims_mm'], ctx['flat'], project['plan'].get('dimensions_mm'), brand.unit)
+        if 'T06' in kinds:
+            notes += stated_notes
         ctx['light_product'] = _light_share(shots['hero']['path']) > .35
-        ctx['facts'] = brandkit_review.facts_of(product, dict(zip(('width', 'depth', 'height'), ctx['dims_mm'])) if ctx['dims_mm'] else None)
+        ctx['facts'] = brandkit_review.facts_of(product, {row['key']: row['mm'] for row in ctx['stated']} or None)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes), len(poses))
+        has['T06'] = has['T06'] and bool(ctx['stated'])
+        if known and not ctx['stated']:
+            why['T06'] = '填写的尺寸都没有通过和模型比例的核对'
         has['T01'] = has['T01'] and len(anchors) >= 2; has['T03'] = has['T03'] and len(details) >= 2; has['T02'] = has['T02'] and bool(macros)
         why.update(T01='选中的部件在主图里看不到（至少需要 2 处）', T03='没有渲染出 2 张以上的部件特写', T02='没有渲染出部件特写',
                    T13='活动部件的姿态图没有渲染出 2 张以上')

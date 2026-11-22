@@ -70,7 +70,7 @@ ART_DIRECTOR = (
     'REFERENCE_IMAGE: labels or patches on the product, colours, handles, hardware; a missing patch or a changed colour in a scene is '
     'scene_product_mismatch. Check every line of text against the facts: a use, benefit or quality the facts do not state is '
     'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
-    'measured_on_3d_model_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
+    'stated_sizes_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
     'A close-up or cropped frame (T02, the T03 rail, circle insets) shows part of the product on purpose: missing body colours or '
     'parts outside the crop are not scene_product_mismatch. '
     'Never praise; be specific. Write evidence and summary in Simplified Chinese (the app\'s language), whatever the page\'s language; '
@@ -271,17 +271,20 @@ def _ask(config, system, facts, schema, image_path=None, reference_path=None, cl
             return output
 
 
-def facts_of(product, measured_mm=None):
-    """What the product record says, and what was measured on the 3D model: the only sources of words and numbers on the pages."""
+def facts_of(product, stated_mm=None):
+    """What the product record says: the only source of words and numbers on the pages. ``stated_mm`` holds the overall
+    sizes the user stated, in millimetres, as the dimensions page prints them (brandkit_set.stated_dimensions); sizes
+    measured on the 3D model are never facts, since a page that printed them would invent data the user never gave."""
     facts = {'title': product['title'], 'model': product.get('model', ''), 'headline': product['headline'], 'subline': product['subline'],
              'selling_points': [{'title': row['title'], 'detail': row.get('detail', '')} for row in product['features']],
              'specs': product['specs'], 'figures': product['figures'], 'longest_side_mm': product.get('size_mm')}
     if product.get('_poses'):          # the states the pose agent found on the 3D model (articulation.py), as the pages name them
         facts['poses'] = {'states': list(product['_poses']), 'note': 'The states the product is shown in, worked out from its 3D model; '
                                                                       'they say how it moves, not how far.'}
-    if measured_mm:
-        facts['measured_on_3d_model_mm'] = {key: round(value, 1) for key, value in measured_mm.items()}
-        facts['measurement_note'] = 'Sizes on the dimensions page are measured on the 3D model, scaled to the longest side the user gave; they are facts.'
+    if stated_mm:
+        facts['stated_sizes_mm'] = {key: round(value, 1) for key, value in stated_mm.items()}
+        facts['stated_sizes_note'] = ('The overall sizes the user stated, in millimetres; the dimensions page prints only these. '
+                                      'Any other overall size on a page is not supported.')
     return facts
 
 

@@ -58,7 +58,7 @@ TEXT = {
     'zh': {'T01_eyebrow': '部件一览', 'T01_headline': '每个关键部件，\n一眼看清', 'T03_eyebrow': '细节', 'T02_eyebrow': '细节特写',
            'T02_headline': '近看细节', 'T04_headline': '核心参数', 'T04_eyebrow': '参数', 'T08_eyebrow': '使用场景', 'T08_headline': '用在需要它的地方',
            'T06_eyebrow': '尺寸', 'T06_headline': '外形尺寸', 'T05_headline': '包装清单', 'T05_note': '图示物品未按实际比例',
-           'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度', 'thickness': '厚度',
+           'qty_pending': '数量待确认', 'qty_prefix': '数量 ', 'main': '主件', 'height': '高度', 'width': '宽度', 'length': '长度', 'depth': '深度', 'thickness': '厚度', 'diameter': '直径',
            'table_note': '尺寸为近似值，以实物为准。', 'depth_note': '深度 %s。',
            'T13_eyebrow': '活动部件', 'T13_headline': '一件工具，多种状态', 'T13_from_to': '从%s\n[[到%s]]',
            'scene_titles': ('上手使用', '随时待命', '换个场景')},
@@ -66,7 +66,7 @@ TEXT = {
            'T02_headline': 'The details, up close', 'T04_headline': 'Key figures', 'T04_eyebrow': 'Specs', 'T08_eyebrow': 'In use',
            'T08_headline': 'Made for the job', 'T06_eyebrow': 'Dimensions', 'T06_headline': 'Overall size', 'T05_headline': "What's in the box",
            'T05_note': 'Items not shown to scale', 'qty_pending': 'Qty to be confirmed', 'qty_prefix': 'Qty ', 'main': 'Main unit',
-           'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth', 'thickness': 'Thickness',
+           'height': 'Height', 'width': 'Width', 'length': 'Length', 'depth': 'Depth', 'thickness': 'Thickness', 'diameter': 'Diameter',
            'table_note': 'Sizes are approximate; actual product may vary slightly.', 'depth_note': 'Depth %s.',
            'T13_eyebrow': 'Moving parts', 'T13_headline': 'One tool, every position', 'T13_from_to': '%s\n[[to %s]]',
            'scene_titles': ('In use', 'Ready to go', 'On the job')},
@@ -980,7 +980,7 @@ def _icon_for(label, unit=''):
 
 
 def _chip_rows(ctx, limit=3):
-    """The product's figures as chips (icon, value, unit, label): its stated figures and number specs, then measured sizes."""
+    """The product's figures as chips (icon, value, unit, label): its stated figures and number specs, then the sizes the user stated."""
     t = TEXT[ctx['language']]; product = ctx['product']; rows = []
     for row in product['figures']:
         number, _ = _number_unit(row['value'])
@@ -995,24 +995,16 @@ def _chip_rows(ctx, limit=3):
         scale = {'mm': 1, 'cm': 10, 'm': 1000, 'in': 25.4, '"': 25.4, '毫米': 1, '厘米': 10}.get(str(unit or '').strip().lower())
         return float(str(number).replace(',', '')) * scale if number is not None and scale else None
     shown = [as_mm(row['value'], row.get('unit')) for row in rows]
-    # Measured sizes are written in the unit the stated figures use, so one row never mixes mm and cm.
-    stated = next((str(row.get('unit', '')).strip().lower() for row in rows if str(row.get('unit', '')).strip().lower() in ('mm', 'cm', 'in')), None)
-    def measure(mm):
-        if stated == 'mm':
-            return round(mm), 'mm'
-        if stated == 'cm':
-            return round(mm / 10, 1), 'cm'
-        return _measure(mm, 'in' if stated == 'in' else ctx['unit'])
-    for key, mm in dimensions_mm(ctx):
+    # Then the overall sizes the user stated (never one measured on the model), unless a figure already gives it (476 mm = 47.6 cm).
+    stated = ctx['stated'] if 'stated' in ctx else stated_dimensions(product, ctx.get('dims_mm'), ctx.get('flat'), unit=ctx['unit'])[0]
+    for row in stated:
         if len(rows) >= limit:
             break
-        # A size the stated figures already give (476 mm = 47.6 cm) is not shown twice.
-        if any(value and abs(value - mm) <= max(2.0, mm * .02) for value in shown) or any(row['label'] == t[key] for row in rows):
+        if any(value and abs(value - row['mm']) <= max(2.0, row['mm'] * .02) for value in shown) or any(item['label'] == t[row['key']] for item in rows):
             continue
-        value, unit = measure(mm)
         icon = {'height': 'arrow-autofit-height', 'width': 'arrow-autofit-width', 'length': 'arrow-autofit-width', 'depth': 'arrows-diagonal',
-                'thickness': 'arrows-diagonal'}.get(key, 'ruler-measure')
-        rows.append({'label': t[key], 'value': value, 'unit': unit, 'icon': icon})
+                'thickness': 'arrows-diagonal'}.get(row['key'], 'ruler-measure')
+        rows.append({'label': t[row['key']], 'value': '%g' % row['value'], 'unit': row['unit'], 'icon': icon})
     return [{key: value for key, value in row.items() if value is not None} for row in rows[:limit]]
 
 
@@ -1070,6 +1062,191 @@ def _measure(mm, unit):
     if unit == 'in':
         return round(mm / 25.4, 1), 'in'
     return (round(mm / 10, 1), 'cm') if mm >= 100 else (round(mm, 1), 'mm')
+
+
+
+# ---- the sizes the user stated, and where each is drawn ----
+# A dimensions page prints only sizes the user gave: the longest side (size_mm), the three real dimensions of the plan, or a
+# spec or figure whose label is an overall length, width, height, depth, thickness or diameter. What the 3D model measures
+# only places each one on the right axis and checks it is plausible; it is never printed (a screwdriver given as 21 cm long
+# once came out with "16.7 mm" twice, the second time as the depth of a made-up box).
+
+DIM_WORDS = (('diameter', ('diameter', 'dia', '直径', '外径')), ('thickness', ('thickness', 'thick', '厚度', '厚')),
+             ('depth', ('depth', 'deep', '深度', '深')), ('height', ('height', 'high', 'tall', '高度', '高')),
+             ('width', ('width', 'wide', '宽度', '宽')), ('length', ('length', 'long', '长度', '全长', '总长', '长')))
+# Words that leave a label about the whole product ("Overall length", "外形尺寸"); anything else left over names a part
+# ("Blade length", "手柄直径"), whose size is not the product's.
+DIM_GENERIC = ('overall', 'total', 'product', 'outer', 'outside', 'external', 'exterior', 'size', 'sizes', 'dimension', 'dimensions',
+               'approx', 'approximately', 'max', 'maximum', 'tool', 'item', 'assembled', 'body', 'net', 'of', 'the', 'and', 'mm', 'cm', 'in',
+               'inch', 'inches', 'ft', '整体', '整机', '总', '全', '产品', '外形', '外观', '外部', '尺寸', '规格', '约', '最大', '毫米', '厘米',
+               '公分', '英寸', '米', '度')
+DIM_LETTERS = {'l': 'length', 'w': 'width', 'h': 'height', 'd': 'depth', 't': 'thickness'}
+SIZE_UNITS = {**LENGTH_MM, 'm': 1000, 'ft': 304.8, 'feet': 304.8, '″': 25.4, '米': 1000}
+UNIT_SHOWN = {'毫米': 'mm', '厘米': 'cm', '公分': 'cm', 'inches': 'in', 'inch': 'in', '"': 'in', '″': 'in', 'feet': 'ft', '米': 'm'}
+_SIZE_RE = re.compile(r'(\d+(?:\.\d+)?)\s*(mm|cm|inches|inch|in|ft|feet|m|"|″|毫米|厘米|公分|米)?(?![a-z])')
+PROPORTION_LIMIT = 1.6           # a stated size this far from the model's proportion is not printed (a typo, or a part's size)
+
+
+def _word_re(word):
+    return (r'(?<![a-z])%s(?![a-z])' % re.escape(word)) if word.isascii() else re.escape(word)
+
+
+def _label_keys(label):
+    """The dimension words of a label in the order they come ("长×宽×高", "L x W x H"), and whether the label is about the
+    whole product (nothing but dimension and generic words left)."""
+    text = str(label or '').lower()
+    letters = re.search(r'(?<![a-z])([lwhdt])\s*[x×*/]\s*([lwhdt])(?:\s*[x×*/]\s*([lwhdt]))?(?![a-z])', text)
+    if letters:
+        keys = [DIM_LETTERS[letter] for letter in letters.groups() if letter]
+        text = text[:letters.start()] + ' ' + text[letters.end():]
+    else:
+        found = []
+        for key, words in DIM_WORDS:
+            spots = [match.start() for word in words for match in re.finditer(_word_re(word), text)]
+            if spots:
+                found.append((min(spots), key))
+        keys = [key for _, key in sorted(found)]
+    rest = text
+    for word in sorted([word for _, words in DIM_WORDS for word in words] + list(DIM_GENERIC), key=len, reverse=True):
+        rest = re.sub(_word_re(word), ' ', rest)
+    rest = re.sub(r'[\d\s.,:;：、，。()（）\[\]x×*/\-–~_|"″\'’]+', ' ', rest).strip()
+    return keys, not rest
+
+
+def _sizes_in(text, default_unit=''):
+    """([(number, unit, mm)] written before any bracket or slash, the same for the rest: the other system's figures in
+    "200 mm (8 in)"). A number without a unit takes the next unit after it ("40 x 22 x 20 cm"), else ``default_unit``;
+    None when a number has no length unit at all."""
+    text = re.sub(r'(?<=\d),(?=\d{3}(?!\d))', '', str(text or '').lower())
+    parts = re.split(r'[(（/≈=]', text, maxsplit=1)
+
+    def read(part):
+        found = [[number, unit] for number, unit in _SIZE_RE.findall(part)]
+        carry = None
+        for row in reversed(found):
+            carry = row[1] or carry
+            row[1] = row[1] or carry
+        out = []
+        for number, unit in found:
+            unit = unit or str(default_unit or '').strip().lower()
+            if unit not in SIZE_UNITS:
+                return None
+            out.append((float(number), UNIT_SHOWN.get(unit, unit), float(number) * SIZE_UNITS[unit]))
+        return out
+    return read(parts[0]), (read(parts[1]) if len(parts) > 1 else None)
+
+
+def view_axes(dims, flat):
+    """((across, up): the two axes the main dimension view shows, the axis only the product turned shows). Axes index the
+    product's [width, depth, height] as the listing poses it; a tool lying flat is shown from above, anything else face on."""
+    across = 0 if dims[0] >= dims[1] else 1
+    other = 1 - across
+    return ((across, other), 2) if flat else ((across, 2), other)
+
+
+def stated_dimensions(product, dims_mm, flat, plan_mm=None, unit='mm'):
+    """(rows, notes): every overall size the user stated, each on the model axis it measures and with the view that shows it.
+    A row: {'key', 'axis', 'view' ('main' | 'end'), 'value', 'unit', 'mm', optional 'alt'}; value and unit as the user wrote
+    them (or the stated millimetres in the brand's unit). ``dims_mm`` (the model's [width, depth, height] in mm, scaled to the
+    stated size) only maps a label to an axis and flags a figure far from the model's proportion: it is never shown.
+    ``notes`` (Chinese) say what was left out and why."""
+    notes = []
+    if not dims_mm or len(dims_mm) != 3:
+        return [], notes
+    dims = [float(value) for value in dims_mm]
+    (across, up), hidden = view_axes(dims, flat)
+    longest = max(range(3), key=lambda index: dims[index])
+    taken = {}
+
+    def place(axis, row):
+        if axis in taken:
+            same = taken[axis]
+            if abs(same['mm'] - row['mm']) <= max(1.0, row['mm'] * .03):
+                if row.get('written') and not same.get('written'):
+                    taken[axis] = {**row, 'key': same['key']}         # the figure as written wins over converted millimetres
+            else:
+                notes.append('尺寸「%s」和「%s」对应同一条边，只标注了「%s」。' % (row['quote'], same['quote'], same['quote']))
+            return
+        taken[axis] = row
+
+    # The plan's three real dimensions: the largest on the longest axis, and so on; named as the view shows them.
+    plan = [float(value) for value in plan_mm] if isinstance(plan_mm, (list, tuple)) and len(plan_mm) == 3 else None
+    if plan and all(value > 0 for value in plan):
+        names = dict(zip((across, up, hidden), ('length', 'width', 'thickness') if flat else ('width', 'height', 'depth')))
+        for axis, mm in zip(sorted(range(3), key=lambda index: -dims[index]), sorted(plan, reverse=True)):
+            value, shown, alt = _stated_measure(mm, unit, product)
+            place(axis, {'key': names[axis], 'mm': mm, 'value': value, 'unit': shown, 'alt': alt, 'quote': '%g mm' % mm})
+    # Labelled specs and figures, as written.
+    labelled = []
+    rows = [(row.get('label'), row.get('value'), '') for row in product.get('specs') or []]
+    rows += [(row.get('label'), row.get('value'), row.get('unit', '')) for row in product.get('figures') or []]
+    title_words = set(re.findall(r'[a-z]+', str(product.get('title') or '').lower()))
+    for label, value, default_unit in rows:
+        keys, whole = _label_keys(label)
+        generic = not keys and any(word in str(label or '').lower() for word in ('size', 'dimension', '尺寸'))
+        if not keys and not generic:
+            continue
+        quote = _clip(('%s %s %s' % (label or '', value or '', default_unit or '')).strip(), 30)
+        sizes, others = _sizes_in(value, default_unit)
+        if not sizes:
+            continue                             # not a length ("High-carbon steel", "Long life: 2 h")
+        if not whole:
+            # "Screwdriver length": the product's own name is not a part
+            rest = re.sub(r'[a-z]+', lambda match: ' ' if match.group(0) in title_words else match.group(0), str(label or '').lower())
+            if not _label_keys(rest)[1]:
+                notes.append('「%s」是部件的尺寸，尺寸图不把它当作整体尺寸标注。' % quote)
+                continue
+        keys = keys or ['length', 'width', 'height'][:len(sizes)]
+        if len(keys) != len(sizes) or len(sizes) > 3:
+            notes.append('「%s」的数值和名称对不上（%d 个名称、%d 个数），尺寸图没有标注。' % (quote, len(keys), len(sizes)))
+            continue
+        for index, (key, (number, shown, mm)) in enumerate(zip(keys, sizes)):
+            other = others[index] if others and len(others) == len(sizes) else None
+            alt = {'value': other[0], 'unit': other[1]} if other and other[1] != shown else None
+            labelled.append({'key': key, 'mm': mm, 'value': number, 'unit': shown, 'alt': alt, 'quote': quote, 'written': True})
+    # The longest side the user gave, unless a labelled length or the plan's dimensions already say it. On a product that
+    # stands taller than it is long (a ladder, a floor lamp) that side is its height, so the vertical line is not called "Length".
+    size = product.get('size_mm')
+    size_key = 'height' if longest == 2 and not flat else 'length'
+    if size and not plan and not any(row['key'] in ('length', size_key) for row in labelled):
+        value, shown, alt = _stated_measure(float(size), unit, product)
+        labelled.insert(0, {'key': size_key, 'mm': float(size), 'value': value, 'unit': shown, 'alt': alt, 'quote': '最长边 %g mm' % float(size)})
+
+    order = ('length', 'height', 'thickness', 'diameter', 'width', 'depth')
+    for row in sorted(labelled, key=lambda row: order.index(row['key'])):
+        free = [axis for axis in range(3) if axis not in taken or abs(taken[axis]['mm'] - row['mm']) <= max(1.0, row['mm'] * .03)]
+        horizontal = [axis for axis in (across, 1 - across) if axis in free]
+        key = row['key']
+        if key == 'length':
+            axis = longest
+        elif key == 'height':
+            axis = 2
+        elif key == 'thickness':
+            axis = min(free, key=lambda index: dims[index]) if free else None
+        elif key == 'diameter':
+            # a round handle or blade: the cross-section the main view already shows, when it is free
+            axis = next((axis for axis in (up, across, hidden) if axis in free and axis != longest), None)
+        elif key == 'width':
+            axis = max(horizontal, key=lambda index: dims[index]) if horizontal else None
+        elif flat:                               # a flat tool's depth is how thick it lies
+            axis = 2
+        else:                                    # depth: the horizontal the width did not take
+            axis = min(horizontal, key=lambda index: dims[index]) if horizontal else None
+        if axis is None or axis not in free:
+            notes.append('尺寸「%s」找不到对应的边（已有别的尺寸），没有标注。' % row['quote'])
+            continue
+        measured = dims[axis]
+        if measured > 0 and not 1 / PROPORTION_LIMIT <= row['mm'] / measured <= PROPORTION_LIMIT:
+            notes.append('尺寸「%s」和模型的比例不符（模型这条边约 %g mm），尺寸图没有标注，请核对。' % (row['quote'], round(measured)))
+            continue
+        place(axis, row)
+
+    out = []
+    for axis, row in taken.items():
+        out.append({'key': row['key'], 'axis': axis, 'view': 'end' if axis == hidden else 'main', 'value': row['value'], 'unit': row['unit'],
+                    'mm': round(row['mm'], 2), **({'alt': row['alt']} if row.get('alt') else {})})
+    out.sort(key=lambda row: (row['view'] != 'main', row['axis'] != across))
+    return out, notes
 
 
 def jobs_for(kind, ctx):
@@ -1315,28 +1492,47 @@ def _jobs_for(kind, ctx):
                                     items=[{**row, 'body': None} for row in use], assets={row['asset']: assets[row['asset']] for row in use}, **layout))
         return out
     if kind == 'T06':
-        side = assets['side']; box = side['content_bbox']
-        rows = dimensions_mm(ctx); unit = ctx['unit']
-        (across_key, across), (up_key, up), (depth_key, depth) = rows
-        dims = []
-        for key, letter, mm, start, end, side_dir, at in ((up_key, t[up_key][:1].upper() if ctx['language'] == 'en' else up_key[:1].upper(), up,
-                                                           [box[0], box[1]], [box[0], box[3]], [-1, 0], box[0] - .07),
-                                                          (across_key, t[across_key][:1].upper() if ctx['language'] == 'en' else across_key[:1].upper(), across,
-                                                           [box[0], box[3]], [box[2], box[3]], [0, 1], box[3] + .07)):
-            # the seller's own figure ("200 mm (8 in)") wins over the measured one converted (20 cm / 7.9 in)
-            value, shown, alt = _stated_measure(mm, unit, product)
-            dims.append({'key': key, 'key_letter': letter, 'name': t[key], 'value': value, 'unit': shown, 'from': start, 'to': end,
-                         'side': side_dir, 'at': at, **({'alt': alt} if alt else {})})
-        depth_value, depth_unit, _ = _stated_measure(depth, unit, product)
-        # Each sentence on its own line, so the depth figure never wraps away from its label.
-        note = t['table_note'] + ('\n' if ctx['language'] == 'zh' else ' ') + ('%s %g\u00a0%s%s' % (t[depth_key], depth_value, depth_unit, '。' if ctx['language'] == 'zh' else '.'))
+        side = assets['side']; box = side['content_bbox']; end_asset = assets.get('end')
+        # Only the sizes the user stated (stated_dimensions), each on the view that shows it: the product face on (or from
+        # above when it lies flat), and the same product turned a quarter for the one size that view hides, at the same scale.
+        rows = ctx['stated'] if 'stated' in ctx else stated_dimensions(product, ctx.get('dims_mm'), ctx.get('flat'), unit=ctx['unit'])[0]
+        if not end_asset:
+            rows = [row for row in rows if row['view'] == 'main']
+        if not rows or not ctx.get('dims_mm'):
+            return []
+        (across, _), _ = view_axes(ctx['dims_mm'], ctx.get('flat'))
+
+        def dimension(row, edge, at):
+            """A dimension line along one edge of a view's content box: 'below', 'left' or 'right' of the product."""
+            b = edge
+            start, end, side_dir, place = {'below': ([b[0], b[3]], [b[2], b[3]], [0, 1], b[3] + .07),
+                                           'left': ([b[0], b[1]], [b[0], b[3]], [-1, 0], b[0] - .07),
+                                           'right': ([b[2], b[1]], [b[2], b[3]], [1, 0], b[2] + .07)}[at]
+            letter = t[row['key']][:1].upper() if ctx['language'] == 'en' else row['key'][:1].upper()
+            return {'key': row['key'], 'key_letter': letter, 'name': t[row['key']], 'value': row['value'], 'unit': row['unit'], 'from': start,
+                    'to': end, 'side': side_dir, 'at': place, **({'alt': row['alt']} if row.get('alt') else {})}
+        main = [row for row in rows if row['view'] == 'main']
+        dims = [dimension(row, box, 'below' if row['axis'] == across else 'left') for row in sorted(main, key=lambda row: row['axis'] == across)]
+        end = None
+        turned = [row for row in rows if row['view'] == 'end']
+        if turned:
+            ebox = end_asset['content_bbox']; flat = bool(ctx.get('flat'))
+            # The two views share an edge: the length across (a flat tool, seen from above and then from the front) or the
+            # height (anything else, face on and then from the end); its pixels set the turned view's scale.
+            if flat:
+                scale = (box[2] - box[0]) * side['width'] / max(1e-6, (ebox[2] - ebox[0]) * end_asset['width'])
+            else:
+                scale = (box[3] - box[1]) * side['height'] / max(1e-6, (ebox[3] - ebox[1]) * end_asset['height'])
+            end = {'asset': 'end', 'scale': round(scale, 5), 'at': 'below' if flat else 'right',
+                   'dimensions': [dimension(row, ebox, 'right' if flat else 'below') for row in turned]}
         # Figures on the product first (the Amazon dimension pages); a table when the page is too narrow for them.
         modes = ('onproduct', 'table')
         extra = [{'label': _clip(row['label'], 18), 'value': row['value']} for row in product['specs']
-                 if not any(word in row['label'].lower() for word in ('高', '宽', '长', '深', 'height', 'width', 'length', 'depth', 'size', '尺寸'))][:3]
+                 if not any(word in row['label'].lower() for word in ('高', '宽', '长', '深', '厚', '直径', 'height', 'width', 'length', 'depth',
+                                                                      'thick', 'diameter', 'size', 'dimension', '尺寸'))][:3]
         return [_job(kind, ctx, mode=mode, hero='side', eyebrow=_clip(title, 24) or t['T06_eyebrow'], headline=t['T06_headline'], dimensions=dims,
-                     depth={'value': depth_value, 'unit': depth_unit, 'name': t[depth_key], 'key': depth_key}, specs=extra or None, disclaimer=t['table_note'].rstrip('。.') ,
-                     table_note=note if mode == 'table' else None, assets={'side': side}) for mode in modes]
+                     end=end, specs=extra or None, disclaimer=t['table_note'].rstrip('。.'), table_note=t['table_note'] if mode == 'table' else None,
+                     assets={'side': side, **({'end': end_asset} if end else {})}) for mode in modes]
     if kind == 'T05':
         import components
         items = [{'asset': 'hero', 'name': _clip(title or t['main'], 20), 'code': _clip(product.get('model'), 20) or None, 'qty': 1}]

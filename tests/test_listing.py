@@ -788,8 +788,9 @@ class BuildTests(StoreCase):
             self.assertEqual(picture.mode, 'RGB'); self.assertEqual(picture.getpixel((0, 0)), (255, 255, 255))          # trimmed and laid on white
         self.assertEqual(self.job('T12')['headline'], '单手操作，\n切口平整')                                                 # broken at the pause, not mid-phrase
         size = self.job('T06')
-        self.assertEqual([(row['key'], row['unit']) for row in size['dimensions']], [('height', 'in'), ('width', 'in')])
-        self.assertEqual(max(row['value'] for row in size['dimensions']), round(225 / 25.4, 1))                   # the real size, in the brand's unit
+        # Only the longest side was given (the cutter stands taller than it is wide, so it is its height): one line, nothing measured on the model, no turned view.
+        self.assertEqual([(row['key'], row['unit'], row['value']) for row in size['dimensions']], [('height', 'in', round(225 / 25.4, 1))])
+        self.assertIsNone(size.get('end')); self.assertNotIn('depth', size)
         self.assertEqual(self.job('T04')['specs'][0], {'label': 'Max pipe', 'value': '22', 'unit': 'mm'})
         box = self.job('T05')
         self.assertEqual([(row['name'], row['qty']) for row in box['items']], [('Ratchet Pipe Cutter', 1), ('Battery', 2)])
