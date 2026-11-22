@@ -788,8 +788,9 @@ class BuildTests(StoreCase):
             self.assertEqual(picture.mode, 'RGB'); self.assertEqual(picture.getpixel((0, 0)), (255, 255, 255))          # trimmed and laid on white
         self.assertEqual(self.job('T12')['headline'], '单手操作，\n切口平整')                                                 # broken at the pause, not mid-phrase
         size = self.job('T06')
-        self.assertEqual([(row['key'], row['unit']) for row in size['dimensions']], [('height', 'in'), ('width', 'in')])
-        self.assertEqual(max(row['value'] for row in size['dimensions']), round(225 / 25.4, 1))                   # the real size, in the brand's unit
+        # Only the longest side was given (the cutter stands taller than it is wide, so it is its height): one line, nothing measured on the model, no turned view.
+        self.assertEqual([(row['key'], row['unit'], row['value']) for row in size['dimensions']], [('height', 'in', round(225 / 25.4, 1))])
+        self.assertIsNone(size.get('end')); self.assertNotIn('depth', size)
         self.assertEqual(self.job('T04')['specs'][0], {'label': 'Max pipe', 'value': '22', 'unit': 'mm'})
         box = self.job('T05')
         self.assertEqual([(row['name'], row['qty']) for row in box['items']], [('Ratchet Pipe Cutter', 1), ('Battery', 2)])
@@ -871,6 +872,39 @@ class BuildTests(StoreCase):
         self.assertEqual((by_kind['T02']['review']['status'], by_kind['T02']['review']['refuted'], reviewed['T02']), ('passed', 1, 1))
         self.assertNotIn('T12', checks)                                                        # a page that passes is not checked again
         self.assertFalse(list((self.data / 'fixture' / 'listing').glob('build-*/*.rev*.png')))
+
+    def test_a_set_without_selling_points_makes_none_up(self):
+        listing.save_product('fixture', {'title': '06_diagonal_cutting_pliers', 'headline': '', 'subline': '', 'features': []})
+        pages, notes = listing.build('fixture')
+        kinds = [page['kind'] for page in pages]
+        self.assertFalse({'T01', 'T02', 'T03'} & set(kinds), kinds)
+        self.assertTrue(any('没有填写卖点' in note for note in notes), notes)
+        self.assertNotIn('_', self.job('T12')['headline']); self.assertIn('Diagonal Cutting', self.job('T12')['headline'].replace('\n', ' '))
+        plan = listing.state('fixture')['plan']
+        self.assertIn('没有填写卖点', next(row['skipped'] for row in plan if row['kind'] == 'T01'))
+
+    def test_a_mesh_named_point_is_left_out_and_a_rejected_line_is_not_drawn(self):
+        import brandkit_review
+        listing.save_product('fixture', {'features': [{'title': 'Hardened cutting wheel', 'parts': [PARTS[0]]}, {'title': 'Cylinder grip', 'parts': [PARTS[1]]},
+                                                      {'title': 'Twin guide rollers', 'parts': [PARTS[1]]}]})
+        project = store.get('project', 'fixture')           # an old drafted record: "Cylinder grip" came from the mesh name
+        project['listing']['product']['drafted'] = {'source': 'ai', 'at': 0, 'notes': []}; store.put('project', project)
+
+        def ask(config, system, facts, schema, image_path=None, **kwargs):
+            if system is brandkit_set.POINT_CHECK:
+                self.assertEqual([row['selling_point'] for row in facts['points']], ['Hardened cutting wheel', 'Twin guide rollers'])
+                return {'points': [{'number': 1, 'on': True, 'visible': True, 'x': 0, 'y': 0}, {'number': 2, 'on': False, 'visible': False, 'x': 0, 'y': 0}]}
+            raise ValueError('not asked in this test')
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), patch.object(brandkit_review, '_ask', side_effect=ask):
+            pages, notes = listing.build('fixture')
+        kinds = [page['kind'] for page in pages]
+        self.assertNotIn('T01', kinds)                                               # one line left of two: no callout page
+        self.assertTrue(any('Cylinder grip' in note for note in notes)); self.assertTrue(any('去掉这些引线' in note for note in notes))
+        located = store.get('project', 'fixture')['listing']['located']
+        self.assertTrue(any(key.startswith('check-') for key in located))
+        for kind, job in self.jobs:
+            for row in job.get('features') or job.get('details') or []:
+                self.assertNotEqual(row.get('title'), 'Cylinder grip')
 
     def test_a_refused_review_is_not_asked_again_for_the_other_pages(self):
         import brandkit_review

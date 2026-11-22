@@ -69,8 +69,14 @@ ARTICULATOR = (
     'Only a part modelled already out (a tape or knife blade showing) takes a negative value to pull it in, no more than '
     'it is out. role: rest, open or working.\n'
     'usage: 2-4 short, concrete rules for showing the product used correctly in a photo, in English and in Simplified '
-    'Chinese: how it is held and how it meets the work (e.g. a caliper\'s jaws close squarely on both faces of the workpiece, '
-    'the beam perpendicular to the measured faces, not tilted; pliers grip the wire in the jaws, handles in the palm). '
+    'Chinese, each one checkable in a picture: name the part and where it is, never just "properly" or "correctly". '
+    'First where the hand goes and where it never goes (pliers and cutters: both handles in the palm, the fingers wrapped '
+    'round them, never pinched at the head or the pivot; a hammer: the lower half of the handle; a screwdriver: the '
+    'handle, the shaft in line with the forearm). Then exactly how the working part meets the work: where (cutters: the '
+    'wire deep in the jaws near the pivot, never at the tips; a hammer\'s claw: the nail shank seated in the claw\'s slot, '
+    'the handle levered back), at what angle (square to the blades, perpendicular to the surface, on the screw\'s axis; a '
+    'caliper\'s jaws square on both faces of the workpiece, the beam perpendicular to them, not tilted) and what the work '
+    'is (only a wire thin enough for the jaws). '
     'Keep labels short (zh at most 6 characters, en at most 16).')
 
 VERIFIER = (
@@ -78,7 +84,8 @@ VERIFIER = (
     'labelled. For each state say whether it is physically right for this product: the moving parts still joined where '
     'they should be (a pliers half still on its rivet, a slider still on its beam, a lid still on its hinge), nothing '
     'floating or detached, no part passing through another, opened the way the real product opens and not past its real '
-    'range. A state that looks like the model as delivered is fine. Be strict about detached or intersecting parts, not '
+    'range. A state that looks like the model as delivered is fine, and a state whose values are all 0 IS the model as '
+    'delivered: never fail it, even if the product was modelled half open. Be strict about detached or intersecting parts, not '
     'about rendering style. If something is wrong, say in fix which part moved wrongly and how (e.g. "parts 1 and 2 turn '
     'about the wrong point: the rivet is part 5", "the slider should move toward +x, away from the fixed jaw"). Write '
     'issues in Simplified Chinese.')
@@ -310,11 +317,17 @@ def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda t
         picture = state_sheet(where, solved['previews'], states, folder / ('states%d.png' % attempt))
         say('正在检查姿态是否合理')
         with ai_client.tally() as used:
-            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en']} for s in states],
+            verdict = brandkit_review._ask(vision, VERIFIER, {'product': facts['product'], 'states': [{'id': s['id'], 'label': s['label_en'], 'values': s['values']} for s in states],
                                                               'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max']} for j in joints]},
                                            _verify_schema(), image_path=str(picture))
         record['usage_tokens'] += used['tokens']
         record.update(joints=joints, states=states, previews=str(picture), verdict=verdict)
+        # A state with every value 0 is the model exactly as delivered: whatever the check thinks of how it was modelled
+        # (cutters modelled with their handles spread), it is not a pose this agent made, so it cannot be wrong.
+        as_delivered = {state['id'] for state in states if not any(state['values'].values())}
+        verdict['states'] = [{**row, 'ok': True} if row.get('id') in as_delivered else row for row in verdict.get('states') or []]
+        if not [row for row in verdict['states'] if not row.get('ok')]:
+            verdict['ok'] = True
         if verdict.get('ok') and all(row.get('ok') for row in verdict.get('states') or []):
             record['status'] = 'ready'
             return _store(project_id, record)

@@ -334,6 +334,38 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(requests['zoom']['camera'], requests['hero']['camera'])
         self.assertEqual(requests['zoom']['size'], [3600, 3600])
 
+    def test_a_product_with_nothing_but_a_name_gets_no_made_up_uses(self):
+        import brandkit_review
+        bare = {'title': 'Diagonal Cutting Pliers', 'model': '', 'headline': '', 'subline': '', 'features': [], 'specs': [], 'figures': [],
+                'size_mm': 160}
+        self.assertIn('no uses, tasks, benefits', brandkit_review.facts_of(bare)['scope'])
+        told = {**bare, 'features': [{'title': 'Induction-hardened edges', 'detail': ''}]}
+        self.assertNotIn('scope', brandkit_review.facts_of(told))
+
+    def test_a_set_cut_short_last_time_makes_only_the_missing_scene(self):
+        import scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        kept = []
+        for role in ('use', 'place'):
+            path = folder / (role + '.png'); Image.new('RGB', (8, 8)).save(path)
+            kept.append({'path': str(path), 'role': role, 'title': role, 'body': '', 'focus': [.5, .5], 'box': [.3, .3, .7, .7], 'check': 'passed'})
+        briefs = [{'role': role, 'proposal': {'scene': role}} for role in ('use', 'place', 'other')]
+        made = []
+        def generate(project, proposal, *args):
+            made.append(proposal['scene']); picture = folder / 'new.png'; Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'passed'}}, {'png': picture, 'record': {}}
+        settings = {'enabled': True, 'count': 3, 'hint': '', 'audience': 'auto', 'people': 'auto'}
+        with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                patch.object(brandkit_set, 'scene_briefs', return_value=briefs), \
+                patch.object(brandkit_set, 'captions', return_value=[{'title': 't', 'body': ''}] * 3), \
+                patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                patch.object(scene_stylist, 'generate', side_effect=generate):
+            rows, key, notes = brandkit_set.make_scenes({'id': 'p'}, {'scenes': settings, 'language': 'en'}, folder, lambda: False,
+                                                        lambda *a: None, {'key': 'k', 'items': kept})
+        self.assertEqual(made, ['other'])                                      # only the scene that was never made
+        self.assertEqual([row['role'] for row in rows], ['use', 'place', 'other'])
+        self.assertIn('补生成缺少的 1 张', notes[0])
+
     def test_a_long_tool_across_a_scene_keeps_room_at_the_sides(self):
         # a caliper held across 80 % of the picture: the air added round it must not reach the picture's edges
         self.assertEqual(brandkit_set.scene_box({'box': [.1, .42, .9, .64]}), [.04, .387, .96, .673])

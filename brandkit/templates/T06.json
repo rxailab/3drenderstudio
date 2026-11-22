@@ -82,7 +82,6 @@
    "headline_axis_keys": 22,
    "dim_value_pill": 52,
    "dim_alt_unit": "0.6em inline / 0.58em stacked",
-   "depth_name": 22,
    "table_header": 22,
    "table_value": 52,
    "table_alt": 24,
@@ -92,8 +91,7 @@
    "dimension_line": "3px var(--line) with 14px marker arrowheads",
    "extension_line": "1.5px dashed 6/7 at 45%",
    "line_offset_px": 50,
-   "label_gap_px": 13,
-   "depth_key": "box edges 2px ink, faces accent at 7/16/26% fill, depth edge 6px accent, its own dimension line in the page's line style"
+   "label_gap_px": 13
   },
   "table": {
    "height": 160,
@@ -126,17 +124,18 @@
    "element_id": "hero",
    "kind": "product_image",
    "crop_policy": "contain",
-   "note": "scaled by a fit search so product + lines + pills + depth key fill the free region; cap 1.25; 30° diagonal when content is longer than 2.2:1"
+   "note": "scaled by a fit search so product + lines + pills (+ the turned view) fill the free region; cap 1.25; 30° diagonal when content is longer than 2.2:1 and there is no turned view"
+  },
+  {
+   "element_id": "end_view",
+   "kind": "product_image",
+   "crop_policy": "contain",
+   "note": "job.end: the same product turned a quarter (from the end, or from the front for a tool seen from above), drawn at the same scale (job.end.scale) right of the main view on its ground line (at right) or under it with left ends lined up (at below), its own dimension lines (dN after the main ones)"
   },
   {
    "element_id": "dN_pill / dN_val / dN_alt",
    "kind": "shape+text",
    "note": "lines flatter than 45°: one-line pill turned to the line; steeper lines: upright stacked pill (figure over the other unit) beside the line"
-  },
-  {
-   "element_id": "depth_name / depth_pill / depth_val / depth_alt",
-   "kind": "shape+text",
-   "note": "depth key: schematic box in real W:D:H proportions, depth edge in the accent with its own dimension line, name + stacked pill; right of the product or as a row below it"
   },
   {
    "element_id": "spec_table / tN_name / tN_val / tN_alt",
@@ -157,15 +156,14 @@
   "long products (content aspect > 2.2) lie on a diagonal rising to the right (job.tilt, default 30°; job.rotate forces an angle, 0 disables)",
   "dim_pad is accepted for compatibility but no longer used: the fit computes the room the lines and pills need",
   "the .d-key letter discs are gone",
-  "one figure order everywhere: length-or-width × depth × height (headline, axis keys, table)",
-  "depth: a dimension with key 'depth' (drawn as a line), else job.depth {value,unit,name?}, else parsed from table_note ('Depth 18 cm.' / '深度 18 cm。'); without a line it gets the depth key (job.depth_key, default true; false = old named pill under the headline)",
-  "depth key placement (job.depth_key_at): 'auto' tries right of the product (on its baseline) and a row below the lines; below wins only when it gives a ≥4% larger product (4:5 canvases)",
+  "one figure order everywhere: length-or-width × depth-or-thickness (or width after a length) × height (headline, axis keys, table)",
   "table mode: columns = figures not already drawn + job.specs, at most 6; with nothing left the table is dropped and its space goes to the product (noted); job.table_all=true keeps W/D/H columns",
   "headline_dims (optional, default 'stock'): stock or missing headline becomes the figures ('40.5 × 18 × 47.6 cm'), unit lowercase in the accent in every language; stock phrase joins the eyebrow; true forces, false keeps job.headline; needs ≥2 figures in one unit",
   "headline_keys (optional, default true): axis names under the headline figures",
   "the figures headline stays on one line: compact 72 step, then shrinks to ≥56px",
-  "dim_style (optional, default 'arrows'): 'ticks' draws 24px bars square to the line; the depth key's line follows the same style",
-  "disclaimer: job.disclaimer as given (ranges get an en dash, '1-2cm' → '1–2 cm'); else table_note's source sentence (depth sentence removed) + variance clause; job.variance sets the range or false drops it (default '1–2 cm', '0.5–1 in' for inch jobs)"
+  "dim_style (optional, default 'arrows'): 'ticks' draws 24px bars square to the line",
+  "disclaimer: job.disclaimer as given (ranges get an en dash, '1-2cm' → '1–2 cm'); else table_note's source sentence + variance clause; job.variance sets the range or false drops it (default '1–2 cm', '0.5–1 in' for inch jobs)",
+  "only the sizes the job gives are drawn (the set builder passes only sizes the user stated); a size the main view hides goes on job.end, the product itself turned a quarter at the same scale; there is no schematic depth box and no depth pill"
  ],
  "render_outputs": [
   {

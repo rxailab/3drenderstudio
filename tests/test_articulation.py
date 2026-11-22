@@ -159,3 +159,32 @@ bpy.ops.export_scene.gltf(filepath=sys.argv[-1], export_format='GLB')
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class VerdictTests(unittest.TestCase):
+    def test_the_pose_as_delivered_is_never_failed(self):
+        """A pair of cutters modelled with their handles spread: the check calls the as-modelled 'closed' state wrong."""
+        project = {'id': 'p', 'model_path': __file__, 'name': 'cutters'}
+        states = [{'id': 'closed', 'label_zh': '闭合', 'label_en': 'Closed', 'role': 'rest', 'values': {'jaws': 0.0}},
+                  {'id': 'open', 'label_zh': '张开', 'label_en': 'Open', 'role': 'open', 'values': {'jaws': 15.0}}]
+        answer_ = {'articulated': True, 'product_kind': 'cutters', 'reasoning': '', 'usage': {'en': [], 'zh': []},
+                   'joints': [{'name': 'jaws', 'type': 'hinge', 'moving': [1], 'counter': [2], 'stretch': [], 'axis': 'z',
+                               'pivot': {'kind': 'origin', 'part': 0, 'side': ''}, 'away_from': 0, 'max': 20}],
+                   'states': [{'id': s['id'], 'label_zh': s['label_zh'], 'label_en': s['label_en'], 'role': s['role'],
+                               'values': [{'joint': 'jaws', 'value': s['values']['jaws']}]} for s in states]}
+        verdict = {'ok': False, 'fix': 'closed is not closed', 'states': [{'id': 'closed', 'ok': False, 'issue': '手柄张开'}, {'id': 'open', 'ok': True, 'issue': ''}]}
+        part = {'size_mm': [1, 1, 1], 'centroid_mm': [0, 0, 0], 'materials': [], 'pieces': None}
+        probe = {'parts': [{**part, 'id': 1, 'object': 'A'}, {**part, 'id': 2, 'object': 'B'}], 'objects': [], 'views': [],
+                 'unit_mm': 1000.0, 'bbox_mm': [[0, 0, 0], [1, 1, 1]]}
+        solved = {'joints': [{'name': 'jaws', 'type': 'hinge', 'max': 20.0, 'min': 0.0}], 'previews': []}
+        asked = iter([answer_, verdict])
+        stored = {}
+        import brandkit_review, components
+        with patch.object(articulation, 'get', return_value=project), patch.object(articulation, 'key_of', return_value='k'), \
+                patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'v'})), \
+                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(asked)), \
+                patch.object(components, 'run_blender', side_effect=lambda script, request, *a, **k: probe if request['action'] == 'probe' else solved), \
+                patch.object(articulation, 'labelled_sheet', return_value='parts.png'), patch.object(articulation, 'state_sheet', return_value='states.png'), \
+                patch.object(articulation, '_store', side_effect=lambda pid, record: stored.setdefault('r', record)):
+            record = articulation.analyse('p', force=True)
+        self.assertEqual(record['status'], 'ready')

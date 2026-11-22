@@ -4,7 +4,8 @@
 <link rel="stylesheet" href="engine/base.css">
 <style>
   /* T06 · dimensions: the product large on a studio-light ground, dimension lines in ink, each value in an accent pill;
-     the figures headline names its axes (W × D × H); depth gets a small box key of its own; optional light spec table;
+     the figures headline names its axes (W × D × H); a size the face-on view hides is drawn on the product turned a quarter
+     (job.end, same scale), never on a schematic box; only the sizes the job gives; optional light spec table;
      one disclaimer microline. One display family (Archivo): extended for the headline, narrow for the figures. */
   #canvas{--bg:#F5F5F2;--text:#1E2226;--muted:#5E666D;--accent:#2C4C8C;--line:var(--text);--wm:rgba(0,0,0,.045);
     --acc-small:color-mix(in srgb,var(--accent) 70%,#000);
@@ -17,7 +18,7 @@
   .headline.compact{font-size:72px}
   /* axis names under the headline figures */
   .hlkey{font:700 22px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
-  /* value pill: the figure in narrow Archivo, the other unit lighter; .stack puts the other unit under it (vertical lines, depth key) */
+  /* value pill: the figure in narrow Archivo, the other unit lighter; .stack puts the other unit under it (vertical lines) */
   .d-lab{font-family:var(--f-display);font-weight:800;font-stretch:90%;font-size:52px;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums;
     letter-spacing:-.005em;background:var(--accent);color:var(--accent-ink,#fff);border-radius:999px;padding:11px 26px 10px;transform-origin:50% 50%}
   .d-lab.sm{font-size:50px;padding:9px 22px 8px}
@@ -30,13 +31,6 @@
   .arrow{fill:var(--line)}
   .tick{fill:none;stroke:var(--line);stroke-width:3}
   .shadow{position:absolute;border-radius:50%;background:rgba(0,0,0,.16);filter:blur(28px)}
-  /* depth key: a schematic box in the real W:D:H proportions, the depth edge in the accent */
-  .kb{stroke:var(--line);stroke-width:2;stroke-linejoin:round}
-  .kb.f{fill:var(--accent);fill-opacity:.07}
-  .kb.t{fill:var(--accent);fill-opacity:.16}
-  .kb.s{fill:var(--accent);fill-opacity:.26}
-  .kb-d{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round}
-  .kname{font:700 22px/1 var(--f-text);letter-spacing:.14em;text-transform:uppercase;color:var(--text);white-space:nowrap;text-align:center}
   /* spec table (light): white card, 1px rules, full-height dividers, figures in ink */
   .tbl{position:absolute;border-radius:14px;overflow:hidden;background:#FFFFFF;box-shadow:inset 0 0 0 1px rgba(30,34,38,.16)}
   .tbl .hrule{position:absolute;left:0;right:0;height:1px;background:rgba(30,34,38,.14)}
@@ -53,7 +47,7 @@
   .headline.dimhl{font-variant-numeric:tabular-nums;white-space:nowrap}
   .headline.dimhl .hi{text-transform:none}
   #canvas[lang=zh] .headline.dimhl{font-family:var(--f-display);font-weight:850;font-stretch:114%;font-size:88px;line-height:.95;letter-spacing:-.005em}
-  #canvas[lang=zh] .hlkey,#canvas[lang=zh] .kname,#canvas[lang=zh] .th{font-family:var(--f-cjk);font-weight:700;letter-spacing:.04em;font-size:24px}
+  #canvas[lang=zh] .hlkey,#canvas[lang=zh] .th{font-family:var(--f-cjk);font-weight:700;letter-spacing:.04em;font-size:24px}
   #canvas[lang=zh] .d-lab .nm{font-family:var(--f-cjk);letter-spacing:.04em;font-size:22px;vertical-align:.3em}
   #canvas[lang=zh] .td-alt,#canvas[lang=zh] .disc{font-family:var(--f-cjk)}
   #canvas[lang=zh] .d-lab .v,#canvas[lang=zh] .d-lab .alt,#canvas[lang=zh] .td{font-family:var(--f-display)}
@@ -96,19 +90,17 @@ function convert(d) {
 }
 T.layoutInfo.conversions = dims.map(d => ({key: d.key, rule: (convert(d) || {}).rule || null}));
 
-/* depth: a dimension of its own, job.depth, or the figure the set builder puts in table_note ("Depth 18 cm." / "深度 18 cm。") */
+/* job.end: the same product turned a quarter ({asset, scale, at: "right" | "below", dimensions}), for a size the main view
+   hides (a toolbox's depth, the thickness of pliers lying flat). There is no drawn box: a size is only ever shown on the product. */
+const endV = job.end && job.end.asset && (job.end.dimensions || []).length ? job.end : null;
+const endAsset = endV ? T.asset(endV.asset) : null;
+const endDims = endV ? endV.dimensions.filter(d => d && d.value != null && d.from && d.to).slice(0, 2) : [];
+const allDims = dims.concat(endDims);
 let note = job.table_note ? String(job.table_note) : '';
-let depth = job.depth ? Object.assign({key: 'depth'}, job.depth) : null;
-if (!depth && !dims.some(d => d.key === 'depth')) {
-  const re = zh ? /\s*深度\s*([\d.]+)\s*(mm|cm|in)\s*。?/ : /\s*Depth\s+([\d.]+)\s*(mm|cm|in)\.?/i;
-  const mt = note.match(re);
-  if (mt) { depth = {key: 'depth', value: +mt[1], unit: mt[2]}; note = note.replace(mt[0], ' '); }
-}
-if (depth && !depth.name) depth.name = zh ? '深度' : 'Depth';
 note = note.replace(/\s+/g, ' ').trim();
 /* one disclaimer pattern for every variant: '<source>; please allow 1–2 cm variance.' / '<来源>，存在 1–2 cm 误差'.
    No measurement method is claimed unless the job states one. job.variance: a range string, or false to drop the clause. */
-const unit0 = (dims[0] || depth || {}).unit || 'cm';
+const unit0 = (allDims[0] || {}).unit || 'cm';
 const variance = job.variance === false ? '' : String(job.variance || (unit0 === 'in' ? '0.5–1 in' : '1–2 cm'));
 const tidy = s => String(s).replace(/(\d)\s*[-~～]\s*(\d)/g, '$1–$2').replace(/(\d)(mm|cm|in)\b/g, '$1 $2').replace(/\s+/g, ' ').trim();
 function buildDisclaimer() {
@@ -127,8 +119,10 @@ T.box(T.el('div', {class: 'kick'}), m, y, 64, 8); y += 8 + 3 * G;
    ('40.5 × 18 × 47.6 cm', width × depth × height, each figure named underneath); the stock phrase moves into the eyebrow.
    job.headline_dims: 'stock' (default: only when the headline is a stock phrase or missing), true (always), false (never). */
 const stockRe = /^\s*(overall\s+(size|dimensions?)|dimensions?|sizes?|product\s+(size|dimensions?)|size\s+chart|外形尺寸|产品尺寸|尺寸(参数|规格)?|规格尺寸)\s*[.。]?\s*$/i;
-const pick = k => dims.find(d => d.key === k) || (k === 'depth' ? depth : null);
-const order = [pick('length') || pick('width'), pick('depth'), pick('height')].filter(Boolean);   // one order everywhere: W × D × H
+const pick = k => allDims.find(d => d.key === k);
+/* one order everywhere: length-or-width × depth-or-thickness (or the width after a length) × height */
+const first = pick('length') || pick('width');
+const order = [first, pick('depth') || pick('thickness') || (first && first.key === 'length' ? pick('width') : null), pick('height')].filter(Boolean);
 let headText = job.headline, eyeText = job.eyebrow, dimHead = false, seq = [];
 (function(){
   const hd = job.headline_dims ?? 'stock';
@@ -200,12 +194,6 @@ function pill(id, d, o = {}) {
   return {el: e, w: e.offsetWidth, h: e.offsetHeight, stack: !!o.stack};
 }
 
-/* depth without a line of its own: a schematic box key beside the product (default), or the old named pill under the headline */
-const depthKey = depth && (job.depth_key ?? true) !== false;
-if (depth && !depthKey) {
-  const p = pill('depth_val', depth, {name: true, size: 'sm'});
-  y += 2 * G; T.box(p.el, m, y); y += p.h;
-}
 const headerBottom = y;
 
 /* ---------- footer: disclaimer microline, light spec table above it ---------- */
@@ -217,8 +205,8 @@ if (disclaimer) {
 }
 if (mode === 'table') {
   /* the table carries only what the drawing does not already show (job.table_all: true lists W/D/H too, in the headline order) */
-  const drawn = new Set(dims.map(d => d)); if (depthKey) drawn.add(depth);
-  const figs = order.concat(dims.filter(d => !order.includes(d))).concat(depth && !order.includes(depth) ? [depth] : []);
+  const drawn = new Set(allDims);
+  const figs = order.concat(allDims.filter(d => !order.includes(d)));
   const cols = figs.filter(d => job.table_all || !drawn.has(d)).map(d => ({name: d.name, value: d.value, unit: d.unit, d}));
   for (const s of (job.specs || [])) if (s && s.name && s.value != null) cols.push({name: s.name, value: s.value, unit: s.unit || '', d: s});
   const n = Math.min(6, cols.length);
@@ -251,67 +239,47 @@ if (mode === 'table') {
   }
 }
 
-/* ---------- product + dimension lines (+ depth key): fit everything into the free region ---------- */
+/* ---------- product + dimension lines (+ the product turned): fit everything into the free region ---------- */
 const region = {x: m, y: headerBottom + 4 * G, w: W - 2 * m, h: bottom - headerBottom - 4 * G};
 const cw0 = (cb[2] - cb[0]) * hero.width, ch0 = (cb[3] - cb[1]) * hero.height;
 const ratio = Math.max(cw0 / ch0, ch0 / cw0), tilt = job.tilt ?? 30;
-/* a long product lies on a 25-35° diagonal, rising to the right */
-const theta = job.rotate != null ? +job.rotate : (ratio > 2.2 && tilt ? (cw0 >= ch0 ? -tilt : 90 - tilt) : 0);
+/* a long product lies on a 25-35° diagonal, rising to the right; with a turned view beside it both stay square to the page,
+   as in a drawing, so the shared edge lines up */
+const theta = job.rotate != null ? +job.rotate : (!endV && ratio > 2.2 && tilt ? (cw0 >= ch0 ? -tilt : 90 - tilt) : 0);
 const th = theta * Math.PI / 180, ct = Math.cos(th), st = Math.sin(th);
 const rot = (x, y) => [x * ct - y * st, x * st + y * ct];
 /* a line steeper than 45° gets an upright stacked pill (figure over the other unit) beside it; flatter lines a pill turned to the line */
-const labels = dims.map((d, i) => {
-  const v = rot((d.to[0] - d.from[0]) * hero.width, (d.to[1] - d.from[1]) * hero.height);
-  const a = Math.abs(Math.atan2(v[1], v[0]) * 180 / Math.PI) % 180;
-  return pill('d' + (i + 1) + '_val', d, {stack: a > 45 && a < 135});
-});
-const hull = hero.hull && hero.hull.length > 2 ? hero.hull : null;
-const extremes = dims.map(d => {
-  // the hull point furthest out at each end of the line: extension lines start at the real silhouette
-  const dir = [(d.to[0] - d.from[0]) * hero.width, (d.to[1] - d.from[1]) * hero.height];
-  if (!hull) return [d.from, d.to];
-  const dot = p => p[0] * hero.width * dir[0] + p[1] * hero.height * dir[1];
-  let lo = hull[0], hi = hull[0];
-  for (const p of hull) { if (dot(p) < dot(lo)) lo = p; if (dot(p) > dot(hi)) hi = p; }
-  return [lo, hi];
-});
-
-/* depth key: a box drawn in the real width : depth : height proportions (oblique, depth receding at 30°) */
-let key = null;
-if (depthKey) {
-  const wv = +((pick('length') || pick('width') || {}).value || depth.value * 2), hv = +((pick('height') || {}).value || wv);
-  const dv = +depth.value, f = 1, cx = Math.cos(Math.PI / 6) * f, cy = Math.sin(Math.PI / 6) * f;
-  const KW = 230 * u, KH = 220 * u;
-  let k = Math.min(KW / (wv + dv * cx), KH / (hv + dv * cy));
-  let ddx = dv * cx * k, ddy = dv * cy * k;
-  if (Math.hypot(ddx, ddy) < 60 * u) { const g = 60 * u / Math.hypot(ddx, ddy); ddx *= g; ddy *= g; T.notes.push('depth key: depth edge drawn at its minimum length'); }
-  const fw = wv * k, fh = hv * k;
-  const box = {w: fw + ddx, h: fh + ddy, fw, fh, ddx, ddy};
-  const nm = T.text('depth_name', T.plain(depth.name), 0, 0, 10, 'kname', {tier: 'meta', maxLines: 1});
-  nm.style.width = 'auto';
-  const nmw = Math.ceil(nm.getBoundingClientRect().width) + 2, nmh = T.rect(nm).h;
-  nm.style.width = nmw + 'px';
-  const p = pill('depth_val', depth, {stack: true});
-  const lineGap = 26 * u + 30;   // room under the box for the depth dimension line
-  // two arrangements: 'right' (stacked column beside the product) and 'below' (a row under the product, for narrow canvases)
-  const colW = Math.max(p.w, nmw), boxW = box.w + 24 * u, boxH = box.h + lineGap;
-  key = {box, nm, nmw, nmh, p, lineGap, boxW, colW,
-    right: {w: Math.max(boxW, colW), h: boxH + nmh + 12 + p.h, gap: 64 * u},
-    below: {w: boxW + 40 * u + colW, h: Math.max(boxH, nmh + 12 + p.h), gap: 40 * u}};
+function pillsFor(ds, asset, first, turn) {
+  return ds.map((d, i) => {
+    const v0 = [(d.to[0] - d.from[0]) * asset.width, (d.to[1] - d.from[1]) * asset.height], v = turn ? rot(v0[0], v0[1]) : v0;
+    const a = Math.abs(Math.atan2(v[1], v[0]) * 180 / Math.PI) % 180;
+    return pill('d' + (first + i + 1) + '_val', d, {stack: a > 45 && a < 135});
+  });
 }
+function extremesFor(ds, asset) {
+  // the hull point furthest out at each end of the line: extension lines start at the real silhouette
+  const hull = asset.hull && asset.hull.length > 2 ? asset.hull : null;
+  return ds.map(d => {
+    const dir = [(d.to[0] - d.from[0]) * asset.width, (d.to[1] - d.from[1]) * asset.height];
+    if (!hull) return [d.from, d.to];
+    const dot = p => p[0] * asset.width * dir[0] + p[1] * asset.height * dir[1];
+    let lo = hull[0], hi = hull[0];
+    for (const p of hull) { if (dot(p) < dot(lo)) lo = p; if (dot(p) > dot(hi)) hi = p; }
+    return [lo, hi];
+  });
+}
+const labels = pillsFor(dims, hero, 0, true), extremes = extremesFor(dims, hero);
+const endLabels = endV ? pillsFor(endDims, endAsset, dims.length, false) : [], endExtremes = endV ? extremesFor(endDims, endAsset) : [];
 
-function geometry(s, cx, cy, place) {
-  const w = hero.width * s, h = hero.height * s;
-  const P = p => { const v = rot((p[0] - .5) * w, (p[1] - .5) * h); return [cx + v[0], cy + v[1]]; };
-  const quad = [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]].map(P);
-  const pts = quad.slice();
-  const lines = dims.map((d, i) => {
+/* the dimension lines of one view: P maps the view's picture fractions to the page, quad is its content box there */
+function linesOf(ds, labs, exs, P, quad, sides, pts) {
+  return ds.map((d, i) => {
     const a = P(d.from), b = P(d.to);
-    const sv = rot(d.side[0], d.side[1]), sl = Math.hypot(sv[0], sv[1]) || 1, nrm = [sv[0] / sl, sv[1] / sl];
+    const sv = sides(d.side[0], d.side[1]), sl = Math.hypot(sv[0], sv[1]) || 1, nrm = [sv[0] / sl, sv[1] / sl];
     const off = d.offset ?? job.dim_offset ?? 50;
-    // the line runs parallel to a→b, 'off' px outside the silhouette's extreme point along the normal
-    const ex = extremes[i].map(P);
-    let reach = Math.max(...pts.slice(0, 4).map(q => (q[0] - a[0]) * nrm[0] + (q[1] - a[1]) * nrm[1]));
+    // the line runs parallel to a→b, 'off' px outside the content box's extreme point along the normal
+    const ex = exs[i].map(P);
+    const reach = Math.max(...quad.map(q => (q[0] - a[0]) * nrm[0] + (q[1] - a[1]) * nrm[1]));
     const A = [a[0] + nrm[0] * (reach + off), a[1] + nrm[1] * (reach + off)], B = [b[0] + nrm[0] * (reach + off), b[1] + nrm[1] * (reach + off)];
     // project the silhouette extremes onto the line for the ends
     const uu = [B[0] - A[0], B[1] - A[1]], ul = Math.hypot(uu[0], uu[1]) || 1, ud = [uu[0] / ul, uu[1] / ul];
@@ -319,7 +287,7 @@ function geometry(s, cx, cy, place) {
     const A2 = proj(ex[0]), B2 = proj(ex[1]);
     let ang = Math.atan2(B2[1] - A2[1], B2[0] - A2[0]) * 180 / Math.PI;
     if (ang > 90.5) ang -= 180; if (ang <= -90) ang += 180; if (Math.abs(ang - 90) < 0.6) ang = -90;
-    const L = labels[i], gap = 10 + 3;
+    const L = labs[i], gap = 10 + 3;
     if (L.stack) ang = 0;   // upright pill
     const reachL = L.stack ? Math.abs(nrm[0]) * L.w / 2 + Math.abs(nrm[1]) * L.h / 2 : L.h / 2;
     const mid = [(A2[0] + B2[0]) / 2, (A2[1] + B2[1]) / 2];
@@ -329,57 +297,68 @@ function geometry(s, cx, cy, place) {
     pts.push(A2, B2, ...corners);
     return {A: A2, B: B2, ex, nrm, c, ang, corners, len: Math.hypot(B2[0] - A2[0], B2[1] - A2[1])};
   });
-  // the depth key: right of the product on its baseline, or as a row under the product, lines and pills
-  let kb = null;
-  if (key) {
-    const K = key[place], qx0 = Math.min(...quad.map(q => q[0])), qx1 = Math.max(...quad.map(q => q[0])), qy1 = Math.max(...quad.map(q => q[1]));
-    if (place === 'right') {
-      const lx1 = Math.max(qx1, ...lines.map(L => Math.max(L.A[0], L.B[0])));
-      kb = {x: lx1 + K.gap, y: qy1 - K.h, w: K.w, h: K.h, place};
-    } else {
-      const y1 = Math.max(...pts.map(q => q[1]));
-      kb = {x: (qx0 + qx1) / 2 - K.w / 2, y: y1 + K.gap, w: K.w, h: K.h, place};
-    }
-    pts.push([kb.x, kb.y], [kb.x + kb.w, kb.y + kb.h]);
+}
+function geometry(s, cx, cy) {
+  const w = hero.width * s, h = hero.height * s;
+  const P = p => { const v = rot((p[0] - .5) * w, (p[1] - .5) * h); return [cx + v[0], cy + v[1]]; };
+  const quad = [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]].map(P);
+  const pts = quad.slice();
+  const lines = linesOf(dims, labels, extremes, P, quad, rot, pts);
+  // the product turned a quarter, at the same scale (job.end.scale: its picture's pixels to the face-on picture's): right of
+  // the face-on view on the same ground line, or under the top view of a flat tool with their left ends lined up
+  let end = null;
+  if (endV) {
+    const se = s * (+endV.scale || 1), ew = endAsset.width * se, eh = endAsset.height * se, ecb = endAsset.content_bbox || [0, 0, 1, 1];
+    const qx0 = Math.min(...quad.map(q => q[0])), qy1 = Math.max(...quad.map(q => q[1]));
+    let x0, y0;
+    if (endV.at === 'below') { x0 = qx0; y0 = Math.max(...pts.map(q => q[1])) + 48 * u; }
+    else { x0 = Math.max(...pts.map(q => q[0])) + 72 * u; y0 = qy1 - (ecb[3] - ecb[1]) * eh; }
+    const ecx = x0 - ecb[0] * ew + ew / 2, ecy = y0 - ecb[1] * eh + eh / 2;
+    const PE = p => [ecx + (p[0] - .5) * ew, ecy + (p[1] - .5) * eh];
+    const equad = [[ecb[0], ecb[1]], [ecb[2], ecb[1]], [ecb[2], ecb[3]], [ecb[0], ecb[3]]].map(PE);
+    pts.push(...equad);
+    const elines = linesOf(endDims, endLabels, endExtremes, PE, equad, (x, y) => [x, y], pts);
+    end = {w: ew, h: eh, cx: ecx, cy: ecy, quad: equad, lines: elines};
   }
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-  return {w, h, quad, lines, kb, ext: {x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys)}};
+  return {w, h, quad, lines, end, ext: {x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys)}};
 }
-function fit(place) {
+function fit() {
   let lo = 0.02, hi = cap;
   for (let k = 0; k < 28; k++) {
-    const s = (lo + hi) / 2, g = geometry(s, 0, 0, place);
+    const s = (lo + hi) / 2, g = geometry(s, 0, 0);
     if (g.ext.x1 - g.ext.x0 <= region.w && g.ext.y1 - g.ext.y0 <= region.h) lo = s; else hi = s;
   }
   return lo;
 }
-/* job.depth_key_at: 'right' | 'below' | 'auto' (default: whichever leaves the product larger; 'right' unless 'below' wins by 4%) */
-let place = 'right', s = fit('right');
-if (key && job.depth_key_at !== 'right') {
-  const sb = fit('below');
-  if (job.depth_key_at === 'below' || sb > s * 1.04) { place = 'below'; s = sb; }
-}
-const g0 = geometry(s, 0, 0, place);
-T.layoutInfo.depth_key_at = key ? place : null;
+const s = fit();
+const g0 = geometry(s, 0, 0);
 /* the product on the canvas centre line when the lines and pills leave room, else as near to it as fits;
-   with a depth key the whole group (product + lines + key) is centred instead */
+   with a turned view the whole group (both views, lines and pills) is centred instead */
 const qx = (Math.min(...g0.quad.map(q => q[0])) + Math.max(...g0.quad.map(q => q[0]))) / 2;
-const ox = key ? region.x + (region.w - (g0.ext.x1 - g0.ext.x0)) / 2 - g0.ext.x0
+const ox = endV ? region.x + (region.w - (g0.ext.x1 - g0.ext.x0)) / 2 - g0.ext.x0
   : Math.max(region.x - g0.ext.x0, Math.min(region.x + region.w - g0.ext.x1, W / 2 - qx));
 const oy = region.y + (region.h - (g0.ext.y1 - g0.ext.y0)) / 2 - g0.ext.y0;
-const geo = geometry(s, ox, oy, place);
+const geo = geometry(s, ox, oy);
 
 /* contact shadow under an upright product */
-if (!theta) {
-  const bl = geo.quad[3], br = geo.quad[2], sw = (br[0] - bl[0]) * 0.86;
+const shadowUnder = quad => {
+  const bl = quad[3], br = quad[2], sw = (br[0] - bl[0]) * 0.86;
   T.box(T.el('div', {class: 'shadow', 'data-exempt': '1'}), (bl[0] + br[0]) / 2 - sw / 2, bl[1] - 22, sw, 40);
-}
+};
+if (!theta) shadowUnder(geo.quad);
+if (geo.end && endV.at !== 'below') shadowUnder(geo.end.quad);
 const img = T.img('hero', job.hero, {x: ox - geo.w / 2, y: oy - geo.h / 2, w: geo.w, h: geo.h}, {blend: 'multiply'});
 if (theta) { img.style.transform = `rotate(${theta}deg)`; img.dataset.rotate = theta; }
 T.layoutInfo.hero_content_quad = geo.quad;
 T.layoutInfo.hero_rotate = theta;
+if (geo.end) {
+  const e = geo.end, ei = T.img('end_view', endV.asset, {x: e.cx - e.w / 2, y: e.cy - e.h / 2, w: e.w, h: e.h}, {blend: 'multiply'});
+  ei.dataset.quad = JSON.stringify(e.quad.map(q => q.map(v => +v.toFixed(1))));
+  T.layoutInfo.end_view = {at: endV.at || 'right', quad: e.quad.map(q => q.map(v => +v.toFixed(1))), scale: +(s * (+endV.scale || 1)).toFixed(4)};
+}
 
-/* line ends: 14px arrowheads (default) or 24px ticks square to the line (job.dim_style 'ticks'); the key uses the same style */
+/* line ends: 14px arrowheads (default) or 24px ticks square to the line (job.dim_style 'ticks') */
 const defs = T.svgEl('defs', {});
 const mk = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
 for (const [k, v] of Object.entries({id: 'arw', viewBox: '0 0 14 14', refX: '13', refY: '7', markerWidth: '14', markerHeight: '14', markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse'})) mk.setAttribute(k, v);
@@ -396,36 +375,14 @@ function dimLine(A, B, nrm, ex) {
     T.svgEl('path', {d: tk(A) + ' ' + tk(B), class: 'tick'});
   } else T.svgEl('path', {d: `M${f(A)} L${f(B)}`, class: 'dim', 'marker-start': 'url(#arw)', 'marker-end': 'url(#arw)'});
 }
-geo.lines.forEach((L, i) => {
+const drawn = geo.lines.map((L, i) => [L, labels[i]]).concat(geo.end ? geo.end.lines.map((L, i) => [L, endLabels[i]]) : []);
+drawn.forEach(([L, lab], i) => {
   dimLine(L.A, L.B, L.nrm, L.ex);
-  const lab = labels[i];
   T.box(lab.el, L.c[0] - lab.w / 2, L.c[1] - lab.h / 2);
   if (Math.abs(L.ang) > 0.3) lab.el.style.transform = `rotate(${L.ang.toFixed(2)}deg)`;
   if (!lab.stack && lab.w > L.len) T.notes.push(`d${i + 1}: value pill longer than its line`);
-  T.layoutInfo['dim' + (i + 1)] = {A: L.A, B: L.B, angle: +L.ang.toFixed(2)};
+  T.layoutInfo['dim' + (i + 1)] = {A: L.A, B: L.B, angle: +L.ang.toFixed(2), view: i < geo.lines.length ? 'main' : 'end'};
 });
-
-/* the depth key */
-if (key && geo.kb) {
-  const b = key.box, kb = geo.kb, row = kb.place === 'below';
-  // right: box on top, name + pill centred under it; below: box at left, name + pill in a column to its right
-  const bx = row ? kb.x : kb.x + (kb.w - key.boxW) / 2, by = row ? kb.y + (kb.h - (b.h + key.lineGap)) / 2 : kb.y;
-  const x0 = bx + (key.boxW - 24 * u - b.w) / 2, y0 = by;
-  const P = (x, yy) => [x0 + x, y0 + yy];
-  const poly = (pts, cls) => T.svgEl('path', {d: 'M' + pts.map(q => f(q)).join(' L') + ' Z', class: 'kb ' + cls});
-  const FTL = P(0, b.ddy), FTR = P(b.fw, b.ddy), FBR = P(b.fw, b.ddy + b.fh), FBL = P(0, b.ddy + b.fh);
-  const BTL = P(b.ddx, 0), BTR = P(b.ddx + b.fw, 0), BBR = P(b.ddx + b.fw, b.fh);
-  poly([FTL, FTR, FBR, FBL], 'f'); poly([FTL, BTL, BTR, FTR], 't'); poly([FTR, BTR, BBR, FBR], 's');
-  T.svgEl('path', {d: `M${f(FBR)} L${f(BBR)}`, class: 'kb-d'});
-  // its dimension line, parallel to the depth edge and below it
-  const dl = Math.hypot(b.ddx, b.ddy), dn = [b.ddy / dl, b.ddx / dl], off = 26 * u;
-  dimLine([FBR[0] + dn[0] * off, FBR[1] + dn[1] * off], [BBR[0] + dn[0] * off, BBR[1] + dn[1] * off], dn, [FBR, BBR]);
-  const cx0 = row ? kb.x + key.boxW + 40 * u : kb.x, cw = row ? key.colW : kb.w;
-  const ny = row ? kb.y + (kb.h - (key.nmh + 12 + key.p.h)) / 2 : y0 + b.h + key.lineGap;
-  key.nm.style.left = (cx0 + (cw - key.nmw) / 2) + 'px'; key.nm.style.top = ny + 'px';
-  T.box(key.p.el, cx0 + (cw - key.p.w) / 2, ny + key.nmh + 12);
-  T.layoutInfo.depth_key = {x: +kb.x.toFixed(1), y: +kb.y.toFixed(1), w: +kb.w.toFixed(1), h: +kb.h.toFixed(1)};
-}
 T.layoutInfo.hero_scale = +s.toFixed(3);
 T.layoutInfo.hero_cover = +((g0.ext.y1 - g0.ext.y0) / H).toFixed(3);
 T.layoutInfo.hero_width_share = +((Math.max(...geo.quad.map(q => q[0])) - Math.min(...geo.quad.map(q => q[0]))) / W).toFixed(3);

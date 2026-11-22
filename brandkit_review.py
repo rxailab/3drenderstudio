@@ -70,7 +70,7 @@ ART_DIRECTOR = (
     'REFERENCE_IMAGE: labels or patches on the product, colours, handles, hardware; a missing patch or a changed colour in a scene is '
     'scene_product_mismatch. Check every line of text against the facts: a use, benefit or quality the facts do not state is '
     'claim_not_in_facts. A figure on the page is supported when it appears anywhere in the facts (selling_points, specs, figures or '
-    'measured_on_3d_model_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
+    'stated_sizes_mm), in any unit (235 mm = 23.5 cm); look through all of them before calling it unsupported. '
     'A close-up or cropped frame (T02, the T03 rail, circle insets) shows part of the product on purpose: missing body colours or '
     'parts outside the crop are not scene_product_mismatch. '
     'Never praise; be specific. Write evidence and summary in Simplified Chinese (the app\'s language), whatever the page\'s language; '
@@ -83,7 +83,8 @@ COPYWRITER = (
     'benefit the facts do not state (no capacity, comfort or durability claims the selling points do not make). A number may lead a headline only when '
     'the facts give it (a size, a count, a capacity), written as the facts write it; never a number the facts do not contain. No prices, superlatives or brand names. Respect each page\'s max_lines: a one-line headline has no '
     '"\\n"; a Chinese headline of two lines breaks with one "\\n" at a natural pause. Keep the eyebrow a plain label (e.g. "细节特写", '
-    '"Up close") that does not repeat the headline. On pages that print the selling points (T01, T02), the headline sums them up '
+    '"Up close") that does not repeat the headline. Never name a part, feature or material that is not in the facts: when '
+    'selling_points is empty, the headline names no feature at all. On pages that print the selling points (T01, T02), the headline sums them up '
     'and never repeats a selling point\'s title word for word. Write the headlines of different pages differently. The eyebrow is a '
     'short kicker that adds information (the product type, the job, the material), never a generic label such as "In use", "Specs" '
     'or "Part overview". For each page give candidates_per_page different candidates, best first, each one a complete eyebrow and '
@@ -271,17 +272,25 @@ def _ask(config, system, facts, schema, image_path=None, reference_path=None, cl
             return output
 
 
-def facts_of(product, measured_mm=None):
-    """What the product record says, and what was measured on the 3D model: the only sources of words and numbers on the pages."""
+def facts_of(product, stated_mm=None):
+    """What the product record says: the only source of words and numbers on the pages. ``stated_mm`` holds the overall
+    sizes the user stated, in millimetres, as the dimensions page prints them (brandkit_set.stated_dimensions); sizes
+    measured on the 3D model are never facts, since a page that printed them would invent data the user never gave."""
     facts = {'title': product['title'], 'model': product.get('model', ''), 'headline': product['headline'], 'subline': product['subline'],
              'selling_points': [{'title': row['title'], 'detail': row.get('detail', '')} for row in product['features']],
              'specs': product['specs'], 'figures': product['figures'], 'longest_side_mm': product.get('size_mm')}
     if product.get('_poses'):          # the states the pose agent found on the 3D model (articulation.py), as the pages name them
         facts['poses'] = {'states': list(product['_poses']), 'note': 'The states the product is shown in, worked out from its 3D model; '
                                                                       'they say how it moves, not how far.'}
-    if measured_mm:
-        facts['measured_on_3d_model_mm'] = {key: round(value, 1) for key, value in measured_mm.items()}
-        facts['measurement_note'] = 'Sizes on the dimensions page are measured on the 3D model, scaled to the longest side the user gave; they are facts.'
+    if not (product['features'] or (product.get('headline') or '').strip() or (product.get('subline') or '').strip()):
+        # Nothing but a name (and perhaps sizes): any use, benefit or capability on a page would be made up.
+        facts['scope'] = ('The user gave no selling points and no description. Write only the product\'s name, what kind of product '
+                          'it is and the stated figures; no uses, tasks, benefits, features or capabilities (not "for tight spaces", '
+                          'not "cuts, strips and snips"). Any such claim on a page is claim_not_in_facts.')
+    if stated_mm:
+        facts['stated_sizes_mm'] = {key: round(value, 1) for key, value in stated_mm.items()}
+        facts['stated_sizes_note'] = ('The overall sizes the user stated, in millimetres; the dimensions page prints only these. '
+                                      'Any other overall size on a page is not supported.')
     return facts
 
 

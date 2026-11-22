@@ -130,6 +130,15 @@ function headline(x, y, w, opts = {}) {
       T.notes.push('headline needed ' + lineCount(hl) + ' lines at ' + hl.style.fontSize);
     }
   }
+  // A word longer than the column (a model code, a name with no spaces) cannot wrap: narrow the face, then the size, down to
+  // the QA's headline minimum. Past that it overflows and the measurement fails the page (text_overflow): it is never clipped.
+  const minSize = Math.ceil(14 * W / 360);
+  if (hl.scrollWidth > hl.clientWidth + 1) {
+    let size = parseFloat(hl.style.fontSize) || 88;
+    if (!zh) hl.style.fontStretch = '100%';
+    while (hl.scrollWidth > hl.clientWidth + 1 && size - 4 >= minSize) { size -= 4; hl.style.fontSize = size + 'px'; }
+    T.notes.push('headline shrunk to ' + size + 'px to fit its longest word');
+  }
   return hl;
 }
 function headBlock(x, y, w, opts = {}) {

@@ -327,8 +327,8 @@ class FidelityTests(unittest.TestCase):
 
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
-                 'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'scale_plausible': True,
-                 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
+                 'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'rests_stably': True,
+                 'scale_plausible': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
@@ -368,6 +368,34 @@ class FidelityTests(unittest.TestCase):
         resting = scene_imagegen.prompt('digital caliper', 150, 'A bench.', people=False, usage=['jaws square on the work'])
         self.assertNotIn('USE.', resting)                       # nobody uses it in a resting picture
 
+    def test_a_product_set_down_must_rest_stably_and_hand_tools_are_held_by_their_handles(self):
+        # The user's pictures: pliers balanced on a jaw tip and a handle end; a gloved hand pinching the pliers' head.
+        resting = scene_imagegen.prompt('diagonal cutting pliers', 160, 'A workbench.', people=False)
+        self.assertIn(scene_imagegen.REST_RULE, resting)
+        self.assertIn('never balanced on a tip, an edge, a jaw point or a handle end', resting)
+        self.assertNotIn('standing ready for use', resting)
+        held = scene_imagegen.prompt('diagonal cutting pliers', 160, 'A workbench.', people=True, framing='hands')
+        self.assertNotIn(scene_imagegen.REST_RULE, held)
+        self.assertIn('pliers and cutters by both handles with the fingers wrapped round them, never pinched at the head', held)
+        self.assertIn('rests_stably', scene_imagegen.FIDELITY_FLAGS)
+        self.assertIn('rests_stably', scene_imagegen.fidelity_schema()['required'])
+        for words in ('never pinched at the head, the jaws or the pivot', 'a hammer by the lower half of its handle',
+                      'balanced on a tip, an edge, a jaw point or a handle end', 'the nail\'s shank sits in the claw\'s slot'):
+            self.assertIn(words, scene_imagegen.FIDELITY_PROMPT)
+
+    def test_up_to_six_usage_rules_reach_the_prompt_and_the_check(self):
+        rules = ['rule %d' % number for number in range(1, 9)]
+        text = scene_imagegen.prompt('claw hammer', 330, 'A wall.', people=True, framing='hands', usage=rules)
+        self.assertIn('rule 6', text); self.assertNotIn('rule 7', text)
+        sent = {}
+        def post(config, body):
+            sent['body'] = body
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch', 'input': self.verdict()}]}
+        with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
+            scene_imagegen.check(self.references, self.generated, 'claw hammer', usage=rules)
+        facts = json.loads(sent['body']['messages'][-1]['content'][-1]['text'])
+        self.assertEqual(facts['usage_rules'], rules[:6])
+
     def test_any_difference_fails_and_is_named(self):
         result, _ = self.check(self.verdict(colours_consistent=False, issues=['top surface is black, should be light brushed steel'], note='台面颜色不符。'))
         self.assertEqual(result['status'], 'failed'); self.assertEqual(result['issues'], ['top surface is black, should be light brushed steel'])
@@ -377,7 +405,8 @@ class FidelityTests(unittest.TestCase):
         # The defects users found in made scenes: each is a flag the vision model answers, and any one fails the picture.
         for flag, issue in (('contact_plausible', 'the wire passes through the steel of the jaws'), ('nothing_attached', 'an extra black grip on the handle'),
                             ('held_correctly', 'the hand holds the tool by its jaws'), ('scale_plausible', 'the pliers are as long as the van floor'),
-                            ('used_correctly', 'the caliper is tilted across the board, its jaws on one edge only')):
+                            ('used_correctly', 'the caliper is tilted across the board, its jaws on one edge only'),
+                            ('rests_stably', 'the pliers stand on a jaw tip and a handle end')):
             result, body = self.check(self.verdict(**{flag: False, 'issues': [issue], 'note': '不一致。'}))
             self.assertEqual((result['status'], result['issues'], result['flags'][flag]), ('failed', [issue], False), flag)
         self.assertIn('size_mm', json.loads(body['messages'][-1]['content'][-1]['text']))
@@ -495,6 +524,30 @@ class CreateTests(unittest.TestCase):
         # The work lies below the product: it moves up, leaving room under it for the workpiece.
         self.assertLess(made['record']['anchor']['box'][1], .3)
         self.assertIsNotNone(self.masks[0])                                             # still locked by the mask
+
+    def test_the_tools_written_down_rules_come_before_its_own_and_reach_pose_prompt_and_check(self):
+        seen = {}
+        def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=None, progress=None, mode='auto', hint='', usage=None):
+            seen['pose'] = usage
+            return scene_pose.kept(plan.get('rotation', [0, 0, 0]), mode, 'default', '保持默认姿态。')
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, usage=None):
+            seen['check'] = usage
+            return {'status': 'passed', 'issues': [], 'note': '一致。'}
+        record = project()
+        with patch.object(scene_pose, 'decide', side_effect=decide), patch.object(scene_imagegen, 'check', side_effect=check):
+            scene_imagegen.create(record, record['plan'], 35, 18, 'Cutting a wire.', 'diagonal cutting pliers', 160,
+                                  self.data / 'fixture' / 'scene_ai' / 't9' / 'scene', people=True, framing='hands',
+                                  usage_rules=['grip the wire in the jaws'])
+        rules = seen['check']
+        self.assertEqual(rules, seen['pose'])
+        self.assertTrue(rules[0].startswith('both handles are gripped in the palm'))
+        self.assertIn('the wire sits deep in the jaws close to the pivot', rules[1])
+        self.assertEqual(rules[-1], 'grip the wire in the jaws')                 # the agent's own rule follows
+        self.assertIn('never at the jaw tips', self.prompts[0])
+        # A product no rule is written for passes its own rules unchanged, and none at all stays none.
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        self.create()
+        self.assertNotIn('USE.', self.prompts[-1])
 
     def test_a_product_kept_in_its_pose_is_placed_and_described_as_before(self):
         self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
