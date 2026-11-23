@@ -226,7 +226,12 @@ def save_config(body):
         for field,name in VISION_KEYS.items():
             if vision_fields[field]: lines.append(name+'='+vision_fields[field])
         temp = ENV_PATH.with_suffix('.env.tmp')
-        temp.write_text('\n'.join(lines)+'\n', encoding='utf-8')
+        # The file holds API keys: written readable by its owner only (it once became 0644 after a save from the page).
+        handle = os.open(str(temp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_BINARY', 0), 0o600)
+        with os.fdopen(handle, 'w', encoding='utf-8', newline='\n') as stream:
+            stream.write('\n'.join(lines)+'\n')
+        try: os.chmod(temp, 0o600)
+        except OSError: pass
         os.replace(temp, ENV_PATH)
         return public_config()
 

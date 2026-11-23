@@ -14,6 +14,8 @@ LOCK = threading.RLock()
 def connection():
     c = sqlite3.connect(str(DATA / 'studio.sqlite'), timeout=30)
     c.execute('PRAGMA journal_mode=WAL')
+    # With WAL this stays crash-safe for the database; a power cut can lose only the last moments of progress text.
+    c.execute('PRAGMA synchronous=NORMAL')
     return c
 
 with connection() as c:

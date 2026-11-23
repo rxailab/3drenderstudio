@@ -21,6 +21,7 @@ import json
 import math
 import re
 import shutil
+import time
 import unicodedata
 from pathlib import Path
 
@@ -850,12 +851,48 @@ SCENE_PLAN = 7        # how the scenes are planned; a change makes every listing
 
 
 def scene_key(project, product, settings):
+    """What the scene pictures are made from: a change in any of it makes them again, and nothing else does. The listing's
+    title and copy only change the words, so they are not in it; the product's name, category, real size and how it is
+    installed choose the places and the scale, so they are."""
+    import mounting
+    plan = project.get('plan') or {}
+    moving = project.get('articulation') if isinstance(project.get('articulation'), dict) else {}
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), settings, SCENE_PLAN,
+                      moving.get('key'), moving.get('status'), *([POSES_SHOWN] if moving.get('states') else []),
+                      {'name': project.get('name'), 'category': metadata.get('product_category'), 'size_mm': plan.get('dimensions_mm'),
+                       'mounting': mounting.of(project, (settings or {}).get('hint', '') if isinstance(settings, dict) else '')}],
+                     sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def legacy_scene_key(project, product, settings):
+    """The key scene sets were saved under before v48 (it held the listing title and not the product's own facts): a set
+    saved so is carried over once to the new key instead of being paid for again."""
     plan = project.get('plan') or {}
     moving = project.get('articulation') if isinstance(project.get('articulation'), dict) else {}
     raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), product.get('title'), settings, SCENE_PLAN,
                       moving.get('key'), moving.get('status'), *([POSES_SHOWN] if moving.get('states') else [])],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def carry_over(store, old_folder, new_folder, key):
+    """A scene set saved under another key, moved to ``new_folder`` and filed under ``key``: (store or None)."""
+    if not isinstance(store, dict) or not Path(old_folder).is_dir() or Path(new_folder).exists():
+        return None
+    Path(old_folder).rename(new_folder)
+    old, new = str(old_folder), str(new_folder)
+
+    def moved(value):
+        return value.replace(old, new, 1) if isinstance(value, str) and value.startswith(old) else value
+    items = []
+    for row in store.get('items', []):
+        again = row.get('recheck')
+        if isinstance(again, dict):
+            again = {**again, 'reference': moved(again.get('reference')), 'closeup': moved(again.get('closeup'))}
+        items.append({**row, 'path': moved(row.get('path')), **({'recheck': again} if again is not None else {})})
+    return {**store, 'key': key, 'items': items}
 
 
 def scene_briefs(project, settings, count):
@@ -879,12 +916,14 @@ def scene_briefs(project, settings, count):
                         if item != first.get('segment_id') and suited(item)), None)
         first = {**first, 'segment_id': segment, 'reference_id': None, 'summary': (scene_audience.segment(segment) or {}).get('label', ''),
                  'scene': scene_audience.fixed_scene(segment, bool(first.get('people')), mount)}
-    elif mount == 'wall' and not re.search(r'(?i)\bwall|mounted|hang', str(first.get('scene') or '')):
+    elif mount == 'wall' and not hangs_on_wall(first.get('scene')):
         # the strategist's scene sets the product down somewhere: a wall-mounted one is hung on the place's wall instead
         first = {**first, 'scene': scene_audience.fixed_scene(segment, bool(first.get('people')), mount)}
     first = {**first, 'mounting': mount}
     briefs = [{'proposal': first, 'role': 'use'}]
-    people_allowed = settings['people'] != 'include'
+    # a second scene with nobody in it is the product at rest in a place; with people asked for (whole figures or hands at
+    # work) it is another moment of the work, and is posed and captioned as one
+    people_allowed = settings['people'] not in ('include', 'hands')
     if count >= 2:
         if settings['people'] in ('include', 'hands'):
             # Asked to see people in every picture: the second is still the product at work, a different moment of it.
@@ -924,8 +963,54 @@ def scene_briefs(project, settings, count):
 
 def usable_scene(row):
     """Whether a scene picture may go on a page: one whose product check failed (moved, redrawn, wrongly installed or
-    used) is never shown, not even when no other scene is there; the page then does without it."""
-    return isinstance(row, dict) and row.get('check') != 'failed'
+    used) is never shown, not even when no other scene is there; the page then does without it. Nor is one whose check
+    could not run (quota, timeout): it is checked again at the next build."""
+    return isinstance(row, dict) and row.get('check') != 'failed' and not row.get('check_error')
+
+
+def swappable_scenes(ctx):
+    """What a page revision may swap in: [(name, asset, focus)], only scenes that may be on a page at all."""
+    return [('scene%d' % (index + 1), ctx['assets']['scene%d' % (index + 1)], row['focus']) for index, row in enumerate(ctx.get('scenes') or [])
+            if usable_scene(row)]
+
+
+def recheck_scenes(rows):
+    """Run the vision check again on kept scenes whose check could not run, on the picture already made (no image-model
+    call). Returns (rows, notes)."""
+    import scene_imagegen
+    out = []; notes = []
+    for row in rows:
+        again = row.get('recheck') if row.get('check_error') else None
+        if not again or not Path(row.get('path', '')).is_file() or not again.get('reference') or not Path(again['reference']).is_file():
+            out.append(row); continue
+        closeup = again.get('closeup') if again.get('closeup') and Path(again['closeup']).is_file() else None
+        checked = scene_imagegen.check([again['reference']], row['path'], again.get('product') or '', again.get('people'), again.get('framing'),
+                                       closeup, again.get('size_mm'), **({'usage': again['usage']} if again.get('usage') else {}),
+                                       **({'mounting': again['mounting']} if again.get('mounting') else {}))
+        row = {**row, **_check_fields(checked)}
+        if checked.get('status') == 'failed':
+            row['usage_retry'] = 0           # failed on its first real check: it gets the one more try a failed scene gets
+        if not checked.get('error'):
+            notes.append('补做了一张场景图的产品核对（上次因 AI 服务未能完成）：%s。' % ('通过' if checked.get('status') != 'failed' else '未通过，不放进页面'))
+        out.append(row)
+    return out, notes
+
+
+def _check_fields(checked):
+    """What a scene row keeps of its check."""
+    return {'check': checked.get('status') or 'unchecked', 'check_error': bool(checked.get('error')),
+            'check_issues': [str(item)[:200] for item in (checked.get('issues') or [])[:5]],
+            'check_flags': [name for name, ok in (checked.get('flags') or {}).items() if ok is False]}
+
+
+HANGS = re.compile(r'(?i)(?:mounted|fixed|hung|hangs?|hanging)\s+(?:flat\s+)?(?:on|to|from)\s+(?:the|a|its)\s+(?:\w+\s+){0,3}wall')
+STANDS_ON = re.compile(r'(?i)(?:stands?|standing|sits?|sitting|rests?|resting|placed|set)\s+(?:\w+\s+){0,2}on\s+(?:the|a)\s+(?:\w+\s+){0,2}(?:floor|bench|table|ground)')
+
+
+def hangs_on_wall(scene):
+    """Whether a scene text has the product hanging on a wall, not standing on a floor next to one."""
+    text = str(scene or '')
+    return bool(HANGS.search(text)) and not STANDS_ON.search(text)
 
 
 def _longest_m(project, proposal):
@@ -1120,12 +1205,30 @@ def seen_captions(product, rows):
     return out, done
 
 
-def make_scenes(project, product, folder, cancelled, say, previous=None):
+def _free_folder(folder, name, kept):
+    """``folder``/``name``, or a fresh variant of it when a scene kept from the last build lives there (it would be
+    overwritten: kept scenes are matched by role, so the third picture can sit in scene2/)."""
+    used = {Path(row.get('path', '')).parent.name for row in kept or []}
+    if name not in used:
+        return folder / name
+    number = 2
+    while '%s-%d' % (name, number) in used or (folder / ('%s-%d' % (name, number))).exists():
+        number += 1
+    return folder / ('%s-%d' % (name, number))
+
+
+SCENE_TRIES = 2       # builds in a row in which a scene's every picture lost the product before that scene is left out
+
+
+def make_scenes(project, product, folder, cancelled, say, previous=None, failures=None):
     """Scene pictures for the listing: [{'path', 'title', 'body', 'focus', 'role', 'record'}]. The product at work is
     painted by the image model around the product's render; the product at rest in a place is the render itself set
     into a photograph of that place (scene_backdrop.py), painted only when that cannot be done.
 
     A set made with the same settings for the same model is reused (``previous``: the stored rows with their key).
+    ``failures`` (a list, when given) receives the scenes whose every picture lost the product, with how many builds in a
+    row that happened: kept with the set (previous['failed']) so the next build tries such a scene once more, then leaves
+    it out instead of paying for it on every rebuild.
     Returns (rows, key, notes).
     """
     import scene_stylist
@@ -1140,6 +1243,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     kept = []
     if previous and previous.get('key') == key:
         rows = [row for row in previous.get('items', []) if Path(row.get('path', '')).is_file()]
+        rows, rechecked = recheck_scenes(rows); notes = notes + rechecked
         import scene_imagegen
         stale = [row for row in rows if row.get('check') == 'failed' and (row.get('usage_retry') or 0) < scene_imagegen.USAGE_RETRY]
         if stale and len(rows) - len(stale) > 0:
@@ -1150,7 +1254,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
             # pictures it made are kept and only the missing ones are made, rather than paying for the whole set again.
             kept = rows
         elif len(rows) == len(previous.get('items', [])) and rows:
-            notes = ['场景图沿用上次生成的 %d 张（设置没有变化）。' % len(rows)]
+            notes = ['场景图沿用上次生成的 %d 张（设置没有变化）。' % len(rows)] + notes
             # Each language keeps its own captions: a set in another language, or captions written the old way, are read again.
             language = product['language']
             own = lambda row: ((row.get('captions') or {}).get(language) or {})
@@ -1169,6 +1273,9 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     if briefs[0]['proposal'].get('method') != 'generate' and not image_model_ready():
         return [], None, notes
     titles = captions(project, product, briefs)
+    failed_before = {row.get('scene'): row for row in ((previous or {}).get('failed') or [])
+                     if (previous or {}).get('key') == key and isinstance(row, dict)}
+    import scene_imagegen
     rows = []; spare = {}
     for row in kept:
         spare.setdefault(row.get('role'), []).append(row)
@@ -1177,17 +1284,33 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
     for index, (brief, caption) in enumerate(zip(briefs, titles)):
         if cancelled():
             raise InterruptedError()
+        name = '%s%d' % (brief['role'], sum(1 for other in briefs[:index] if other['role'] == brief['role']) + 1)
+        before = failed_before.get(name) or {}
         if spare.get(brief['role']):
-            rows.append(spare[brief['role']].pop(0)); continue
+            rows.append(spare[brief['role']].pop(0))
+            if before and failures is not None:
+                failures.append(before)          # kept for later, not dropped because a kept picture filled the slot
+            continue
+        if before.get('count', 0) >= SCENE_TRIES:
+            notes.append('第 %d 张场景图连续 %d 次构建都没能保住产品的样子，这次不再付费重画；换场景人群、提示或设置后会重新生成。'
+                         % (index + 1, before['count']))
+            if failures is not None:
+                failures.append(before)
+            continue
         say(index, len(briefs), '生成第 %d / %d 张场景图' % (index + 1, len(briefs)))
         try:
             _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], cancelled,
                                                         lambda text, index=index: say(index, len(briefs), '场景 %d：%s' % (index + 1, text)),
-                                                        folder / ('scene%d' % (index + 1)))
+                                                        _free_folder(folder, 'scene%d' % (index + 1), kept))
         except InterruptedError:
             raise
         except Exception as exc:
             notes.append('第 %d 张场景图没有生成：%s' % (index + 1, str(exc)[:160]))
+            if isinstance(exc, scene_imagegen.ProductNotKept) and failures is not None:
+                # remembered (a quota or network failure is not: that one is simply tried again)
+                failures.append({'scene': name, 'role': brief['role'], 'count': before.get('count', 0) + 1, 'reason': str(exc)[:160], 'at': time.time()})
+            elif before and failures is not None:
+                failures.append(before)          # a quota or network failure says nothing about the product: the count stands
             continue
         box = (picture['record'].get('anchor') or {}).get('box') or [.3, .3, .7, .7]
         checked = record.get('check') or {}
@@ -1203,10 +1326,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None):
                      'placed': 'composite' if composite else 'painted',
                      'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
                      'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
-                     'check': checked.get('status') or 'unchecked',
-                     # why it failed, so the set's notes and the next look can say so
-                     'check_issues': [str(item)[:200] for item in (checked.get('issues') or [])[:5]],
-                     'check_flags': [name for name, ok in (checked.get('flags') or {}).items() if ok is False],
+                     **_check_fields(checked), 'recheck': record.get('recheck') or picture['record'].get('recheck'),
                      # what the picture cost: the image service's token counts over all attempts, and how many there were
                      'usage': record.get('usage'), 'attempts': record.get('attempts'), 'usage_retry': record.get('usage_retry')})
     rows, _ = seen_captions(product, rows)
@@ -1502,8 +1622,10 @@ def _stated_lengths(product):
     texts = [str(row.get('value', '')) for row in product.get('specs') or []]
     texts += ['%s %s' % (row.get('value', ''), row.get('unit', '')) for row in product.get('figures') or []]
     for text in texts:
-        for number, unit in re.findall(r'(\d+(?:\.\d+)?)\s*(mm|cm|inches|inch|in|"|毫米|厘米|公分)(?![a-z])', text.lower()):
-            found.append((float(number) * LENGTH_MM[unit], number, {'inches': 'in', 'inch': 'in', '"': 'in'}.get(unit, unit)))
+        # "1,200 mm": the thousands separator is part of the number (it was read as 200 mm)
+        for number, unit in re.findall(r'(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(mm|cm|inches|inch|in|"|毫米|厘米|公分)(?![a-z])', text.lower()):
+            found.append((float(number.replace(',', '')) * LENGTH_MM[unit], number.replace(',', ''),
+                          {'inches': 'in', 'inch': 'in', '"': 'in'}.get(unit, unit)))
     return found
 
 
@@ -2154,7 +2276,7 @@ def lay_out(kind, ctx, out, work):
     if ctx.get('review') and not ctx.get('review_refused'):
         reference = ctx['assets']['hero']['path']
         facts = ctx.get('facts') or brandkit_review.facts_of(ctx['product'])
-        scenes = [('scene%d' % (index + 1), ctx['assets']['scene%d' % (index + 1)], row['focus']) for index, row in enumerate(ctx.get('scenes') or [])]
+        scenes = swappable_scenes(ctx)
         try:
             verdict = brandkit_review.checked(kind, job, out, ctx['product'], reference, _measured(qa), ctx.get('facts'))
         except Exception as exc:

@@ -71,6 +71,7 @@ def _ensure_idle(project_id):
     import scene_exports
     import ecommerce
     import scene_stylist
+    import listing
 
     if OPERATIONS.get(project_id) or project_id in instruction_service._INFLIGHT:
         raise ProjectBusyError('项目还有正在处理的操作，请等待处理完成后再删除。')
@@ -85,6 +86,9 @@ def _ensure_idle(project_id):
          '项目正在导出电商套图，请先取消导出或等待完成后再删除。'),
         (scene_stylist.KIND, scene_stylist.ACTIVE, scene_stylist.RUNNING_TASKS, {},
          '项目正在生成使用场景，请先取消或等待完成后再删除。'),
+        # a listing build goes on calling the AI services until it ends: the project cannot go while one runs
+        (listing.KIND, {'queued', 'running'}, set(listing.TASKS), {},
+         '项目正在生成套图，请先取消或等待完成后再删除。'),
     ]
     for kind, active, running, processes, message in checks:
         for record in store.all_records(kind):
@@ -174,12 +178,13 @@ def delete_project(project_id):
                 # SQLite rollback after a process exit cannot erase recovery data.
                 store.put(CLEANUP_KIND, cleanup)
             connection = store.connection()
+            connection.execute('PRAGMA synchronous=FULL')     # this commit must be on disk before the folder is renamed
             connection.execute('BEGIN IMMEDIATE')
             if staged is not None:
                 folder.rename(staged)
             records = connection.execute('SELECT kind,id,payload FROM records').fetchall()
             related = [(kind, ident) for kind, ident, payload in records
-                       if kind in {'job', 'export', 'material_task', 'ecommerce_export'}
+                       if kind in {'job', 'export', 'material_task', 'ecommerce_export', 'listing_task', 'scene_task'}
                        and json.loads(payload).get('project_id') == project_id]
             connection.executemany('DELETE FROM records WHERE kind=? AND id=?', related)
             connection.execute('DELETE FROM records WHERE kind=? AND id=?', ('project', project_id))

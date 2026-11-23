@@ -32,7 +32,8 @@ class MountingTests(unittest.TestCase):
 
     def test_products_that_stand_or_are_held_are_not_wall_mounted_and_the_user_has_the_last_word(self):
         for name in ('Service Cart', 'Combination Pliers', 'Rolling Tool Chest', 'Cordless Angle Grinder', 'Drywall saw', 'Drywall Box Cutter',
-                     'Drywall Rack', 'Network Firewall Box', 'Freestanding cabinet, no wall mounting needed', '落地工具柜'):
+                     'Drywall Rack', 'Network Firewall Box', 'Freestanding cabinet, no wall mounting needed', '落地工具柜',
+                     'Drywall Board Cutter', 'Wallboard saw'):
             self.assertIsNone(mounting.of(cabinet(name=name)), name)
         # a lock's keyhole or a caster's mounting hole does not hang a chest on a wall
         for part in ('Lock_Keyhole', 'mounting_hole_1', 'Drywall_mount'):

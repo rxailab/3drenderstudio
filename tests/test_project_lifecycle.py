@@ -127,6 +127,14 @@ class ProjectLifecycleTests(unittest.TestCase):
         self.assertEqual(store.all_records('job'), [])
         self.assert_project_present()
 
+    def test_a_running_listing_build_keeps_the_project_from_being_deleted(self):
+        # the build goes on calling paid AI services until it ends: deleting under it would pay for a set nobody gets
+        store.put('listing_task', {'id': 'build-1', 'project_id': 'alpha', 'status': 'running'})
+        with self.assertRaises(lifecycle.ProjectBusyError):
+            lifecycle._ensure_idle('alpha')
+        store.put('listing_task', {'id': 'build-1', 'project_id': 'alpha', 'status': 'completed'})
+        lifecycle._ensure_idle('alpha')
+
     def test_missing_and_repeated_delete_are_404_without_other_changes(self):
         self.assertEqual(self.delete('missing').status_code, 404)
         self.assertEqual(self.delete().status_code, 200)

@@ -24,6 +24,7 @@ PROCESSES={}
 RUNNING_JOBS=set()
 DEVICE={'status':'尚未执行设备探测'}
 RENDER_PIPELINE_VERSION=4      # 4: on white, steel no longer mirrors the top lamp and the back card at full strength
+PROGRESS_EVERY=.4          # seconds between progress writes of a running render
 
 def cycles_sample_batch(line):
     """Read only Cycles' completed batches, not its duplicate final report."""
@@ -528,6 +529,9 @@ def execute(job,request,out):
             PROCESSES[job['id']]=proc
             if get('job',job['id'])['status']=='cancelled': proc.terminate()
         tail=[]; sample_target=None; sample_count=0; tiles=CyclesTileProgress(); reported=False
+        # Progress is written at most every PROGRESS_EVERY seconds (a stage change at once): every line used to rewrite
+        # the whole job record, seconds of database writes a shot under the lock every request also needs.
+        pending={}; written=0.0
         for line in proc.stdout:
             # The debug-level GPU queue emits hundreds of thousands of lines;
             # retain batch/tile information, warnings and errors without flooding disk.
@@ -563,7 +567,10 @@ def execute(job,request,out):
             elif match and tiles.total==1 and not reported: fields['sample_progress']=round(int(match[1])/max(1,int(match[2]))*100,1)
             elif batch and sample_target and tiles.total==1 and not reported:
                 sample_count+=batch;fields['sample_progress']=round(min(sample_count,sample_target)/sample_target*100,1)
-            update_job(job['id'],**fields)
+            pending.update(fields)
+            if 'stage' in fields or time.monotonic()-written>=PROGRESS_EVERY:
+                update_job(job['id'],**pending);pending={};written=time.monotonic()
+        if pending: update_job(job['id'],**pending)
         code=proc.wait()
         PROCESSES.pop(job['id'],None)
     if get('job',job['id'])['status']=='cancelled': raise InterruptedError('用户已取消')

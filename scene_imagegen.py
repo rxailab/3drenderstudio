@@ -127,6 +127,10 @@ class ImageError(ValueError):
     """A generation that did not produce a picture; the message is safe to show."""
 
 
+class ProductNotKept(ImageError):
+    """Every picture the image model made moved or redrew the product: there is no scene to keep."""
+
+
 class GatewayError(ImageError):
     """The gateway in front of the image model gave up (HTTP 502 or 504), usually because the picture took too long."""
 
@@ -620,7 +624,9 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
         answer = ai._response(ai._post(value, body), value, ai.TOOL_NAME)
         ai._check_schema(answer, schema)
     except Exception:                # the picture exists; a check that could not run must not lose it
-        return {'status': 'unchecked', 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
+        # 'error': the check is owed (quota, timeout) and is run again on this picture at the next build; until then the
+        # scene is kept off the pages. Without a vision model at all there is nothing to wait for (no 'error').
+        return {'status': 'unchecked', 'error': True, 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
     flags = {name: answer[name] for name in FIDELITY_FLAGS}
     faithful = all(flags.values()); visible = answer['person_visible']; face = answer['face_visible']
     kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)      # the product, apart from the place round it
@@ -841,7 +847,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
         # every picture moved or redrew the product: none of them shows this product, so none is kept. The attempts are
         # set aside (the listing's scene folder is cleared when it holds no scene), so what went wrong can be looked at.
         _set_aside(project, folder, attempts)
-        raise ImageError('图像模型每次都改动了产品的位置、大小或外形（%s），这张场景图没有采用。'
+        raise ProductNotKept('图像模型每次都改动了产品的位置、大小或外形（%s），这张场景图没有采用。'
                          % LOCK_NOTES.get(attempts[-1]['check']['lock']['status'], '')[:60].rstrip('。'))
     if chosen is None:
         # A picture whose only fault is the place beats one whose product is wrong.
@@ -858,6 +864,10 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
               'restored': chosen['original'] != chosen['file'], 'mounting': mounting, 'original': url(chosen['original']),
+              # what the check needs to be run again on this picture, without painting it again
+              'recheck': {'reference': str(reference_path), 'closeup': str(chosen['closeup']) if chosen.get('closeup') else None,
+                          'product': product, 'people': people, 'framing': framing, 'size_mm': size_mm, 'mounting': mounting,
+                          'usage': usage_rules},
               'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),

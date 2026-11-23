@@ -32,6 +32,11 @@ class AIConfigTests(unittest.TestCase):
         self.client.put('/api/ai/settings',json={'clear_key':True})
         self.assertEqual(ai_config.public_config()['status'],'missing_key')
 
+    def test_the_saved_env_file_is_readable_by_its_owner_only(self):
+        import os, stat
+        ai_config.save_config({'api_key':'local-test-secret'})
+        self.assertEqual(stat.S_IMODE(os.stat(self.root/'.env').st_mode), 0o600)
+
     def test_changing_endpoint_clears_old_credential(self):
         ai_config.save_config({'api_key':'local-test-secret'})
         ai_config.save_config({'base_url':'https://another.example/anthropic'})
