@@ -67,7 +67,9 @@ READ_TIMEOUT = 150             # seconds without a byte
 TOTAL_TIMEOUT = 480
 MAX_STREAM = 96 * 1024 * 1024
 MAX_IMAGE = 40 * 1024 * 1024
-SIZES = {'1:1': (2048, 2048), '4:3': (2048, 1536), '3:4': (1536, 2048)}
+# The pages are laid out at 1500 px: a 1536 px picture is all they use. At 2048 px the image model's output cost 3568
+# tokens a picture ($0.107 at gpt-image-2 medium); at 1536 px it is about 2511 ($0.075), 30% less. Sizes are multiples of 16.
+SIZES = {'1:1': (1536, 1536), '4:3': (1536, 1152), '3:4': (1152, 1536)}
 SIZES_1K = {'1:1': (1024, 1024), '4:3': (1536, 1024), '3:4': (1024, 1536)}
 
 FIDELITY_PROMPT = '''You check a generated photograph against renders of the real product. The REFERENCE images are renders of the product's 3D model from several sides: they are the truth about its shape, parts, colours and materials. GENERATED is a photograph made by an image model; it should show this same product in a scene.

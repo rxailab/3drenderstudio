@@ -306,7 +306,11 @@ class ImageClientTests(unittest.TestCase):
         self.assertNotIn('close-up of the product at work', scene_imagegen.prompt('pliers', 180, '', '1:1', people=False, framing='hands'))
 
     def test_sizes_follow_the_plan_and_views_cover_the_other_sides(self):
-        self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(2048, 2048), (2048, 1536), (1536, 2048)])
+        self.assertEqual([scene_imagegen.size_for(aspect, 'gpt-image-2') for aspect in ('1:1', '4:3', '3:4')], [(1536, 1536), (1536, 1152), (1152, 1536)])
+        # The pages are 1500 px: a scene is asked for no larger than that needs (2048 px cost 3568 output tokens, 1536 px about 2511).
+        for width, height in scene_imagegen.SIZES.values():
+            self.assertLessEqual(max(width, height), 1536); self.assertGreaterEqual(min(width, height), 1152)
+            self.assertEqual((width % 16, height % 16), (0, 0))
         self.assertEqual(scene_imagegen.size_for('4:3', 'gpt-image-1'), (1536, 1024))
         self.assertEqual(scene_imagegen.angles(35, 18), [(30.0, 20.0), (-30.0, 20.0), (15.0, 50.0)])
         self.assertEqual(scene_imagegen.angles(5, 50), [(0.0, 50.0), (75.0, 50.0), (0.0, 60.0)])       # a frontal view still gets a second side
@@ -559,21 +563,21 @@ class CreateTests(unittest.TestCase):
     def test_a_picture_that_matches_is_kept_as_png_and_jpg_with_its_record(self):
         self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
         made = self.create('4:3')
-        self.assertEqual((made['width'], made['height'], made['png'].name, made['jpg'].name), (2048, 1536, 'scene.png', 'scene.jpg'))
-        with Image.open(made['jpg']) as picture: self.assertEqual((picture.format, picture.size), ('JPEG', (2048, 1536)))
+        self.assertEqual((made['width'], made['height'], made['png'].name, made['jpg'].name), (1536, 1152, 'scene.png', 'scene.jpg'))
+        with Image.open(made['jpg']) as picture: self.assertEqual((picture.format, picture.size), ('JPEG', (1536, 1152)))
         record = made['record']
         self.assertEqual((record['model'], record['attempts'], record['check']['status'], record['usage']), ('gpt-image-2', 1, 'passed', {'total_tokens': 100}))
         self.assertEqual(record['references'], [{'url': '/files/fixture/stage/x/picture.png', 'azimuth': 35, 'elevation': 18}])
-        self.assertEqual(self.rendered, [(35, 18, (2048, 1536))])                   # one render, from the scene's own camera
+        self.assertEqual(self.rendered, [(35, 18, (1536, 1152))])                   # one render, from the scene's own camera
         self.assertEqual(len(self.prompts), 1); self.assertNotIn('CORRECTIONS', self.prompts[0])
         # The model gets one picture, the anchored canvas, and a mask that keeps the product.
         canvas = Path(self.images[0][0]); self.assertEqual(canvas.name, 'canvas.png')
         with Image.open(canvas) as picture:
-            self.assertEqual(picture.size, (2048, 1536)); self.assertEqual(picture.getpixel((5, 5)), scene_lock.GROUND)
-            self.assertEqual(picture.getpixel((1024, 768))[:3], (200, 30, 30))        # the product, in the middle of the frame
+            self.assertEqual(picture.size, (1536, 1152)); self.assertEqual(picture.getpixel((5, 5)), scene_lock.GROUND)
+            self.assertEqual(picture.getpixel((768, 576))[:3], (200, 30, 30))        # the product, in the middle of the frame
         with Image.open(io.BytesIO(self.masks[0])) as mask:
-            self.assertEqual((mask.size, mask.mode), ((2048, 1536), 'RGBA'))
-            self.assertEqual((mask.getpixel((5, 5))[3], mask.getpixel((1024, 768))[3]), (0, 255))       # painted round it, kept on it
+            self.assertEqual((mask.size, mask.mode), ((1536, 1152), 'RGBA'))
+            self.assertEqual((mask.getpixel((5, 5))[3], mask.getpixel((768, 576))[3]), (0, 255))       # painted round it, kept on it
         self.assertEqual((record['anchor']['mask'], record['anchor']['canvas_url']), (True, '/files/fixture/scene_ai/t1/scene/canvas.png'))
         self.assertTrue(record['anchor']['closeup_url'].endswith('/closeup1.jpg'))
         self.assertEqual(Path(self.closeups[0]).name, 'closeup1.jpg')                 # the vision model compares the product side by side
@@ -642,7 +646,7 @@ class CreateTests(unittest.TestCase):
         self.assertEqual((made['record']['attempts'], made['record']['check']['status']), (2, 'passed'))
         self.assertIn('CORRECTIONS.', self.prompts[1]); self.assertIn('top surface is black', self.prompts[1])
         self.assertEqual(made['record']['discarded'][0]['issues'], ['top surface is black'])
-        self.assertEqual(made['png'].read_bytes(), png((2048, 2048), (80, 0, 0)))            # the second picture is the one kept
+        self.assertEqual(made['png'].read_bytes(), png((1536, 1536), (80, 0, 0)))            # the second picture is the one kept
         self.assertEqual(made['record']['usage'], {'total_tokens': 200})
 
     def test_there_is_one_correction_only_and_the_closer_picture_is_kept_with_its_differences(self):
@@ -650,7 +654,7 @@ class CreateTests(unittest.TestCase):
         made = self.create()
         self.assertEqual(len(self.prompts), scene_imagegen.MAX_ATTEMPTS)
         self.assertEqual((made['record']['check']['status'], made['record']['check']['issues']), ('failed', ['one']))
-        self.assertEqual(made['png'].read_bytes(), png((2048, 2048), (40, 0, 0)))
+        self.assertEqual(made['png'].read_bytes(), png((1536, 1536), (40, 0, 0)))
 
     def test_a_wrong_grip_gets_one_try_more_but_a_changed_product_does_not(self):
         flags = lambda **bad: {name: bad.get(name, True) for name in scene_imagegen.FIDELITY_FLAGS}
