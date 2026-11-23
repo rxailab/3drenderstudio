@@ -70,7 +70,7 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
     const call={url,method:options.method||'GET',headers:options.headers||{},body:typeof options.body==='string'?JSON.parse(options.body):options.body};calls.push(call);
     if(h.intercept){const intercepted=await h.intercept(call);if(intercepted!==undefined)return intercepted;}
     if(url==='/api/system')return response(h.system);
-    if(url==='/api/projects' && call.method==='GET')return response([...records.values()]);
+    if(['/api/projects','/api/projects?fields=summary'].includes(url) && call.method==='GET')return response([...records.values()]);
     if(url==='/api/examples')return response([]);
     if(url==='/api/ecommerce/platforms')return response(h.catalog);
     const exportCancel=url.match(/^\/api\/ecommerce\/exports\/([^/]+)\/cancel$/);
@@ -1263,7 +1263,7 @@ test('project deletion locks duplicate actions and shows deferred cleanup feedba
 test('late list, material and poll responses cannot resurrect a deleted project',async t=>{
   const h=await setup(t);await h.run("openProject('a')");const listGate=deferred(),pollGate=deferred(),materialGate=deferred(),old=copy(h.records.get('a')),oldList=[...h.records.values()].map(copy);
   let listFirst=true,pollFirst=true;
-  h.intercept=call=>{if(call.url==='/api/projects' && listFirst){listFirst=false;return listGate.promise;}if(call.url==='/api/projects/a' && call.method==='GET' && pollFirst){pollFirst=false;return pollGate.promise;}if(call.url==='/api/projects/a/material-agent/tasks')return materialGate.promise;};
+  h.intercept=call=>{if(call.url==='/api/projects?fields=summary' && listFirst){listFirst=false;return listGate.promise;}if(call.url==='/api/projects/a' && call.method==='GET' && pollFirst){pollFirst=false;return pollGate.promise;}if(call.url==='/api/projects/a/material-agent/tasks')return materialGate.promise;};
   const refreshing=h.run('refreshList()'),polling=h.run('poll()'),materials=h.run("refreshMaterialTasks('a')");await tick();
   const removing=h.run("deleteProject('a')");await tick();h.node('deleteProjectDialog').querySelector('[data-choice="delete"]').click();await removing;
   listGate.resolve(h.response(oldList));pollGate.resolve(h.response(old));materialGate.resolve(h.response([{id:'old-task',status:'completed'}]));await Promise.all([refreshing,polling,materials]);
