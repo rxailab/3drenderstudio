@@ -653,6 +653,8 @@ def state(project_id):
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
             'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
+            # which pages will carry the logo, the legal line and each badge, and what no page will show (before a build)
+            'brand_usage': brandkit_set.brand_usage(brand_record, [row['kind'] for row in planned(project, product, parts) if not row.get('skipped')]),
             'order': list(brandkit_set.ORDER), 'auto': list(AUTO_ORDER),
             'scenes': [{key: row.get(key) for key in ('url', 'title', 'body', 'role')} for row in (listing.get('scenes') or {}).get('items', [])],
             'scene_options': _scene_options(),
@@ -1144,7 +1146,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         if 'T06' in kinds:
             notes += stated_notes
         ctx['light_product'] = _light_share(shots['hero']['path']) > .35
-        ctx['facts'] = brandkit_review.facts_of(product, {row['key']: row['mm'] for row in ctx['stated']} or None)
+        ctx['facts'] = brandkit_review.facts_of(product, {row['key']: row['mm'] for row in ctx['stated']} or None, brand)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes), len(poses))
         has['T06'] = has['T06'] and bool(ctx['stated'])
         if known and not ctx['stated']:
@@ -1159,6 +1161,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             has['T08'] = False; why['T08'] = '通过核对的场景图不到 2 张（没通过的场景图不放进场景拼图页）'
         work = folder / '_layout'
         made = [row for row in rows if has.get(row['kind'])]
+        ctx['kinds'] = [row['kind'] for row in made]          # the pages of this set: which of them carries which brand badge
         for row in rows:
             if not has.get(row['kind']):
                 notes.append('「%s」没有生成：%s。' % (brandkit_set.KINDS[row['kind']][0], why.get(row['kind'], '缺少内容')))
@@ -1210,7 +1213,13 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             pages.append({'id': uuid.uuid4().hex[:10], 'kind': kind, 'index': 0, 'file': name, 'url': components.url(folder / name),
                           'svg': components.url(vector) if vector.is_file() else None,
                           'width': width, 'height': height, 'notes': page_notes, 'review': review,
+                          # the brand's own marks as they were drawn on this page (the logo, the legal line, badge texts)
+                          'marks': brandkit_set.marks_drawn(qa),
                           'checks': {'passed': not brandkit_set.hard_issues(qa), 'issues': [row['check'] for row in qa.get('issues', [])][:12]}})
+        # What the seller entered for the brand and no page of the set shows: said before anything is exported.
+        missing = brandkit_set.marks_missing(brand_record, pages, bool(getattr(brand, 'logo_path', None)))
+        if missing:
+            notes.append('品牌设置里的%s没有出现在任何一页上（没有合适的页面，或页面上没有不遮挡内容的空位）。' % '、'.join(missing))
         if ctx.get('review_refused'):
             notes.append('视觉审核被 AI 服务拒绝（%s），之后的页面没有再请求审核。' % ctx['review_refused'])
         if vision_ready and len(pages) > 1 and not ctx.get('review_refused'):
@@ -1297,8 +1306,54 @@ def _run(task_id):
         TASKS.pop(task_id, None)
 
 
-def archive(project_id):
-    """The built pages as one ZIP, in order. Returns (bytes, file name)."""
+REVIEW_WORDS = {'passed': '通过', 'failed': '未通过', 'not_verified': '未审核', 'manual_review': '需人工查看'}
+
+
+def page_status(page):
+    """What is known about one built page before it is uploaded anywhere: {'file', 'kind', 'layout', 'review', 'score',
+    'vetoes', 'issues', 'ready'}. ``ready`` is true only when the layout checks passed and the visual review passed."""
+    checks = page.get('checks') if isinstance(page.get('checks'), dict) else {}
+    review = page.get('review') if isinstance(page.get('review'), dict) else {}
+    state = review.get('status') if review.get('status') in REVIEW_WORDS else 'not_verified'
+    vetoes = [row.get('kind') if isinstance(row, dict) else str(row) for row in review.get('vetoes') or []]
+    issues = [str(item)[:300] for item in checks.get('issues') or []] + [str(note)[:300] for note in page.get('notes') or []]
+    layout = 'passed' if checks.get('passed') else 'failed'
+    return {'file': page.get('file'), 'kind': page.get('kind'), 'title': brandkit_set.KINDS.get(page.get('kind'), ('', ''))[0],
+            'layout': layout, 'review': state, 'score': review.get('score'), 'vetoes': [v for v in vetoes if v],
+            'summary': str(review.get('summary') or '')[:600], 'issues': issues, 'ready': layout == 'passed' and state == 'passed'}
+
+
+def review_manifest(project, listing, included):
+    """The status of every built page, and which of them this archive holds."""
+    rows = [{**page_status(page), 'included': page.get('file') in included} for page in listing.get('pages') or []]
+    return {'product': (listing.get('product') or {}).get('title') or project.get('name'), 'built_at': listing.get('built_at'),
+            'pages': rows, 'ready': sum(row['ready'] for row in rows), 'total': len(rows),
+            'set_notes': [str(note)[:400] for note in listing.get('notes') or []]}
+
+
+def _manifest_text(manifest, reviewed):
+    lines = ['%s · 套图审核状态' % (manifest.get('product') or ''), '',
+             '本压缩包%s。共 %d 张，其中 %d 张版式检查和视觉审核都通过。' % (
+                 '只包含通过审核的图片' if reviewed else '包含全部已生成的图片（草稿），没通过或没审核的也在内', manifest['total'], manifest['ready']), '']
+    for row in manifest['pages']:
+        state = '可用' if row['ready'] else '请先检查'
+        lines.append('%s  [%s]%s' % (row['file'], state, '' if row['included'] else '（未放入本压缩包）'))
+        lines.append('    %s · 版式检查%s · 视觉审核%s%s' % (row['title'], '通过' if row['layout'] == 'passed' else '未通过', REVIEW_WORDS[row['review']],
+                                                       '（%s 分）' % row['score'] if row['score'] is not None else ''))
+        if row['vetoes']:
+            lines.append('    否决项：' + '、'.join(row['vetoes']))
+        for issue in row['issues'][:4]:
+            lines.append('    · ' + issue)
+        lines.append('')
+    if manifest['set_notes']:
+        lines += ['整套提示：'] + ['  · ' + note for note in manifest['set_notes']]
+    return '\n'.join(lines) + '\n'
+
+
+def archive(project_id, reviewed=False):
+    """The built pages as one ZIP, in order, with what the checks and the visual review found of each (review-status.json,
+    审核状态.txt). ``reviewed`` leaves out every page that did not pass both: the export to upload from, where the plain one
+    is the draft. Returns (bytes, file name)."""
     project = get('project', project_id)
     _, _, listing = stored(project)
     pages = listing.get('pages') or []
@@ -1306,6 +1361,12 @@ def archive(project_id):
     files = [(page, path) for page, path in files if path]
     if not files:
         raise ValueError('还没有生成套图。')
+    built = files
+    if reviewed:
+        files = [(page, path) for page, path in files if page_status(page)['ready']]
+        if not files:
+            raise ValueError('没有通过审核的图片：可以下载草稿查看每张图的审核状态。')
+    manifest = review_manifest(project, listing, {page['file'] for page, _ in files})
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for page, path in files:
@@ -1313,9 +1374,11 @@ def archive(project_id):
             vector = components.path_of(project_id, page.get('svg'), ('.svg',)) if page.get('svg') else None
             if vector and vector.is_file():
                 bundle.write(vector, 'editable/' + vector.name)          # live text and named layers, for Illustrator, Figma or Inkscape
-        fonts = files[0][1].parent / 'svg' / 'fonts'
+        fonts = built[0][1].parent / 'svg' / 'fonts'
         if fonts.is_dir():
             for font in sorted(fonts.iterdir()):
                 bundle.write(font, 'editable/fonts/' + font.name)
+        bundle.writestr('review-status.json', json.dumps(manifest, ensure_ascii=False, indent=1))
+        bundle.writestr('审核状态.txt', _manifest_text(manifest, reviewed))
     slug = re.sub(r'[^\w\-]+', '_', str(project.get('slug') or 'product'))[:40] or 'product'
-    return buffer.getvalue(), slug + '-listing.zip'
+    return buffer.getvalue(), slug + ('-listing-reviewed.zip' if reviewed else '-listing-draft.zip')

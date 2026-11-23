@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / 'tests'))
 
+import brand_kit
 import brandkit_render
 import brandkit_set
 import components
@@ -419,6 +420,23 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(closeup['vetoes'], [])
         self.assertEqual([row['kind'] for row in scene['vetoes']], ['scene_product_mismatch'])
 
+    def test_a_scenes_own_check_outweighs_the_page_reviews_impression_both_ways(self):
+        """Scenes show the product open where the reference shows it closed: the page review vetoed a van scene for its
+        missing door handles, though that scene had passed its check against a render of the open state."""
+        seen = [{'kind': 'scene_product_mismatch', 'evidence': 'no handles'}, {'kind': 'text_unreadable', 'evidence': 'x'}]
+        kept, note = brandkit_set.scene_vetoes(seen, {'scene2': 'passed', 'scene3': 'passed'})
+        self.assertEqual([row['kind'] for row in kept], ['text_unreadable']); self.assertIn('以核对为准', note)
+        kept, note = brandkit_set.scene_vetoes(seen, {'scene2': 'passed', 'scene3': 'unchecked'})          # one scene nobody verified: the veto stands
+        self.assertEqual(len(kept), 2); self.assertIsNone(note)
+        kept, note = brandkit_set.scene_vetoes([], {'scene1': 'failed', 'scene2': 'passed'})
+        self.assertEqual([row['kind'] for row in kept], ['scene_product_mismatch']); self.assertIn('scene1', kept[0]['evidence'])
+        self.assertEqual(brandkit_set.scene_vetoes(seen, {}), (seen, None))                                 # a page without scenes
+
+    def test_a_brand_mark_left_out_for_lack_of_room_is_not_reported_to_the_review_as_a_fault(self):
+        qa = {'canvas': [1500, 1500], 'elements': [], 'issues': [], 'notes': ['no free spot for badge "PRO"', 'brand logo left out: no free corner',
+                                                                             'product reduced to 90% of its target size so every label fits']}
+        self.assertEqual(brandkit_set._measured(qa)['notes'], ['product reduced to 90% of its target size so every label fits'])
+
     def test_each_language_keeps_its_own_scene_captions(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': '办公随行', 'body': ''}]
@@ -508,6 +526,76 @@ class ReviseTests(unittest.TestCase):
         self.assertTrue(set(brandkit_set.AUTO) <= set(review.briefs()))
 
 
+class BrandOnThePageTests(unittest.TestCase):
+    """What a page job is told of the brand: its preset, its colours, its marks. No browser."""
+
+    def job(self, template='T05', **record):
+        brand = brand_kit.Brand({'accent': '#d0612a', **record})
+        return brandkit_set._job(template, {'aspect': '1:1', 'language': 'en', 'brand': brand})
+
+    def test_ink_on_the_accent_is_the_one_with_more_contrast(self):
+        import listing_draw as draw
+        grey = self.job(accent='#999999')['palette']
+        self.assertEqual(grey['accent-ink'], '#111111')                                  # 6.63:1; white, chosen before, is 2.85:1
+        for accent in ('#999999', '#f2b01e', '#d0612a', '#2c4c8c', '#7a7a7a', '#5b8f3a', '#111111', '#ffffff', '#808080', '#c0392b'):
+            for template in ('T05', 'T04', 'T01'):
+                palette = self.job(template, accent=accent)['palette']; ink = palette['accent-ink']
+                for other in ('#111111', '#FFFFFF'):
+                    self.assertGreaterEqual(draw.contrast(ink, palette['accent']), draw.contrast(other, palette['accent']), (accent, template))
+                self.assertGreaterEqual(draw.contrast(ink, palette['accent']), 4.5, (accent, template))      # small captions on a chip stay readable
+        self.assertEqual(brandkit_set.ink_on('not a colour'), '#111111')
+
+    def test_the_default_preset_is_the_templates_own_look_and_every_other_states_its_own(self):
+        frame = self.job('T12')['style']
+        self.assertEqual((frame['preset'], frame['headline'], frame['card'], frame['leader']), ('frame', None, None, None))
+        self.assertEqual(frame['frame'], {'header': 'none', 'footer': 'none'})
+        clean = self.job('T12', preset='clean')['style']
+        self.assertEqual((clean['headline']['weight'], clean['headline']['case'], clean['headline']['italic']), (800, 'none', False))
+        self.assertEqual((clean['leader']['route'], clean['leader']['end'], clean['chip']['radius']), ('angled', 'dot', 999))
+        promo = self.job('T12', preset='promo')['style']
+        self.assertEqual((promo['headline']['stretch'], promo['headline']['italic'], promo['frame']['header']), (68, True, 'slash'))
+
+    def test_changing_only_the_preset_changes_the_job(self):
+        jobs = {preset: self.job('T01', preset=preset) for preset in brand_kit.PRESETS}
+        self.assertEqual(len({json.dumps(job, sort_keys=True) for job in jobs.values()}), len(jobs))          # five presets, five different pages
+        changed = {key for key in jobs['frame'] if jobs['frame'][key] != jobs['tech'][key]}
+        self.assertEqual(changed, {'style', 'palette'})
+        self.assertEqual(jobs['tech']['palette']['bg'], brand_kit.DARK); self.assertEqual(jobs['tech']['palette']['text'], '#F4EFE3')
+        self.assertEqual(jobs['clean']['palette']['bg'], '#FFFFFF')
+        self.assertEqual(jobs['flat']['palette']['bg'], '#d0612a')                                              # the brand colour as the ground
+        dark_page = {preset: self.job('T02', preset=preset)['palette'] for preset in ('frame', 'clean', 'tech')}
+        self.assertNotEqual(dark_page['clean']['bg'].lower(), '#ffffff')           # a page drawn for a dark ground stays dark
+        self.assertEqual(dark_page['tech']['bg'], brand_kit.DARK)
+
+    def test_the_review_is_told_the_sellers_own_brand_texts(self):
+        """A badge and a legal line are the seller's statements. Without them in the facts, the review vetoed its own
+        seller's "Steel Top" and "Casters lock on two wheels." as claims nobody made."""
+        import brandkit_review
+        bare = {'title': 'Service Cart', 'model': '', 'headline': '', 'subline': '', 'features': [], 'specs': [], 'figures': [], 'size_mm': 900}
+        brand = brand_kit.Brand({'name': 'Acme', 'badges': ['2 Year Warranty', 'Steel Top'], 'legal': 'Casters lock on two wheels.'})
+        facts = brandkit_review.facts_of(bare, None, brand)
+        self.assertEqual((facts['brand']['name'], facts['brand']['badges'], facts['brand']['legal']),
+                         ('Acme', ['2 Year Warranty', 'Steel Top'], 'Casters lock on two wheels.'))
+        self.assertIn('never claim_not_in_facts', facts['brand']['note']); self.assertIn('scope', facts)      # the product itself still claims nothing
+        self.assertNotIn('brand', brandkit_review.facts_of(bare)); self.assertNotIn('brand', brandkit_review.facts_of(bare, None, brand_kit.Brand({})))
+        self.assertEqual(brandkit_review.brand_texts({'legal': ' L ', 'badges': ['', 'A']}), {'legal': 'L', 'badges': ['A']})
+
+    def test_every_badge_has_a_page_and_marks_go_only_where_they_belong(self):
+        self.assertEqual(brandkit_set.badges_on('T12', ['A', 'B', 'C']), ['A', 'C']); self.assertEqual(brandkit_set.badges_on('T01', ['A', 'B', 'C']), ['B'])
+        self.assertEqual(brandkit_set.badges_on('T01', ['A']), ['A']); self.assertEqual(brandkit_set.badges_on('T06', ['A', 'B']), [])
+        self.assertEqual(brandkit_set.badges_on('T12', ['A', 'B', 'C'], ['T12', 'T06']), ['A', 'B'])        # no callout page: the first two, in order
+        self.assertEqual(self.job('T12', legal='Small print')['style']['preset'], 'frame')
+        self.assertNotIn('brand_marks', self.job('T12', legal='Small print'))                  # no small print on the poster
+        self.assertEqual(self.job('T06', legal='Small print')['brand_marks'], {'legal': 'Small print'})
+        usage = brandkit_set.brand_usage({'logo': '/files/p/logo.png', 'legal': 'L', 'badges': ['A', 'B', 'C']}, ['T12', 'T06'])
+        self.assertEqual((usage['logo'], usage['legal']), (['T12'], ['T06']))
+        self.assertEqual(usage['omitted'], ['徽标「C」'])                                        # no callout page in this set: the third has no room, said before the build
+        self.assertEqual(brandkit_set.brand_usage({'legal': 'L'}, ['T12', 'T08'])['omitted'], ['说明文字'])
+        self.assertIn('标志', brandkit_set.mark_note('brand logo left out: no free corner'))
+        self.assertIn('改短', brandkit_set.mark_note('legal line left out: too long for one line'))
+        self.assertEqual(brandkit_set.mark_note('product reduced to 90%'), 'product reduced to 90%')
+
+
 @unittest.skipUnless(brandkit_render.available(), 'No Chrome/Chromium/Edge: template layout not run')
 class LayoutTests(StoreCase):
     """A whole set, laid out by the real templates in a headless browser, with Blender and the image model stood in for."""
@@ -551,13 +639,118 @@ class LayoutTests(StoreCase):
         build = max((self.data / 'fixture' / 'listing').glob('build-*'), key=lambda path: path.stat().st_mtime)
         job = json.loads((build / 'jobs' / 'T01.json').read_text())[-1]
         self.assertEqual(job['fonts']['pairing'], 'poster'); self.assertEqual(job['texture'], 'diagonal')
-        self.assertEqual([row['text'] for row in job['badges']], ['2 Year Warranty'])        # one badge on the main image
+        self.assertEqual([row['text'] for row in job['badges']], ['PRO'])        # the second badge on the callout page; the poster takes the first
         qa = brandkit_render.render('T01', job, self.data / 'again.png', work=self.data)
         ids = {row['id'] for row in qa['elements']}
         self.assertIn('texture', ids)
         self.assertTrue({'brand_badge1', 'brand_badge1_t'} <= ids or any('badge' in note for note in qa['notes']), qa['notes'])
         self.assertFalse([row for row in qa['issues'] if row['check'] in ('overlap', 'font_missing', 'safe_margin', 'out_of_canvas')])
         self.assertIn('Anton', {row['family'] for row in qa['fonts']})
+
+    def newest_jobs(self, kind):
+        build = max((self.data / 'fixture' / 'listing').glob('build-*'), key=lambda path: path.stat().st_mtime)
+        return json.loads((build / 'jobs' / (kind + '.json')).read_text())[-1]
+
+    def test_only_the_preset_is_changed_and_the_pages_change_with_it(self):
+        """The preset selector, end to end: the same product and brand colour built in three presets. What a buyer sees of
+        the headline, the ground, the frame, the chips and the leader lines must differ; every page must still pass."""
+        self.product('en'); seen = {}
+        for preset in ('frame', 'clean', 'promo'):
+            listing.save_brand('fixture', {'preset': preset})
+            pages, notes = listing.build('fixture')
+            for page in pages:
+                self.assertTrue(page['checks']['passed'], (preset, page['kind'], page['checks'], page['notes']))
+            qa = {kind: brandkit_render.render(kind, self.newest_jobs(kind), self.data / ('%s-%s.png' % (preset, kind)), work=self.data)
+                  for kind in ('T12', 'T01', 'T04')}
+            headline = next(row for row in qa['T12']['elements'] if row['id'] == 'headline')
+            chips = [row['radius'] for row in qa['T04']['elements'] if row.get('kind') == 'shape' and row['id'] in ('s1', 's2', 's3')]     # the figure chips
+            seen[preset] = {'case': headline['text_transform'], 'weight': int(headline['font_weight']), 'slant': headline['font_style'],
+                            'ground': qa['T01']['ground'].lower(), 'frame': sorted(row['id'] for row in qa['T01']['elements'] if row['id'].startswith('frame_')),
+                            'chip': max(chips) if chips else None,
+                            'routes': {row['route'] for row in qa['T01']['leaders']}, 'ends': {row['end'] for row in qa['T01']['leaders']},
+                            'preset': qa['T12']['preset']}
+        frame, clean, promo = seen['frame'], seen['clean'], seen['promo']
+        self.assertEqual((frame['case'], frame['weight'], frame['slant']), ('uppercase', 900, 'normal'))       # the templates' own look
+        self.assertEqual((clean['case'], clean['weight']), ('none', 800))                                       # no more forced heavy capitals
+        self.assertEqual((promo['case'], promo['weight'], promo['slant']), ('uppercase', 900, 'italic'))
+        self.assertEqual(clean['ground'], '#ffffff'); self.assertNotEqual(frame['ground'], clean['ground'])
+        self.assertLess(sum(int(promo['ground'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)), 200)             # a dark page
+        self.assertEqual((frame['frame'], clean['frame']), ([], [])); self.assertIn('frame_header', promo['frame'])
+        # a leader whose two ends are level is a straight line in every preset; the others take the preset's route
+        self.assertEqual((frame['ends'], clean['ends'], promo['ends']), ({'square'}, {'dot'}, {'arrow'}))
+        self.assertTrue(frame['routes'] <= {'elbow', 'straight'} and clean['routes'] <= {'angled', 'straight'} and promo['routes'] == {'straight'}, seen)
+        self.assertTrue(frame['chip'] is not None and clean['chip'] > frame['chip'] > promo['chip'], seen)       # pills, the template's corners, sharp
+        self.assertEqual([row['preset'] for row in seen.values()], ['frame', 'clean', 'promo'])
+
+    def test_a_chinese_set_takes_a_preset_without_losing_its_own_type(self):
+        """Chinese headlines keep their own faces and case; the preset still sets the ground, the frame and the weight."""
+        self.product('zh'); listing.save_brand('fixture', {'preset': 'tech'})
+        pages, notes = listing.build('fixture')
+        for page in pages:
+            self.assertTrue(page['checks']['passed'], (page['kind'], page['checks'], page['notes']))
+        qa = brandkit_render.render('T01', self.newest_jobs('T01'), self.data / 'zh-T01.png', work=self.data)
+        headline = next(row for row in qa['elements'] if row.get('tier') == 'headline')
+        self.assertEqual((headline['text_transform'], headline['font_style']), ('none', 'normal'))
+        self.assertIn('Noto Sans SC', headline['font_family'])
+        self.assertIn('frame_footer', {row['id'] for row in qa['elements']})
+        self.assertLess(sum(int(qa['ground'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)), 200)
+
+    def test_the_logo_the_legal_line_and_every_badge_reach_the_pages_or_are_named(self):
+        logo = self.data / 'fixture' / 'brand' / 'logo.png'; logo.parent.mkdir(parents=True, exist_ok=True)
+        Image.new('RGBA', (360, 120), (200, 30, 30, 255)).save(logo)
+        self.product('en')
+        listing.save_brand('fixture', {'logo': '/files/fixture/brand/logo.png', 'legal': 'Battery sold separately. Sizes are approximate.',
+                                       'badges': ['2 Year Warranty', 'PRO', 'NEW']})
+        usage = listing.state('fixture')['brand_usage']
+        self.assertIn('T12', usage['logo']); self.assertIn('T06', usage['legal'])
+        self.assertEqual({row['text']: row['pages'] for row in usage['badges']}, {'2 Year Warranty': ['T12'], 'PRO': ['T01'], 'NEW': ['T12']})
+        pages, notes = listing.build('fixture')
+        for page in pages:
+            self.assertTrue(page['checks']['passed'], (page['kind'], page['checks'], page['notes']))
+        marks = {page['kind']: page['marks'] for page in pages}
+        self.assertTrue(any(row['logo'] for row in marks.values()), marks)             # the uploaded logo is on a page
+        self.assertTrue(any(row['legal'] for row in marks.values()), marks)            # and so is the footer
+        self.assertFalse(marks['T12']['legal'])                                        # the poster carries no small print
+        job = self.newest_jobs('T12')
+        self.assertEqual([row['text'] for row in job['badges']], ['2 Year Warranty', 'NEW'])
+        self.assertEqual(job['brand_marks']['logo']['width'], 360); self.assertFalse(job['brand_slot'])   # the logo stands for the name
+        self.assertEqual(self.newest_jobs('T06')['brand_marks'], {'legal': 'Battery sold separately. Sizes are approximate.'})
+        # whatever a page had no room for is said on that page, and what no page shows is said for the set
+        drawn = {text.upper() for row in marks.values() for text in row['badges']}
+        for text in ('2 Year Warranty', 'PRO', 'NEW'):
+            if text.upper() not in drawn:
+                self.assertTrue(any('徽标「%s」' % text in note for note in notes), (text, notes))
+        missing = brandkit_set.marks_missing({'logo': '/x', 'legal': 'L', 'badges': ['A']}, [{'marks': {'logo': False, 'legal': False, 'badges': []}}])
+        self.assertEqual(missing, ['品牌标志', '说明文字', '徽标「A」'])
+
+    def test_the_zip_carries_each_pages_review_status_and_the_reviewed_one_holds_only_what_passed(self):
+        import io, zipfile
+        import studio_store as store
+        self.product('en')
+        pages, _ = listing.build('fixture')
+        data, name = listing.archive('fixture')
+        with zipfile.ZipFile(io.BytesIO(data)) as bundle:
+            names = bundle.namelist(); manifest = json.loads(bundle.read('review-status.json')); words = bundle.read('审核状态.txt').decode('utf-8')
+        self.assertTrue(name.endswith('-listing-draft.zip'))
+        self.assertTrue({page['file'] for page in pages} <= set(names))
+        self.assertEqual([row['file'] for row in manifest['pages']], [page['file'] for page in pages])
+        self.assertTrue(all(row['review'] == 'not_verified' and not row['ready'] and row['included'] for row in manifest['pages']))   # no vision model here
+        self.assertIn('未审核', words); self.assertIn(pages[0]['file'], words)
+        with self.assertRaisesRegex(ValueError, '没有通过审核'):
+            listing.archive('fixture', reviewed=True)
+        project = store.get('project', 'fixture')
+        project['listing']['pages'][0]['review'] = {'status': 'passed', 'score': 88, 'vetoes': []}
+        project['listing']['pages'][1]['review'] = {'status': 'failed', 'score': 61, 'vetoes': [{'kind': 'text_unreadable'}]}
+        store.put('project', project)
+        data, name = listing.archive('fixture', reviewed=True)
+        with zipfile.ZipFile(io.BytesIO(data)) as bundle:
+            names = bundle.namelist(); manifest = json.loads(bundle.read('review-status.json'))
+        self.assertTrue(name.endswith('-listing-reviewed.zip'))
+        self.assertEqual([n for n in names if n.endswith('.png')], [pages[0]['file']])
+        rows = {row['file']: row for row in manifest['pages']}
+        self.assertTrue(rows[pages[0]['file']]['ready'] and rows[pages[0]['file']]['included'])
+        self.assertEqual((rows[pages[1]['file']]['review'], rows[pages[1]['file']]['vetoes'], rows[pages[1]['file']]['included']), ('failed', ['text_unreadable'], False))
+        self.assertEqual((manifest['ready'], manifest['total']), (1, len(pages)))
 
     def test_the_poses_page_is_laid_out_and_passes_its_checks(self):
         """T13: two or three states of a product cut with one window, side by side or stacked, in either language."""

@@ -27,7 +27,146 @@
     const pal = TPL.job.palette || {};
     for (const k of Object.keys(pal)) r.style.setProperty('--' + k, pal[k]);
     if (TPL.job.texture) TPL.texture(TPL.job.texture);     // the brand's ground texture, under everything
+    TPL.applyStyle(r);                                      // the brand preset: type, corners, leader lines, frame marks
     return r;
+  };
+
+  /* The brand preset (job.style, from brand_kit.PRESETS): how headlines and labels are set, how round cards and chips
+     are, how leader lines are drawn and what marks frame the page. A job without it (and the default preset, which IS the
+     templates' own look) changes nothing. Type is set by text tier, so every template follows without naming its classes;
+     Chinese keeps its own faces and takes the weight only. */
+  TPL.applyStyle = function (r) {
+    const st = TPL.job.style; if (!st) return;
+    r.classList.add('styled', 'preset-' + st.preset, 'ground-' + (st.ground || 'light'));
+    r.dataset.preset = st.preset;
+    const set = (k, v) => r.style.setProperty(k, String(v));
+    const rules = [];
+    const type = (prefix, tier, t) => {
+      if (!t) return;
+      set(`--${prefix}-weight`, t.weight); set(`--${prefix}-stretch`, t.stretch + '%');
+      set(`--${prefix}-case`, t.case === 'upper' ? 'uppercase' : 'none'); set(`--${prefix}-slant`, t.italic ? 'italic' : 'normal');
+      set(`--${prefix}-tracking`, (t.tracking || 0) + 'em');
+      rules.push(`#canvas.styled:not([lang=zh]) .txt[data-tier="${tier}"]{font-weight:var(--${prefix}-weight);font-stretch:var(--${prefix}-stretch);` +
+        `text-transform:var(--${prefix}-case);font-style:var(--${prefix}-slant);letter-spacing:var(--${prefix}-tracking)}`);
+      rules.push(`#canvas.styled[lang=zh] .txt[data-tier="${tier}"]{font-weight:var(--${prefix}-weight)}`);
+    };
+    type('hl', 'headline', st.headline); type('lb', 'important', st.label);
+    if (st.card && st.card.radius != null) {
+      set('--card-radius', st.card.radius + 'px');
+      rules.push('#canvas.styled .tile,#canvas.styled .tbl,#canvas.styled .stack,#canvas.styled .slot,#canvas.styled .badge,' +
+        '#canvas.styled .panel,#canvas.styled .card{border-radius:var(--card-radius)}');
+    }
+    if (st.chip && st.chip.radius != null) {
+      set('--chip-radius', Math.min(st.chip.radius, 999) + 'px');
+      rules.push('#canvas.styled .chip,#canvas.styled .t4chip{border-radius:var(--chip-radius)}');
+    }
+    if (st.leader) {
+      set('--leader-w', st.leader.width);
+      set('--leader', st.leader.ink === 'ink' ? 'var(--text)' : st.leader.ink === 'soft' ? 'var(--muted)' : 'var(--accent)');
+    }
+    // a white panel on a page turned dark keeps its own dark inks
+    rules.push('#canvas.ground-dark .tbl,#canvas.ground-accent .tbl{--text:#1E2226;--muted:#5E666D;--ink:#1A1A1A;--ink-2:#3A3A3A;--line:#8E969D}');
+    if (rules.length) { const css = document.createElement('style'); css.id = 'preset-style'; css.textContent = rules.join('\n'); document.head.appendChild(css); }
+    TPL.frameMarks(st.frame || {});
+  };
+
+  /* The preset's frame, drawn in the page's outer margin where no template puts anything: a slanted accent band (promo),
+     an accent line with a tick (tech). Under everything a template adds later. */
+  TPL.frameMarks = function (frame) {
+    const W = TPL.W, H = TPL.H, u = Math.round(H / 100);
+    const mark = (id, style) => { const e = TPL.el('div', { class: 'frame-mark', 'data-qa': id, 'data-kind': 'shape', 'data-exempt': '1' });
+      Object.assign(e.style, { position: 'absolute', background: 'var(--accent)', pointerEvents: 'none', zIndex: 40 }, style); return e; };
+    if (frame.header === 'slash') {
+      mark('frame_header', { left: '0px', top: '0px', width: Math.round(W * 0.42) + 'px', height: (u * 1.6) + 'px', clipPath: `polygon(0 0,100% 0,calc(100% - ${u * 2.4}px) 100%,0 100%)` });
+      mark('frame_header_tail', { left: Math.round(W * 0.44) + 'px', top: '0px', width: (u * 5) + 'px', height: (u * 1.6) + 'px', clipPath: `polygon(${u * 2.4}px 0,100% 0,calc(100% - ${u * 2.4}px) 100%,0 100%)` });
+    } else if (frame.header === 'band') {
+      mark('frame_header', { left: '0px', top: '0px', width: W + 'px', height: (u * 1.2) + 'px' });
+    }
+    if (frame.footer === 'line') {
+      mark('frame_footer', { left: '0px', top: (H - u * 0.6) + 'px', width: W + 'px', height: Math.max(3, Math.round(u * 0.4)) + 'px' });
+      mark('frame_footer_tick', { left: Math.round(W * 0.85) + 'px', top: (H - u * 1.8) + 'px', width: (u * 9) + 'px', height: (u * 1.2) + 'px' });
+    } else if (frame.footer === 'band') {
+      mark('frame_footer', { left: '0px', top: (H - u * 1.2) + 'px', width: W + 'px', height: (u * 1.2) + 'px' });
+    }
+  };
+
+  /* The brand's own marks (job.brand_marks): its logo in the first free corner, on a small white plate so it reads on
+     any ground, and its legal line along the bottom edge. Neither may cover text, a panel or the product: a mark with no
+     room is left out and the page says so (qa.notes), so the seller learns of it before the set is exported. */
+  TPL.brandMarks = function () {
+    const marks = TPL.job.brand_marks; if (!marks || TPL._marked) return; TPL._marked = true;
+    const W = TPL.W, H = TPL.H, m = TPL.job.min_margin || 60;
+    if (marks.logo && marks.logo.file) {
+      const a = marks.logo, pad = Math.round(H * 0.008), edge = Math.round(m * 0.6);
+      // as large as a corner allows: 6% of the page's height, then smaller, nearer the edge
+      let at = null, w = 0, h = 0, bw = 0, bh = 0;
+      for (const share of [0.06, 0.05, 0.042]) {
+        h = Math.round(H * share); w = Math.round(h * a.width / Math.max(1, a.height));
+        const most = Math.round(W * 0.24); if (w > most) { h = Math.round(h * most / w); w = most; }
+        bw = w + 2 * pad; bh = h + 2 * pad;
+        for (const g of [m, edge]) {
+          at = TPL.freeSpot(bw, bh, [[W - g - bw, g], [g, g], [W - g - bw, H - g - bh], [g, H - g - bh]], 12, { overPhotos: true });
+          if (at) break;
+        }
+        if (at) break;
+      }
+      if (!at) TPL.notes.push('brand logo left out: no free corner');
+      else {
+        const plate = TPL.el('div', { class: 'brand-logo', 'data-qa': 'brand_logo', 'data-kind': 'shape', 'data-exempt': '1' });
+        TPL.box(plate, at[0], at[1], bw, bh);
+        Object.assign(plate.style, { background: '#FFFFFF', borderRadius: Math.round(pad * 0.8) + 'px', zIndex: 45 });
+        const picture = TPL.el('img', { src: a.file, 'data-qa': 'brand_logo_image', 'data-kind': 'logo', 'data-exempt': '1', 'data-nw': a.width, 'data-nh': a.height, alt: '' }, plate);
+        TPL.box(picture, pad, pad, w, h);
+      }
+    }
+    const legal = String(marks.legal || '').trim();
+    if (legal) {
+      const size = Math.max(16, Math.round(H * 0.0135)), h = Math.round(size * 1.5), y = H - Math.round(m * 0.5) - Math.round(h / 2), w = W - 2 * m;
+      const line = TPL.el('div', { class: 'txt brand-legal', 'data-qa': 'brand_legal', 'data-kind': 'text', 'data-tier': 'meta', 'data-maxlines': '1', 'data-exempt': '1' }, null, legal);
+      TPL.box(line, m, y, w, null);
+      Object.assign(line.style, { fontFamily: (TPL.job.lang === 'zh' ? 'var(--f-cjk)' : 'var(--f-text)'), fontSize: size + 'px', lineHeight: h + 'px', fontWeight: 500,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '.01em', zIndex: 45, pointerEvents: 'none' });
+      const fits = line.scrollWidth <= w + 1;
+      line.remove();                                                       // measured; placed only if the strip is free
+      const free = fits && TPL.freeSpot(w, h, [[m, y]], 4, { overPhotos: true });
+      if (!free) TPL.notes.push(fits ? 'legal line left out: the bottom edge is taken' : 'legal line left out: too long for one line');
+      else {
+        // What the line stands on, read under its own width: one plain ground takes ink that reads on it; a photograph,
+        // or a line crossing from a dark panel onto a light one, gets a dark strip of its own (no single ink reads on both).
+        TPL.root.appendChild(line);
+        const span = document.createRange(); span.selectNodeContents(line); const q = span.getBoundingClientRect(), c = TPL.root.getBoundingClientRect();
+        const kinds = new Set(); for (let i = 0; i <= 8; i++) kinds.add(TPL.groundAt(q.left - c.left + q.width * i / 8, y + h / 2));
+        const strip = kinds.has('photo') || kinds.size > 1, dark = strip || kinds.has('dark');
+        if (strip) { const band = TPL.el('div', { class: 'brand-legal-strip', 'data-qa': 'brand_legal_strip', 'data-kind': 'shape', 'data-exempt': '1' });
+          TPL.box(band, 0, y - Math.round(h * 0.35), W, H - y + Math.round(h * 0.35)); Object.assign(band.style, { background: 'rgba(18,17,16,.72)', zIndex: 44, pointerEvents: 'none' });
+          TPL.root.appendChild(line); }
+        line.style.color = dark ? 'rgba(244,239,227,.92)' : 'var(--muted)';
+        // the preset's footer tick gives way to the words when they reach it
+        const tick = TPL.root.querySelector('[data-qa="frame_footer_tick"]');
+        if (tick) { const range = document.createRange(); range.selectNodeContents(line); const q = range.getBoundingClientRect(), k = tick.getBoundingClientRect();
+          if (q.left < k.right && q.right > k.left && q.top < k.bottom && q.bottom > k.top) tick.remove(); }
+      }
+    }
+  };
+  /* What lies under a point of the page, for a mark that must read on it: 'photo' (a picture or a gradient), 'dark' or
+     'light' (the topmost plain fill there, else the page's own ground). */
+  TPL.groundAt = function (x, y) {
+    const c = TPL.root.getBoundingClientRect();
+    for (const n of document.elementsFromPoint(c.left + x, c.top + y)) {
+      if (!TPL.root.contains(n) || n === TPL.root) continue;
+      if (n.classList.contains('brand-legal') || n.classList.contains('frame-mark') || n.closest('.brand-logo')) continue;
+      if (n.tagName === 'IMG') return 'photo';
+      const cs = getComputedStyle(n), bg = cs.backgroundColor.match(/[\d.]+/g);
+      if (bg && (bg.length < 4 || +bg[3] > 0.5)) return (0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2]) / 255 < 0.4 ? 'dark' : 'light';
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') return 'photo';
+    }
+    return TPL.onDarkGround() ? 'dark' : 'light';
+  };
+  /* Whether the page's own ground is dark (its --bg), for marks that must read on it. */
+  TPL.onDarkGround = function () {
+    const probe = TPL.el('div', { 'data-exempt': '1' }); probe.style.color = 'var(--bg)';
+    const rgb = getComputedStyle(probe).color.match(/[\d.]+/g) || [255, 255, 255]; probe.remove();
+    return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.4;
   };
 
   /* Run the layout once the web fonts it measures with have loaded (project change: the faces now come from
@@ -260,11 +399,31 @@
   };
   /* Where a badge of size w x h can go without covering text, panels or the product: the first of ``spots`` ([x, y]
      top-left corners) whose box, grown by ``pad``, meets none of the page's elements nor the product's outline. */
-  TPL.freeSpot = function (w, h, spots, pad = 24) {
+  TPL.freeSpot = function (w, h, spots, pad = 24, opts = {}) {
     const rects = [];
     for (const n of TPL.root.querySelectorAll('[data-qa]')) {
-      if (n.dataset.exempt === '1' || n.closest('[data-exempt="1"]')) continue;
       const kind = n.dataset.kind || (n.tagName === 'IMG' ? 'product_image' : '');
+      // words count wherever they stand: a figure in a block that the overlap check leaves alone is still not to be covered
+      const words = opts.overPhotos && kind === 'text' && !/^brand_/.test(n.dataset.qa || '');
+      if (!words && (n.dataset.exempt === '1' || n.closest('[data-exempt="1"]'))) continue;
+      if (opts.overPhotos) {
+        // A mark may sit on a full-bleed photograph (a scene), only not on the product in it: the photograph's frame
+        // is no obstacle, the product's box inside it is (the middle of the frame when the box is not known).
+        if (kind === 'shape' && n.dataset.bleed === '1' && n.classList.contains('detail-frame')) continue;
+        // nor is a band or panel that is itself a ground for text (a fifth of the page or more): what stands on it is
+        { const q = n.getBoundingClientRect(); if (kind === 'shape' && q.width * q.height > 0.2 * TPL.W * TPL.H) continue; }
+        const frame = kind === 'detail_image' ? n.parentNode : null;
+        if (frame && frame.dataset && frame.dataset.bleed === '1') {
+          const c = TPL.root.getBoundingClientRect(), i = n.getBoundingClientRect(), f = frame.getBoundingClientRect();
+          const pb = ((TPL.job.assets || {})[n.dataset.asset] || {}).product_box;
+          const box = Array.isArray(pb) && pb.length === 4
+            ? { x: i.left + pb[0] * i.width, y: i.top + pb[1] * i.height, w: (pb[2] - pb[0]) * i.width, h: (pb[3] - pb[1]) * i.height }
+            : { x: f.left + f.width * 0.2, y: f.top + f.height * 0.2, w: f.width * 0.6, h: f.height * 0.6 };
+          const x0 = Math.max(box.x, f.left), y0 = Math.max(box.y, f.top), x1 = Math.min(box.x + box.w, f.right), y1 = Math.min(box.y + box.h, f.bottom);
+          if (x1 > x0 && y1 > y0) rects.push({ x: x0 - c.left, y: y0 - c.top, w: x1 - x0, h: y1 - y0 });
+          continue;
+        }
+      }
       if (kind === 'product_image' && n.dataset.bleed) continue;
       const r = n.getBoundingClientRect(), c = TPL.root.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
@@ -300,19 +459,30 @@
     const placed = [];
     list.forEach((b, i) => {
       const style = b.style && b.style !== 'auto' ? b.style : (opts.style || 'seal');
-      const [w0, h] = TPL.badgeSize(style), g = 24;
-      const w = ['ribbon', 'tag', 'pill'].includes(style) ? TPL.badgeWidth(b.text, style, h) : w0;
-      const L = area.x, T_ = area.y, R = area.x + area.w - w, B = area.y + area.h - h;
-      const spots = [[R, T_], [L, T_], [R, B], [L, B], [R, T_ + h + g], [L, T_ + h + g], [R, B - h - g], [L, B - h - g]];
-      // then anywhere in the area, nearest the right edge and the top first (a sticker reads as added, not as copy)
-      const scan = [];
-      for (let y = T_; y <= B; y += 32) for (let x = R; x >= L; x -= 32) scan.push([x, y]);
-      scan.sort((a, b2) => ((R - a[0]) + (a[1] - T_) * 0.8) - ((R - b2[0]) + (b2[1] - T_) * 0.8));
-      spots.push(...scan);
-      const at = TPL.freeSpot(w, h, spots, opts.pad ?? 20);
+      const [w0, h0] = TPL.badgeSize(style), g = 24;
+      // at its own size, then smaller: a crowded page still has a corner for a smaller sticker
+      let at = null, w = 0, h = 0, scale = 1;
+      for (scale of [1, 0.8]) {
+        h = Math.round(h0 * scale);
+        w = ['ribbon', 'tag', 'pill'].includes(style) ? TPL.badgeWidth(b.text, style, h) : Math.round(w0 * scale);
+        const L = area.x, T_ = area.y, R = area.x + area.w - w, B = area.y + area.h - h;
+        const spots = [[R, T_], [L, T_], [R, B], [L, B], [R, T_ + h + g], [L, T_ + h + g], [R, B - h - g], [L, B - h - g]];
+        // then anywhere in the area, nearest the right edge and the top first (a sticker reads as added, not as copy)
+        const scan = [];
+        for (let y = T_; y <= B; y += 32) for (let x = R; x >= L; x -= 32) scan.push([x, y]);
+        scan.sort((a, b2) => ((R - a[0]) + (a[1] - T_) * 0.8) - ((R - b2[0]) + (b2[1] - T_) * 0.8));
+        spots.push(...scan);
+        at = TPL.freeSpot(w, h, spots, opts.pad ?? 20, opts);
+        if (at) break;
+      }
       if (!at) { TPL.notes.push(`no free spot for badge "${b.text}"`); return; }
-      const made = TPL.badge('brand_badge' + (i + 1), b.text, at[0], at[1], style, { rotate: style === 'seal' || style === 'burst' ? -8 : 0 });
+      const made = TPL.badge('brand_badge' + (i + 1), b.text, at[0], at[1], style, { rotate: style === 'seal' || style === 'burst' ? -8 : 0, ...(scale < 1 ? { size: [w, h] } : {}) });
       if (made) placed.push(made);
+      // on a photograph the badge lies over the scene by design (its spot was checked against the words and the product)
+      if (made && opts.overPhotos) {
+        const box = TPL.root.querySelector(`[data-qa="brand_badge${i + 1}"]`);
+        for (const n of box ? [box, ...box.querySelectorAll('[data-qa]')] : []) n.dataset.exempt = '1';
+      }
     });
     return placed;
   };
@@ -346,9 +516,21 @@
   TPL.elbowLeader = function (id, port, anchor, labelId, anchorId, prefer) {
     const hv = [port, [anchor[0], port[1]], anchor], vh = [port, [port[0], anchor[1]], anchor];
     const straight = Math.abs(port[1] - anchor[1]) < 2 || Math.abs(port[0] - anchor[0]) < 2;
-    const pts = straight ? [port, anchor] : (prefer === 'vh' ? vh : hv);
+    // The brand preset's leader (job.style.leader): 'elbow' is the right-angle run above; 'straight' goes directly;
+    // 'angled' runs level from the label for a third of the way, then slants to the point.
+    const look = (TPL.job.style || {}).leader || {};
+    let pts = straight ? [port, anchor] : (prefer === 'vh' ? vh : hv);
+    if (!straight && look.route === 'straight') pts = [port, anchor];
+    else if (!straight && look.route === 'angled') pts = [port, [port[0] + (anchor[0] - port[0]) * 0.34, port[1]], anchor];
     TPL.leader(id, pts, labelId, anchorId);
-    TPL.svgEl('rect', { x: anchor[0] - 9, y: anchor[1] - 9, width: 18, height: 18, class: 'node-square' });
+    Object.assign(TPL.leaders[TPL.leaders.length - 1], { route: straight ? 'straight' : (look.route || 'elbow'), end: look.end || 'square' });
+    const [ax, ay] = anchor, from = pts[pts.length - 2];
+    if (look.end === 'ring') { TPL.svgEl('circle', { cx: ax, cy: ay, r: 12, class: 'anchor-ring' }); TPL.svgEl('circle', { cx: ax, cy: ay, r: 5, class: 'anchor-dot' }); }
+    else if (look.end === 'dot') TPL.svgEl('circle', { cx: ax, cy: ay, r: 8, class: 'anchor-dot' });
+    else if (look.end === 'arrow') {
+      const t = Math.atan2(ay - from[1], ax - from[0]), L = 26, w = 11, bx = ax - L * Math.cos(t), by = ay - L * Math.sin(t);
+      TPL.svgEl('path', { d: `M${ax.toFixed(1)} ${ay.toFixed(1)}L${(bx - w * Math.sin(t)).toFixed(1)} ${(by + w * Math.cos(t)).toFixed(1)}L${(bx + w * Math.sin(t)).toFixed(1)} ${(by - w * Math.cos(t)).toFixed(1)}Z`, class: 'anchor-dot' });
+    } else TPL.svgEl('rect', { x: ax - 9, y: ay - 9, width: 18, height: 18, class: 'node-square' });
     TPL.svgEl('circle', { cx: port[0], cy: port[1], r: 5, class: 'anchor-dot' });
     return pts;
   };
@@ -437,6 +619,8 @@
 
   /* ---------- QA measurement ---------- */
   TPL.finish = function () {
+    // the brand's logo and legal line go on now that the page is laid out; the measurement below waits for the logo to load
+    try { TPL.brandMarks(); } catch (e) { TPL.notes.push('brand marks failed: ' + String(e && e.message || e)); }
     const go = () => { try { TPL._measure(); } catch (e) { const s = document.createElement('script'); s.type = 'application/json'; s.id = 'qa-result'; s.textContent = JSON.stringify({issues: [{check: 'js_error', detail: String(e && e.stack || e)}]}); document.body.appendChild(s); } };
     // The layout may run after the load event (it waits for the fonts): measure once every picture it placed has loaded.
     const pictures = () => Promise.all([...document.images].map(i => i.complete ? null
@@ -454,6 +638,7 @@
       const cs = getComputedStyle(n);
       const rec = { id: n.dataset.qa, kind: n.dataset.kind, x: +r.x.toFixed(1), y: +r.y.toFixed(1), w: +r.w.toFixed(1), h: +r.h.toFixed(1),
         allow: (n.dataset.allow || '').split(',').filter(Boolean), bleed: !!n.dataset.bleed, exempt: !!n.dataset.exempt, inframe: !!n.dataset.inframe };
+      if (rec.kind === 'shape') { rec.radius = parseFloat(cs.borderTopLeftRadius) || 0; rec.fill = cs.backgroundColor; }
       if (rec.kind === 'text') {
         // use the union of rendered line boxes as the real text bounds
         const rg0 = document.createRange(); rg0.selectNodeContents(n);
@@ -464,6 +649,8 @@
           rec.x = +x0.toFixed(1); rec.y = +y0.toFixed(1); rec.w = +(x1 - x0).toFixed(1); rec.h = +(y1 - y0).toFixed(1);
         }
         rec.text = n.textContent; rec.font_size = parseFloat(cs.fontSize); rec.font_family = cs.fontFamily; rec.font_weight = cs.fontWeight;
+        // how the type is set and inked, so a change of brand preset can be seen in the record
+        rec.text_transform = cs.textTransform; rec.font_stretch = cs.fontStretch; rec.font_style = cs.fontStyle; rec.color = cs.color;
         rec.tier = n.dataset.tier;
         const range = document.createRange(); range.selectNodeContents(n);
         // count visual lines: merge line boxes whose vertical extents overlap (mixed font sizes on one line)
@@ -476,7 +663,7 @@
         if (rec.overflow_x) issues.push({ check: 'text_overflow', id: rec.id, detail: `scrollWidth ${n.scrollWidth} > ${n.clientWidth}` });
         const ml = +n.dataset.maxlines; if (ml && rec.lines > ml) issues.push({ check: 'text_max_lines', id: rec.id, detail: `${rec.lines} lines > ${ml}` });
         const minEq = { headline: 14, important: 12, secondary: 10, meta: 0 }[rec.tier] ?? 10;
-        if (rec.equiv_px_at_360 < minEq) issues.push({ check: 'min_size_at_360', id: rec.id, detail: `${rec.equiv_px_at_360}px < ${minEq}px` });
+        if (rec.equiv_px_at_360 < minEq && rec.id !== 'brand_legal') issues.push({ check: 'min_size_at_360', id: rec.id, detail: `${rec.equiv_px_at_360}px < ${minEq}px` });     // the legal line is small print by nature
       }
       if (n.dataset.feather) rec.feather = JSON.parse(n.dataset.feather);   // project change: feathered frame edges, for the renderer's part-cut check
       if (n.tagName === 'IMG') {
@@ -549,7 +736,8 @@
     if (!zhPage) for (const e of els) if (e.kind === 'text' && /[\u3400-\u9fff]/.test(e.text || '')) issues.push({ check: 'lang_mismatch', id: e.id, detail: 'Chinese characters on an English page' });
     const fonts = fams.map(([f, w, s]) => ({ family: f, weight: w, available: fontInUse(f, w, s) }));
     for (const f of fonts) if (!f.available) issues.push({ check: 'font_missing', id: f.family + ' ' + f.weight });
-    const out = { template: TPL.job.template_id, variant: TPL.job.variant, canvas: [W, H], lang: TPL.job.lang, elements: els, leaders: TPL.leaders, overlaps, issues, fonts, notes: TPL.notes, layout: TPL.layoutInfo || {} };
+    const out = { template: TPL.job.template_id, variant: TPL.job.variant, canvas: [W, H], lang: TPL.job.lang, elements: els, leaders: TPL.leaders, overlaps, issues, fonts, notes: TPL.notes, layout: TPL.layoutInfo || {},
+      preset: (TPL.job.style || {}).preset || null, ground: getComputedStyle(TPL.root).getPropertyValue('--bg').trim() };
     const s = document.createElement('script'); s.type = 'application/json'; s.id = 'qa-result';
     s.textContent = JSON.stringify(out);
     document.body.appendChild(s);

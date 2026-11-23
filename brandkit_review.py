@@ -273,7 +273,7 @@ def _ask(config, system, facts, schema, image_path=None, reference_path=None, cl
             return output
 
 
-def facts_of(product, stated_mm=None):
+def facts_of(product, stated_mm=None, brand=None):
     """What the product record says: the only source of words and numbers on the pages. ``stated_mm`` holds the overall
     sizes the user stated, in millimetres, as the dimensions page prints them (brandkit_set.stated_dimensions); sizes
     measured on the 3D model are never facts, since a page that printed them would invent data the user never gave."""
@@ -289,11 +289,31 @@ def facts_of(product, stated_mm=None):
                           'it is and the stated figures; no uses, tasks, benefits, features or capabilities (not "for tight spaces", '
                           'not "cuts, strips and snips"). Any such claim on a page is claim_not_in_facts. Not claims: the product\'s name, '
                           'its stated sizes, the pose names, and a scene picture\'s title naming the place it shows ("At the workbench").')
+    marks = brand_texts(brand)
+    if marks:
+        # What the seller typed into the brand settings is the seller's own statement, printed as given: a badge
+        # ("2 Year Warranty"), the legal line, the brand's name. The review checks the pages against it like any other fact.
+        facts['brand'] = {**marks, 'note': 'The seller\'s own brand texts, printed on the pages exactly as entered: the brand name, the '
+                                           'badge texts (small stickers) and the legal line (small print along the bottom edge). They are '
+                                           'given facts, never claim_not_in_facts, also when no selling points were given. A page need '
+                                           'not show them: a badge, the logo or the legal line left off a page that has no free room '
+                                           'for it is no defect and no reason to mark the page down.'}
     if stated_mm:
         facts['stated_sizes_mm'] = {key: round(value, 1) for key, value in stated_mm.items()}
         facts['stated_sizes_note'] = ('The overall sizes the user stated, in millimetres; the dimensions page prints only these. '
                                       'Any other overall size on a page is not supported.')
     return facts
+
+
+def brand_texts(brand):
+    """The words a brand record puts on the pages: {'name', 'badges', 'legal'}, only what is filled in. ``brand`` is a
+    brand_kit.Brand or a brand record."""
+    record = getattr(brand, 'record', brand) if brand is not None else None
+    if not isinstance(record, dict):
+        return {}
+    out = {'name': str(record.get('name') or '').strip(), 'legal': str(record.get('legal') or '').strip(),
+           'badges': [str(text).strip() for text in record.get('badges') or [] if str(text).strip()]}
+    return {key: value for key, value in out.items() if value}
 
 
 def _numbers(text):

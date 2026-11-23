@@ -140,6 +140,20 @@ function listingRenderComponents() {
   $('listingPanel').innerHTML=`<p class="field-help">随箱附带的电池、充电器、工具箱等组件，在新建项目时与主模型一起上传。模型组件会自动分析、摆正，在主图里与产品一起渲染；这里可以修改名称、型号、数量和朝向。</p>
     <div class="listing-components">${rows.map(listingComponentHTML).join('') || '<p class="field-help">这个项目没有组件。新建项目时可在上传窗口的「套装组件」里添加。</p>'}</div>`;
 }
+// Where the saved brand marks will appear in the planned set, and which of them no page will show (state.brand_usage).
+function listingUsageLine(what) {
+  const usage=(listingState && listingState.brand_usage) || null,kinds=(listingState && listingState.kinds) || {};
+  if(!usage)return '';
+  const names=list=>list.map(kind=>(kinds[kind] || {}).zh || kind).join('、');
+  if(what==='badges'){
+    if(!(usage.badges || []).length)return '';
+    return ' 已保存：'+usage.badges.map(row=>`「${row.text}」→ ${row.pages.length?names(row.pages):'没有页面会显示'}`).join('；')+'。';
+  }
+  const saved=what==='logo'?!!(listingState.brand || {}).logo:!!((listingState.brand || {}).legal || '').trim();
+  if(!saved)return what==='logo'?'上传后印在海报、卖点标注图和场景页的空白角落。':'';
+  const pages=usage[what] || [];
+  return pages.length?` 将出现在：${names(pages)}（页面上没有空位时会省略，并在生成后提示）。`:' 当前的图片清单里没有会显示它的页面。';
+}
 function listingRenderBrand() {
   const b=listingEdit.brand,used=listingState.brand;
   $('listingPanel').innerHTML=`
@@ -155,14 +169,14 @@ function listingRenderBrand() {
       <label class="listing-field"><span class="field-label">深色</span><span class="listing-color"><input type="color" data-scope="brand" data-key="dark" value="${esc(b.dark || used.dark_used)}" ${b.dark?'':'disabled'} aria-label="深色">
         <label class="listing-check"><input type="checkbox" data-scope="brand-auto" data-key="dark" ${b.dark?'':'checked'}> 默认</label></span></label>
     </div>
-    ${listingField('徽标文字（最多 3 个，用逗号分隔）',listingInput('brand','badges',(b.badges || []).join(', '),'placeholder="如 20V, PRO"'),'印在主图和海报的空白角落，如 2 YEAR WARRANTY、PRO。')}
+    ${listingField('徽标文字（最多 3 个，用逗号分隔）',listingInput('brand','badges',(b.badges || []).join(', '),'placeholder="如 20V, PRO"'),'第 1、3 个印在海报上，第 2 个印在卖点标注图上（只填 1 个时两页都用它）。'+listingUsageLine('badges'))}
     <div class="listing-grid2">
       ${listingField('徽标样式',`<select data-scope="brand" data-key="badge_style">${((listingState.elements||{}).badge_styles||[]).map(row=>`<option value="${esc(row.id)}" ${(b.badge_style||'auto')===row.id?'selected':''}>${esc(row.label.zh)}</option>`).join('')}</select>`,'徽标印在主图和海报的空白角落。')}
       ${listingField('背景底纹',`<select data-scope="brand" data-key="texture">${((listingState.elements||{}).textures||[]).map(row=>`<option value="${esc(row.id)}" ${(b.texture||'none')===row.id?'selected':''}>${esc(row.label.zh)}</option>`).join('')}</select>`)}
     </div>
-    ${listingField('页脚说明文字',listingInput('brand','legal',b.legal,'maxlength="200" placeholder="如 *Maximum initial battery voltage…"'))}
+    ${listingField('页脚说明文字',listingInput('brand','legal',b.legal,'maxlength="200" placeholder="如 *Maximum initial battery voltage…"'),'一行小字，印在写明规格和卖点的页面底边。'+listingUsageLine('legal'))}
     ${listingField('尺寸单位',`<select data-scope="brand" data-key="unit"><option value="mm" ${b.unit==='mm'?'selected':''}>毫米 mm</option><option value="in" ${b.unit==='in'?'selected':''}>英寸 in</option></select>`)}
-    <div class="listing-logo"><span class="field-label">标志图片</span>${used.logo?`<img src="${esc(used.logo)}" alt="品牌标志"><button type="button" class="button subtle" data-action="logo-remove">移除</button>`:'<span class="field-help">未上传；页眉显示品牌名称文字。</span>'}
+    <div class="listing-logo"><span class="field-label">标志图片</span>${used.logo?`<img src="${esc(used.logo)}" alt="品牌标志"><button type="button" class="button subtle" data-action="logo-remove">移除</button>`:'<span class="field-help">未上传；页眉显示品牌名称文字。</span>'}<span class="field-help">${esc(listingUsageLine('logo'))}</span>
       <input id="listingLogoFile" type="file" accept=".png,.jpg,.jpeg,.webp" aria-label="上传标志图片"></div>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>
     <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>`;
@@ -246,6 +260,7 @@ async function listingRenderArticulation(reload=true) {
 }
 
 // ---- right side ----
+function listingPageReady(page) { return !!(page && page.checks && page.checks.passed && page.review && page.review.status==='passed'); }
 function listingRenderMain() {
   const state=listingState;if(!state)return;
   const task=state.task,active=listingTaskActive(),pages=state.pages || [],kinds=state.kinds;
@@ -260,6 +275,11 @@ function listingRenderMain() {
   const rewrite=$('listingRewrite');if(rewrite){rewrite.hidden=!pages.length || active;rewrite.disabled=build.disabled;}
   $('listingCancel').hidden=!active;
   const download=$('listingDownload');download.hidden=!pages.length || active;download.href=`/api/projects/${encodeURIComponent(listingProject)}/listing/download`;
+  // The reviewed export holds only pages that passed the layout checks and the visual review; the draft holds everything.
+  // Both carry each page's status (review-status.json, 审核状态.txt), so a failed page never travels without it.
+  const ready=pages.filter(listingPageReady).length,reviewed=$('listingDownloadReviewed');
+  if(reviewed){reviewed.hidden=!pages.length || active || !ready;reviewed.href=download.href+'?reviewed=1';reviewed.textContent=`下载已通过审核的 ${ready}/${pages.length} 张（ZIP）`;}
+  download.textContent=ready===pages.length?'下载全部（ZIP）':'下载草稿（全部，含未通过的）';
   const progress=$('listingProgress');progress.hidden=!active;
   if(active){const value=Math.max(0,Math.min(100,Math.round(task.progress || 0)));$('listingProgressBar').style.width=value+'%';progress.setAttribute('aria-valuenow',String(value));}
   $('listingStatus').textContent=!state.available?'渲染组件不可用，无法生成套图。':state.layout_available===false?'没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。':!state.ready?'模型分析完成后才能生成套图。'

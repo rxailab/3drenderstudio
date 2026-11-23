@@ -762,12 +762,13 @@ class BuildTests(StoreCase):
         data, name = listing.archive('fixture')
         with zipfile.ZipFile(io.BytesIO(data)) as bundle:
             names = bundle.namelist()
-            self.assertEqual([name for name in names if not name.startswith('editable/')], [page['file'] for page in pages])
+            # the pages, then what the checks and the review found of each of them
+            self.assertEqual([name for name in names if not name.startswith('editable/')], [page['file'] for page in pages] + ['review-status.json', '审核状态.txt'])
             # each page also as an editable SVG (live text, named layers), with the fonts it names
             self.assertEqual([name for name in names if name.endswith('.svg')], ['editable/' + page['file'][:-4] + '.svg' for page in pages])
             self.assertIn('editable/fonts/Inter-Variable.ttf', names)
         self.assertTrue(all(page['svg'] for page in pages))
-        self.assertEqual(name, 'fixture-listing.zip')
+        self.assertEqual(name, 'fixture-listing-draft.zip')            # every page, reviewed or not: a draft, and named so
         first = Path(components.path_of('fixture', pages[0]['url'])).parent
         listing.build('fixture')                                                            # a new build replaces the old files
         self.assertFalse(first.exists()); self.assertEqual(len(list((self.data / 'fixture' / 'listing').glob('build-*'))), 1)

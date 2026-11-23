@@ -646,7 +646,7 @@
 <button id="listingBuild" class="button primary" type="button">生成套图</button>
 <button id="listingRewrite" class="button secondary" type="button" title="同样的资料和页面会沿用上次的标题和审核结果；这里让文案模型重写标题，并重新审核（会产生 AI 费用）" hidden>重写标题并生成</button>
 <button id="listingCancel" class="button subtle" type="button" hidden>取消</button>
-<a id="listingDownload" class="button secondary" href="#" hidden>下载全部（ZIP）</a>
+<a id="listingDownloadReviewed" class="button secondary" href="#" hidden title="只包含版式检查和视觉审核都通过的图片，并附每张图的审核状态">下载已通过审核的（ZIP）</a><a id="listingDownload" class="button subtle" href="#" hidden title="包含全部已生成的图片，没通过或没审核的也在内，并附每张图的审核状态">下载草稿（全部）</a>
 <span id="listingStatus" class="listing-status" role="status"></span>
 </div>
 <div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
