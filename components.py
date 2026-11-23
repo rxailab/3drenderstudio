@@ -23,6 +23,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
+import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, atomic_json
 
 STAGE_SCRIPT = ROOT / 'blender' / 'stage.py'
@@ -194,11 +195,13 @@ def run_blender(script, request, folder, cancelled=None, on_progress=None, timeo
     (folder / 'result.json').unlink(missing_ok=True)
     command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '0', '--python-exit-code', '1',
                '--python', str(script), '--', str(folder / 'request.json')]
-    started = time.time(); stop = cancelled or (lambda: False)
+    stop = cancelled or (lambda: False)
     try:
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # Cut-outs are Cycles renders: they take the GPU lane in turn with the shot renders.
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, ident=key, lane=blender_runner.HEAVY, cancelled=stop, cancel_error=ComponentCancelled,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.time()
             if key:
                 PROCESSES[key] = process
             try:

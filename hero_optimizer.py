@@ -15,6 +15,7 @@ import time
 import uuid
 from pathlib import Path
 
+import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, all_records, atomic_json
 from hero_state import compare_scene_states, difference_summary, PRODUCT_FIELDS
 
@@ -166,9 +167,11 @@ def _native(job,request,out):
              '--python-exit-code','1','--python',str(ROOT/'blender/hero_scene.py'),'--',str(out/'request.json')]
     timeout=max(30,min(14400,float(job.get('plan',{}).get('time_budget',1200))))
     expired=[]
-    with (out/'blender.log').open('w',encoding='utf-8') as log:
-        proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,
-            text=True,encoding='utf-8',errors='replace',cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    # A hero render is a full Cycles render: it waits for the GPU lane, and cancelling the job also ends the wait.
+    with (out/'blender.log').open('w',encoding='utf-8') as log, blender_runner.launched(
+            command,ident=job['id'],lane=blender_runner.HEAVY,cancelled=lambda:get('job',job['id']).get('status')=='cancelled',
+            cancel_error=lambda:InterruptedError('主图优化已取消。'),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,text=True,encoding='utf-8',errors='replace') as proc:
         def expire():
             expired.append(True)
             if proc.poll() is None:proc.terminate()

@@ -241,12 +241,12 @@ class LightDirectionBlenderTests(unittest.TestCase):
 
     def test_inspection_source_change_is_a_hard_stale_error(self):
         result,request,out=self.execute();record=engine.output_record(self.job,request['shot'],out,result)
-        original=engine.subprocess.run
+        original=engine.blender_runner.run
         def changed(*args,**kwargs):
             value=original(*args,**kwargs)
             with (out/'product.blend').open('ab') as stream:stream.write(b'changed-after-inspection')
             return value
-        with patch.object(engine.subprocess,'run',side_effect=changed),self.assertRaises(engine.LightingInspectionStale):
+        with patch.object(engine.blender_runner,'run',side_effect=changed),self.assertRaises(engine.LightingInspectionStale):
             engine.inspect_lighting(store.get('project','p'),record)
 
 

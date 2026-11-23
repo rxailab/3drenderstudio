@@ -35,6 +35,7 @@ import time
 import uuid
 from pathlib import Path
 
+import blender_runner
 import engine
 import planner
 import scene_audience
@@ -518,8 +519,7 @@ def _layout(project, plan, shot, props, units, seed, keywords, folder, elevation
                '--python', str(script), '--', str(folder / 'request.json')]
     try:
         with (folder / 'layout.log').open('w', encoding='utf-8') as log:
-            ran = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=LAYOUT_TIMEOUT,
-                                 cwd=str(ROOT), creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            ran = blender_runner.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=LAYOUT_TIMEOUT)
     except (subprocess.TimeoutExpired, OSError) as exc:
         raise ValueError('场景布置未完成，请重试。') from exc
     try:

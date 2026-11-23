@@ -42,6 +42,7 @@ from pathlib import Path
 
 from PIL import Image
 
+import blender_runner
 import engine
 import scene_audience
 import usage_rules
@@ -202,11 +203,12 @@ def _render(request, folder, cancelled):
     (folder / 'result.json').unlink(missing_ok=True)
     command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '8', '--python-exit-code', '1',
                '--python', str(script), '--', str(folder / 'request.json')]
-    started = time.time()
     try:
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # The reference views are full worker renders: they take the GPU lane in turn with the shot renders.
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, lane=blender_runner.HEAVY, cancelled=cancelled,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.time()
             while process.poll() is None:
                 if cancelled():
                     process.terminate(); raise InterruptedError()

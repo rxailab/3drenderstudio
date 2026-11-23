@@ -40,6 +40,7 @@ import time
 import uuid
 from pathlib import Path
 
+import blender_runner
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
 
 VERSION = 2
@@ -199,11 +200,13 @@ def _blender(request, folder, cancelled=None):
     (folder / 'result.json').unlink(missing_ok=True)
     command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '4', '--python-exit-code', '1',
                '--python', str(script), '--', str(folder / 'request.json')]
-    started = time.time(); stop = cancelled or (lambda: False)
+    stop = cancelled or (lambda: False)
     try:
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # Candidate pictures are small and few-sample: the light lane, so they do not wait behind a full render.
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, lane=blender_runner.LIGHT, cancelled=stop,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.time()
             while process.poll() is None:
                 if stop():
                     process.terminate(); raise InterruptedError()

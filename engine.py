@@ -18,6 +18,7 @@ from planner import enrich,apply_material_note
 from quality_gate import EVALUATION_PROTOCOL, compare_candidates, instruction_protected_roots
 from blender.light_direction import CONTRACT_VERSION as LIGHT_DIRECTION_CONTRACT_VERSION, file_digest as light_scene_digest, requested_angles, validate_report as validate_light_direction_report
 from camera_controls import CONTRACT_VERSION as CAMERA_CONTRACT_VERSION,shot_request,validate_report as validate_camera_report,matches_result as camera_matches_result
+import blender_runner
 
 QUEUE=queue.Queue()
 PROCESSES={}
@@ -263,6 +264,7 @@ def cancel(ident):
                 if not project.get('analysis'): project['status']='cancelled';put('project',project)
             proc=PROCESSES.get(ident)
             if proc: proc.terminate()
+            blender_runner.terminate(ident)     # also a child started for this job that PROCESSES no longer names
         return j
 
 def update_job(ident,**fields):
@@ -523,8 +525,12 @@ def execute(job,request,out):
     atomic_json(out/'request.json',request)
     entry='camera_entry.py' if camera_contract else 'worker.py'
     command=[exe,'-b','--factory-startup','--disable-autoexec','-t','8','--log','cycles','--log-level','2','--python-exit-code','1','--python',str(ROOT/'blender'/entry),'--',str(out/'request.json')]
-    with (out/'blender.log').open('w',encoding='utf-8') as log:
-        proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    # Analysis and thumbnails are short; any other render is a full Cycles render and takes the GPU lane alone.
+    lane=blender_runner.HEAVY if request.get('action')=='render' and request.get('quality')!='thumbnail' else blender_runner.LIGHT
+    with (out/'blender.log').open('w',encoding='utf-8') as log, blender_runner.launched(
+            command,ident=job['id'],lane=lane,cancelled=lambda:get('job',job['id'])['status']=='cancelled',
+            on_wait=lambda:update_job(job['id'],stage='等待其他渲染完成'),
+            stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace') as proc:
         with LOCK:
             PROCESSES[job['id']]=proc
             if get('job',job['id'])['status']=='cancelled': proc.terminate()
@@ -637,8 +643,7 @@ def inspect_lighting(project,output):
                  '--python',str(ROOT/'blender/inspect_lighting.py'),'--',str(directory/'request.json')]
         try:
             with (directory/'blender.log').open('w',encoding='utf-8') as log:
-                ran=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,
-                                   timeout=30,cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                ran=blender_runner.run(command,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,timeout=30)
         except subprocess.TimeoutExpired as exc:raise RuntimeError('读取实际灯光方向超时，当前场景未修改。') from exc
         try:
             after=source.stat();after_digest=light_scene_digest(source)
@@ -685,7 +690,7 @@ def pick_output(project_id,body):
     command=[exe,'-b','--factory-startup','--disable-autoexec','--python-exit-code','1','--python',str(ROOT/'blender/pick_surface.py'),'--',str(folder/'request.json')]
     try:
         with (folder/'blender.log').open('w',encoding='utf-8') as log:
-            proc=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,timeout=90,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),cwd=str(ROOT))
+            proc=blender_runner.run(command,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,timeout=90)
     except subprocess.TimeoutExpired: raise ValueError('定位部件超时，请减少选点或稍后重试')
     result_path=folder/'result.json'
     if proc.returncode or not result_path.exists(): raise ValueError('Blender 未能完成部件定位，请查看本机 feedback-picks 日志')

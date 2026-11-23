@@ -135,7 +135,7 @@ scene.render.filepath=str(folder/'hero.png');bpy.ops.render.render(write_still=T
         self.assertNotIn('fixture', service._INFLIGHT)
 
     def test_real_catalog_is_labelled_verified_and_reused_without_second_process(self):
-        with patch.object(scene_parts.subprocess, 'run', wraps=subprocess.run) as run:
+        with patch.object(scene_parts.blender_runner, 'run', wraps=scene_parts.blender_runner.run) as run:
             prepared = self.prepare(); cached = self.prepare()
         self.assertEqual(run.call_count, 1)
         self.assertFalse(prepared['cache_hit']); self.assertTrue(cached['cache_hit'])
@@ -155,7 +155,7 @@ scene.render.filepath=str(folder/'hero.png');bpy.ops.render.render(write_still=T
         self.assertEqual(seeded['evidence']['targets'][0]['id'], 't1')
         self.assertNotEqual(normal['evidence']['_inspection_guard'], seeded['evidence']['_inspection_guard'])
         self.assertNotEqual(normal['images'][0]['path'], seeded['images'][0]['path'])
-        with patch.object(scene_parts.subprocess, 'run', side_effect=AssertionError('Seed cache must be reused')):
+        with patch.object(scene_parts.blender_runner, 'run', side_effect=AssertionError('Seed cache must be reused')):
             cached = scene_parts.prepare(self.root, self.project, self.output, seeds=seeds)
         self.assertTrue(cached['cache_hit'])
         self.assertTrue(scene_parts.verify(self.root, self.project, self.output, seeded['evidence']))
@@ -165,7 +165,7 @@ scene.render.filepath=str(folder/'hero.png');bpy.ops.render.render(write_still=T
     def test_real_hidden_split_wheels_apply_all_eight_local_pairs_once(self):
         prepared = self.prepare(); answer = self.decision(prepared)
         with patch.object(ai_client, '_post', return_value=answer) as send, \
-                patch.object(scene_parts.subprocess, 'run', side_effect=AssertionError('Cached scene must not rerun')):
+                patch.object(scene_parts.blender_runner, 'run', side_effect=AssertionError('Cached scene must not rerun')):
             result = self.apply(); repeated = self.apply()
         self.assertEqual(send.call_count, 1)
         content = [part for message in send.call_args.args[1]['messages'] for part in message.get('content', []) if isinstance(part, dict)]
@@ -225,7 +225,7 @@ scene.render.filepath=str(folder/'hero.png');bpy.ops.render.render(write_still=T
         self.assertEqual(send.call_count, 1, '\n'.join(correction_text)[-2400:]); self.assert_unmodified()
         self.assertEqual(proposed['instruction_result']['status'], 'needs_confirmation')
         with patch.object(ai_client, '_post', side_effect=AssertionError('Confirmation must not call AI')), \
-                patch.object(scene_parts.subprocess, 'run', side_effect=AssertionError('Confirmation must not inspect again')):
+                patch.object(scene_parts.blender_runner, 'run', side_effect=AssertionError('Confirmation must not inspect again')):
             applied = self.confirm(proposed); replayed = self.confirm(proposed, key='new-confirm-key')
         self.assertEqual(applied['version'], 4)
         self.assertEqual(applied['instruction_result']['remaining_text'], CAMERA_TEXT)
@@ -262,7 +262,7 @@ scene.render.filepath=str(folder/'hero.png');bpy.ops.render.render(write_still=T
 
     def test_wrong_version_or_outside_scene_is_rejected_before_blender(self):
         for change in ({'version': 2}, {'blend_url': '/files/elsewhere/hero.blend'}):
-            with self.subTest(change=change), patch.object(scene_parts.subprocess, 'run') as run:
+            with self.subTest(change=change), patch.object(scene_parts.blender_runner, 'run') as run:
                 with self.assertRaises(scene_parts.InspectionUnavailable):
                     scene_parts.prepare(self.root, self.project, {**self.output, **change})
                 run.assert_not_called()
