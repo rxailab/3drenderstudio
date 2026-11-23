@@ -1836,7 +1836,13 @@ async function poll() {
       const id=current.id,requestId=projectRequest,oldVersion=current.version,reviewEpoch=reviewRevision;
       // Unchanged (304) leaves current as it is: no re-render, only the material tasks below.
       const held=current,project=await apiIfChanged('/api/projects/'+encodeURIComponent(id),held);
-      if(project===null){if(current===held && requestId===projectRequest)await refreshMaterialTasks(id);}
+      if(project===null){
+        if(current===held && requestId===projectRequest){
+          // A material task's end changes no project field, so the 304 holds: the buttons it locked are redrawn here.
+          const wasBusy=automaticMaterialBusy();await refreshMaterialTasks(id);
+          if(current===held && wasBusy!==automaticMaterialBusy())renderProject();
+        }
+      }
       else if(current?.id===id && requestId===projectRequest && !busy && !planSavePromise && !projectLoading && !realismBusy && !materialAgentSubmitting && reviewEpoch===reviewRevision && current.version===oldVersion){
         const priorOutputs=current.outputs?.length,priorStyle=current.plan.style;
         current=project;if(!dirty && project.plan.style!==priorStyle)styleFocusNotice='棚拍风格已更新，生成预览后查看变化。';

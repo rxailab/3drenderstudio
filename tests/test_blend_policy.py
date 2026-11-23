@@ -167,8 +167,7 @@ class SavedSceneRuntimeTests(unittest.TestCase):
         self.assertTrue(opened['camera']); self.assertTrue(opened['meshes'])
         weave = [row for row in opened['images'] if row['path'].endswith('weave.png')]
         self.assertEqual(len(weave), 1, opened['images'])
-        self.assertFalse(weave[0]['packed'])                                            # not copied into the scene
-        self.assertTrue(weave[0]['path'].startswith('//'))                               # relative, so the data folder can move
+        self.assertTrue(weave[0]['packed'])                                             # carried in the file: it is downloaded and copied
         self.assertTrue(weave[0]['found'])
 
     def test_a_thumbnail_keeps_no_scene(self):

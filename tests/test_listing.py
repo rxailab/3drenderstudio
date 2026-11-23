@@ -7,6 +7,7 @@ reaches a model service.
 import copy
 import io
 import json
+import re
 import queue
 import shutil
 import subprocess
@@ -728,7 +729,10 @@ class BuildTests(StoreCase):
         self.scenes.append(proposal); folder.mkdir(parents=True, exist_ok=True)
         if progress: progress('图像模型正在生成场景')
         png = folder / (folder.name + '.png'); Image.new('RGB', (2048, 1536), (90, 110, 120)).save(png)
-        status = self.scene_checks.pop(0) if getattr(self, 'scene_checks', None) else 'passed'
+        # scenes are painted at once: each takes the check result of its own place in the set (scene1, scene2, ...)
+        number = int(re.match(r'scene(\d+)', folder.name).group(1)) - 1 if re.match(r'scene(\d+)', folder.name) else 0
+        checks = getattr(self, 'scene_checks', None)
+        status = checks[number] if checks and number < len(checks) else 'passed'
         return None, {'summary': 'A scene', 'model': 'image-model', 'check': {'status': status}}, \
             {'png': png, 'jpg': png, 'width': 2048, 'height': 1536, 'record': {'anchor': {'box': [.4, .3, .6, .8]}}}
 

@@ -124,3 +124,20 @@ class GateTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WaitLimitTests(unittest.TestCase):
+    def test_a_call_nobody_can_cancel_waits_for_its_lane_no_longer_than_its_timeout(self):
+        import subprocess, time
+        gate = blender_runner.SLOTS[blender_runner.LIGHT]
+        taken = 0
+        while gate.acquire(blocking=False):
+            taken += 1
+        try:
+            started = time.monotonic()
+            with self.assertRaises(subprocess.TimeoutExpired):
+                blender_runner.run([sys.executable, '-c', 'pass'], timeout=.6, lane=blender_runner.LIGHT)
+            self.assertLess(time.monotonic() - started, 3)
+        finally:
+            for _ in range(taken):
+                gate.release()

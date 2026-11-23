@@ -51,9 +51,10 @@ def command(executable, script, request, threads=None, extra=()):
 
 
 @contextmanager
-def slot(lane, cancelled=None, on_wait=None, cancel_error=InterruptedError):
+def slot(lane, cancelled=None, on_wait=None, cancel_error=InterruptedError, wait_limit=None, command=None):
     """Hold one place in the lane (None: no gate). Waiting is cancellable: cancelled() true raises cancel_error.
-    on_wait() is called once when the lane is busy, so a job can say it is waiting rather than look stuck."""
+    on_wait() is called once when the lane is busy, so a job can say it is waiting rather than look stuck. wait_limit
+    (seconds) bounds the wait itself: past it, subprocess.TimeoutExpired, as if the work had run too long."""
     if lane is None:
         yield
         return
@@ -61,9 +62,12 @@ def slot(lane, cancelled=None, on_wait=None, cancel_error=InterruptedError):
     if not gate.acquire(blocking=False):
         if on_wait:
             on_wait()
+        deadline = time.monotonic() + wait_limit if wait_limit else None
         while not gate.acquire(timeout=WAIT_STEP):
             if cancelled and cancelled():
                 raise cancel_error()
+            if deadline and time.monotonic() > deadline:
+                raise subprocess.TimeoutExpired(command or 'blender', wait_limit)
     try:
         yield
     finally:
@@ -149,10 +153,10 @@ def _options(kwargs):
 
 
 @contextmanager
-def launched(command, ident=None, lane=HEAVY, cancelled=None, on_wait=None, cancel_error=InterruptedError, **popen):
+def launched(command, ident=None, lane=HEAVY, cancelled=None, on_wait=None, cancel_error=InterruptedError, wait_limit=None, **popen):
     """Start the command once its lane is free and yield the Popen (stdout may be a pipe to stream from).
     On leaving, a process still running is stopped and waited for, then the lane is released."""
-    with slot(lane, cancelled, on_wait, cancel_error):
+    with slot(lane, cancelled, on_wait, cancel_error, wait_limit, command):
         process = subprocess.Popen(command, **_options(popen))
         key = register(process, ident)
         try:
@@ -166,8 +170,9 @@ def launched(command, ident=None, lane=HEAVY, cancelled=None, on_wait=None, canc
 
 def run(command, timeout=None, ident=None, lane=LIGHT, cancelled=None, **popen):
     """subprocess.run through the gate: a CompletedProcess, or TimeoutExpired once the child is killed.
-    The timeout counts from the launch, as it did when each caller ran Blender itself."""
-    with launched(command, ident=ident, lane=lane, cancelled=cancelled, **popen) as process:
+    The timeout counts from the launch, as it did when each caller ran Blender itself; a call nobody can cancel (a page
+    waiting on a point pick) also waits at most that long for its lane, so the request stays bounded."""
+    with launched(command, ident=ident, lane=lane, cancelled=cancelled, wait_limit=timeout if cancelled is None else None, **popen) as process:
         try:
             out, err = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:

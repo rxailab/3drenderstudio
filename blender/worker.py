@@ -1085,38 +1085,15 @@ def scene_file_policy(req):
     return 'none'
 
 
-def reference_project_files(blend,model_path):
-    """Point the scene's image files at the project's own copies by relative paths instead of packing them.
-
-    Images inside the project (the model's folder and its originals) are referenced relative to the .blend, so the data
-    folder can move as a whole. Anything else - a library texture outside the project, a missing file, a painted
-    generated image - is packed alone, since nothing else would restore it. Images a GLB carries are packed by the
-    importer already: they are the only copy and stay as they are.
-    """
-    try:root=Path(os.path.commonpath([str(blend.parent.resolve()),str(Path(model_path).resolve().parent)]))
-    except (ValueError,TypeError,OSError):root=None
-    if root is not None and root==Path(root.anchor):root=None      # nothing but the drive in common: no project to stay in
-    referenced=packed=0
-    for image in bpy.data.images:
-        if image.packed_file or image.source in ('VIEWER','MOVIE','SEQUENCE','TILED'):continue
-        if image.source=='GENERATED':
-            if not image.is_dirty:continue                         # rebuilt from its settings on load
-        elif image.filepath:
-            path=Path(bpy.path.abspath(image.filepath,library=image.library)).resolve()
-            if root is not None and path.is_file() and root in path.parents:
-                image.filepath=bpy.path.relpath(str(path),start=str(blend.parent));referenced+=1;continue
-        try:image.pack();packed+=1
-        except RuntimeError:pass
-    return dict(referenced=referenced,packed=packed)
-
-
 def save_scene(blend,policy,model_path):
     """Save the scene as the policy asks; returns the saved path or None."""
     if policy=='none':return None
     # Compressed either way: a proof of a heavy model is read back once, but uncompressed it is several times the size
     # (a 0.5 MB tote scene is 4.1 MB raw) and briefly sits on disk beside every thumbnail.
-    if policy=='keep':reference_project_files(blend,model_path)
-    bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=True,relative_remap=True)
+    # A kept scene is a file a person downloads or that is copied elsewhere (hero checkpoints, exports): it carries its
+    # textures, as it always did. Relative paths to originals/ broke every copy made outside runs/<job>/<shot>/.
+    if policy=='keep':bpy.ops.file.pack_all()
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=True)
     return blend
 
 

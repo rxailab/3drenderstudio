@@ -24,7 +24,9 @@ import hashlib
 import json
 import math
 import re
+import threading
 import time
+import uuid
 from pathlib import Path
 
 import orientation
@@ -208,12 +210,24 @@ def ask(rows, sheet_path, facts):
             'consistent': len(said) == len(letters) and said.get(answer['choice'], {}).get('fits') is True}
 
 
+_LOCKS = {}; _GUARD = threading.Lock()
+
+
 def _pictured(project, plan, poses, view, held, folder, stop):
     """The poses rendered from the scene's camera, reused when the same poses of the same product were rendered before."""
     request = [VERSION, str(project['model_path']), plan, [list(map(float, rotation)) for _, _, rotation in poses],
                [round(float(view[0]), 2), round(float(view[1]), 2)], held]
     key = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False, default=str).encode('utf-8')).hexdigest()[:24]
     target = folder / key; index = target / 'rows.json'
+    with _GUARD:
+        lock = _LOCKS.setdefault(key, threading.Lock())
+    # The scenes of a set are made at once and often ask for the same poses: one renders them, the other waits and reuses
+    # them (two Blenders writing the same files gave half-written pictures and a silently kept default pose).
+    with lock:
+        return _pictured_once(project, plan, poses, view, held, target, index, stop)
+
+
+def _pictured_once(project, plan, poses, view, held, target, index, stop):
     try:
         stored = json.loads(index.read_text(encoding='utf-8'))
         rows = [{**row, 'path': target / row['path']} for row in stored]
@@ -274,7 +288,7 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
             allowed = stable(rows)
             refused = [row['id'] for row, ok in zip(rows, allowed) if not ok]
             rows = [row for row, ok in zip(rows, allowed) if ok]
-        sheet = orientation.sheet(rows, rows[0]['path'].parent / 'sheet.png', columns=COLUMNS, cell=SIZE)
+        sheet = orientation.sheet(rows, rows[0]['path'].parent / ('sheet-%s.png' % uuid.uuid4().hex[:8]), columns=COLUMNS, cell=SIZE)
         sheets.append(sheet)
         if stop(): raise InterruptedError()
         say('选择产品的使用姿态')
@@ -288,7 +302,7 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
             say('渲染姿态微调')
             adjusted = adjusted_poses(first['row']['rotation'], azimuth)
             rows = _pictured(project, plan, facing_camera(adjusted, base, azimuth) if front else adjusted, view, held, folder, stop)
-            sheet = orientation.sheet(rows, rows[0]['path'].parent / 'sheet.png', columns=COLUMNS, cell=SIZE)
+            sheet = orientation.sheet(rows, rows[0]['path'].parent / ('sheet-%s.png' % uuid.uuid4().hex[:8]), columns=COLUMNS, cell=SIZE)
             sheets.append(sheet)
             if stop(): raise InterruptedError()
             say('微调产品的使用姿态')
