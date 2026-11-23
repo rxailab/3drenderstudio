@@ -31,12 +31,14 @@ async function listingActivate(refresh=true) {
   finally{listingSwitching=null;}
   if(!current || current.id!==target)return;
   listingProject=current.id;listingState=null;listingEdit=null;listingTab='product';listingDirty.product=listingDirty.brand=false;
-  $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';$('listingPages').innerHTML='';$('listingPlan').innerHTML='';$('listingNotes').innerHTML='';
+  listingDetail=null;
+  $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';listingSetHTML($('listingPages'),'');$('listingPlan').innerHTML='';listingSetHTML($('listingNotes'),'');listingSyncStage();
   try{await listingLoad(true);}catch(error){$('listingPanel').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;}
 }
 // Called when the user leaves the tab: words still being typed are saved, polling stops.
 function listingDeactivate() {
   clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);
+  document.body.classList.remove('listing-stage-on');const stage=listingStageNode();if(stage)stage.hidden=true;   // the model's view comes back
   if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
 async function listingLoad(reset) {
@@ -63,13 +65,29 @@ function listingSchedule() {
 function listingField(label,html,help='') { return `<label class="listing-field"><span class="field-label">${esc(label)}</span>${html}${help?`<span class="field-help">${esc(help)}</span>`:''}</label>`; }
 function listingInput(scope,key,value,attrs='') { return `<input type="text" data-scope="${scope}" data-key="${esc(key)}" value="${esc(value ?? '')}" ${attrs}>`; }
 function listingRenderPanel() {
-  for(const tab of document.querySelectorAll('[data-listing-tab]'))tab.setAttribute('aria-selected',String(tab.dataset.listingTab===listingTab));
+  // One panel serves the five sub-tabs: it is labelled by the selected one, which alone is in the tab order (arrows move along).
+  for(const tab of document.querySelectorAll('[data-listing-tab]')){const on=tab.dataset.listingTab===listingTab;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;
+    if(on && tab.id)$('listingPanel')?.setAttribute('aria-labelledby',tab.id);}
+  listingSyncSceneHistory();
   if(!listingState || !listingEdit)return;
   if(listingTab==='product')listingRenderProduct();
   else if(listingTab==='components')listingRenderComponents();
   else if(listingTab==='brand')listingRenderBrand();
   else if(listingTab==='articulation')listingRenderArticulation();
   else listingRenderUsecase();
+}
+// The earlier usage-scene pictures (app.js fills #sceneHistory) belong with the scene settings: shown on that sub-tab only.
+function listingSyncSceneHistory() {
+  const node=$('sceneHistory');if(!node)return;
+  node.hidden=listingTab!=='usecase' || !Number(node.dataset.count || 0);
+}
+// Opening an earlier scene picture shows it in the viewer, which the built set may be covering.
+function listingShowModel() { if(listingStageShown()){listingStageOff=true;listingRenderMain();} }
+// Asks before anything is removed or replaced: the app's decision dialog when it is there, the browser's otherwise.
+async function listingConfirm(id,title,text,label,danger=true) {
+  if(typeof chooseAction==='function')
+    return await chooseAction(id,title,`<p>${esc(text)}</p>`,[{value:'cancel',label:'取消'},{value:'yes',label,danger,primary:!danger}])==='yes';
+  return typeof window.confirm==='function'?!!window.confirm(text):true;
 }
 function listingPartsHTML(index,chosen) {
   const parts=listingState.parts || [];
@@ -179,7 +197,36 @@ function listingRenderBrand() {
     <div class="listing-logo"><span class="field-label">标志图片</span>${used.logo?`<img src="${esc(used.logo)}" alt="品牌标志"><button type="button" class="button subtle" data-action="logo-remove">移除</button>`:'<span class="field-help">未上传；页眉显示品牌名称文字。</span>'}<span class="field-help">${esc(listingUsageLine('logo'))}</span>
       <input id="listingLogoFile" type="file" accept=".png,.jpg,.jpeg,.webp" aria-label="上传标志图片"></div>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>
-    <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>`;
+    <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>
+    <section class="listing-share" aria-labelledby="listingShareTitle"><h3 class="listing-heading" id="listingShareTitle">多个项目共用</h3><div id="listingShare">${listingShareHTML()}</div></section>`;
+  if(!listingShare || listingShare.project!==listingOpenFor())listingLoadShare();
+}
+// ---- brands shared between projects: copy another project's brand, or set this one as the default for new projects ----
+let listingShare=null;          // {project, data:{projects, default, last}} from /listing/brands, read when the brand tab opens
+function listingShareHTML() {
+  const id=listingOpenFor(),share=listingShare && listingShare.project===id?listingShare.data:null;
+  if(!share)return '<p class="field-help">正在读取其他项目的品牌…</p>';
+  const brandName=row=>row.name?`「${row.name}」`:'未命名品牌';
+  const own=share.default && share.default.project_id===id;
+  const next=share.default?`新项目默认使用${brandName(share.default)}（来自「${share.default.project_name}」，已设为默认）。`
+    :share.last?`新项目沿用最近保存的品牌${brandName(share.last)}（来自「${share.last.project_name}」）；设为默认后就固定使用它。`
+    :'新项目还没有可沿用的品牌；保存品牌后，新项目会自动沿用。';
+  const projects=Array.isArray(share.projects)?share.projects:[];
+  const options=projects.map(row=>`<option value="${esc(row.id)}">${esc(row.project_name)} · ${esc(row.name || '未命名品牌')}${row.logo?'（含标志）':''}</option>`).join('');
+  return `<p class="field-help" id="listingShareNext">${esc(next)}</p>
+    ${projects.length || (share.default && !own)?`<div class="listing-share-row"><label class="field-label" for="listingBrandSource">从其他项目复制品牌</label>
+      <select id="listingBrandSource"><option value="">选择项目…</option>${share.default && !own?'<option value="default">默认品牌</option>':''}${options}</select>
+      <button type="button" class="button subtle" data-action="brand-copy">复制到这个项目</button></div>
+      <p class="field-help">复制会替换这个项目当前的品牌设置，标志图片一并复制过来。</p>`:'<p class="field-help">其他项目还没有保存过品牌。</p>'}
+    <div class="listing-share-row"><button type="button" class="button subtle" data-action="brand-default" aria-describedby="listingShareNext">${own?'用当前设置更新默认品牌':'设为默认品牌'}</button>
+      ${own?'<button type="button" class="button subtle" data-action="brand-default-clear">取消默认</button>':''}</div>`;
+}
+function listingRenderShare() { const node=$('listingShare');if(node && listingTab==='brand')node.innerHTML=listingShareHTML(); }
+async function listingLoadShare() {
+  const id=listingOpenFor();if(!id)return;
+  try{const data=await api(`/api/projects/${id}/listing/brands`);if(id!==listingOpenFor())return;listingShare={project:id,data};}
+  catch(error){if(id===listingOpenFor() && $('listingShare'))$('listingShare').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;return;}
+  listingRenderShare();
 }
 // The font library's pairings, each previewed in its own faces (served by /brandkit/fonts.css).
 function listingFontPicker(b) {
@@ -194,6 +241,26 @@ function listingFontPicker(b) {
       <strong>${esc(pair.label.zh)}</strong><span>${esc(pair.note.zh)}</span>
       <span class="listing-font-names">${esc(pair.display)} · ${esc(pair.text)} · ${esc(pair.cjk)}</span></label>`).join('')}</fieldset>`;
 }
+// How the product is installed (mounting.py): what was read from its name and parts, and the seller's override.
+const listingMountWords={wall:'壁挂',free:'落地·台面'};
+function listingMountingHTML() {
+  const m=listingState.mounting;if(!m)return '';
+  const choice=(value,label)=>`<label class="listing-check"><input type="radio" name="listingMounting" data-scope="mounting" value="${value}" ${m.setting===value?'checked':''} ${listingBusy?'disabled':''}> ${esc(label)}</label>`;
+  const why=m.setting?`已手动设为${listingMountWords[m.setting]}。自动识别的结果：${m.reason}`:m.reason;
+  return `<fieldset class="listing-mounting" aria-describedby="listingMountingReason listingMountingNote"><legend class="field-label">安装方式</legend>
+    <p class="listing-mounting-reason" id="listingMountingReason">${esc(why)}</p>
+    <div class="listing-mounting-choices">${choice('',`自动（${listingMountWords[m.detected] || '落地·台面'}）`)}${choice('wall','壁挂')}${choice('free','落地·台面')}</div>
+    <p class="field-help" id="listingMountingNote">壁挂产品在场景图里挂在墙上、正面朝镜头。安装方式是场景图的生成依据之一：改动后，下次生成套图会重新生成场景图（会产生图像模型费用）。</p></fieldset>`;
+}
+async function listingSaveMounting(value) {
+  const id=listingOpenFor();if(!id || listingBusy)return;
+  listingBusy=true;
+  try{const state=await api(`/api/projects/${id}/listing/mounting`,{method:'PUT',body:{mounting:value}});
+    if(id!==listingOpenFor())return;
+    listingAdopt(state,false);toast(value?`已设为${listingMountWords[value]}；下次生成会重新生成场景图`:'已改回自动识别');}
+  catch(error){toast(error.message,true);}
+  finally{listingBusy=false;if(listingTab==='usecase' && listingOpenFor()===id){listingRenderUsecase();$('listingPanel').querySelector(`[data-scope="mounting"][value="${listingState?.mounting?.setting || ''}"]`)?.focus();}listingRenderMain();}
+}
 function listingRenderUsecase() {
   const u=listingEdit.product.usecase,o=listingState.options,round=['pipe','rod'].includes(u.kind);
   const select=(key,values,names)=>`<select data-scope="usecase" data-key="${key}">${values.map(value=>`<option value="${esc(value)}" ${u[key]===value?'selected':''}>${esc(names[value] || value)}</option>`).join('')}</select>`;
@@ -201,6 +268,7 @@ function listingRenderUsecase() {
   const triple=(key,labels)=>`<span class="listing-grid3">${labels.map((label,index)=>`<input type="text" inputmode="decimal" data-scope="usecase-triple" data-key="${key}" data-index="${index}" value="${esc(u[key][index])}" aria-label="${esc(label)}" title="${esc(label)}">`).join('')}</span>`;
   const sc=listingEdit.product.scenes || {enabled:true,count:3,audience:'auto',people:'auto',hint:''},so=listingState.scene_options || {audiences:[],people:{},max:3};
   $('listingPanel').innerHTML=`
+    ${listingMountingHTML()}
     <h3 class="listing-heading">AI 场景图</h3>
     <p class="field-help">生成套图时，按目标人群策划使用场景，由图像模型围绕锁定的产品渲染生成（产品外形不会被改动），再排进海报主图、场景参数图和使用场景组图。${so.image_ready?'':'<strong>图像模型未配置</strong>：可在 AI 设置里开启；未开启时海报用纯色版，需要场景的页面会跳过。'}</p>
     <label class="listing-check listing-toggle"><input type="checkbox" data-scope="scenes" data-key="enabled" ${sc.enabled?'checked':''}> 生成 AI 场景图</label>
@@ -260,7 +328,146 @@ async function listingRenderArticulation(reload=true) {
 }
 
 // ---- right side ----
-function listingPageReady(page) { return !!(page && page.checks && page.checks.passed && page.review && page.review.status==='passed'); }
+// The built set is shown large in the main stage (#listingStage) while this tab is open; without a stage (or when the
+// user asked to see the model) it is shown in the inspector as before. One renderer feeds both.
+let listingStageOff=false,listingDetail=null;
+const listingStatusWords={passed:'通过',failed:'未通过',unreviewed:'未审核'};
+const listingSceneWords={passed:'通过核对',failed:'未通过核对',pending:'未完成核对',unchecked:'未核对'};
+const listingLevelWords={critical:'需要处理',error:'未完成'};          // read out before the notes that need doing something
+// A page may be uploaded only when the layout checks and the visual review both passed (a page the review fixed and then
+// passed counts); the reviewed download holds exactly these pages.
+function listingPageReady(page) { return !!(page && page.checks && page.checks.passed && page.review && ['passed','revised'].includes(page.review.status)); }
+function listingPageStatus(page) {
+  if(listingPageReady(page))return 'passed';
+  if(page?.review?.status==='failed' || (page?.checks && !page.checks.passed))return 'failed';
+  return 'unreviewed';
+}
+function listingReviewRan(pages) { return pages.some(page=>page.review && !['not_verified',undefined,null].includes(page.review.status)); }
+function listingScore(page) { return Number.isFinite(page?.review?.score)?page.review.score:null; }
+function listingStageNode() { return $('listingStage'); }
+function listingHasResults() { return !!((listingState?.pages || []).length || (listingState?.scenes || []).length); }
+function listingStageShown() { return !!(listingStageNode() && listingVisible() && listingOpenFor() && listingHasResults() && !listingStageOff); }
+function listingSyncStage() {
+  const stage=listingStageNode(),on=listingStageShown();
+  document.body.classList.toggle('listing-stage-on',on);
+  if(stage)stage.hidden=!on;
+}
+// Rewritten only when something changed: the 1.5 s polling during a build must not reset scrolling or focus.
+const listingHTMLCache=new WeakMap();
+function listingSetHTML(node,html) { if(node && listingHTMLCache.get(node)!==html){node.innerHTML=html;listingHTMLCache.set(node,html);} }
+const listingCJK=/[㐀-鿿]/;
+// The server sorts the notes (state.notes_view, page.note_view); this is the same split for a server that does not.
+function listingNoteFallback(notes,skipped=[]) {
+  const seller=new Map(),tech=new Map(),held=new Map();
+  for(const [name,reason] of skipped){const key=String(reason).replace(/。$/,'');held.set(key,[...(held.get(key) || []),name]);}
+  for(const note of notes || []){const text=String(note || '').trim();if(!text)continue;const bucket=listingCJK.test(text)?seller:tech;bucket.set(text,(bucket.get(text) || 0)+1);}
+  for(const [reason,names] of held)seller.set(`${names.map(name=>`「${name}」`).join('、')}暂时无法生成：${reason}。`,1);
+  return {seller:[...seller].map(([text,count])=>({text,level:'warn',count})),tech:[...tech].map(([text,count])=>({text,count}))};
+}
+function listingPageNotes(page) { return page.note_view || listingNoteFallback(page.notes); }
+function listingNoteItem(row) { return `<li data-level="${esc(row.level || 'warn')}">${['critical','error'].includes(row.level)?`<span class="sr-only">${listingLevelWords[row.level]}：</span>`:''}${esc(row.text)}${row.count>1?` <span class="listing-count" title="出现 ${row.count} 次">×${row.count}</span>`:''}</li>`; }
+function listingTechHTML(rows) {
+  if(!rows.length)return '';
+  return `<details class="listing-tech"><summary>技术记录（${rows.length}）</summary><ul>${rows.map(row=>`<li>${esc(row.text)}${row.count>1?` ×${row.count}`:''}</li>`).join('')}</ul>
+    <p class="field-help">模板排版时的内部记录，供调试用，一般不需要处理。</p></details>`;
+}
+function listingDegradedText(degraded) {
+  if(!degraded)return '';
+  const what=(degraded.words || []).length?degraded.words.join('、'):'部分步骤';
+  return degraded.reason==='quota'?`AI 额度用尽：${what}未完成。`:`AI 服务拒绝了请求（密钥或权限）：${what}未完成。`;
+}
+function listingDegradedHTML(degraded,active) {
+  if(!degraded || active)return '';
+  return `<div class="listing-degraded" role="status"><p><strong>${esc(listingDegradedText(degraded))}</strong>
+    充值或检查密钥后点「补全」：已经做好的素材、场景图、翻译和审核结果都会沿用，只补做没完成的部分（会产生 AI 费用）。</p>
+    <button type="button" class="button secondary" data-action="fill-in" ${listingBusy || !listingState?.ready || !listingState?.available?'disabled':''}>补全</button></div>`;
+}
+function listingBadge(status,label,extra='') { return `<span class="listing-badge" data-status="${esc(status)}">${esc(label)}${extra}</span>`; }
+function listingPageName(page,index) { const kinds=listingState.kinds || {};return `${String(index+1).padStart(2,'0')} · ${kinds[page.kind]?.zh || page.kind}`; }
+function listingPageCard(page,index,stamp) {
+  const status=listingPageStatus(page),score=listingScore(page),notes=listingPageNotes(page),first=notes.seller[0];
+  const name=listingPageName(page,index),said=`${listingStatusWords[status]}${score!==null?`，${score} 分`:''}`;
+  return `<figure class="listing-page" data-status="${status}" data-page="${esc(page.id)}">
+    <button type="button" class="listing-page-open" data-action="page-open" data-page="${esc(page.id)}" aria-label="查看第 ${index+1} 张：${esc(listingState.kinds?.[page.kind]?.zh || page.kind)}（${esc(said)}）">
+      <img src="${esc(page.url)}?t=${stamp}" alt="套图第 ${index+1} 张：${esc(listingState.kinds?.[page.kind]?.zh || page.kind)}" loading="lazy"></button>
+    <figcaption><span class="listing-page-name">${esc(name)}</span>${listingBadge(status,listingStatusWords[status],score!==null?` · ${score}`:'')}
+      <span class="listing-page-size">${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a>${page.svg?`<a href="${esc(page.svg)}" download="${esc(page.file.replace(/\.png$/,'.svg'))}" title="文字和图层都可编辑，可用 Illustrator、Figma、Inkscape 打开">可编辑 SVG</a>`:''}</figcaption>
+    ${first?`<p class="listing-page-note" data-level="${esc(first.level || 'warn')}">${esc(first.text)}${notes.seller.length>1?`<span class="listing-count">另有 ${notes.seller.length-1} 条</span>`:''}</p>`:''}</figure>`;
+}
+function listingSceneCard(row,active) {
+  const check=listingSceneWords[row.check]?row.check:'unchecked',number=(row.index ?? 0)+1;
+  const placed=row.placed==='composite'?listingBadge('neutral','模型合成'):row.placed==='painted'?listingBadge('neutral','AI 绘制'):'';
+  // Only said when it holds: the render set into a photograph, or the render put back over the painted product.
+  const lock=row.placed==='composite'?'产品是模型的渲染图，合成进背景照片，尺寸和细节与模型一致。':row.restored?'产品已换回模型的渲染图，比例和细节与模型一致。':'';
+  const off=row.usable===false?'<span class="field-help">没有通过核对，不会放上页面。</span>':'';
+  const why=[...(row.flags || []),...(row.issues || [])].slice(0,3);
+  return `<figure class="listing-scene" data-check="${check}">
+    <a href="${esc(row.url)}" target="_blank" rel="noopener" title="查看原图"><img src="${esc(row.url)}" alt="场景图 ${number}：${esc(row.title || '')}" loading="lazy"></a>
+    <figcaption><span class="listing-badges">${listingBadge(check,listingSceneWords[check])}${placed}</span>
+      ${row.title?`<span class="listing-scene-title">${esc(row.title)}</span>`:''}
+      ${lock?`<span class="field-help">${esc(lock)}</span>`:''}${check==='pending'?'<span class="field-help">核对没能完成（额度或超时），下次生成时会补做核对，不重新画图。</span>':''}
+      ${why.length?`<span class="field-help">${why.map(esc).join('；')}</span>`:''}${off}
+      <button type="button" class="button subtle" data-action="scene-redraw" data-index="${esc(row.index ?? 0)}" data-url="${esc(row.url)}" ${active || listingBusy?'disabled':''}>重画这张</button></figcaption></figure>`;
+}
+function listingResultsHTML(stamp,active) {
+  const pages=listingState.pages || [],scenes=listingState.scenes || [];
+  const passed=scenes.filter(row=>row.check==='passed').length;
+  // the pages first: they are what gets uploaded; the scenes they were made from follow
+  return (pages.length?`<section class="listing-page-section" aria-label="套图图片"><h3 class="listing-section-title">套图 <span>${pages.length} 张</span></h3>
+    <div class="listing-page-grid">${pages.map((page,index)=>listingPageCard(page,index,stamp)).join('')}</div></section>`:'')
+    +(scenes.length?`<section class="listing-scenes" aria-label="本次使用的场景图"><h3 class="listing-section-title">场景图 <span>${scenes.length} 张 · 通过核对 ${passed} 张</span></h3>
+    <div class="listing-scene-grid">${scenes.map(row=>listingSceneCard(row,active)).join('')}</div></section>`:'');
+}
+function listingDetailHTML(page,stamp) {
+  const pages=listingState.pages || [],index=pages.indexOf(page),status=listingPageStatus(page),score=listingScore(page),review=page.review || null;
+  const notes=listingPageNotes(page),vetoes=review?.veto_words || review?.vetoes || [],issues=review?.issues || [];
+  const layout=page.checks && !page.checks.passed?(page.checks.issue_words || page.checks.issues || []):[];
+  const reviewed=!review || review.status==='not_verified'?'<p class="field-help">这张图没有经过视觉审核。</p>'
+    :`<p>${review.summary?esc(review.summary):'（审核没有给出总结）'}</p>${review.status==='revised' && Number.isFinite(review.first_score)?`<p class="field-help">按审核意见修改过：${review.first_score} → ${score} 分。</p>`:''}`;
+  return `<article class="listing-detail" aria-labelledby="listingDetailTitle">
+    <header class="listing-detail-head">
+      <button type="button" class="button subtle" data-action="page-close">← 返回全部</button>
+      <h3 id="listingDetailTitle" tabindex="-1">${esc(listingPageName(page,index))}</h3>${listingBadge(status,listingStatusWords[status],score!==null?` · ${score} 分`:'')}
+      <span class="listing-detail-nav"><button type="button" class="button subtle" data-action="page-step" data-step="-1" ${index<=0?'disabled':''} aria-label="上一张">‹</button>
+      <span>${index+1} / ${pages.length}</span><button type="button" class="button subtle" data-action="page-step" data-step="1" ${index>=pages.length-1?'disabled':''} aria-label="下一张">›</button></span>
+    </header>
+    <div class="listing-detail-body">
+      <a class="listing-detail-picture" href="${esc(page.url)}" target="_blank" rel="noopener" title="在新标签页打开原图"><img src="${esc(page.url)}?t=${stamp}" alt="${esc(listingPageName(page,index))} 原图"></a>
+      <div class="listing-detail-info">
+        <h4>视觉审核</h4>${reviewed}
+        ${vetoes.length?`<h4>否决项</h4><ul class="listing-detail-list" data-level="error">${vetoes.map(text=>`<li>${esc(text)}</li>`).join('')}</ul>`:''}
+        ${issues.length?`<h4>问题</h4><ul class="listing-detail-list">${issues.map(row=>`<li>${row.region?`<strong>${esc(row.region)}</strong>：`:''}${esc(row.evidence || '')}</li>`).join('')}</ul>`:''}
+        ${layout.length?`<h4>版式检查</h4><ul class="listing-detail-list" data-level="error">${layout.map(text=>`<li>${esc(text)}</li>`).join('')}</ul>`:''}
+        ${notes.seller.length?`<h4>提示</h4><ul class="listing-notes listing-detail-notes">${notes.seller.map(listingNoteItem).join('')}</ul>`:''}
+        ${listingTechHTML(notes.tech)}
+        <p class="listing-detail-files">${page.width}×${page.height} · <a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载 PNG</a>${page.svg?` · <a href="${esc(page.svg)}" download="${esc(page.file.replace(/\.png$/,'.svg'))}">可编辑 SVG</a>`:''}</p>
+      </div></div></article>`;
+}
+function listingDownloadsHTML(href,pages,ready,ran) {
+  // the same two exports as the inspector bar, with the reviewed one first when a review ran
+  if(!pages.length)return '';
+  const reviewed=ready?`<a class="button ${ran?'primary':'secondary'}" href="${esc(href)}?reviewed=1">下载已通过审核的 ${ready}/${pages.length} 张</a>`:'';
+  return reviewed+`<a class="button ${ran && ready?'subtle':'secondary'}" href="${esc(href)}">${ready===pages.length?'下载全部':'下载草稿（全部）'}</a>`;
+}
+const listingStageSaid={queued:'套图排队中',pictures:'正在渲染素材',scenes:'正在生成场景图',compose:'正在排版和审核',done:'套图已生成'};
+const listingUSD=value=>'US$'+(Number(value) || 0).toFixed(2);
+// What the next build will roughly cost (state.estimate) and what this project's logged AI requests cost (state.spend).
+function listingCostText(estimate) {
+  if(!estimate)return '';
+  const [low,high]=estimate.usd || [0,0],parts=[];
+  if(estimate.new_scenes)parts.push(`新场景图 ${estimate.new_scenes} 张`);
+  if(estimate.kept_scenes)parts.push(`沿用 ${estimate.kept_scenes} 张`);
+  if(estimate.review_pages)parts.push(`视觉审核 ${estimate.review_pages} 页`);
+  if(!estimate.new_scenes && !estimate.review_pages)return `预估 AI 费用很低：没有新场景图，也不做视觉审核${estimate.kept_scenes?`（沿用 ${estimate.kept_scenes} 张场景图）`:''}`;
+  return `预估 AI 费用约 ${listingUSD(low)}${high>low?'–'+listingUSD(high).slice(3):''}（${parts.join('、')}，按官方原价估算）`;
+}
+function listingRenderCost(state,active) {
+  const cost=$('listingCost'),spend=$('listingSpend'),estimate=state.estimate,basis=estimate?.basis || {};
+  if(cost){const text=active || !state.ready?'':listingCostText(estimate);cost.hidden=!text;cost.textContent=text;
+    cost.title=text?`估算：每张新场景图约 ${basis.tries || 1.5} 次图像模型调用（1536 px medium 每次约 $${basis.image_call || 0.075}），每页视觉审核约 $${(basis.review_page || [0.04,0.08]).join('–')}；沿用的场景图、标题和审核结果不再收费。实际费用以服务商账单为准。`:'';}
+  if(spend){const s=state.spend;spend.hidden=!(s && s.calls);
+    spend.textContent=s && s.calls?`本项目已记录的 AI 花费约 ${listingUSD(s.usd)}（${s.calls} 次调用${s.unpriced?`，其中 ${s.unpriced} 次的模型价格未知，未计入`:''}；按官方原价估算，${s.since?new Date(s.since*1000).toLocaleDateString('zh-CN')+' 起':'从本版本起'}记录）。`:'';}
+}
 function listingRenderMain() {
   const state=listingState;if(!state)return;
   const task=state.task,active=listingTaskActive(),pages=state.pages || [],kinds=state.kinds;
@@ -269,38 +476,86 @@ function listingRenderMain() {
     const label=kinds[kind],row=planned.get(kind),on=explicit?listingEdit.product.pages.includes(kind):!!row && !row.skipped;
     return `<label class="listing-kind${row?.skipped?' is-skipped':''}" title="${esc(row?.skipped?'暂时无法生成：'+row.skipped:label.en)}"><input type="checkbox" data-scope="page" value="${esc(kind)}" ${on?'checked':''} ${active?'disabled':''}> ${esc(label.zh)}</label>`;
   }).join('')+(explicit?`<button type="button" class="button subtle" data-action="pages-auto" ${active?'disabled':''}>恢复自动</button>`:'');
+  const ready=pages.filter(listingPageReady).length,ran=listingReviewRan(pages),unready=pages.length-ready;
   const build=$('listingBuild');build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false;
   build.textContent=pages.length?'重新生成套图':'生成套图';
+  // Once a reviewed set can be downloaded, that download is the one primary action of the bar.
+  build.className='button '+(pages.length && ran && ready?'secondary':'primary');
   // A rebuild reuses the headlines and reviews of the same request (v40); this one asks for new ones.
   const rewrite=$('listingRewrite');if(rewrite){rewrite.hidden=!pages.length || active;rewrite.disabled=build.disabled;}
   $('listingCancel').hidden=!active;
   const download=$('listingDownload');download.hidden=!pages.length || active;download.href=`/api/projects/${encodeURIComponent(listingProject)}/listing/download`;
   // The reviewed export holds only pages that passed the layout checks and the visual review; the draft holds everything.
   // Both carry each page's status (review-status.json, 审核状态.txt), so a failed page never travels without it.
-  const ready=pages.filter(listingPageReady).length,reviewed=$('listingDownloadReviewed');
-  if(reviewed){reviewed.hidden=!pages.length || active || !ready;reviewed.href=download.href+'?reviewed=1';reviewed.textContent=`下载已通过审核的 ${ready}/${pages.length} 张（ZIP）`;}
-  download.textContent=ready===pages.length?'下载全部（ZIP）':'下载草稿（全部，含未通过的）';
+  const reviewed=$('listingDownloadReviewed');
+  if(reviewed){reviewed.hidden=!pages.length || active || !ready;reviewed.href=download.href+'?reviewed=1';reviewed.textContent=`下载已通过审核的 ${ready}/${pages.length} 张（ZIP）`;
+    reviewed.className='button '+(ran?'primary':'secondary');}
+  download.textContent=ready===pages.length?'下载全部（ZIP）':ran?`下载草稿（全部 ${pages.length} 张，含 ${unready} 张未通过或未审核）`:`下载草稿（全部 ${pages.length} 张，未经审核）`;
+  download.className='button '+(ran && ready?'subtle':'secondary');
   const progress=$('listingProgress');progress.hidden=!active;
   if(active){const value=Math.max(0,Math.min(100,Math.round(task.progress || 0)));$('listingProgressBar').style.width=value+'%';progress.setAttribute('aria-valuenow',String(value));}
+  const degraded=state.degraded || null;
   $('listingStatus').textContent=!state.available?'渲染组件不可用，无法生成套图。':state.layout_available===false?'没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。':!state.ready?'模型分析完成后才能生成套图。'
     :active?`${task.detail || (task.status==='queued'?'排队中':'正在生成')} · ${Math.round(task.progress || 0)}%`
     :task?.status==='failed'?`上次生成失败：${task.error || ''}`:task?.status==='cancelled'?'上次生成已取消。'
-    :pages.length?`共 ${pages.length} 张，${new Date((state.built_at || 0)*1000).toLocaleString('zh-CN',{hour12:false})} 生成。`:'还没有生成套图。';
-  const skipped=state.plan.filter(row=>row.skipped).map(row=>`「${kinds[row.kind].zh}」暂时无法生成：${row.skipped}。`);
-  $('listingNotes').innerHTML=[...(state.notes || []),...skipped,...(listingComponentsBusy()?['有组件还在处理，完成后再生成会把它们放进套图。']:[])].map(note=>`<li>${esc(note)}</li>`).join('');
-  const stamp=Math.round((state.built_at || 0)*1000),scenes=state.scenes || [];
-  $('listingPages').innerHTML=(scenes.length?`<section class="listing-scenes" aria-label="本次使用的场景图"><span class="field-label">场景图（图像模型生成，产品由遮罩锁定）</span><div>${scenes.map((row,index)=>
-    `<a href="${esc(row.url)}" target="_blank" rel="noopener" title="${esc(row.title || '')}"><img src="${esc(row.url)}" alt="场景图 ${index+1}：${esc(row.title || '')}" loading="lazy"></a>`).join('')}</div></section>`:'')+pages.map((page,index)=>`<figure class="listing-page">
-    <a href="${esc(page.url)}" target="_blank" rel="noopener" title="查看原图"><img src="${esc(page.url)}?t=${stamp}" alt="套图第 ${index+1} 张：${esc(kinds[page.kind]?.zh || page.kind)}" loading="lazy"></a>
-    <figcaption><span>${String(index+1).padStart(2,'0')} · ${esc(kinds[page.kind]?.zh || page.kind)}${page.checks?(page.checks.passed?' · 版式通过':' · 版式需检查'):''}${listingReviewLabel(page.review)}</span><span>${page.width}×${page.height}</span><a href="${esc(page.url)}?download=1" download="${esc(page.file)}">下载</a>${page.svg?`<a href="${esc(page.svg)}" download="${esc(page.file.replace(/\.png$/,'.svg'))}" title="文字和图层都可编辑，可用 Illustrator、Figma、Inkscape 打开">可编辑 SVG</a>`:''}</figcaption>
-    ${(page.notes || []).map(note=>`<p class="field-help">${esc(note)}</p>`).join('')}</figure>`).join('');
+    :pages.length?`共 ${pages.length} 张，${new Date((state.built_at || 0)*1000).toLocaleString('zh-CN',{hour12:false})} 生成${degraded?'，部分未完成':''}。`:'还没有生成套图。';
+  // The line above changes every poll (its percentage); screen readers hear only when the stage or the outcome changes.
+  const said=active?(listingStageSaid[task.stage] || '正在生成套图'):$('listingStatus').textContent;
+  const announce=$('listingAnnounce');if(announce && announce.textContent!==said)announce.textContent=said;
+  listingRenderCost(state,active);
+  const filler=$('listingDegraded');if(filler)listingSetHTML(filler,listingDegradedHTML(degraded,active));
+  const view=state.notes_view || listingNoteFallback(state.notes,state.plan.filter(row=>row.skipped).map(row=>[kinds[row.kind]?.zh || row.kind,row.skipped]));
+  const busy=listingComponentsBusy()?[{text:'有组件还在处理，完成后再生成会把它们放进套图。',level:'warn',count:1}]:[];
+  listingSetHTML($('listingNotes'),[...view.seller,...busy].map(listingNoteItem).join('')+(view.tech.length?`<li class="listing-tech-row">${listingTechHTML(view.tech)}</li>`:''));
+  const stamp=Math.round((state.built_at || 0)*1000);
+  listingSyncStage();
+  const stage=listingStageNode(),open=listingDetail && pages.find(page=>page.id===listingDetail);
+  if(!open)listingDetail=null;
+  const shown=open?listingDetailHTML(open,stamp):listingResultsHTML(stamp,active);
+  if(listingStageShown()){
+    const counts={passed:0,failed:0,unreviewed:0};for(const page of pages)counts[listingPageStatus(page)]++;
+    listingSetHTML($('listingStageHead'),`<div class="listing-stage-title"><h2>套图${pages.length?` · ${pages.length} 张`:''}</h2>
+      ${pages.length?`<p>${listingBadge('passed',`通过 ${counts.passed}`)}${listingBadge('failed',`未通过 ${counts.failed}`)}${listingBadge('unreviewed',`未审核 ${counts.unreviewed}`)}</p>`:''}</div>
+      <div class="listing-stage-actions">${active?'':listingDownloadsHTML(download.href,pages,ready,ran)}<button type="button" class="button subtle" data-action="stage-model">返回模型</button></div>`);
+    listingSetHTML($('listingStageNotice'),listingDegradedHTML(degraded,active));
+    listingSetHTML($('listingStageBody'),shown);
+    listingSetHTML($('listingPages'),'<p class="field-help">套图显示在左侧主画面：点任意一张查看大图、审核结果和提示。</p>');
+  }else{
+    const back=stage && listingHasResults() && listingStageOff?'<p><button type="button" class="button subtle" data-action="stage-set">在主画面查看套图</button></p>':'';
+    listingSetHTML($('listingPages'),back+shown);
+  }
 }
-
-function listingReviewLabel(review) {
-  // What the vision model's art director made of the page; a page nobody looked at is never shown as approved.
-  if(!review)return '';
-  const score=Number.isFinite(review.score)?` ${review.score}`:'';
-  return {passed:` · 审核通过${score}`,revised:` · 审核后修改${score}`,failed:` · 审核未通过${score}`,not_verified:' · 未经视觉审核'}[review.status] || '';
+function listingFocusDetail() { const title=$('listingDetailTitle');if(title)title.focus(); }
+// The actions of the results (in the stage or the inspector). Returns true when it handled the click.
+async function listingResultsAction(button) {
+  const action=button.dataset.action,pages=listingState?.pages || [];
+  if(action==='page-open'){listingDetail=button.dataset.page;listingRenderMain();listingFocusDetail();return true;}
+  if(action==='page-close'){const was=listingDetail;listingDetail=null;listingRenderMain();
+    [...document.querySelectorAll('.listing-page-open')].find(node=>node.dataset.page===was)?.focus();return true;}
+  if(action==='page-step'){const index=pages.findIndex(page=>page.id===listingDetail),next=pages[index+Number(button.dataset.step)];
+    if(next){listingDetail=next.id;listingRenderMain();listingFocusDetail();}return true;}
+  if(action==='stage-model'){listingStageOff=true;listingRenderMain();return true;}
+  if(action==='stage-set'){listingStageOff=false;listingRenderMain();return true;}
+  if(action==='fill-in'){await listingBuildNow();return true;}
+  if(action==='scene-redraw'){
+    const ask='重画这张场景图？其余场景图和已经做好的部分都会沿用，只重新生成这一张，然后重新排版（会产生图像模型费用）。';
+    if(!await listingConfirm('sceneRedrawDialog','重画这张场景图？',ask,'重画这张',false))return true;
+    if(listingBusy)return true;listingBusy=true;listingRenderMain();
+    try{
+      await listingSavePending();
+      await api(`/api/projects/${listingProject}/listing/scenes/${Number(button.dataset.index)}/redraw`,{method:'POST',body:{url:button.dataset.url}});
+      toast('已开始重画这张场景图');await listingLoad(false);
+    }catch(error){toast(error.message,true);}
+    finally{listingBusy=false;listingRenderMain();}
+    return true;
+  }
+  return false;
+}
+function listingOnStageKey(event) {
+  if(!listingDetail || event.defaultPrevented)return;
+  if(event.target.closest?.('input, textarea, select'))return;
+  if(event.key==='Escape'){event.preventDefault();listingResultsAction({dataset:{action:'page-close'}});}
+  else if(event.key==='ArrowLeft' || event.key==='ArrowRight'){event.preventDefault();listingResultsAction({dataset:{action:'page-step',step:event.key==='ArrowLeft'?'-1':'1'}});}
 }
 
 // ---- reading the forms ----
@@ -327,13 +582,14 @@ function listingOnInput(event) {
 }
 async function listingOnChange(event) {
   const node=event.target;
-  if(node.dataset.scope==='component'){
+  if(node.dataset.scope==='mounting'){if(node.checked)await listingSaveMounting(node.value);}
+  else if(node.dataset.scope==='component'){
     const key=node.dataset.key,value=node.type==='checkbox'?node.checked:key==='quantity'?Number(node.value):key==='size_mm'?listingNumber(node.value):node.value;
     try{await api(`/api/projects/${listingProject}/components/${node.dataset.id}`,{method:'PUT',body:{[key]:value}});await listingLoad(false);}
     catch(error){toast(error.message,true);listingLoad(false).catch(()=>{});}
   }else if(node.id==='listingLogoFile' && node.files.length){
     const form=new FormData();form.append('file',node.files[0]);
-    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingRenderBrand();toast('标志已上传');}catch(error){toast(error.message,true);}
+    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingShare=null;listingRenderBrand();toast('标志已上传');}catch(error){toast(error.message,true);}
   }else listingOnInput(event);
 }
 async function listingSaveProduct(quiet) {
@@ -346,7 +602,7 @@ async function listingSaveProduct(quiet) {
 async function listingSaveBrand(quiet) {
   const b=listingEdit.brand;
   const state=await api(`/api/projects/${listingProject}/listing/brand`,{method:'PUT',body:{preset:b.preset,name:b.name,accent:b.accent,dark:b.dark,badges:b.badges,legal:b.legal,unit:b.unit,fonts:b.fonts,badge_style:b.badge_style,texture:b.texture}});
-  listingDirty.brand=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
+  listingDirty.brand=false;listingShare=null;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }
 async function listingSavePending() { if(listingDirty.product)await listingSaveProduct(true);if(listingDirty.brand)await listingSaveBrand(true); }
 async function listingBuildNow(fresh=false) {
@@ -362,6 +618,7 @@ async function listingOnClick(event) {
   const tab=event.target.closest('[data-listing-tab]');
   if(tab){listingTab=tab.dataset.listingTab;listingRenderPanel();return;}
   const button=event.target.closest('[data-action]');if(!button || !listingEdit)return;
+  if(await listingResultsAction(button))return;
   const action=button.dataset.action,p=listingEdit.product,index=Number(button.dataset.index),id=button.dataset.id;
   try{
     if(action==='add-feature'){if(p.features.length<8){p.features.push({title:'',detail:'',parts:[],icon:''});listingDirty.product=true;listingRenderProduct();}}
@@ -393,14 +650,37 @@ async function listingOnClick(event) {
     }
     else if(action==='component-turn'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'PUT',body:{turn:button.dataset.turn}});await listingLoad(false);}
     else if(action==='component-refresh'){await api(`/api/projects/${listingProject}/components/${id}/refresh`,{method:'POST'});await listingLoad(false);}
-    else if(action==='component-remove'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
+    else if(action==='component-remove'){
+      const row=(listingState.components || []).find(item=>item.id===id),name=row?.name?`「${row.name}」`:'这个组件';
+      if(!await listingConfirm('componentRemoveDialog','删除组件？',`删除${name}后，它的文件和抠图会一并删除，套装清单和主图里不再出现它。删除后无法恢复，需要时请重新上传。`,'删除组件'))return;
+      await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
     else if(action==='articulation-run'){
       button.disabled=true;button.textContent='识别中…';
       const id=listingProject,data=await api(`/api/projects/${id}/articulation`,{method:'POST',body:{}});
       if(listingOpenFor()!==id)return;
       listingArticulation={project:id,data};listingRenderArticulation(false);toast('已开始重新识别活动部件');
     }
-    else if(action==='logo-remove'){listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingRenderBrand();}
+    else if(action==='logo-remove'){
+      if(!await listingConfirm('logoRemoveDialog','移除品牌标志？','移除后，下次生成的套图不再印标志，页眉改为显示品牌名称文字。需要时可以重新上传。','移除标志'))return;
+      listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingShare=null;listingRenderBrand();}
+    else if(action==='brand-copy'){
+      const source=$('listingBrandSource')?.value || '',share=listingShare?.data;
+      if(!source){toast('请先选择要复制的项目',true);$('listingBrandSource')?.focus();return;}
+      const row=source==='default'?share?.default:(share?.projects || []).find(item=>item.id===source);
+      const from=source==='default'?'默认品牌':`「${row?.project_name || '所选项目'}」的品牌`;
+      if(!await listingConfirm('brandCopyDialog','复制品牌？',`用${from}替换这个项目的品牌风格、名称、颜色、徽标、说明文字和标志。这个项目当前的品牌设置不会保留。`,'复制并替换',false))return;
+      const id=listingProject;
+      const state=await api(`/api/projects/${id}/listing/brand/copy`,{method:'POST',body:{source}});
+      if(listingOpenFor()!==id)return;
+      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);listingRenderBrand();toast('品牌已复制到这个项目');
+    }
+    else if(action==='brand-default' || action==='brand-default-clear'){
+      const id=listingProject,clear=action==='brand-default-clear';
+      if(!clear)await listingSavePending();                 // the default is the brand as saved: typed changes go in first
+      const data=await api(`/api/projects/${id}/listing/brand/default`,{method:'POST',body:clear?{clear:true}:{}});
+      if(listingOpenFor()!==id)return;
+      listingShare={project:id,data};listingRenderShare();toast(clear?'已取消默认品牌：新项目沿用最近保存的品牌':'已设为默认品牌：之后新建的项目会使用它');
+    }
   }catch(error){toast(error.message,true);}
 }
 function listingInit() {
@@ -409,6 +689,11 @@ function listingInit() {
   panel.addEventListener('click',listingOnClick);
   panel.addEventListener('input',listingOnInput);
   panel.addEventListener('change',event=>{listingOnChange(event);});
+  panel.addEventListener('keydown',listingOnStageKey);
+  // The set shown in the main stage: its own clicks and keys (it sits outside the inspector).
+  const stage=listingStageNode();
+  if(stage){stage.addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(button && listingState)listingResultsAction(button);});
+    stage.addEventListener('keydown',listingOnStageKey);}
   $('listingBuild').onclick=()=>listingBuildNow();
   if($('listingRewrite'))$('listingRewrite').onclick=()=>listingBuildNow(true);
   $('listingCancel').onclick=async()=>{const task=listingState?.task;if(!task)return;try{await api(`/api/projects/${listingProject}/listing/${task.id}/cancel`,{method:'POST'});await listingLoad(false);}catch(error){toast(error.message,true);}};

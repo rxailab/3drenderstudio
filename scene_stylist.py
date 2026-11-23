@@ -929,7 +929,9 @@ def submit(project_id, body):
                 'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'people': people, 'pose': pose, 'seed': seed,
                 'base_version': project['version'], 'created_at': time.time()}
         put(KIND, task)
-        threading.Thread(target=_run, args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()
+        import ai_client
+        # the job's AI requests are logged with the project they were made for (its spend in the listing workspace)
+        threading.Thread(target=ai_client.tagged(project_id, _run), args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()
         return public(task)
 
 

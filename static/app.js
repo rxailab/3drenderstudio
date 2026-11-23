@@ -526,9 +526,11 @@ function orientApply(change,message) {
 let sceneSubmitting=false;
 function sceneTaskActive() { return ['queued','running'].includes(current?.scene_task?.status); }
 function renderSceneSet() {
-  const section=$('sceneHistory')?.closest('.scene-set');if(!section)return;
+  const section=$('sceneOpenListing')?.closest('.scene-set');if(!section)return;
   section.hidden=!current;if(!current)return;
-  const history=sceneHistoryHTML(current);$('sceneHistory').hidden=!history.count;
+  // The list lives in the 套图 tab's scene settings: listing.js shows it while that sub-tab is open.
+  const history=sceneHistoryHTML(current);$('sceneHistory').dataset.count=String(history.count);
+  if(typeof listingSyncSceneHistory==='function')listingSyncSceneHistory();else $('sceneHistory').hidden=!history.count;
   $('sceneHistoryTitle').textContent=`历史使用场景图（${history.count}）`;
   stableHTML($('sceneHistoryList'),history.html);
   const task=current.scene_task;
@@ -610,6 +612,10 @@ function renderActionState() {
   const reason=renderReady() && current?.analysis && !locked && !selectedShots.size?'勾选镜头后可输出 4K。':'';
   setText('renderReason',reason);if($('renderReason'))$('renderReason').hidden=!reason;
   $('renderButton').title=reason || '按勾选的镜头输出 4K 成品';
+  // Once the model is analysed the listing set is the main path: its button leads, 4K output follows.
+  const analysed=!!current?.analysis;
+  $('listingOpen').className='button '+(analysed?'primary':'secondary')+' project-only';
+  $('renderButton').className='button '+(analysed?'secondary':'primary')+' project-only';
   $('savePlan').disabled=!dirty || locked || !current?.analysis;
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
@@ -2233,7 +2239,7 @@ function ecommerceLatestExport() { return (current?.ecommerce_exports || [])[0] 
 function ecommerceExportRunning() { return (current?.ecommerce_exports || []).some(task=>['queued','running'].includes(task.status)); }
 function renderEcommerceResult() {
   const task=ecommerceLatestExport(),box=$('ecommerceResult');
-  if(task){const before=ecommerceSeen.get(task.id);if(before && before!==task.status && task.status==='completed')toast('平台套图已导出，可以下载。');ecommerceSeen.set(task.id,task.status);}
+  if(task){const before=ecommerceSeen.get(task.id);if(before && before!==task.status && task.status==='completed')toast('平台主图/白底图已导出，可以下载。');ecommerceSeen.set(task.id,task.status);}
   box.hidden=!task || task.status==='cancelled';if(box.hidden)return;
   const running=['queued','running'].includes(task.status),files=Array.isArray(task.files)?task.files:[];
   const own=url=>typeof url==='string' && url.startsWith('/files/'+current.id+'/ecommerce/')?url:'';
@@ -2278,7 +2284,7 @@ function renderEcommerce() {
   $('ecommerceAdapt').title='把平台建议的画幅与留白写入方案并重新预览；不执行也能导出，导出时会自动构图';
   const running=ecommerceExportRunning(),rendering=!!activeJob();
   $('ecommerceExport').disabled=locked || running || rendering || !counts.rendered;
-  setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台套图');
+  setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台主图/白底图');
   // Say something under the button only when the export is blocked or will miss a rule.
   const hint=!counts.rendered?'生成预览后即可导出。':rendering?'渲染完成后可导出。':small?`${small} 个镜头只有预览尺寸，低于平台最低要求。`:'';
   setText('ecommerceExportHint',hint);$('ecommerceExportHint').hidden=!hint;$('ecommerceExportHint').dataset.tone=small && counts.rendered && !rendering?'warn':'';
@@ -2288,7 +2294,7 @@ async function submitEcommerceExport() {
   const id=current.id;ecommerceSubmitting=true;ecommerceError='';renderEcommerce();
   try{
     const task=await api(`/api/projects/${id}/ecommerce/exports`,{method:'POST',body:ecommerceControls()});
-    if(current?.id===id){ecommerceSeen.set(task.id,task.status);current.ecommerce_exports=[task,...(current.ecommerce_exports || []).filter(item=>item.id!==task.id)];toast(task.status==='completed'?'这组设置已经导出过，可直接下载。':'正在导出平台套图。');}
+    if(current?.id===id){ecommerceSeen.set(task.id,task.status);current.ecommerce_exports=[task,...(current.ecommerce_exports || []).filter(item=>item.id!==task.id)];toast(task.status==='completed'?'这组设置已经导出过，可直接下载。':'正在导出平台主图/白底图。');}
   }catch(error){if(current?.id===id)ecommerceError=error.message;}
   finally{ecommerceSubmitting=false;renderEcommerce();}
 }
@@ -2322,6 +2328,7 @@ function installEvents() {
     stashCamera();activeShot='scene';cameraShot='scene';syncCamera();
     const displayed=displayedShotOutput('scene');viewerLatestKey=displayed?current.id+':'+sceneOutputKey(displayed):current.id+':scene';
     sceneHistorySelection=sceneOutputKey(output);comparePrevious=true;realtime.mode='image';feedbackMode=false;instructionTargetSelection=null;
+    if(typeof listingShowModel==='function')listingShowModel();     // the picture opens in the viewer, which the set may be covering
     renderViewer();renderShots();renderInspection();renderActionState();
   };
   $('materialAgentForm').onsubmit=submitMaterialAgent;
@@ -2423,7 +2430,7 @@ function installEvents() {
   $('materialPreset').onchange=()=>{const p=$('materialPreset').value;const defaults={matte_plastic:[.5,0,0],glossy_plastic:[.17,0,0],painted_metal:[.28,.7,0],brushed_metal:[.3,1,0],polished_metal:[.09,1,0],glass:[.04,0,1],rubber:[.8,0,0],fabric:[.85,0,0],leather:[.5,0,0],wood:[.45,0,0],ceramic:[.2,0,0]};if(defaults[p])['roughness','metallic','transmission'].forEach((id,i)=>setValue(id,defaults[p][i]));if(!p){editedMaterialColors.delete(selectedMaterial);stashMaterial();syncMaterial();}$('materialEditing').hidden=!p;markDirty();updateRangeLabels();};
   $('cameraShot').onchange=()=>{stashCamera();cameraShot=$('cameraShot').value;activeShot=cameraShot;comparePrevious=false;styleFocusNotice='';remember('wuying-shot-'+current.id,activeShot);syncCamera();renderViewer();renderShots();renderInspection();renderActionState();};
   document.querySelectorAll('[data-tab]').forEach(b=>{b.tabIndex=b.getAttribute('aria-selected')==='true'?0:-1;b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>{x.setAttribute('aria-selected',x===b);x.tabIndex=x===b?0:-1;});for(const key of ['materials','camera','structure'])$(key+'Tab').hidden=key!==b.dataset.tab;};});
-  for(const selector of ['.settings-tabs']){const list=document.querySelector(selector);if(!list)continue;list.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...list.querySelectorAll('[role=tab]')].filter(tab=>!tab.hidden),index=tabs.indexOf(event.target);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[next].click();tabs[next].focus();});}
+  for(const selector of ['.settings-tabs','.listing-tabs']){const list=document.querySelector(selector);if(!list)continue;list.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...list.querySelectorAll('[role=tab]')].filter(tab=>!tab.hidden),index=tabs.indexOf(event.target);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[next].click();tabs[next].focus();});}
   $('shotList').onclick=e=>{const b=e.target.closest('[data-shot]');if(b){stashCamera();activeShot=b.dataset.shot;comparePrevious=false;styleFocusNotice='';remember('wuying-shot-'+current.id,activeShot);cameraShot=activeShot;$('cameraShot').value=cameraShot;syncCamera();renderViewer();renderShots();renderInspection();renderActionState();}};
   $('shotList').onchange=e=>{if(e.target.dataset.selectShot){if(e.target.checked)selectedShots.add(e.target.dataset.selectShot);else selectedShots.delete(e.target.dataset.selectShot);renderProject();}};
   $('selectAllShots').onchange=()=>{selectedShots=$('selectAllShots').checked?new Set(shots().map(s=>s.id)):new Set();renderProject();};

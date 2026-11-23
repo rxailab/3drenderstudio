@@ -824,6 +824,64 @@ class BuildTests(StoreCase):
         pages, _ = listing.build('fixture')
         self.assertEqual(self.job('T12')['mode'], 'solid'); self.assertNotIn('T08', [page['kind'] for page in pages])
 
+    def test_one_scene_is_made_again_and_only_that_one(self):
+        self.with_scenes(); self.scene_checks = ['passed', 'failed', 'passed']
+        listing.build('fixture')
+        self.assertEqual(len(self.scenes), 3)
+        shown = listing.state('fixture')['scenes']
+        self.assertEqual([row['check'] for row in shown], ['passed', 'failed', 'passed'])
+        self.assertEqual([row['index'] for row in shown], [0, 1, 2])
+        self.assertEqual([row['placed'] for row in shown], ['painted'] * 3)
+        self.assertFalse(any(row['locked'] for row in shown))          # painted and not put back: never called locked
+        kept = [row['url'] for row in shown]
+        # the failure memory of the slot goes with it, and a stale page cannot remove another picture
+        def remember(project, record):
+            record['scenes']['failed'] = [{'scene': '%s%d' % (shown[1]['role'], 1 + sum(1 for row in shown[:1] if row['role'] == shown[1]['role'])),
+                                           'role': shown[1]['role'], 'count': 2}]
+        listing._update('fixture', remember)
+        with self.assertRaises(ValueError):
+            listing.forget_scene('fixture', 1, url=kept[0])
+        with self.assertRaises(KeyError):
+            listing.forget_scene('fixture', 7)
+        listing.forget_scene('fixture', 1, url=kept[1])
+        record = store.get('project', 'fixture')['listing']['scenes']
+        self.assertEqual(([row['url'] for row in record['items']], record['failed']), ([kept[0], kept[2]], []))
+        listing.build('fixture')
+        self.assertEqual(len(self.scenes), 4)                                                # one picture made, two kept
+        after = [row['url'] for row in listing.state('fixture')['scenes']]
+        self.assertEqual(len(after), 3); self.assertIn(kept[0], after); self.assertIn(kept[2], after)
+
+    def test_a_scene_is_not_removed_while_a_build_runs_and_the_route_starts_a_build(self):
+        self.with_scenes()
+        listing.build('fixture')
+        import app as application
+        client = application.app.test_client()
+        self.assertEqual(client.post('/api/projects/fixture/listing/scenes/9/redraw', json={}).status_code, 404)
+        with patch.object(listing.threading, 'Thread'):
+            first = listing.state('fixture')['scenes'][0]
+            made = client.post('/api/projects/fixture/listing/scenes/0/redraw', json={'url': first['url']})
+            self.assertEqual(made.status_code, 202, made.get_json()); self.assertEqual(made.get_json()['status'], 'queued')
+            self.assertEqual(len(store.get('project', 'fixture')['listing']['scenes']['items']), 2)
+            busy = client.post('/api/projects/fixture/listing/scenes/0/redraw', json={})
+            self.assertEqual(busy.status_code, 409)
+            self.assertEqual(len(store.get('project', 'fixture')['listing']['scenes']['items']), 2)
+
+    def test_the_state_says_what_a_refused_ai_service_left_undone(self):
+        def refused(project, record):
+            record['notes'] = ['翻译产品文字时文本模型没有回应（AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402））。',
+                               '第 2 张场景图没有生成：图像服务的额度已用尽或账户欠费，请充值后重试。（HTTP 402）', '品牌色取自产品本身的颜色 #d9463d。']
+            record['pages'] = [{'kind': 'T12', 'notes': ['视觉审核没有完成（AI 服务的额度已用尽或账户欠费（HTTP 402）），这张图未经审核。', 'd3: value pill longer than its line'],
+                                'review': {'status': 'not_verified'}, 'checks': {'passed': True, 'issues': []}}]
+        listing._update('fixture', refused)
+        state = listing.state('fixture')
+        self.assertEqual(state['degraded'], {'reason': 'quota', 'affected': ['translation', 'scenes', 'review'], 'words': ['文字翻译', '场景图', '视觉审核']})
+        self.assertEqual(state['notes_view']['seller'][0]['level'], 'critical')
+        page = state['pages'][0]
+        self.assertEqual([row['text'] for row in page['note_view']['tech']], ['d3: value pill longer than its line'])
+        self.assertEqual(len(page['note_view']['seller']), 1); self.assertFalse(page['ready'])
+        listing._update('fixture', lambda project, record: record.update(notes=['品牌色取自产品本身的颜色 #d9463d。'], pages=[]))
+        self.assertIsNone(listing.state('fixture')['degraded'])
+
     def test_the_copy_and_vision_models_supervise_every_page(self):
         import brandkit_review
         reviewed = {}; checks = []
@@ -1271,6 +1329,55 @@ class WorkpieceNameTests(unittest.TestCase):
         self.assertEqual(listing.usecase_for('Combination wrenches')['kind'], 'pipe')
         self.assertEqual(listing.usecase_for('台钳 150mm')['kind'], 'board')
         self.assertFalse(listing.default_product({'name': 'Service Cart'})['usecase']['enabled'])
+
+
+class ResultsViewTests(unittest.TestCase):
+    """What the workspace shows of a built set: the notes a seller reads, grouped and ordered, and the scenes' status."""
+
+    def test_layout_log_lines_are_technical_and_the_actionable_ones_read_in_chinese(self):
+        self.assertEqual(listing.plain_note('d3: value pill longer than its line'), ('d3: value pill longer than its line', True))
+        self.assertEqual(listing.plain_note('headline: stock phrase replaced by the figures (BUILT TOUGH)')[1], False)
+        self.assertRegex(listing.plain_note('headline too long for 2 line(s): shorten T04_headline')[0], '主标题太长')
+        self.assertEqual(listing.plain_note('item 2 (Battery): no picture, slot left out (supply a cut-out)'),
+                         ('第 2 个组件没有图片，没有放进清单：请上传它的模型或图片。', False))
+        # the review's and the checks' own names in a Chinese note become words
+        text, technical = listing.plain_note('视觉审核未通过（61 分，否决项 scene_product_mismatch、claim_not_in_facts）：场景图的产品核对未通过：scene2')
+        self.assertFalse(technical)
+        self.assertNotRegex(text, r'[a-z]+_[a-z]+'); self.assertIn('场景里的产品与模型不符', text); self.assertIn('第 2 张场景图', text)
+        self.assertEqual(listing.plain_note('版式检查仍有 1 处问题：text_overflow。')[0], '版式检查仍有 1 处问题：文字超出文本框。')
+
+    def test_notes_are_grouped_once_and_the_ones_that_matter_come_first(self):
+        none = brandkit_set.NO_FEATURES
+        notes = ['场景图沿用上次生成的 3 张（设置没有变化）。', '没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请写下卖点。',
+                 '「功能标注」没有生成：%s。' % none, '视觉审核没有完成（AI 服务的额度已用尽或账户欠费（HTTP 402）），这张图未经审核。',
+                 'headline: stock phrase replaced by the figures (X)', 'd3: value pill longer than its line', 'd3: value pill longer than its line',
+                 '「尺寸图」排版失败：文字放不下']
+        view = listing.note_view(notes, [('功能标注', none), ('主体 + 细节栏', none), ('深色细节特写', none)])
+        texts = [row['text'] for row in view['seller']]
+        self.assertEqual([row['level'] for row in view['seller']], ['critical', 'error', 'error', 'warn', 'info'])
+        held = [text for text in texts if none.rstrip('。') in text]
+        self.assertEqual(held, ['「功能标注」、「主体 + 细节栏」、「深色细节特写」暂时无法生成：%s。' % none])     # once, not four times
+        self.assertFalse(any(text.startswith('没有填写卖点') for text in texts))
+        self.assertEqual(view['tech'], [{'text': 'd3: value pill longer than its line', 'count': 2}])
+        self.assertTrue(all(listing.CJK.search(text) for text in texts))
+
+    def test_a_scene_says_how_its_product_got_there_and_whether_it_was_checked(self):
+        rows = [{'url': '/a.png', 'check': 'passed', 'placed': 'composite', 'role': 'place'},
+                {'url': '/b.png', 'check': 'passed', 'placed': 'painted', 'restored': True, 'role': 'work'},
+                {'url': '/c.png', 'check': 'unchecked', 'check_error': True, 'placed': 'painted', 'role': 'work'},
+                {'url': '/d.png', 'check': 'failed', 'placed': 'painted', 'check_flags': ['scale_plausible'], 'check_issues': ['too big'], 'role': 'work'},
+                {'url': '/e.png', 'check': 'unchecked', 'role': 'work'}]
+        shown = [listing.scene_public(row, index) for index, row in enumerate(rows)]
+        self.assertEqual([row['check'] for row in shown], ['passed', 'passed', 'pending', 'failed', 'unchecked'])
+        self.assertEqual([row['locked'] for row in shown], [True, True, False, False, False])
+        self.assertEqual([row['usable'] for row in shown], [True, True, False, False, True])
+        self.assertEqual(shown[3]['flags'], ['大小比例不合理'])
+
+    def test_a_page_revised_by_the_review_counts_as_reviewed(self):
+        page = {'kind': 'T01', 'checks': {'passed': True, 'issues': []}, 'review': {'status': 'revised', 'score': 87, 'vetoes': ['wrong_pointer']}}
+        self.assertTrue(listing.page_status(page)['ready'])
+        shown = listing.page_public(page)
+        self.assertEqual(shown['review']['veto_words'], ['引线指错位置']); self.assertTrue(shown['ready'])
 
 
 if __name__ == '__main__':

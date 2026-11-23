@@ -29,7 +29,9 @@ function state(changes={}) {
 async function setup(t,initial=state()) {
   const dom=new JSDOM(`<!doctype html><body><button id="listingOpen"></button><div id="toast" hidden></div>${panel}</body>`,{runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;t.after(()=>w.close());
-  const h={w,calls:[],state:initial,toasts:[],respond:null};
+  const h={w,calls:[],state:initial,toasts:[],respond:null,asked:[],answer:'yes'};
+  // app.js's decision dialog: what was asked, answered as the test says
+  w.chooseAction=async(id,title,description,actions)=>{h.asked.push({id,title,description,actions:actions.map(action=>action.label)});return h.answer;};
   // The inspector's tab switch as app.js does it: showing the tab activates the workspace, leaving it deactivates it.
   w.setInspectorTab=tab=>{const node=w.document.getElementById('inspectorListing'),was=!node.hidden;node.hidden=tab!=='listing';
     if(was && tab!=='listing')w.listingDeactivate();if(tab==='listing')w.listingActivate(true);};
@@ -165,7 +167,10 @@ test('components uploaded with the project are edited, turned and removed throug
   h.change(h.node('listingPanel').querySelector('[data-component="c1"] [data-key="included"]'),false);await tick();await tick();
   h.node('listingPanel').querySelector('[data-component="c1"] [data-turn="flip"]').click();await tick();await tick();
   h.node('listingPanel').querySelector('[data-component="c1"] [data-action="component-refresh"]').click();await tick();await tick();
-  h.node('listingPanel').querySelector('[data-component="c1"] [data-action="component-remove"]').click();await tick();await tick();
+  h.answer='cancel';h.node('listingPanel').querySelector('[data-component="c1"] [data-action="component-remove"]').click();await tick();await tick();
+  assert.equal(h.calls.some(call=>call.method==='DELETE'),false,'nothing is removed without a yes');
+  assert.match(h.asked.at(-1).description,/「Battery」/);assert.deepEqual(plain(h.asked.at(-1).actions),['取消','删除组件']);
+  h.answer='yes';h.node('listingPanel').querySelector('[data-component="c1"] [data-action="component-remove"]').click();await tick();await tick();await tick();
   const sent=h.calls.filter(call=>call.method!=='GET').map(call=>[call.method,call.path,call.body]);
   assert.deepEqual(plain(sent),[['PUT','/api/projects/a/components/c1',{quantity:3}],['PUT','/api/projects/a/components/c1',{included:false}],
     ['PUT','/api/projects/a/components/c1',{turn:'flip'}],['POST','/api/projects/a/components/c1/refresh',null],['DELETE','/api/projects/a/components/c1',null]]);

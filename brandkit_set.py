@@ -1403,6 +1403,8 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
         slots[index] = {'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
                         # how the picture came to be: the model's render set into a backdrop, or painted by the image model
                         'placed': 'composite' if composite else 'painted',
+                        # the product's own render put back over the one the image model painted (scene_imagegen)
+                        'restored': (record.get('restored') or (picture.get('record') or {}).get('restored')) is True,
                         'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
                         'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
                         **_check_fields(checked), 'recheck': record.get('recheck') or picture['record'].get('recheck'),
