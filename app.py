@@ -660,7 +660,8 @@ def listing_cancel(ident,task_id):
 @app.get('/api/projects/<ident>/listing/download')
 def listing_download(ident):
     import listing
-    data,name=listing.archive(ident)
+    # ?reviewed=1: only the pages that passed the layout checks and the visual review; either way the ZIP says what was found of each page
+    data,name=listing.archive(ident,reviewed=request.args.get('reviewed') in ('1','true'))
     return send_file(io.BytesIO(data),mimetype='application/zip',as_attachment=True,download_name=name)
 
 # ---- the pose agent: which parts of the model move, and the states the listing shows (articulation.py) ----

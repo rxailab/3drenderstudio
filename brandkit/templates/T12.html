@@ -610,8 +610,10 @@ if (mode === 'band') {
   T.layoutInfo.hero_bbox = [pick.cx, pick.cy, pick.cw, pick.ch].map(Math.round);
   // keep the text above the product image in paint order
   for (const id of ['rule', 'headline', 'support', 'chip1', 'chip2', 'chip3', 'brand_slot', 'brand_slot_t', 'badge']) { const e = document.querySelector(`[data-qa="${id}"]`); if (e && e.parentNode === T.root) T.root.appendChild(e); }
-  T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 1, style: 'burst'});    // the brand's badge where the poster leaves room
+  T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 2, style: 'burst'});    // the brand's badges where the poster leaves room
 }
+// on a photograph the brand's badges go where they cover neither the words nor the product in the scene
+if (mode === 'overlay' || mode === 'band') T.placeBadges({x: m, y: m, w: W - 2 * m, h: H - 2 * m}, {max: 2, style: 'burst', overPhotos: true});
 T.watermark();
 T.finish();
 })();

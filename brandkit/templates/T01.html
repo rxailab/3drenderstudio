@@ -443,6 +443,8 @@ labels.forEach((L, i) => {
 // One marker style for every anchor: an open accent square (with a white halo) framing the part, so a small part such as
 // a rivet stays visible inside it; the drawn line stops at the square's edge (the QA geometry keeps the full line).
 function marker(id, pts, a) {
+  // a brand preset with its own line ending (ring, dot or arrow, drawn by T.elbowLeader) keeps that instead of the square
+  if ((((job.style || {}).leader || {}).end || 'square') !== 'square') return;
   const svg = T.svg(), R = Math.round(job.marker_r ?? 19);
   for (const n of [...svg.querySelectorAll('rect.node-square')]) if (Math.abs(+n.getAttribute('x') + 9 - a[0]) < 0.5 && Math.abs(+n.getAttribute('y') + 9 - a[1]) < 0.5) n.remove();
   const path = svg.querySelector(`path[data-qa-line="${id}"]`);

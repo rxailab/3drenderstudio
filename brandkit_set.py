@@ -26,6 +26,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import brand_kit
 import brandkit_assets
 import brandkit_render
 
@@ -1221,25 +1222,133 @@ def _headline(text, language, limit):
 
 
 # Pages that carry the brand's badge texts (TPL.badge), and how many: the main image and the poster.
-BADGED = {'T01': 1, 'T12': 1}
+BADGED = {'T01': 1, 'T12': 2}                    # how many brand badges a page has room for
+# Where the brand's own marks go. The logo: the pages that open the set or show the product in a scene. The legal line:
+# the pages that state facts. A mark is drawn only where it covers nothing (runtime.js TPL.brandMarks).
+LOGO_PAGES = ('T12', 'T01', 'T04', 'T08')
+LEGAL_PAGES = ('T06', 'T05', 'T04', 'T02', 'T03')
+
+
+def badges_on(template_id, badges, kinds=None):
+    """The brand badges one page carries. Three can be entered: the poster takes the first and the third, the callout
+    page the second (the first when there is only one). In a set without a callout page (``kinds``: the pages being
+    built) the poster takes the first two instead, so the order the seller gave decides what is shown."""
+    texts = [text.strip() for text in (badges or []) if isinstance(text, str) and text.strip()]
+    callouts = kinds is None or 'T01' in kinds
+    if template_id == 'T12':
+        return ([text for index, text in enumerate(texts) if index in (0, 2)] if callouts else texts)[:BADGED['T12']]
+    if template_id == 'T01':
+        return texts[1:2] or texts[:1]
+    return []
+
+
+def brand_usage(record, kinds, logo=True):
+    """Which pages of a set will carry the brand's logo, legal line and each badge, before anything is built:
+    {'logo': [kinds], 'legal': [kinds], 'badges': [{'text', 'pages'}], 'omitted': [what the seller entered that no page shows]}."""
+    kinds = [kind for kind in kinds if kind in KINDS]
+    record = record or {}
+    out = {'logo': [kind for kind in kinds if kind in LOGO_PAGES] if record.get('logo') and logo else [],
+           'legal': [kind for kind in kinds if kind in LEGAL_PAGES] if str(record.get('legal') or '').strip() else [],
+           'badges': [], 'omitted': []}
+    for text in [text.strip() for text in (record.get('badges') or []) if isinstance(text, str) and text.strip()]:
+        pages = [kind for kind in kinds if text in badges_on(kind, record.get('badges'), kinds)]
+        out['badges'].append({'text': text, 'pages': pages})
+        if not pages:
+            out['omitted'].append('徽标「%s」' % text)
+    if record.get('logo') and logo and not out['logo']:
+        out['omitted'].append('品牌标志')
+    if str(record.get('legal') or '').strip() and not out['legal']:
+        out['omitted'].append('说明文字')
+    return out
+
+
+def marks_drawn(qa):
+    """The brand marks a laid-out page really carries: {'logo': bool, 'legal': bool, 'badges': [texts]}."""
+    elements = {str(row.get('id')): row for row in (qa or {}).get('elements', []) if isinstance(row, dict)}
+    return {'logo': 'brand_logo' in elements, 'legal': 'brand_legal' in elements,
+            'badges': [' '.join(str(row.get('text') or '').split()) for key, row in sorted(elements.items())
+                       if key.startswith('brand_badge') and key.endswith('_t')]}
+
+
+def marks_missing(record, pages, logo=True):
+    """What the brand record holds that none of the built pages shows, named for the build's notes."""
+    record = record or {}; drawn = [page.get('marks') or {} for page in pages]
+    missing = []
+    if record.get('logo') and logo and not any(row.get('logo') for row in drawn):
+        missing.append('品牌标志')
+    if str(record.get('legal') or '').strip() and not any(row.get('legal') for row in drawn):
+        missing.append('说明文字')
+    shown = {text.upper() for row in drawn for text in row.get('badges') or []}
+    for text in [text.strip() for text in (record.get('badges') or []) if isinstance(text, str) and text.strip()]:
+        if ' '.join(text.split()).upper() not in shown:
+            missing.append('徽标「%s」' % text)
+    return missing
+
+
+MARK_NOTES = (('brand logo left out', '品牌标志没有放上这一页：四个角都被文字或产品占着。'),
+              ('legal line left out: too long', '说明文字没有放上这一页：一行放不下，请改短。'),
+              ('legal line left out', '说明文字没有放上这一页：底边被内容占着。'),
+              ('no free spot for badge', '品牌徽标没有放上这一页：没有不遮挡内容的空位。'),
+              ('does not fit a', '品牌徽标没有放上这一页：文字太长，放不进这种徽标。'))
+
+
+def mark_note(line):
+    """A layout note about a brand mark the page left out, in the seller's language; other notes as they are."""
+    text = str(line)
+    return next((said for key, said in MARK_NOTES if key in text), text[:160])
+
+
+DARK_TEMPLATES = ('#24272b', '#26292d')          # the ground of the templates designed dark (close-ups, the scene mosaic)
+# Ground colours a template reads besides --bg: on a dark or brand-colour ground the page's inks and hairlines turn light.
+ON_DARK = {'text': '#F4EFE3', 'muted': '#C3C9CE', 'ink': '#F4EFE3', 'ink-2': '#D8D2C6', 'line': '#7C848B', 'hair': 'rgba(255,255,255,.2)',
+           'grid': '#5A6066', 'split': 'rgba(255,255,255,.14)', 'wm': 'rgba(255,255,255,.05)'}
 
 
 def _palette(template_id, brand):
+    """The template's colours with the brand's: its accent (kept readable on the ground), its dark, and the ground its
+    preset asks for. A light page turns dark for a dark preset and brand-coloured for the flat one, its inks with it;
+    the pages designed dark stay dark (their type is drawn for it) and take the brand's dark or deepened colour."""
     tokens = brandkit_render.template_info(template_id)['tokens']
     palette = dict(tokens['palette'])
     if brand is not None:
-        dark = palette['bg'].lower() in ('#24272b', '#26292d')
-        if dark and brand.record.get('dark'):
-            palette['bg'] = brand.dark
+        import listing_draw as draw
+        dark = palette['bg'].lower() in DARK_TEMPLATES
+        ground = brand.tokens['ground']
+        if dark:
+            if ground == 'accent':
+                palette['bg'] = draw.mix(brand.ground, '#000000', .45)
+            elif brand.record.get('dark') or ground == 'dark':
+                palette['bg'] = brand.dark
+        elif ground == 'dark':
+            palette.update(ON_DARK, bg=brand.dark, paper=brand.dark)
+        elif ground == 'accent':
+            palette.update(ON_DARK, bg=brand.ground, paper=brand.ground, muted='rgba(255,255,255,.82)')
+            if draw.contrast('#FFFFFF', brand.ground) < 3:          # a pale brand colour: dark type on it instead
+                palette.update(text='#151515', ink='#151515', muted='rgba(0,0,0,.7)', line='rgba(0,0,0,.45)', hair='rgba(0,0,0,.2)',
+                               grid='rgba(0,0,0,.3)', split='rgba(0,0,0,.16)', wm='rgba(0,0,0,.05)')
+                palette['ink-2'] = '#2A2A2A'
+        elif brand.preset == 'clean':
+            palette.update(bg='#FFFFFF', paper='#FFFFFF')
         palette['accent'] = brand.readable(brand.accent, palette['bg'])
-    # Text on an accent fill (chips, pills, number badges): near-black on a light accent, white on a dark one.
-    accent = palette.get('accent', '#D0612A').lstrip('#')
-    if len(accent) == 6:
-        red, green, blue = (int(accent[i:i + 2], 16) / 255 for i in (0, 2, 4))
-        light = lambda c: c / 12.92 if c <= .04045 else ((c + .055) / 1.055) ** 2.4
-        luminance = .2126 * light(red) + .7152 * light(green) + .0722 * light(blue)
-        palette['accent-ink'] = '#111111' if luminance > .32 else '#FFFFFF'
+    # Text on an accent fill (chips, pills, number badges, small captions): whichever ink reads better on the accent as
+    # it is finally drawn. (A brightness threshold chose white on a mid grey, #999999: 2.85:1, where near-black gives 6.63:1.)
+    palette['accent-ink'] = ink_on(palette.get('accent', '#D0612A'))
     return palette
+
+
+INKS = ('#111111', '#FFFFFF')
+SMALL_TEXT = 4.5              # the contrast small type needs (WCAG AA)
+
+
+def ink_on(ground, inks=INKS):
+    """The ink with the higher contrast on this ground (WCAG contrast ratio); the dark one on a tie or an unreadable colour.
+    On the few mid greys where neither the kit's near-black nor white reaches what small type needs, pure black does."""
+    import listing_draw as draw
+    try:
+        best = max(inks, key=lambda ink: draw.contrast(ink, ground))
+        return best if draw.contrast(best, ground) >= SMALL_TEXT or draw.contrast('#000000', ground) < SMALL_TEXT else '#000000'
+    except (ValueError, TypeError, IndexError):
+        return inks[0]
 
 
 def _job(template_id, ctx, **fields):
@@ -1251,11 +1360,25 @@ def _job(template_id, ctx, **fields):
         palette['bg'] = '#D5D9DD'        # a bright steel or white product on a near-white page would vanish: a cool grey ground
     brand = ctx.get('brand'); record = getattr(brand, 'record', None) or {}
     extra = {}
-    badges = [text for text in (record.get('badges') or []) if isinstance(text, str) and text.strip()]
-    if badges and template_id in BADGED and 'badges' not in fields:
-        extra['badges'] = [{'text': text, 'style': record.get('badge_style') or 'auto'} for text in badges[:BADGED[template_id]]]
+    badges = badges_on(template_id, record.get('badges'), ctx.get('kinds'))
+    if badges and 'badges' not in fields:
+        extra['badges'] = [{'text': text, 'style': record.get('badge_style') or 'auto'} for text in badges]
     if record.get('texture') and record['texture'] != 'none':
         extra['texture'] = record['texture']
+    if brand is not None:
+        # the preset reaches every page (type, ground, frame, corners, leader lines), and so do the brand's own marks
+        extra['style'] = brand_kit.page_style(brand)
+        marks = {}
+        logo = getattr(brand, 'logo_path', None)
+        if logo and template_id in LOGO_PAGES:
+            try:
+                marks['logo'] = brandkit_render.asset(logo)
+            except (OSError, ValueError):
+                pass
+        if brand.legal and template_id in LEGAL_PAGES:
+            marks['legal'] = brand.legal
+        if marks:
+            extra['brand_marks'] = marks
     return {'template_id': template_id, 'variant': 'studio', 'canvas': {'width': width, 'height': height}, 'lang': ctx['language'],
             'safe_margin': tokens.get('safe_margin', 84), 'min_margin': tokens.get('min_margin', 60),
             'palette': palette, 'publishability': 'user_product',
@@ -1692,7 +1815,7 @@ def _jobs_for(kind, ctx):
         made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
         scene_index = next((index for index in made if ctx['scenes'][index].get('check') != 'failed'), made[0] if made else None)
         scene = ctx['scenes'][scene_index] if scene_index is not None else None
-        brand = ctx.get('brand'); slot = bool(brand and brand.name)
+        brand = ctx.get('brand'); slot = bool(brand and brand.name) and not getattr(brand, 'logo_path', None)      # the logo itself stands for the name
         base = {'headline': _headline(headline, ctx['language'], 40), 'support': _clip(product['subline'], 90) or None, 'brand_slot': slot,
                 'labels': {'brand_slot': brand.name if slot else ''}}
         out = []
@@ -1894,7 +2017,28 @@ def _measured(qa):
                              'fully_inside_page': bool(inside)})
     return {'layout_checks_passed': not hard_issues(qa), 'canvas_px': [width, height], 'pictures': pictures,
             'smallest_important_text_px_at_360': small, 'text': [{'id': row['id'], 'lines': row.get('lines'), 'text': row.get('text', '')[:200]}
-                                                                  for row in texts][:14], 'notes': qa.get('notes', [])[:3]}
+                                                                  for row in texts][:14],
+            # layout notes, without those about a brand mark left out for lack of room: that is said to the seller, and is
+            # no fault of the page for a review to mark down
+            'notes': [line for line in qa.get('notes', []) if not any(key in str(line) for key, _ in MARK_NOTES)][:3]}
+
+
+def scene_vetoes(vetoes, checks):
+    """The page review's vetoes, with the scenes' own product checks (``checks``: {'scene1': 'passed' | 'failed' | ...} for
+    the scenes on the page) taken as the facts they are. Returns (vetoes, a note for the page or None).
+
+    A scene that failed its own check is a veto whatever the review saw. And when every scene on the page passed its
+    own check (made against a render of the product in the same state, from the same side), a 'scene_product_mismatch'
+    from the page review does not stand: it looked at a small tile beside a picture of the product at rest, and doors
+    that stand open hide the handles it looks for."""
+    vetoes = list(vetoes or [])
+    failed = sorted(key for key, state in checks.items() if state == 'failed')
+    if failed:
+        return vetoes + [{'kind': 'scene_product_mismatch', 'evidence': '场景图的产品核对未通过：%s' % '、'.join(failed)}], None
+    if checks and all(state == 'passed' for state in checks.values()) and any(row.get('kind') == 'scene_product_mismatch' for row in vetoes):
+        return ([row for row in vetoes if row.get('kind') != 'scene_product_mismatch'],
+                '视觉审核认为场景里的产品与参考图不符；这些场景图各自的产品核对（与同一姿态的渲染图比对）已经通过，以核对为准。')
+    return vetoes, None
 
 
 def _better(a, b):
@@ -2001,10 +2145,12 @@ def lay_out(kind, ctx, out, work):
                     trial.unlink(missing_ok=True); notes.append('第 %d 轮修改（%s）没有让评分变好，保留原版。' % (round_number, '、'.join(applied)))
                     break
             verdict = current[1]
-            failed_scenes = sorted({key for key in current[0].get('assets', {}) if key.startswith('scene')
-                                    and (ctx['scenes'][int(key[5:]) - 1] if int(key[5:]) <= len(ctx['scenes']) else {}).get('check') == 'failed'})
-            if failed_scenes:          # the scene generator's own product check is a fact, not an opinion
-                verdict = {**verdict, 'vetoes': verdict['vetoes'] + [{'kind': 'scene_product_mismatch', 'evidence': '场景图的产品核对未通过：%s' % '、'.join(failed_scenes)}]}
+            shown = {key: (ctx['scenes'][int(key[5:]) - 1] if int(key[5:]) <= len(ctx['scenes']) else {}).get('check')
+                     for key in current[0].get('assets', {}) if key.startswith('scene') and key[5:].isdigit()}
+            settled, said = scene_vetoes(verdict['vetoes'], shown)
+            verdict = {**verdict, 'vetoes': settled}
+            if said:
+                notes.append(said)
             record.update(status='passed' if brandkit_review.passed(verdict) and not record['applied'] else
                                  'revised' if brandkit_review.passed(verdict) else 'failed',
                           score=verdict['score'], first_score=first['score'], scores=verdict['scores'], model=verdict.get('model'),
@@ -2030,8 +2176,8 @@ def lay_out(kind, ctx, out, work):
         chinese = [name for name in lacking if 'SC' in name or 'CJK' in name]
         notes.append(('中文字体 %s 还没有下载成功，这张图暂用系统中文字体（如微软雅黑）；联网后重新生成即可。' % '、'.join(chinese)) if chinese == lacking
                      else '字体 %s 没有找到，已用系统字体代替；请确认 brandkit/fonts 完整，或联网后重新生成。' % '、'.join(lacking))
-    for line in qa.get('notes', [])[:2]:
-        notes.append(str(line)[:160])
+    for line in qa.get('notes', [])[:4]:
+        notes.append(mark_note(line))
     # The same page as an editable design file: live text, vector shapes and named layers (brandkit/engine/svg_export.js).
     final = current[0] if 'current' in locals() else job
     try:

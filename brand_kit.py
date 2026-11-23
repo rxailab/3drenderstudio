@@ -234,6 +234,27 @@ class Brand:
         return {**self.record, 'accent_used': self.accent, 'accent_source': self.accent_source, 'dark_used': self.dark, 'ground': self.ground}
 
 
+def page_style(brand):
+    """What the brand's preset asks of a template page (brandkit/engine/runtime.js TPL.applyStyle): how headlines and labels
+    are set, the ground, the frame marks, how round cards and chips are and how leader lines are drawn.
+
+    The default preset is the look the templates were designed in: it sets no type and no corners of its own, so pages
+    built before presets reached the templates come out as they did. Every other preset states all of them."""
+    tokens = brand.tokens
+
+    def type_of(role):
+        style = tokens[role]
+        return {'weight': style.get('weight', 800), 'stretch': style.get('width', 100), 'case': style.get('case', 'none'),
+                'italic': bool(style.get('italic')), 'tracking': style.get('tracking', 0)}
+    default = brand.preset == DEFAULT_PRESET
+    return {'preset': brand.preset, 'ground': tokens['ground'],
+            'headline': None if default else type_of('headline'), 'label': None if default else type_of('label'),
+            'card': None if default else {'radius': tokens['card']['radius'], 'style': tokens['card']['style']},
+            'chip': None if default else {'radius': tokens['chip']['radius'], 'style': tokens['chip']['style']},
+            'leader': None if default else dict(tokens['leader']),
+            'frame': {'header': 'none', 'footer': 'none'} if default else {'header': tokens['header'], 'footer': tokens['footer']}}
+
+
 def presets():
     return [{'id': key, 'label': {'zh': value['title'][0], 'en': value['title'][1]}, 'note': {'zh': value['note'][0], 'en': value['note'][1]},
              'ground': value['ground']} for key, value in PRESETS.items()]

@@ -110,6 +110,18 @@ test('built images are shown with their notes and downloads, and nothing a user 
   assert.equal(h.node('listingBuild').textContent,'重新生成套图');
   assert.equal(h.node('listingDownload').hidden,false);assert.equal(h.node('listingDownload').getAttribute('href'),'/api/projects/a/listing/download');
   assert.match(h.node('listingStatus').textContent,/^共 2 张/);
+  // neither page was reviewed: only the draft can be downloaded, and its name says what it holds
+  assert.equal(h.node('listingDownloadReviewed').hidden,true);assert.match(h.node('listingDownload').textContent,/草稿/);
+});
+
+test('pages that passed the checks and the review get their own download, counted',async t=>{
+  const ok={checks:{passed:true,issues:[]},review:{status:'passed',score:86}};
+  const pages=[{id:'p1',kind:'main',file:'01-main.png',url:'/files/a/listing/build-1/01-main.png',width:2000,height:2000,notes:[],...ok},
+    {id:'p2',kind:'callouts',file:'02-callouts.png',url:'/files/a/listing/build-1/02-callouts.png',width:2000,height:2000,notes:[],checks:{passed:true,issues:[]},review:{status:'failed',score:61}}];
+  const h=await setup(t,state({pages,built_at:1700000000,task:{id:'t0',status:'completed',progress:100}}));await h.open();
+  const reviewed=h.node('listingDownloadReviewed');
+  assert.equal(reviewed.hidden,false);assert.equal(reviewed.getAttribute('href'),'/api/projects/a/listing/download?reviewed=1');
+  assert.match(reviewed.textContent,/1\/2/);assert.match(h.node('listingDownload').textContent,/草稿/);
 });
 
 test('a rebuild reuses the kept headlines; asking for new ones is its own button and sends fresh',async t=>{
