@@ -1067,6 +1067,59 @@ def effective_render_plan(plan,shot_id):
     return plan
 
 
+# Which renders keep a native Blender scene. A user opens, exports, picks parts on, re-lights and restores the scenes of
+# real shot outputs (preview and up): those are kept. A thumbnail or an AI reference view (scene_imagegen, quality
+# 'reference') is thrown away once its picture exists, so it keeps nothing - except that the camera and light-direction
+# hooks (camera_entry.py, render_entry.py) prove the render by reopening the saved file, so a hooked throwaway render saves
+# a 'proof' that engine.output_record deletes once execute has verified it. A packed scene for every shot cost up to
+# 167 MB a shot (five thumbnails took 799 MB); kept scenes reference the project's own texture files instead of packing.
+KEPT_SCENE_QUALITIES=('preview','showcase','standard','fine')
+
+
+def scene_file_policy(req):
+    """'keep' (a scene the user can open), 'proof' (only for the hooks' check, deleted afterwards) or 'none'."""
+    explicit=req.get('scene_file')
+    if explicit in ('keep','proof','none'):return explicit
+    if req.get('quality','preview') in KEPT_SCENE_QUALITIES:return 'keep'
+    if req.get('camera_projection_contract') or req.get('light_direction_contract'):return 'proof'
+    return 'none'
+
+
+def reference_project_files(blend,model_path):
+    """Point the scene's image files at the project's own copies by relative paths instead of packing them.
+
+    Images inside the project (the model's folder and its originals) are referenced relative to the .blend, so the data
+    folder can move as a whole. Anything else - a library texture outside the project, a missing file, a painted
+    generated image - is packed alone, since nothing else would restore it. Images a GLB carries are packed by the
+    importer already: they are the only copy and stay as they are.
+    """
+    try:root=Path(os.path.commonpath([str(blend.parent.resolve()),str(Path(model_path).resolve().parent)]))
+    except (ValueError,TypeError,OSError):root=None
+    if root is not None and root==Path(root.anchor):root=None      # nothing but the drive in common: no project to stay in
+    referenced=packed=0
+    for image in bpy.data.images:
+        if image.packed_file or image.source in ('VIEWER','MOVIE','SEQUENCE','TILED'):continue
+        if image.source=='GENERATED':
+            if not image.is_dirty:continue                         # rebuilt from its settings on load
+        elif image.filepath:
+            path=Path(bpy.path.abspath(image.filepath,library=image.library)).resolve()
+            if root is not None and path.is_file() and root in path.parents:
+                image.filepath=bpy.path.relpath(str(path),start=str(blend.parent));referenced+=1;continue
+        try:image.pack();packed+=1
+        except RuntimeError:pass
+    return dict(referenced=referenced,packed=packed)
+
+
+def save_scene(blend,policy,model_path):
+    """Save the scene as the policy asks; returns the saved path or None."""
+    if policy=='none':return None
+    # Compressed either way: a proof of a heavy model is read back once, but uncompressed it is several times the size
+    # (a 0.5 MB tote scene is 4.1 MB raw) and briefly sits on disk beside every thumbnail.
+    if policy=='keep':reference_project_files(blend,model_path)
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend),compress=True,relative_remap=True)
+    return blend
+
+
 def render(req,objects,meshes):
     plan=req.get('plan',{});shot=req.get('shot',{'id':'hero','kind':'full'});out=Path(req['output_dir']);scene=bpy.context.scene
     # The same per-shot corrections feed preview and final rendering.
@@ -1110,8 +1163,9 @@ def render(req,objects,meshes):
     scene.render.filepath=str(png)
     scene['studio_plan']=json.dumps(plan,ensure_ascii=False);scene['studio_shot']=json.dumps(shot,ensure_ascii=False)
     scene['studio_operations']=json.dumps(operations,ensure_ascii=False)
-    event('正在打包可复现工程')
-    bpy.ops.file.pack_all();bpy.ops.wm.save_as_mainfile(filepath=str(blend))
+    scene_policy=scene_file_policy(req)
+    if scene_policy=='keep':event('正在保存可复现工程')
+    saved=save_scene(blend,scene_policy,req['model_path'])
     scene.render.film_transparent=reflect_white
     event('Cycles 正在渲染',device=dev,shot=shot.get('id'),sample_target=scene.cycles.samples,
           render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
@@ -1164,7 +1218,7 @@ def render(req,objects,meshes):
             else '已达到自动取景修正上限，请人工调整相机与留白')
     if checks['corrections']:
         scene['studio_camera_correction']=json.dumps(attempts)
-        scene.render.film_transparent=False;bpy.ops.wm.save_as_mainfile(filepath=str(blend));scene.render.film_transparent=reflect_white
+        if saved:scene.render.film_transparent=False;save_scene(blend,scene_policy,req['model_path']);scene.render.film_transparent=reflect_white
     reflection=None
     if reflect_white:
         from blender.reflection import finish_white,mirror_pass,lies_flat
@@ -1211,7 +1265,7 @@ def render(req,objects,meshes):
             if pair not in visible_materials:
                 visible_materials[pair]={'object_name':pair[0],'material_name':pair[1],
                     'material_info':hit['material_info']}
-    return dict(success=True,render_pipeline_version=4,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name),
+    return dict(success=True,render_pipeline_version=4,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name if saved else None),scene_file=scene_policy,
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},
