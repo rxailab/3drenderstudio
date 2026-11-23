@@ -15,14 +15,17 @@ pliers closed / open, a caliper closed / measuring / open, from the pose agent `
 T04 scene + figures band · T08 usage scenes · T06 dimensions · T05 in the box. T07, T09, T10 and T11 need evidence a 3D
 model does not carry (module levels, test results, connection maps, a model range) and are not built.
 """
+import contextvars
 import copy
 import hashlib
 import json
 import math
 import re
 import shutil
+import threading
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -1169,9 +1172,49 @@ def caption_way(product):
     return PLACE_ONLY if bare(product) else CAPTIONED
 
 
+def _in_parallel(calls, workers, failed=None):
+    """Run ``calls`` (functions of no arguments) on worker threads, at most ``workers`` at once; their results in the order
+    given. Each runs in its own copy of the caller's context: the AI steps read contextvars (brandkit_review.FRESH, the step
+    ai_usage.jsonl names) that a bare worker thread would not see. When a call raises, ``failed`` is called at once on that
+    thread (to tell the others to stop: a worker cannot be killed, it notices through its ``cancelled``), the calls not
+    started are dropped, the running ones are waited for, and the first exception raised is raised then (the later ones are
+    mostly those stops; by the time the main thread looks, several may have ended, so the order is kept as they were raised)."""
+    if not calls:
+        return []
+    errors = []; guard = threading.Lock()
+
+    def run(call):
+        try:
+            return call()
+        except BaseException as exc:
+            with guard:
+                errors.append(exc)
+            if failed:
+                failed()
+            raise
+    with ThreadPoolExecutor(max(1, min(workers, len(calls)))) as pool:
+        futures = [pool.submit(contextvars.copy_context().run, run, call) for call in calls]
+        for future in as_completed(futures):
+            if not future.cancelled() and future.exception() is not None:
+                for other in futures:
+                    other.cancel()
+    if errors:
+        raise errors[0]
+    return [future.result() for future in futures]
+
+
+SEEN_WORKERS = 3      # vision calls captioning scenes at once (one per picture; a set has at most three scenes)
+
+
 def seen_captions(product, rows):
     """Each scene captioned from the picture itself by the vision model (the brief it was made from may not be what came
-    out). Rows the model does not answer for keep their captions. Returns (rows, how many were rewritten)."""
+    out). Rows the model does not answer for keep their captions. Returns (rows, how many were rewritten).
+
+    The pictures are asked about at once (one vision call each, several seconds apiece), each shown the captions of the rows
+    already captioned in this language. The answers are then taken in row order against every caption before them, as when
+    they were asked one by one; an answer that clashes only with a caption it was not shown (that row was being asked at the
+    same time) is asked once more, alone, with all of them in view. So no two scenes are titled with the same place, and only
+    a clash costs a second, serial call."""
     try:
         import brandkit_review
         _, vision = brandkit_review._configs()
@@ -1182,25 +1225,43 @@ def seen_captions(product, rows):
     language = product['language']; limit = (8, 15) if language == 'zh' else (22, 44)
     schema = {'type': 'object', 'additionalProperties': False, 'required': ['title', 'body'],
               'properties': {'title': {'type': 'string'}, 'body': {'type': 'string'}}}
-    out = []; done = 0; taken = set(); said = set()
-    for row in rows:
-        if ((row.get('captions') or {}).get(language) or {}).get('how') == caption_way(product):
-            taken.add(row['title']); said.add(row.get('body') or ''); out.append(row); continue          # already captioned in this language
+    done_here = lambda row: ((row.get('captions') or {}).get(language) or {}).get('how') == caption_way(product)
+
+    def ask(row, taken, said):
+        """The vision model's (title, body) for ``row``, tidied; None when the call failed."""
         try:
             facts = {'product': product['title'], 'language': 'Simplified Chinese' if language == 'zh' else 'English',
                      'title_max_chars': limit[0], 'line_max_chars': limit[1], 'titles_already_used': sorted(taken),
                      'lines_already_used': sorted(said),
                      # nothing is known of what the product is for: the title names the place, never a task
                      'shows': SHOWS['bare'] if bare(product) else SHOWS.get(row.get('role'), SHOWS['other'])}
-            answer = brandkit_review._ask(vision, SEEN, facts, schema, image_path=row['path'])
+            # named: from a worker thread _ask would log (and pick the model of) this inner function instead
+            answer = brandkit_review._ask(vision, SEEN, facts, schema, image_path=row['path'], caller='brandkit_set.seen_captions')
             title = ' '.join(str(answer.get('title', '')).split()); body = _fit_line(' '.join(str(answer.get('body', '')).split()), limit[1])
-            if bare(product): body = ''
-            if (title and len(title) <= limit[0] and title not in taken and not any(_same_place(title, other) for other in taken)
-                    and (not body or body not in said) and not re.search(r'\d', title + body)):
+            return title, '' if bare(product) else body
+        except Exception:
+            return None
+
+    def fits(answer, taken, said):
+        title, body = answer
+        return bool(title and len(title) <= limit[0] and title not in taken and not any(_same_place(title, other) for other in taken)
+                    and (not body or body not in said) and not re.search(r'\d', title + body))
+
+    # what every question is shown: the rows captioned before this call, wherever they sit in the set (a later one keeps its
+    # title, so an earlier row must not take it either)
+    shown = {row['title'] for row in rows if done_here(row)}; shown_said = {row.get('body') or '' for row in rows if done_here(row)}
+    asking = [index for index, row in enumerate(rows) if not done_here(row)]
+    answers = dict(zip(asking, _in_parallel([lambda row=rows[index]: ask(row, shown, shown_said) for index in asking], SEEN_WORKERS)))
+    out = []; done = 0; taken = set(); said = set()
+    for index, row in enumerate(rows):
+        if index in answers:
+            answer = answers[index]
+            if answer and not fits(answer, taken | shown, said | shown_said) and fits(answer, shown, shown_said):
+                answer = ask(row, taken | shown, said | shown_said)          # clashed only with an answer it could not see
+            if answer and fits(answer, taken | shown, said | shown_said):
+                title, body = answer
                 captions = {**(row.get('captions') or {}), language: {'title': title, 'body': body, 'how': caption_way(product)}}
                 row = {**row, 'title': title, 'body': body, 'caption': caption_way(product), 'captions': captions}; done += 1
-        except Exception:
-            pass
         taken.add(row['title']); said.add(row.get('body') or ''); out.append(row)
     return out, done
 
@@ -1218,6 +1279,7 @@ def _free_folder(folder, name, kept):
 
 
 SCENE_TRIES = 2       # builds in a row in which a scene's every picture lost the product before that scene is left out
+SCENE_WORKERS = 3     # scenes painted at once: every scene of a set (2-3), each 60-90 s of image-model time
 
 
 def make_scenes(project, product, folder, cancelled, say, previous=None, failures=None):
@@ -1276,59 +1338,87 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
     failed_before = {row.get('scene'): row for row in ((previous or {}).get('failed') or [])
                      if (previous or {}).get('key') == key and isinstance(row, dict)}
     import scene_imagegen
-    rows = []; spare = {}
+    spare = {}
     for row in kept:
         spare.setdefault(row.get('role'), []).append(row)
     if kept:
         notes.append('场景图沿用上次生成的 %d 张，补生成缺少的 %d 张。' % (len(kept), max(0, len(briefs) - len(kept))))
+    # Per scene, in brief order: its row, its notes and its failure memory. Filled by the workers out of order and read
+    # back in order, so the set, the notes and previous['failed'] come out as when the scenes were made one by one.
+    slots = [None] * len(briefs); said = [[] for _ in briefs]; failed = [[] for _ in briefs]; jobs = []
     for index, (brief, caption) in enumerate(zip(briefs, titles)):
         if cancelled():
             raise InterruptedError()
         name = '%s%d' % (brief['role'], sum(1 for other in briefs[:index] if other['role'] == brief['role']) + 1)
         before = failed_before.get(name) or {}
         if spare.get(brief['role']):
-            rows.append(spare[brief['role']].pop(0))
+            slots[index] = spare[brief['role']].pop(0)
             if before and failures is not None:
-                failures.append(before)          # kept for later, not dropped because a kept picture filled the slot
+                failed[index].append(before)          # kept for later, not dropped because a kept picture filled the slot
             continue
         if before.get('count', 0) >= SCENE_TRIES:
-            notes.append('第 %d 张场景图连续 %d 次构建都没能保住产品的样子，这次不再付费重画；换场景人群、提示或设置后会重新生成。'
-                         % (index + 1, before['count']))
+            said[index].append('第 %d 张场景图连续 %d 次构建都没能保住产品的样子，这次不再付费重画；换场景人群、提示或设置后会重新生成。'
+                               % (index + 1, before['count']))
             if failures is not None:
-                failures.append(before)
+                failed[index].append(before)
             continue
-        say(index, len(briefs), '生成第 %d / %d 张场景图' % (index + 1, len(briefs)))
+        # the folder is picked here, on one thread: each scene its own, so the workers never write into one another's
+        jobs.append((index, brief, caption, name, before, _free_folder(folder, 'scene%d' % (index + 1), kept)))
+    # The scenes are independent (own brief, own folder) and each is a minute or more of image-model time: they are made at
+    # once. A cancel, or one scene stopping the build, stops the others through the ``cancelled`` they are handed.
+    stop = threading.Event(); halt = lambda: stop.is_set() or cancelled()
+    finished = [0]; counting = threading.Lock()
+    # progress is how many scenes are finished (several run at once, so the index of the one speaking would jump back and forth)
+    tell = lambda detail: say(finished[0], len(briefs), detail)
+
+    def make(index, brief, caption, name, before, where):
+        if halt():
+            raise InterruptedError()
+        tell('生成第 %d / %d 张场景图' % (index + 1, len(briefs)))
         try:
-            _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], cancelled,
-                                                        lambda text, index=index: say(index, len(briefs), '场景 %d：%s' % (index + 1, text)),
-                                                        _free_folder(folder, 'scene%d' % (index + 1), kept))
+            _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], halt,
+                                                        lambda text: tell('场景 %d：%s' % (index + 1, text)), where)
         except InterruptedError:
             raise
         except Exception as exc:
-            notes.append('第 %d 张场景图没有生成：%s' % (index + 1, str(exc)[:160]))
+            said[index].append('第 %d 张场景图没有生成：%s' % (index + 1, str(exc)[:160]))
             if isinstance(exc, scene_imagegen.ProductNotKept) and failures is not None:
                 # remembered (a quota or network failure is not: that one is simply tried again)
-                failures.append({'scene': name, 'role': brief['role'], 'count': before.get('count', 0) + 1, 'reason': str(exc)[:160], 'at': time.time()})
+                failed[index].append({'scene': name, 'role': brief['role'], 'count': before.get('count', 0) + 1, 'reason': str(exc)[:160], 'at': time.time()})
             elif before and failures is not None:
-                failures.append(before)          # a quota or network failure says nothing about the product: the count stands
-            continue
+                failed[index].append(before)          # a quota or network failure says nothing about the product: the count stands
+            return
+        finally:
+            with counting:
+                finished[0] += 1
         box = (picture['record'].get('anchor') or {}).get('box') or [.3, .3, .7, .7]
         checked = record.get('check') or {}
         if checked.get('status') == 'failed':
-            why = [name for name, ok in (checked.get('flags') or {}).items() if ok is False]
-            notes.append('第 %d 张场景图的产品核对没有完全通过%s，请检查后再使用。' % (
+            why = [flag for flag, ok in (checked.get('flags') or {}).items() if ok is False]
+            said[index].append('第 %d 张场景图的产品核对没有完全通过%s，请检查后再使用。' % (
                 index + 1, '（%s）' % (checked.get('note') or '、'.join(why))[:120] if (checked.get('note') or why) else ''))
         composite = record.get('model') == 'composite'
         if composite:
-            notes.append('第 %d 张场景图由产品模型渲染后合成进背景图：产品按实际尺寸摆放，没有经过图像模型重画。' % (index + 1))
-        rows.append({'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
-                     # how the picture came to be: the model's render set into a backdrop, or painted by the image model
-                     'placed': 'composite' if composite else 'painted',
-                     'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
-                     'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
-                     **_check_fields(checked), 'recheck': record.get('recheck') or picture['record'].get('recheck'),
-                     # what the picture cost: the image service's token counts over all attempts, and how many there were
-                     'usage': record.get('usage'), 'attempts': record.get('attempts'), 'usage_retry': record.get('usage_retry')})
+            said[index].append('第 %d 张场景图由产品模型渲染后合成进背景图：产品按实际尺寸摆放，没有经过图像模型重画。' % (index + 1))
+        slots[index] = {'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
+                        # how the picture came to be: the model's render set into a backdrop, or painted by the image model
+                        'placed': 'composite' if composite else 'painted',
+                        'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,
+                        'summary': record.get('summary'), 'model': record.get('model'), 'people': record.get('people'),
+                        **_check_fields(checked), 'recheck': record.get('recheck') or picture['record'].get('recheck'),
+                        # what the picture cost: the image service's token counts over all attempts, and how many there were
+                        'usage': record.get('usage'), 'attempts': record.get('attempts'), 'usage_retry': record.get('usage_retry')}
+
+    try:
+        # stopped at once, not when the main thread gets round to it: the others stop paying for pictures
+        _in_parallel([lambda job=job: make(*job) for job in jobs], SCENE_WORKERS, stop.set)
+    finally:
+        # what was made before a stop is still told and remembered; the caller drops the rows on an exception, as before
+        for index in range(len(briefs)):
+            notes.extend(said[index])
+            if failures is not None:
+                failures.extend(failed[index])
+    rows = [row for row in slots if row is not None]
     rows, _ = seen_captions(product, rows)
     return rows, key if rows else None, notes
 

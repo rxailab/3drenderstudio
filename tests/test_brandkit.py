@@ -286,27 +286,133 @@ class ReviseTests(unittest.TestCase):
     def test_scenes_are_captioned_from_the_pictures_once(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': '办公随行', 'body': '伴随职场日常'}, {'path': 'b.png', 'title': '日常外出', 'body': ''}]
-        answers = iter([{'title': '窗边木桌', 'body': '托特包立在桌上，旁有绿植'}, {'title': '窗边木桌', 'body': '重复的标题'}])
+        # asked at once, so answered by picture rather than by call order; b repeats a's title, asked again and still does
+        answers = {'a.png': {'title': '窗边木桌', 'body': '托特包立在桌上，旁有绿植'}, 'b.png': {'title': '窗边木桌', 'body': '重复的标题'}}
         with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
-                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(answers)) as asked:
+                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: answers[k['image_path']]) as asked:
             out, done = brandkit_set.seen_captions({'language': 'zh', 'title': '托特包'}, rows)
-        self.assertEqual(asked.call_args_list[0].kwargs['image_path'], 'a.png')
+        self.assertEqual(sorted(call.kwargs['image_path'] for call in asked.call_args_list), ['a.png', 'b.png', 'b.png'])
+        self.assertEqual(asked.call_args_list[-1].args[2]['titles_already_used'], ['窗边木桌'])      # the second time with a's in view
+        self.assertEqual({call.kwargs['caller'] for call in asked.call_args_list}, {'brandkit_set.seen_captions'})
         self.assertEqual(([row['title'] for row in out], out[0]['body'], out[0].get('caption'), done), (['窗边木桌', '日常外出'], '托特包立在桌上，旁有绿植', brandkit_set.CAPTIONED, 1))
 
     def test_a_scene_title_naming_a_place_already_shown_is_refused(self):
         import brandkit_review
         rows = [{'path': 'a.png', 'title': 'x', 'body': '', 'role': 'use'}, {'path': 'b.png', 'title': 'y', 'body': '', 'role': 'place'},
                 {'path': 'c.png', 'title': 'On a house call', 'body': 'Kept', 'role': 'other'}]
-        answers = iter([{'title': 'Stripping wire', 'body': 'Grips the copper firmly'}, {'title': 'In the workshop', 'body': 'Rests on the bench'},
-                        {'title': 'At the workbench', 'body': 'Cuts copper cleanly'}])
+        answers = {'a.png': {'title': 'Stripping wire', 'body': 'Grips the copper firmly'}, 'b.png': {'title': 'In the workshop', 'body': 'Rests on the bench'},
+                   'c.png': {'title': 'At the workbench', 'body': 'Cuts copper cleanly'}}
         with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), \
-                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: next(answers)) as asked:
+                patch.object(brandkit_review, '_ask', side_effect=lambda *a, **k: answers[k['image_path']]) as asked:
             out, done = brandkit_set.seen_captions({'language': 'en', 'title': 'Pliers'}, rows)
         self.assertEqual([row['title'] for row in out], ['Stripping wire', 'In the workshop', 'On a house call'])
         self.assertEqual(done, 2)
-        self.assertIn('task', asked.call_args_list[0].args[2]['shows']); self.assertIn('place', asked.call_args_list[1].args[2]['shows'])
+        shows = {call.kwargs['image_path']: call.args[2]['shows'] for call in asked.call_args_list}
+        self.assertIn('task', shows['a.png']); self.assertIn('place', shows['b.png'])
         self.assertTrue(brandkit_set._same_place('在工坊里', '工作台上'))
         self.assertFalse(brandkit_set._same_place('Cutting wire', 'Stripping wire'))
+
+    def test_scene_captions_are_asked_at_once_and_a_clash_is_asked_again_with_the_earlier_ones_in_view(self):
+        import threading, brandkit_review
+        rows = [{'path': '%s.png' % name, 'title': name, 'body': '', 'role': role} for name, role in (('a', 'use'), ('b', 'place'), ('c', 'other'))]
+        rows.append({'path': 'd.png', 'title': 'On site', 'body': 'Kept', 'role': 'other',
+                     'captions': {'en': {'title': 'On site', 'body': 'Kept', 'how': brandkit_set.CAPTIONED}}})       # captioned before
+        together = threading.Barrier(3, timeout=5)          # passes only when all three pictures are being asked at the same time
+        first = {'a.png': ('In the garage', 'Hangs ready'), 'b.png': ('In the shed', 'Stored neatly'), 'c.png': ('Cutting pipe', 'Clean cuts')}
+        seen = []
+
+        def ask(config, system, facts, schema, image_path=None, caller=None):
+            seen.append((image_path, list(facts['titles_already_used'])))
+            if len(seen) <= 3:
+                together.wait()
+                title, body = first[image_path]
+            else:
+                title, body = 'Under the sink', 'Fits the tight space'
+            return {'title': title, 'body': body}
+        with patch.object(brandkit_review, '_configs', return_value=(None, {'model': 'vision'})), patch.object(brandkit_review, '_ask', side_effect=ask):
+            out, done = brandkit_set.seen_captions({'language': 'en', 'title': 'Pipe cutter'}, rows)
+        self.assertEqual(sorted(path for path, _ in seen[:3]), ['a.png', 'b.png', 'c.png'])
+        self.assertTrue(all(used == ['On site'] for _, used in seen[:3]))                  # each shown the caption made before
+        # b's shed is a's garage: asked once more, alone, with every caption before it in view
+        self.assertEqual(seen[3:], [('b.png', ['In the garage', 'On site'])])
+        self.assertEqual([row['title'] for row in out], ['In the garage', 'Under the sink', 'Cutting pipe', 'On site'])
+        self.assertEqual(done, 3)
+
+    def _scene_build(self, briefs, generate, cancelled=lambda: False, say=lambda *a: None, previous=None, failures=None):
+        import scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        settings = {'enabled': True, 'count': len(briefs), 'hint': '', 'audience': 'auto', 'people': 'auto'}
+        with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                patch.object(brandkit_set, 'scene_briefs', return_value=briefs), \
+                patch.object(brandkit_set, 'captions', return_value=[{'title': 't%d' % n, 'body': ''} for n in range(len(briefs))]), \
+                patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                patch.object(scene_stylist, 'generate', side_effect=lambda *args: generate(folder, *args)):
+            return brandkit_set.make_scenes({'id': 'p'}, {'scenes': settings, 'language': 'en'}, folder, cancelled, say, previous, failures)
+
+    def test_the_scenes_of_a_set_are_painted_at_once_and_come_back_in_brief_order(self):
+        import threading, time, scene_imagegen
+        briefs = [{'role': r, 'proposal': {'scene': s}} for r, s in (('use', 'a'), ('place', 'b'), ('other', 'c'))]
+        together = threading.Barrier(3, timeout=5)          # released only once every scene has started
+        where, told = {}, []
+
+        def generate(folder, project, proposal, hint, cancelled, say, out):
+            together.wait()
+            where[proposal['scene']] = out; say('painting')
+            time.sleep({'a': .15, 'b': 0, 'c': .05}[proposal['scene']])         # they finish b, c, a: not in brief order
+            if proposal['scene'] == 'b':
+                raise scene_imagegen.ProductNotKept('moved')
+            if proposal['scene'] == 'c':
+                raise scene_imagegen.ImageError('HTTP 402')
+            picture = folder / (proposal['scene'] + '.png'); Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'failed', 'note': 'grip'}, 'model': 'composite'}, {'png': picture, 'record': {}}
+        failures = []
+        started = time.time()
+        rows, key, notes = self._scene_build(briefs, generate, say=lambda *args: told.append(args), failures=failures)
+        self.assertLess(time.time() - started, 2)
+        self.assertEqual(len({str(path) for path in where.values()}), 3)              # each scene its own folder
+        self.assertEqual(([row['role'] for row in rows], key), (['use'], 'k'))
+        self.assertEqual([note[:5] for note in notes], ['第 1 张', '第 1 张', '第 2 张', '第 3 张'])
+        self.assertIn('核对没有完全通过（grip）', notes[0]); self.assertIn('合成进背景图', notes[1])
+        self.assertIn('没有生成：moved', notes[2]); self.assertIn('HTTP 402', notes[3])
+        self.assertEqual([(row['scene'], row['count']) for row in failures], [('place1', 1)])
+        self.assertTrue(all(total == 3 and 0 <= done <= 3 for done, total, _ in told))
+        self.assertEqual(sum(1 for *_, detail in told if detail.startswith('生成第')), 3)
+        self.assertIn('场景 2：painting', [detail for *_, detail in told])
+
+    def test_a_cancel_or_a_failing_scene_stops_the_others_and_is_raised(self):
+        import threading, time
+        briefs = [{'role': r, 'proposal': {'scene': s}} for r, s in (('use', 'a'), ('place', 'b'), ('other', 'c'))]
+        together = threading.Barrier(3, timeout=5); stopped = []
+
+        def generate(folder, project, proposal, hint, cancelled, say, out):
+            together.wait()
+            if proposal['scene'] == 'a':
+                raise InterruptedError()                   # the user cancelled while this one was painting
+            for _ in range(500):                           # the others notice through the cancelled they were handed
+                if cancelled():
+                    stopped.append(proposal['scene']); raise InterruptedError()
+                time.sleep(.01)
+            raise AssertionError('never told to stop')
+        started = time.time()
+        with self.assertRaises(InterruptedError):
+            self._scene_build(briefs, generate)
+        self.assertLess(time.time() - started, 3); self.assertEqual(sorted(stopped), ['b', 'c'])
+        # a scene that breaks outright stops the others too and its own error is the one raised
+        def broken(folder, project, proposal, hint, cancelled, say, out):
+            if proposal['scene'] == 'a':
+                return None, {}, {}                         # no 'png': building the row fails
+            for _ in range(500):
+                if cancelled():
+                    raise InterruptedError()
+                time.sleep(.01)
+        with self.assertRaises(KeyError):
+            self._scene_build(briefs, broken)
+        # cancelled before any scene started: nothing is painted
+        painted = []
+        with self.assertRaises(InterruptedError):
+            self._scene_build(briefs, lambda *args: painted.append(1), cancelled=lambda: True)
+        self.assertEqual(painted, [])
+
 
     def test_the_third_scene_has_its_own_setting_when_no_other_buyer_is_named(self):
         import scene_audience, scene_stylist
