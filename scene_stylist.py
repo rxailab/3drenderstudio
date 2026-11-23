@@ -42,8 +42,11 @@ import scene_audience
 import scene_props
 import scene_set
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 KIND = 'scene_task'
+log = app_log.get('scene_stylist')
 ACTIVE = {'queued', 'running'}
 RUNNING_TASKS = set()
 SHOT_ID = 'scene'
@@ -850,6 +853,7 @@ def _run(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('scene task %s failed', task_id)
         with LOCK:
             task = get(KIND, task_id)
             if task['status'] != 'cancelled':
@@ -930,8 +934,8 @@ def submit(project_id, body):
                 'base_version': project['version'], 'created_at': time.time()}
         put(KIND, task)
         import ai_client
-        # the job's AI requests are logged with the project they were made for (its spend in the listing workspace)
-        threading.Thread(target=ai_client.tagged(project_id, _run), args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'], _run, 'scene-' + task['id'][:8], kind=KIND, fields={'stage': '场景未生成'}, stamp='finished_at', wrap=lambda: ai_client.for_project(project_id))
         return public(task)
 
 

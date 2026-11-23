@@ -18,8 +18,11 @@ import engine
 from material_edit import ensure_idle
 from planner import validate
 from studio_store import DATA, LOCK, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 KIND = 'material_task'
+log = app_log.get('material_agent')
 ACTIVE = {'queued', 'running', 'rendering'}
 RUNNING_TASKS = set()
 LICENSE_URL = 'https://polyhaven.com/license'
@@ -308,6 +311,7 @@ def _run_task(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('material task %s failed',task_id)
         with LOCK:
             task=get(KIND,task_id)
             if task['status']!='cancelled':
@@ -361,7 +365,8 @@ def submit(project_id, body):
         task={'id':uuid.uuid4().hex,'project_id':project_id,'status':'queued','stage':'等待材质代理执行','error':None,'source':source,'points':copy.deepcopy(points),'prompt':prompt.strip(),'use_base_color':body.get('use_base_color',False),'request_hash':request_hash,'base_plan_hash':_hash(project['plan']),'created_at':time.time(),'downloaded_files':{}}
         put(KIND,task)
         import ai_client
-        threading.Thread(target=ai_client.tagged(project_id,_run),args=(task['id'],),daemon=True,name='material-'+task['id'][:8]).start()
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'],_run,'material-'+task['id'][:8],kind=KIND,fields={'stage':'材质任务未完成'}, wrap=lambda: ai_client.for_project(project_id))
         return task
 
 
@@ -598,7 +603,8 @@ def schedule_after_preview(project_id, completed_job_id):
         put(KIND,task)
         _set_auto_state(project,chain,'queued',task['stage'],task_id=task['id'])
         import ai_client
-        threading.Thread(target=ai_client.tagged(task['project_id'],_run),args=(task['id'],),daemon=True,name='automatic-material-'+task['id'][:8]).start()
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'],_run,'automatic-material-'+task['id'][:8],kind=KIND,fields={'stage':'自动材质优化未应用，已保留现有材质'},after=_publish_auto, wrap=lambda: ai_client.for_project(task['project_id']))
 
 
 def finish_failed_preview(project_id, job_id):

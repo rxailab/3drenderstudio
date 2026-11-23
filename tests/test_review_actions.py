@@ -24,7 +24,7 @@ class ReviewActionsTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.old=(store.DATA,actions.DATA,engine.QUEUE)
         store.DATA=actions.DATA=self.root;engine.QUEUE=queue.Queue()
-        with store.connection() as conn:conn.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as conn:conn.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         (self.root/'fixture').mkdir();Image.new('RGB',(8,8),'white').save(self.root/'fixture/image.png')
         self.review={'source':'ai','checked_at':12.5,'patch':{'exposure':-.5},'needs_user':['需要改成亮面金属吗？'],
             'realism':{'summary':'反光平','causes':[{'aspect':'补光','evidence':'过平','suggestion':'降低补光','confidence':.5,'requires_user':False}]}}

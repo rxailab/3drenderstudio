@@ -42,9 +42,12 @@ from pathlib import Path
 
 import blender_runner
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 VERSION = 2
 KIND = 'orient_task'
+log = app_log.get('orientation')
 ACTIVE = {'queued', 'running'}
 TIMEOUT = 420
 SIZE = 320
@@ -761,8 +764,9 @@ def submit(project_id, body):
                 'created_at': time.time()}
         put(KIND, task)
         import ai_client
-        # its vision requests count toward the project's AI spend
-        threading.Thread(target=ai_client.tagged(project_id, _run), args=(task['id'],), daemon=True, name='orient-' + task['id'][:8]).start()
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'], _run, 'orient-' + task['id'][:8], kind=KIND, message='朝向检查未完成，模型保持当前朝向。',
+                    fields={'stage': '朝向未检查'}, stamp='finished_at', wrap=lambda: ai_client.for_project(project_id))
         return task_view(task)
 
 
@@ -808,6 +812,7 @@ def _run(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('orientation task %s failed', task_id)
         with LOCK:
             task = get(KIND, task_id)
             if task['status'] != 'cancelled':

@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from flask import Flask,request,jsonify,send_from_directory,send_file,abort,g
 from werkzeug.exceptions import HTTPException
 from studio_store import ROOT,DATA,LOCK,get,put,all_records,atomic_json
+import app_log
 
 env=ROOT/'.env'
 if env.exists():
@@ -37,7 +38,8 @@ def error(exc):
     if isinstance(exc,HTTPException): return jsonify(error=exc.description),exc.code
     if isinstance(exc,KeyError): return jsonify(error='记录不存在'),404
     if isinstance(exc,(ValueError,TypeError)): return jsonify(error=str(exc)),400
-    app.logger.exception('request failed')
+    # Only the method and path: the headers (Authorization) and the body are never logged; app_log scrubs key-like text.
+    app_log.get('http').exception('%s %s failed',request.method,request.path)
     return jsonify(error=str(exc)),500
 
 @app.before_request
@@ -1098,6 +1100,7 @@ def example_import(ident):
     return jsonify(create_project(base,entry['name'],{'license':entry.get('license'),'example_id':ident})),201
 
 if __name__=='__main__':
+    app_log.configure()     # first: it also creates the data folder the instance lock below lives in
     # A second launch must not mark a currently running renderer as interrupted.
     instance_lock=(DATA/'studio.lock').open('a+b')
     instance_lock.seek(0,2)

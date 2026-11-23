@@ -20,7 +20,7 @@ class MaterialAgentTests(unittest.TestCase):
         self.old_data=store.DATA;self.old_agent_data=agent.DATA;self.old_queue=engine.QUEUE
         store.DATA=agent.DATA=self.root;engine.QUEUE=queue.Queue()
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.project={'id':'fixture','version':3,'plan':default_plan(),'analysis':{'objects':[]},'history':[],
                       'outputs':[{'job_id':'render','shot_id':'hero','quality':'preview','version':3}]}
         store.put('project',self.project)

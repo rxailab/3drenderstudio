@@ -30,7 +30,7 @@ class RuntimeUXTests(unittest.TestCase):
             mocked=patch.object(module,'QUEUE',queue.Queue());mocked.start();self.addCleanup(mocked.stop)
         mocked=patch.object(engine,'blender_path',return_value='/test/blender');mocked.start();self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.project={'id':'fixture','slug':'fixture','name':'Fixture','version':1,'history':[],
                       'status':'ready','analysis':{'objects':[]},'plan':default_plan(),'outputs':[]}
         store.put('project',copy.deepcopy(self.project))

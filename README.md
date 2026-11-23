@@ -618,7 +618,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **修复：手部特写不再要求“裁紧画面”。** 这句旧提示会让图像模型放大、重画已经锁定的产品；改为“画面已定，不得重新构图”后，实测一次通过。
 
-实测、耗时和未验证的部分见 [SCENE_POSE_UPDATE.md](SCENE_POSE_UPDATE.md)。
+实测、耗时和未验证的部分见 [SCENE_POSE_UPDATE.md](docs/history/SCENE_POSE_UPDATE.md)。
 
 ## 产品不变形的 AI 场景图、地面倒影、组件随项目上传 v30
 
@@ -638,11 +638,11 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 ![角磨机、两块电池、充电器和工具箱一起上传后生成的套图](validation/v30-listing-grinder-kit.jpg)
 
-为什么之前的结果不像示例、哪些地方还需要用户提供信息、做不到和未验证的部分，见 [LISTING_V30_UPDATE.md](LISTING_V30_UPDATE.md)。
+为什么之前的结果不像示例、哪些地方还需要用户提供信息、做不到和未验证的部分，见 [LISTING_V30_UPDATE.md](docs/history/LISTING_V30_UPDATE.md)。
 
 ## 套图：组件、品牌风格与使用场景标注图 v29
 
-**一个产品，一组图。** 顶栏的「套图」把产品、随箱组件和品牌风格排成一组电商图片：主图、套装清单、功能标注、使用场景标注、特写、标题横幅、卖点列表、尺寸规格。依据是对 82 张亚马逊工具类商品图的逐张研究（[LISTING_IMAGE_STUDY.md](LISTING_IMAGE_STUDY.md)）：那些图片大多不是一张产品照片，而是由多张图片、产品信息和一套品牌规范拼成的页面。
+**一个产品，一组图。** 顶栏的「套图」把产品、随箱组件和品牌风格排成一组电商图片：主图、套装清单、功能标注、使用场景标注、特写、标题横幅、卖点列表、尺寸规格。依据是对 82 张亚马逊工具类商品图的逐张研究（[LISTING_IMAGE_STUDY.md](docs/history/LISTING_IMAGE_STUDY.md)）：那些图片大多不是一张产品照片，而是由多张图片、产品信息和一套品牌规范拼成的页面。
 
 ![角磨机套装的七张图](validation/v29-listing-kit.jpg)
 
@@ -658,7 +658,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **修复：场景生成时状态栏显示“材质任务未完成”。** 那是上一次自动材质任务留下的文字，现在场景生成显示自己的阶段和百分比。
 
-测试用的是自己搭的角磨机套装和割管器，不是真实产品的模型；做不到的部分和未验证的部分见 [LISTING_SYSTEM_UPDATE.md](LISTING_SYSTEM_UPDATE.md)。
+测试用的是自己搭的角磨机套装和割管器，不是真实产品的模型；做不到的部分和未验证的部分见 [LISTING_SYSTEM_UPDATE.md](docs/history/LISTING_SYSTEM_UPDATE.md)。
 
 ## 姿态判断 agent、进度百分比与耗时分析 v28
 
@@ -674,7 +674,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **时间花在哪里。** 在无 GPU 的机器上，从上传到首图 70 秒，其中模型调用占一半以上（姿态判断约 13 秒，预览诊断约 26 秒）；最耗时的是高质量渲染，一张标准质量的 4K 图约 25 分钟（按实测进度推算）。AI 场景图四分之三的时间在渲染三张产品参考图，相近的镜头角度现在共用同一组渲染。
 
-测试模型是自己搭的角磨机，不是你的原模型；逐阶段的计时、判断结果和未验证的部分见 [POSE_AGENT_UPDATE.md](POSE_AGENT_UPDATE.md)。
+测试模型是自己搭的角磨机，不是你的原模型；逐阶段的计时、判断结果和未验证的部分见 [POSE_AGENT_UPDATE.md](docs/history/POSE_AGENT_UPDATE.md)。
 
 ## 渲染队列、图文版式与图标 v26
 
@@ -692,7 +692,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 ![导出的 PSD 及其图层结构](validation/v26-psd-layers.jpg)
 
-用法、规则、验证范围与未验证的部分见 [TEXT_LAYER_LAYOUT_UPDATE.md](TEXT_LAYER_LAYOUT_UPDATE.md)。
+用法、规则、验证范围与未验证的部分见 [TEXT_LAYER_LAYOUT_UPDATE.md](docs/history/TEXT_LAYER_LAYOUT_UPDATE.md)。
 ## 画面人物选项与模型自动摆正 v27
 
 **场景图里要不要有人，由你决定。** 「使用场景」新增「画面人物」：自动、包含人物、不含人物。选了之后，策划按它写画面，图像请求里写明“必须有人在使用产品”或“画面里不出现人”，生成后的核对也看这一项，不符就带着纠正重做一次。3D 道具场景里没有人，所以那种方式下不提供「包含人物」。
@@ -705,7 +705,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **判断错了一点就改。** 「调整」面板的「摆放朝向」列出六个候选姿态的缩略图，点一下改用；也可以上下翻转、绕竖直方向转 90°，或重新自动摆正。每次都是一个可撤销的版本，并立即预览。
 
-摆正只在一把电钻和一件工具柜上实测过，判断可能出错；没有视觉模型时多数模型需要手动选姿态。做法、接口、验证范围和未验证的部分见 [POSE_AND_PEOPLE_UPDATE.md](POSE_AND_PEOPLE_UPDATE.md)。
+摆正只在一把电钻和一件工具柜上实测过，判断可能出错；没有视觉模型时多数模型需要手动选姿态。做法、接口、验证范围和未验证的部分见 [POSE_AND_PEOPLE_UPDATE.md](docs/history/POSE_AND_PEOPLE_UPDATE.md)。
 
 ## 按人群策划的使用场景图 v25
 
@@ -717,7 +717,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **来源清楚，标注清楚。** 参考库只含链接与文字，应用不下载、不显示、不转发其中的图片；发给图像模型的只有本机渲染的产品图。AI 生成的图在界面上标为「AI 生成」，并列出面向的人群、借鉴的参考、核对结论和所用的三张参考图；它不是 Blender 渲染，没有可导出的 3D 工程，修改产品后需要重新生成。
 
-没有配置 AI 时按产品名称推荐人群并搭 3D 道具场景。多角度参考和核对降低产品走样的风险，不能保证；本次只在一件产品（工具柜）上实测。配置方法、流程、费用与时间、验证范围和未验证的部分见 [SCENE_AUDIENCE_UPDATE.md](SCENE_AUDIENCE_UPDATE.md)。
+没有配置 AI 时按产品名称推荐人群并搭 3D 道具场景。多角度参考和核对降低产品走样的风险，不能保证；本次只在一件产品（工具柜）上实测。配置方法、流程、费用与时间、验证范围和未验证的部分见 [SCENE_AUDIENCE_UPDATE.md](docs/history/SCENE_AUDIENCE_UPDATE.md)。
 ## 真实阴影与遮挡更新
 
 展示布光中的补光、轮廓灯和反射灯现在遵守模型遮挡，避免箱体内部、把手凹槽被无阴影灯照透。使用场景不再叠加无影房间灯和棚拍背景洗光；环境光源带有真实阴影，并跟随主光方向。产品材质、颜色、相机和各画质采样数量不因这次更新改变。
@@ -736,7 +736,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 （前五格依次为简洁、醒目、卡片、深色、色块；最后一格是白底主图。）
 
-**AI 路径已在 HAI 接口上实测。** 使用场景的导演与采购（18 秒，放入 5 件道具）和图文要点（每次约 12 秒）都完成了真实调用，请求与返回校验一次通过；图文要点先后跑了三轮，并按真实回复收紧了措辞要求、给图标补了含义。上面两张图的文案就是模型看图写的：品类标签、带强调词的标题，以及全部正确指向部件的 4–5 条要点。文案仍是草稿，发布前请核对。细节、字体许可与验证范围见 [TEXT_LAYER_STYLE_UPDATE.md](TEXT_LAYER_STYLE_UPDATE.md)。
+**AI 路径已在 HAI 接口上实测。** 使用场景的导演与采购（18 秒，放入 5 件道具）和图文要点（每次约 12 秒）都完成了真实调用，请求与返回校验一次通过；图文要点先后跑了三轮，并按真实回复收紧了措辞要求、给图标补了含义。上面两张图的文案就是模型看图写的：品类标签、带强调词的标题，以及全部正确指向部件的 4–5 条要点。文案仍是草稿，发布前请核对。细节、字体许可与验证范围见 [TEXT_LAYER_STYLE_UPDATE.md](docs/history/TEXT_LAYER_STYLE_UPDATE.md)。
 
 ## 图文图层 v23
 
@@ -748,7 +748,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **导出。** PNG / JPG 按渲染图的原始分辨率合成；SVG 内含渲染图，文字仍是文字、图标仍是路径，可在 Illustrator、Figma 等软件里继续编辑；也可以只导出透明的图文层。
 
-智能排版在启用 AI 时由模型看图写要点，未启用时按部件名称的规则提取。两种方式都只描述看得见的东西，不会编造尺寸、承重、认证之类的数字；生成的文案是草稿，发布前请核对。数据格式、排版规则与验证范围见 [TEXT_LAYER_UPDATE.md](TEXT_LAYER_UPDATE.md)。
+智能排版在启用 AI 时由模型看图写要点，未启用时按部件名称的规则提取。两种方式都只描述看得见的东西，不会编造尺寸、承重、认证之类的数字；生成的文案是草稿，发布前请核对。数据格式、排版规则与验证范围见 [TEXT_LAYER_UPDATE.md](docs/history/TEXT_LAYER_UPDATE.md)。
 
 ## 使用场景图 v22
 
@@ -760,7 +760,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **不依赖 AI 也能用。** 已启用 AI 时由模型看图决定场景与道具；未启用或调用失败时，使用内置的八类规则（工具存放、洗护美妆、餐厨、箱包、园艺、数码办公、家具、通用）。场景是方案里一个可撤销的版本，「换一组场景道具」重新摆放，「移除使用场景」恢复原样；白底主图和其他镜头不变。每件道具的来源页面与许可都列在界面和方案中。
 
-生成场景需要能访问 `api.polyhaven.com` 与 `dl.polyhaven.org`；下载过的模型会缓存在 `data/props_cache/`。处理流程、尺寸与摆放规则、道具库的局限和验证范围见 [SCENE_IMAGES_UPDATE.md](SCENE_IMAGES_UPDATE.md)。本次没有在真实的大模型接口上运行。
+生成场景需要能访问 `api.polyhaven.com` 与 `dl.polyhaven.org`；下载过的模型会缓存在 `data/props_cache/`。处理流程、尺寸与摆放规则、道具库的局限和验证范围见 [SCENE_IMAGES_UPDATE.md](docs/history/SCENE_IMAGES_UPDATE.md)。本次没有在真实的大模型接口上运行。
 
 ## 展示级首图与指令智能体 v21
 
@@ -768,13 +768,13 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 **导入模型后的第一张图。** 只带纯色占位材质的 OBJ 会在分析完成后按材质名与部件名补全质感：金属件是金属，不锈钢台面是拉丝不锈钢，轮子是橡胶，颜色保持不变，每条依据都可查看。新项目使用展示级布光：主光与补光拉开明暗，后侧条形灯与反光板勾出轮廓和金属的渐变，硬边带一条细高光。512 px 草稿出来后，后台自动补渲一张 2048 px 的高清图；这期间可以照常操作，任何操作都会让它让路。
 
-旧项目保持原有画面，可在「参数 → 出图质量 → 布光与质感」切换。规则、处理流程、设置项与验证范围见 [AUTOMATION_UPDATE.md](AUTOMATION_UPDATE.md)。本次没有在真实的大模型接口上运行，说明见该文档的“边界与未验证”。
+旧项目保持原有画面，可在「参数 → 出图质量 → 布光与质感」切换。规则、处理流程、设置项与验证范围见 [AUTOMATION_UPDATE.md](docs/history/AUTOMATION_UPDATE.md)。本次没有在真实的大模型接口上运行，说明见该文档的“边界与未验证”。
 
 ## 工作台重新设计 v20
 
 界面按专业工具的惯例重排：顶栏放项目名与全局操作（预览、渲染 4K），左侧是镜头栏，中间是尽量大的画面，右侧是「调整 / 材质 / 参数 / 导出」四个紧凑的属性面板。画面下方只有一条信息栏（尺寸、PNG、JPG、工程文件菜单）和一条只在有任务时出现的状态栏。次要操作收进菜单，说明文字改为悬停提示或默认折叠，桌面宽度下整个工作台在一屏内完成。
 
-渲染、接口与数据不变。设计依据、前后对照与验证范围见 [UI_REDESIGN_V20.md](UI_REDESIGN_V20.md)。下文各版本说明中的旧面板名对应关系为：画面调整 → 调整，部件材质 → 材质，摄影方案 → 参数，电商出图 → 导出。
+渲染、接口与数据不变。设计依据、前后对照与验证范围见 [UI_REDESIGN_V20.md](docs/history/UI_REDESIGN_V20.md)。下文各版本说明中的旧面板名对应关系为：画面调整 → 调整，部件材质 → 材质，摄影方案 → 参数，电商出图 → 导出。
 
 ## 电商出图 v19
 
@@ -786,7 +786,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 本版同时修复了镜头被重复渲染三次的问题：v17 改为正交镜头后，旧的取景复查仍用包围盒角点判断留白，常常不通过（示例瓶的主图即如此），随后两次“拉远相机重渲染”对正交镜头的画面没有任何影响。现在按真实顶点在实际出图镜头中的投影检查一次，每个镜头只渲染一次——示例瓶的预览任务在 CPU 上从约 25 秒降到约 10 秒，「已达到自动取景修正上限」的误报也随之消失。
 
-平台规则数值、处理方式、接口和验证范围见 [ECOMMERCE_UPDATE.md](ECOMMERCE_UPDATE.md)。平台会调整规则，上传前请以商家后台提示为准。
+平台规则数值、处理方式、接口和验证范围见 [ECOMMERCE_UPDATE.md](docs/history/ECOMMERCE_UPDATE.md)。平台会调整规则，上传前请以商家后台提示为准。
 
 ## 深色工作室界面 v18
 
@@ -802,7 +802,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 “实时 3D / 渲染图”保持在同一个画面区域。实时画面用于观察模型与构图，材质、反射和阴影采用 WebGL 近似；Cycles 正式成图与原始复杂材质保留。图片选点、画面诊断和版本对比继续对应明确的已渲染图片。实时查看不需要新 API Key，也没有前端 CDN 依赖。
 
-安装方法、操作说明和验证边界见 [REALTIME_VIEWPORT_V17.md](REALTIME_VIEWPORT_V17.md)。以下版本章节保留各次升级记录。
+安装方法、操作说明和验证边界见 [REALTIME_VIEWPORT_V17.md](docs/history/REALTIME_VIEWPORT_V17.md)。以下版本章节保留各次升级记录。
 
 ## 完整语义规划与执行校验分离 v16
 
@@ -812,7 +812,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 自然语言修改统一到“画面调整”，部件页保留手动材质操作。旧协议仅供兼容接口和明确标注的离线规则使用，在线解析失败不会偷偷切回关键词流程。
 
-安装、验证结果和支持边界见 [SEMANTIC_UPGRADE_V16.md](SEMANTIC_UPGRADE_V16.md)。本节为当前入口行为，以下版本说明保留为历史记录。
+安装、验证结果和支持边界见 [SEMANTIC_UPGRADE_V16.md](docs/history/SEMANTIC_UPGRADE_V16.md)。本节为当前入口行为，以下版本说明保留为历史记录。
 
 ## 优化后继续调整材质与灯光 v15
 
@@ -820,19 +820,19 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 已通过独立校验的灯光可以先完成，不再被可隔离的材质参数错误一起拦住。修改明细显示实际参数起点；剩余校验问题保留原要求，显示简短原因和“重试调整”，详细信息默认收起。沿用现有模型和最多两次解析／纠错请求的预算。
 
-安装累计更新包、实际柜子连续两轮验证及测试边界见 [FOLLOWUP_INSTRUCTION_FIX_V15.md](FOLLOWUP_INSTRUCTION_FIX_V15.md)。本节保留 v15 的修复记录；在线语言理解已由 v16 替换。
+安装累计更新包、实际柜子连续两轮验证及测试边界见 [FOLLOWUP_INSTRUCTION_FIX_V15.md](docs/history/FOLLOWUP_INSTRUCTION_FIX_V15.md)。本节保留 v15 的修复记录；在线语言理解已由 v16 替换。
 
 ## 高清结果校验与失败任务恢复 v14
 
 修复高清图和工程已经生成后，因候选／高清阶段重复计算取景产生微小浮点差异而误报“场景状态不一致”。高清输出现在直接从已选候选工程渲染；校验区分有界舍入误差与真实场景变化，并记录差异字段。
 
-对已有失败任务，点击“继续 / 重试”会优先核验旧文件与执行记录，证据完整且一致时直接恢复已有高清结果，避免重复模型请求和渲染。安装、恢复条件及验证结果见 [SCENE_CONSISTENCY_FIX_V14.md](SCENE_CONSISTENCY_FIX_V14.md)。
+对已有失败任务，点击“继续 / 重试”会优先核验旧文件与执行记录，证据完整且一致时直接恢复已有高清结果，避免重复模型请求和渲染。安装、恢复条件及验证结果见 [SCENE_CONSISTENCY_FIX_V14.md](docs/history/SCENE_CONSISTENCY_FIX_V14.md)。
 
 ## 自动主图优化 v13
 
 在已有白底主图上点击“自动优化主图”，系统自动读取真实 Blender 场景，结合当前图规划构图、柔光、反射与可编辑的表面参数，生成原场景和候选预览，再比较效果。通过检查后输出默认 2000 × 2000 主图及可独立下载的 `.blend`；后续调整继承优化后的场景，撤销同时恢复原图与原工程。
 
-每次最多两次视觉模型请求，沿用已配置模型，不自动升级费用。任务阶段和渲染进度显示在原有状态卡中，原因与候选默认折叠。安装、实际支持范围、源工程对比和测试边界见 [HERO_WORKFLOW_UPDATE.md](HERO_WORKFLOW_UPDATE.md)。
+每次最多两次视觉模型请求，沿用已配置模型，不自动升级费用。任务阶段和渲染进度显示在原有状态卡中，原因与候选默认折叠。安装、实际支持范围、源工程对比和测试边界见 [HERO_WORKFLOW_UPDATE.md](docs/history/HERO_WORKFLOW_UPDATE.md)。
 
 ## 独立场景下载、灯光方向与渲染反馈更新 v12
 
@@ -840,19 +840,19 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 渲染中的任务在预览内显示动态状态卡、真实采样／图组进度，断连和终态会停止动效。AI 与手动方案可调整当前镜头的主光、补光、轮廓光方位角及俯仰角；读入当前场景确认实际灯位，渲染后再核验 PNG 对应的灯位和保存快照。
 
-定性亮度与背光要求默认追求更明显的变化，保留明确数值、轻微调整和既有保护条件。安装、实际执行前提及测试边界见 [LIGHTING_AND_RENDER_UPDATE.md](LIGHTING_AND_RENDER_UPDATE.md)。
+定性亮度与背光要求默认追求更明显的变化，保留明确数值、轻微调整和既有保护条件。安装、实际执行前提及测试边界见 [LIGHTING_AND_RENDER_UPDATE.md](docs/history/LIGHTING_AND_RENDER_UPDATE.md)。
 
 ## LLM 语义理解更新 v11
 
 “灯光再亮一些，不要让物体背光”现在会交给 LLM 结合原句、当前方案和预览解释为效果目标，再选择合适的灯光参数；不会因为不认识“不要……”而在模型调用前拒绝。明确的颜色、角度、数值要求仍逐项核验，模型解析出的保留条件也会延续到剩余要求。
 
-语义理解和参数规划共用一次请求，包含纠错仍最多两次，不自动升级模型。沿用自动部分执行与现有简洁界面。安装累计更新包及验证边界见 [LLM_INTENT_UPDATE.md](LLM_INTENT_UPDATE.md)。
+语义理解和参数规划共用一次请求，包含纠错仍最多两次，不自动升级模型。沿用自动部分执行与现有简洁界面。安装累计更新包及验证边界见 [LLM_INTENT_UPDATE.md](docs/history/LLM_INTENT_UPDATE.md)。
 
 ## 自动完成可执行项 v10
 
 点击“应用并预览”后，已经核验的独立修改会直接保存并预览，输入框只保留未完成的要求。新流程省去“先应用可完成项”，结果集中为一条简短摘要，原因与参数明细默认折叠。
 
-“钥匙孔、钥匙、轮子的支架都是不锈钢反光的”会按部位继承共同材质要求，已识别部位可以独立完成。“让整个物体更好看”按商品图摄影目标处理，使用现有灯光与镜头参数准备预览；已经完成的灯光不会在重试中重复叠加。安装、具体默认含义及验证边界见 [AUTO_PARTIAL_UPDATE.md](AUTO_PARTIAL_UPDATE.md)。
+“钥匙孔、钥匙、轮子的支架都是不锈钢反光的”会按部位继承共同材质要求，已识别部位可以独立完成。“让整个物体更好看”按商品图摄影目标处理，使用现有灯光与镜头参数准备预览；已经完成的灯光不会在重试中重复叠加。安装、具体默认含义及验证边界见 [AUTO_PARTIAL_UPDATE.md](docs/history/AUTO_PARTIAL_UPDATE.md)。
 
 以下各版本记录说明历次更新；v10 起普通提交使用自动部分执行，旧提案和 API 显式 review 模式继续兼容确认流程。
 
@@ -860,23 +860,23 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 修复“待确认方案不能同时包含直接执行的修改”以及“AI 未给出一致的可执行决定”。模型统一返回逐项修改，服务器核验后决定直接应用或等待确认；重复的旧格式字段只有完全相容时才去重，冲突在原有两次请求预算内纠正。
 
-“上表面是反光的拉丝不锈钢，箱体是红色金属有光泽”保留为两项材质要求。部件定位后核验红色色系，缺失光泽参数使用现有材质预设，防止旧哑光参数残留。返回结构仍失败时保留原文，主按钮显示“重新生成修改”，无需改写要求。安装、执行规则与验证边界见 [DECISION_CONTRACT_UPDATE.md](DECISION_CONTRACT_UPDATE.md)。
+“上表面是反光的拉丝不锈钢，箱体是红色金属有光泽”保留为两项材质要求。部件定位后核验红色色系，缺失光泽参数使用现有材质预设，防止旧哑光参数残留。返回结构仍失败时保留原文，主按钮显示“重新生成修改”，无需改写要求。安装、执行规则与验证边界见 [DECISION_CONTRACT_UPDATE.md](docs/history/DECISION_CONTRACT_UPDATE.md)。
 
 ## 完整部件定位更新 v8
 
 “四个轮子都要是黑色橡胶”等部位要求会检查当前预览保存的三维场景，生成真实材质表面的独立双视角部件图，让被主图遮挡的表面也能参与识别。数量按实际几何的空间分组核对，避免把拆开的网格数量当作轮胎数量。绑定缺漏进入现有的一次纠错；橡胶替换清除旧金属参数残留。
 
-仍不确定时，点选一个示例部位并点击“用选点继续识别”，原要求与数量完整保留。示例点由服务器重新拾取，不会变成只修改选中轮子的局部操作。新检查不改原场景、项目版本或普通预览列表。安装与实际验证边界见 [SCENE_PARTS_UPDATE.md](SCENE_PARTS_UPDATE.md)。
+仍不确定时，点选一个示例部位并点击“用选点继续识别”，原要求与数量完整保留。示例点由服务器重新拾取，不会变成只修改选中轮子的局部操作。新检查不改原场景、项目版本或普通预览列表。安装与实际验证边界见 [SCENE_PARTS_UPDATE.md](docs/history/SCENE_PARTS_UPDATE.md)。
 
 ## 摄影要求误拦截修复 v7
 
-修复“要求中的灯光与镜头未完整包含在修改中”的过度拒绝。整体摄影目标允许按实际需要调整灯光或镜头，并说明未变部分；具体焦距、角度和曝光要求仍必须核验。已有规则可解析的参数缺项按原方案补齐，未完成的明确要求继续保留为原句。参数缺项不再引导用户进入部件点选。详见 [PHOTOGRAPHY_INTENT_FIX.md](PHOTOGRAPHY_INTENT_FIX.md)。
+修复“要求中的灯光与镜头未完整包含在修改中”的过度拒绝。整体摄影目标允许按实际需要调整灯光或镜头，并说明未变部分；具体焦距、角度和曝光要求仍必须核验。已有规则可解析的参数缺项按原方案补齐，未完成的明确要求继续保留为原句。参数缺项不再引导用户进入部件点选。详见 [PHOTOGRAPHY_INTENT_FIX.md](docs/history/PHOTOGRAPHY_INTENT_FIX.md)。
 
 ## 逐项调整更新 v6
 
 复合要求按原文拆分核对。“改善材质反光”可使用现有灯光和镜头参数；AI 自己想到的微纹理、真实倒角或独立阴影控制不会被追加成用户必须完成的要求。对仍不能确认的部位，界面在同一输入区说明待确认内容，并列出已通过校验的可执行改动。初次分析只保存提案，不改方案、不增加版本、不启动预览；明确点击“先应用可完成项”后，才应用这份提案并预览。
 
-应用后保留未完成的原始要求，已执行的相对灯光调整不会在下一次提交时被重复执行。确认不再次调用 AI；来源、版本或部件证据已变化时提案失效。不可见的轮胎仍不会靠对象名字猜测为已定位。详见 [COMPOUND_INSTRUCTION_UPDATE.md](COMPOUND_INSTRUCTION_UPDATE.md)。
+应用后保留未完成的原始要求，已执行的相对灯光调整不会在下一次提交时被重复执行。确认不再次调用 AI；来源、版本或部件证据已变化时提案失效。不可见的轮胎仍不会靠对象名字猜测为已定位。详见 [COMPOUND_INSTRUCTION_UPDATE.md](docs/history/COMPOUND_INSTRUCTION_UPDATE.md)。
 
 ## 部件理解与低成本模型更新 v5
 
@@ -884,7 +884,7 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 已阻止 `gpt-5.5-2026-04-23` 及 GPT-5.5 别名发出请求。AI 设置提供常用低成本与能力均衡的模型配置，独立视觉默认继承主模型，不再预填昂贵型号；不会自动升级到更贵模型。旧配置仍可查看，选择新配置并保存后生效，切换官方平台需要该平台自己的 Key。
 
-模型选择、2026-11-10 官方价格及验证范围见 [MODEL_AND_PARTS_UPDATE.md](MODEL_AND_PARTS_UPDATE.md)。安装累计更新包见 [UX_UPDATE_GUIDE.md](UX_UPDATE_GUIDE.md)。
+模型选择、2026-11-10 官方价格及验证范围见 [MODEL_AND_PARTS_UPDATE.md](docs/history/MODEL_AND_PARTS_UPDATE.md)。安装累计更新包见 [UX_UPDATE_GUIDE.md](docs/history/UX_UPDATE_GUIDE.md)。
 
 ## 项目操作更新 v4（保留）
 
@@ -892,13 +892,13 @@ HF_HOME=data/models/hf .venv-depth/bin/python -c "from huggingface_hub import sn
 
 左侧项目行可删除项目，删除前显示项目名称和关联文件范围。运行中的分析、渲染、材质或导出任务需要先取消并完成收尾，或等待完成。删除当前项目后返回上传首页；删除其他项目保留当前工作。标题旁“退出项目”返回首页并保留项目，有未保存参数时可选择保存、放弃或继续编辑。
 
-更新说明及验证边界见 [PROJECT_WORKFLOW_UPDATE.md](PROJECT_WORKFLOW_UPDATE.md)。
+更新说明及验证边界见 [PROJECT_WORKFLOW_UPDATE.md](docs/history/PROJECT_WORKFLOW_UPDATE.md)。
 
 ## 智能调整更新 v3
 
 “画面调整 → 应用并预览”现在可结合当前真实预览、当前镜头有效参数、项目资料、近期有效操作与诊断理解要求；明确要求对照参考图时，也会使用上传时保存的参考图。明确的保留要求会约束可修改字段，执行后用实际参数差异显示回执。曝光、柔光与灯光调整限定到当前镜头，相机调整不会连带改其他镜头；留白等共享参数会说明项目级影响。
 
-本轮保留 v2 的精简界面与只读诊断。“重新检查”仍不会修改方案或启动渲染。网络重试使用持久执行回执避免重复应用；没有实际变化就不增加版本或发起预览。自动候选必须通过同源评分与实测退化检查才采用。安装见 [UX_UPDATE_GUIDE.md](UX_UPDATE_GUIDE.md)，能力、边界和验收见 [INTELLIGENCE_UPGRADE.md](INTELLIGENCE_UPGRADE.md)。
+本轮保留 v2 的精简界面与只读诊断。“重新检查”仍不会修改方案或启动渲染。网络重试使用持久执行回执避免重复应用；没有实际变化就不增加版本或发起预览。自动候选必须通过同源评分与实测退化检查才采用。安装见 [UX_UPDATE_GUIDE.md](docs/history/UX_UPDATE_GUIDE.md)，能力、边界和验收见 [INTELLIGENCE_UPGRADE.md](docs/history/INTELLIGENCE_UPGRADE.md)。
 
 先点击“预览当前镜头”检查一张图；勾选镜头决定“渲染 N 张 4K”的范围。“下载项目归档”包含所有已生成图片、历史版本和工程，不跟随镜头勾选。
 
@@ -938,7 +938,7 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 
 预览后自动检查默认开启：无 Key 时只依据实际产品曝光采样和已有构图检查报告；有 Key 时结合真实图片分析灯光层次、反射、纹理、倒角、接地阴影与透射等逼真度因素，列出画面证据、推测、置信度和建议。曝光与光源柔和度最多自动修正两轮并真实重新渲染，保留各轮图片和最佳候选，采用的逐镜头参数写入新方案版本。图组完成后还会检查自动材质需求；材质流程独立最多执行两轮，每轮应用后重新渲染原选中图组。两项上限都受「最大修正次数」0–2控制。正式渲染使用已保存的材质与摄影参数。AI请求失败会明确显示，不能视为视觉检查通过。
 
-「重新检查」读取当前选中图片和已保存参数快照，请求显式指定 diagnostic_only=true，只更新该图诊断记录。部件修改通过真实射线命中的网格与材质槽执行，共享材质先复制；单独调整粗糙度保留颜色与标签，显式改色可能覆盖该槽图案。复杂着色器仍需明确替换为内置预设，或导出工程人工编辑。详见 [AI_FEEDBACK.md](AI_FEEDBACK.md)。
+「重新检查」读取当前选中图片和已保存参数快照，请求显式指定 diagnostic_only=true，只更新该图诊断记录。部件修改通过真实射线命中的网格与材质槽执行，共享材质先复制；单独调整粗糙度保留颜色与标签，显式改色可能覆盖该槽图案。复杂着色器仍需明确替换为内置预设，或导出工程人工编辑。详见 [AI_FEEDBACK.md](docs/history/AI_FEEDBACK.md)。
 
 外部 PBR 资源导入需填写来源和许可。内置程序材质不依赖外部下载；原有贴图和标识默认保留。不要对需要精确保留图案的材质盲目替换；先预览检查。
 
@@ -952,7 +952,7 @@ AI 设置可单独配置视觉模型。新版全局调整在携带当前图或�
 
 ## 实现
 
-支持按已渲染镜头导出场景工程：图片下方点击「导出工程」，选择已渲染的场景版本。可直接下载该版本已有的 Blender 工程，也可选择 Blender 或 Cinema 4D 生成工程包。C4D 原生转换需要本机可用的 c4dpy 授权，未成功时提供明确标注的手动转换包。配置、兼容性与原项目的授权验收记录见 [SCENE_EXPORT.md](SCENE_EXPORT.md)；v13 的原生 Blender 场景验证范围见 [HERO_WORKFLOW_UPDATE.md](HERO_WORKFLOW_UPDATE.md)，未执行真实 C4D 转换验收。
+支持按已渲染镜头导出场景工程：图片下方点击「导出工程」，选择已渲染的场景版本。可直接下载该版本已有的 Blender 工程，也可选择 Blender 或 Cinema 4D 生成工程包。C4D 原生转换需要本机可用的 c4dpy 授权，未成功时提供明确标注的手动转换包。配置、兼容性与原项目的授权验收记录见 [SCENE_EXPORT.md](docs/history/SCENE_EXPORT.md)；v13 的原生 Blender 场景验证范围见 [HERO_WORKFLOW_UPDATE.md](docs/history/HERO_WORKFLOW_UPDATE.md)，未执行真实 C4D 转换验收。
 
 - `app.py`：本地 HTTP API、上传资源、下载与计划版本。
 - `studio_store.py`：SQLite WAL 事务存储；持久化项目和任务。

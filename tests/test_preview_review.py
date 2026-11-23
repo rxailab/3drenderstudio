@@ -13,7 +13,7 @@ class PreviewReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.old_data=store.DATA;self.old_engine=engine.DATA;store.DATA=self.root;engine.DATA=self.root
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
 
     def tearDown(self):
         store.DATA=self.old_data;engine.DATA=self.old_engine;self.tmp.cleanup()

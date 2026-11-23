@@ -1,5 +1,6 @@
 """Small transactional store. Every render keeps an immutable plan snapshot."""
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -7,19 +8,32 @@ from pathlib import Path
 from asset_provenance import enrich_project
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / 'data'
-DATA.mkdir(exist_ok=True)
+
+def data_root():
+    """The one place the data folder is chosen: STUDIO_DATA when set (the tests point it at a temporary folder before any
+    module is imported), else <repo>/data. Modules that do 'from studio_store import DATA' read it once, at import."""
+    chosen = os.environ.get('STUDIO_DATA', '').strip()
+    return Path(chosen).expanduser().resolve() if chosen else ROOT / 'data'
+
+DATA = data_root()
 LOCK = threading.RLock()
+SCHEMA = 'CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))'
+_READY = set()          # database files whose table this process has already made sure of
 
 def connection():
-    c = sqlite3.connect(str(DATA / 'studio.sqlite'), timeout=30)
+    # The folder and the table are made on the first connection, not at import, so importing a module never writes
+    # into a data folder. DATA is read here, at call time: the tests swap it for their own folders.
+    DATA.mkdir(parents=True, exist_ok=True)
+    path = DATA / 'studio.sqlite'
+    fresh = str(path) not in _READY or not path.exists()
+    c = sqlite3.connect(str(path), timeout=30)
     c.execute('PRAGMA journal_mode=WAL')
     # With WAL this stays crash-safe for the database; a power cut can lose only the last moments of progress text.
     c.execute('PRAGMA synchronous=NORMAL')
+    if fresh:
+        with c: c.execute(SCHEMA)
+        _READY.add(str(path))
     return c
-
-with connection() as c:
-    c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
 
 def put(kind, obj):
     obj['updated_at'] = time.time()

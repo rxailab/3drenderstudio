@@ -341,7 +341,7 @@ class StoreCase(unittest.TestCase):
         for target in ((scene_stylist, '_config'), (scene_imagegen, 'config')):                                         # whatever .env says
             mocked = patch.object(*target, return_value=None); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         record = project('Ratchet Pipe Cutter'); record['model_path'] = str(self.data / 'fixture' / 'originals' / 'cutter.glb')
         store.put('project', record)
         self.requests = []

@@ -25,6 +25,10 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, atomic_json
+import app_log
+import tasks
+
+log = app_log.get('components')
 
 STAGE_SCRIPT = ROOT / 'blender' / 'stage.py'
 WORKER_SCRIPT = ROOT / 'blender' / 'worker.py'
@@ -547,6 +551,7 @@ def process(project_id, component_id, token):
     except ComponentCancelled:
         return
     except Exception as exc:
+        log.exception('component %s of project %s failed', component_id, project_id)
         message = str(exc)[:300] if isinstance(exc, ValueError) and str(exc) else '处理失败，请重试或更换文件。'
         if not cancelled():
             _change(project_id, component_id, status='failed', stage='queued', error=message)
@@ -558,7 +563,8 @@ def _work():
         try:
             process(project_id, component_id, token)
         except Exception:
-            pass
+            # process records its own failures; this is one inside that recording (the project deleted meanwhile...).
+            log.exception('component %s of project %s: unexpected error', component_id, project_id)
         finally:
             QUEUE.task_done()
 
@@ -566,7 +572,7 @@ def _work():
 def start():
     global _WORKER
     if _WORKER is None or not _WORKER.is_alive():
-        _WORKER = threading.Thread(target=_work, name='components', daemon=True); _WORKER.start()
+        _WORKER = tasks.daemon(_work, 'components')
 
 
 def recover_interrupted():

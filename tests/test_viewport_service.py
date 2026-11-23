@@ -32,7 +32,7 @@ class ViewportServiceTests(unittest.TestCase):
             mocked=patch.object(module,name,value);mocked.start();self.addCleanup(mocked.stop)
         self.runtime=patch('engine.blender_path',return_value='blender');self.runtime.start();self.addCleanup(self.runtime.stop)
         self.threads=patch('viewport_service.threading.Thread');self.thread=self.threads.start();self.addCleanup(self.threads.stop)
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.source=self.root/'fixture/runs/a/source.blend';self.source.parent.mkdir(parents=True)
         self.source.write_bytes(b'Unit test source identity, not a Blender scene')
         self.plan=planner.default_plan()

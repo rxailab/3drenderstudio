@@ -1,8 +1,14 @@
 data/
 __pycache__/
 .env
+# ai_config writes the new .env through Path('.env').with_suffix('.env.tmp'), which is '.env.env.tmp'
 .env.env.tmp
 *.log
+# rotated application logs (app_log.py) wherever STUDIO_DATA puts the data folder
+studio.log.*
+logs/
+# Blender's automatic backup of a saved .blend
+*.blend1
 .venv/
 .venv-depth/
 node_modules/

@@ -59,7 +59,7 @@ class RealismOutputTests(unittest.TestCase):
         self.patches=[patch.object(store,'DATA',self.root),patch.object(engine,'DATA',self.root),
             patch('ai_config.get_vision_config',return_value={**CONFIG,'enabled':False,'api_key':''}),patch('ai_config.record_vision_result')]
         self.mocks=[item.start() for item in self.patches]
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         folder=self.root/'fixture/runs/old/hero';folder.mkdir(parents=True)
         Image.new('RGB',(32,32),(50,20,10)).save(folder/'shot.png')
         self.result={'success':True,'checks':{'method':'projected evaluated bounding boxes','kind':'complete_product','clipped':False,'occupancy':.7},'product_samples':[]}

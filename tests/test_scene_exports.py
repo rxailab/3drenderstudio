@@ -13,7 +13,7 @@ class SceneExportTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.old_store=store.DATA;self.old_data=scenes.DATA;self.old_q=scenes.QUEUE
         store.DATA=self.root;scenes.DATA=self.root;scenes.QUEUE=queue.Queue()
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         p=self.root/'fixture/runs/old/hero.blend';p.parent.mkdir(parents=True);p.write_bytes(b'BLENDER fixture unit test only')
         (p.parent/'hero.png').write_bytes(b'PNG fixture identity only')
         self.output=dict(job_id='old',shot_id='hero',shot_label='主图',quality='preview',version=1,
