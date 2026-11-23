@@ -652,6 +652,14 @@ def listing_build(ident):
     try:return jsonify(listing.submit(ident,request.get_json(silent=True) or {})),202
     except engine.JobConflictError as exc:abort(409,description=str(exc))
 
+@app.post('/api/projects/<ident>/listing/scenes/<int:index>/redraw')
+def listing_scene_redraw(ident,index):
+    """Make one scene picture again: it leaves the kept set and a build starts, which makes only that one (the others are kept)."""
+    import listing
+    body=request.get_json(silent=True) or {}
+    try:return jsonify(listing.redraw_scene(ident,index,body.get('url') if isinstance(body.get('url'),str) else None)),202
+    except engine.JobConflictError as exc:abort(409,description=str(exc))
+
 @app.post('/api/projects/<ident>/listing/<task_id>/cancel')
 def listing_cancel(ident,task_id):
     import listing

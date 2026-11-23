@@ -322,7 +322,7 @@ def _scene_record(row):
                    'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts'),
                    # what the next build needs to know before it makes a failed scene again: whether it already had its
                    # extra try and how it was made (without these every rebuild paid for the failed scenes once more)
-                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'people': row.get('people'),
+                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'restored': row.get('restored'), 'people': row.get('people'),
                    'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or [],
             # a check that could not run (quota, timeout) is run again on this picture at the next build
             'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck')}
@@ -624,6 +624,196 @@ def extract(project_id, body):
     return state(project_id)
 
 
+# ---- what the results view shows ----
+# A build leaves two kinds of notes: what a seller can read and act on (in Chinese), and what the templates log about
+# their own layout decisions (in English, for whoever tunes them). The workspace shows the first and folds the second
+# away. The recurring English notes a seller can do something about are put into Chinese here, where the notes are
+# read, so sets built before this change read the same way.
+CJK = re.compile(r'[㐀-鿿]')
+NOTE_WORDS = (
+    (re.compile(r'headline too long for \d+ line\(s\)'), '主标题太长，这一页排不下：请把主标题改短。'),
+    (re.compile(r'product top reaches the headline zone'), '主标题太长，挤到了产品上方：请把主标题改短。'),
+    (re.compile(r'more than 4 features: only the first 4'), '卖点超过 4 条，这一页只标出前 4 条。'),
+    (re.compile(r'no collision-free label arrangement'), '卖点太多，标注排不开：请减少卖点或缩短卖点文字。'),
+    (re.compile(r'copy is longer than the label budget'), '有卖点的文字太长，标注里放不下：请把卖点标题或说明改短。'),
+    (re.compile(r'copy over budget|copy over the band budget'), '卖点文字太长，排不下：请把卖点标题或说明改短。'),
+    (re.compile(r'headline is a stock line|^stock copy:'), '这一页的标题是通用句，不是产品资料：填写主标题或卖点后会更有说服力。'),
+    (re.compile(r'^headline: stock phrase replaced by the figures'), '主标题是套话，这一页改用尺寸数字作标题：可以写一句更具体的主标题。'),
+    (re.compile(r'^item (\d+) \(.*\): no picture'), lambda m: '第 %s 个组件没有图片，没有放进清单：请上传它的模型或图片。' % m.group(1)),
+    (re.compile(r'^item (\d+) reuses the picture of'), lambda m: '第 %s 个组件和别的组件用了同一张图：每个组件需要自己的图片。' % m.group(1)),
+    (re.compile(r'^item ?(\d+): held at the [\d.]+x upscale cap'), lambda m: '第 %s 个组件的图片太小，放大到上限仍偏小：请换一张更清晰的图片。' % m.group(1)),
+    (re.compile(r'^item (\d+): picture touches its frame edge'), lambda m: '第 %s 个组件的图片贴着边缘，可能只是局部：请换一张完整的图片。' % m.group(1)),
+    (re.compile(r'more than 8 components'), '组件超过 8 个，清单图只放得下 8 个。'),
+    (re.compile(r'more than 4 variants'), '变体超过 4 个，这一页只放得下 4 个。'),
+    (re.compile(r'^components without approved views \(not drawn\): (.+)$'), lambda m: '这些组件没有可用的视图，没有画出：%s。' % m.group(1)),
+)
+# The names the review and the layout checks use, as a seller reads them.
+VETO_WORDS = {'product_distorted': '产品变形', 'product_cropped': '产品被裁切', 'text_unreadable': '文字看不清', 'text_broken': '文字断开或乱码',
+              'claim_not_in_facts': '文案超出产品资料', 'scene_product_mismatch': '场景里的产品与模型不符', 'wrong_pointer': '引线指错位置'}
+CHECK_WORDS = {'text_overflow': '文字超出文本框', 'out_of_canvas': '内容超出画面', 'overlap': '元素重叠', 'safe_margin': '贴近画面边缘',
+               'text_max_lines': '文字行数过多', 'upscale': '图片放大过度', 'product_distortion': '产品变形',
+               'font_missing': '缺少字体', 'image_loaded': '图片没有载入', 'js_error': '模板脚本出错', 'lang_mismatch': '文字语言不一致',
+               'leader_crosses_text': '引线穿过文字', 'leader_crossing': '引线交叉', 'text_over_product': '文字压在产品上',
+               'leader_over_product': '引线压在产品上', 'scene_product_cropped': '场景里的产品被裁切', 'frame_cuts_part': '特写框切到小部件',
+               'phrase_break': '词组被断行', 'empty_area': '画面留白过多', 'render_error': '排版出错'}
+FLAG_WORDS = {'product_present': '画面里没有产品', 'shape_consistent': '产品外形不符', 'parts_consistent': '部件不符', 'colours_consistent': '颜色不符',
+              'no_added_text': '图像模型加了文字', 'nothing_attached': '产品上多了东西', 'held_correctly': '握持方式不对', 'contact_plausible': '接触不合理',
+              'used_correctly': '用法不对', 'rests_stably': '摆放不稳', 'scale_plausible': '大小比例不合理', 'installed_correctly': '没有正确安装',
+              'surroundings_new': '环境显旧'}
+QUOTA = re.compile(r'HTTP 402|额度已用尽|欠费')
+REFUSED = re.compile(r'HTTP 40[13]|被 AI 服务拒绝|额度或密钥被拒绝')
+# What a refused note was about, for the status line of a build cut short (the first match wins).
+AREAS = (('translation', ('翻译',)), ('copy', ('文案模型',)), ('callouts', ('卖点的位置', '引线')), ('scenes', ('场景图',)),
+         ('review', ('审核', '视觉检查')))
+AREA_WORDS = {'translation': '文字翻译', 'copy': '标题文案', 'callouts': '卖点定位', 'scenes': '场景图', 'review': '视觉审核'}
+LEVELS = ('critical', 'error', 'warn', 'info')
+ERROR_WORDS = ('未通过', '没有生成', '无法生成', '排版失败', '失败', '没有完成', '没能')
+INFO_WORDS = ('沿用', '取自产品', '合成进背景图', '以核对为准', '按视觉审核修改', '已按场景图')
+
+
+def plain_note(note):
+    """A note as the seller reads it: the English layout notes they can act on put into Chinese, the review's and the
+    checks' own names replaced by words. Returns (text, technical); technical notes are the ones still without Chinese."""
+    text = ' '.join(str(note or '').split())
+    if not CJK.search(text):
+        for pattern, said in NOTE_WORDS:
+            match = pattern.search(text)
+            if match:
+                return (said(match) if callable(said) else said), False
+        return text, True
+    for words in (VETO_WORDS, CHECK_WORDS):
+        text = re.sub(r'\b(%s)\b' % '|'.join(sorted(words, key=len, reverse=True)), lambda m, words=words: words[m.group(1)], text)
+    text = re.sub(r'\bscene(\d+)\b', lambda m: '第 %s 张场景图' % m.group(1), text)
+    return text, False
+
+
+def note_level(text):
+    """How much a note matters: a refused AI service first, then what failed, then what to look at, then what is fine."""
+    if QUOTA.search(text) or REFUSED.search(text):
+        return 'critical'
+    if any(word in text for word in ERROR_WORDS):
+        return 'error'
+    if any(word in text for word in INFO_WORDS):
+        return 'info'
+    return 'warn'
+
+
+def note_view(notes, skipped=()):
+    """{'seller': [{'text', 'level', 'count'}], 'tech': [{'text', 'count'}]}: every note once, with how often it came, the
+    seller's ordered by how much they matter. ``skipped``: [(page name, reason)] for the pages that are not made; one line
+    per reason names every page it holds back (the build says it too: the same line is not repeated)."""
+    seller = {}; tech = {}; held = {}
+    for name, reason in skipped:
+        names = held.setdefault(str(reason).rstrip('。'), [])
+        if name not in names:
+            names.append(name)
+    for note in notes or []:
+        text, technical = plain_note(note)
+        if not text:
+            continue
+        match = re.match(r'^「([^」]+)」(?:没有生成|暂时无法生成)：(.+?)。?$', text)
+        if match and not technical:
+            names = held.setdefault(match.group(2).rstrip('。'), [])
+            if match.group(1) not in names:
+                names.append(match.group(1))
+            continue
+        bucket = tech if technical else seller
+        bucket[text] = bucket.get(text, 0) + 1
+    if brandkit_set.NO_FEATURES.rstrip('。') in held:
+        # the build's "no selling points" note says what the line for those pages says
+        seller = {text: count for text, count in seller.items() if not text.startswith('没有填写卖点')}
+    for reason, names in held.items():
+        seller['%s暂时无法生成：%s。' % ('、'.join('「%s」' % name for name in names), reason)] = 1
+    rows = [{'text': text, 'level': note_level(text), 'count': count} for text, count in seller.items()]
+    rows.sort(key=lambda row: LEVELS.index(row['level']))          # stable: the build's own order within a level
+    return {'seller': rows, 'tech': [{'text': text, 'count': count} for text, count in tech.items()]}
+
+
+def degraded(listing):
+    """What the last build could not finish because the AI service refused it (the quota ran out, HTTP 402, or the key
+    was refused): {'reason': 'quota' | 'refused', 'affected': [areas], 'words': [their names]}, or None. Read from the
+    notes the build kept, so it holds for sets built before it existed too."""
+    notes = [str(note) for note in listing.get('notes') or []]
+    for page in listing.get('pages') or []:
+        notes += [str(note) for note in page.get('notes') or []]
+    hit = [note for note in notes if QUOTA.search(note) or REFUSED.search(note)]
+    if not hit:
+        return None
+    affected = []
+    for note in hit:
+        area = next((name for name, words in AREAS if any(word in note for word in words)), None)
+        if area and area not in affected:
+            affected.append(area)
+    if any(row.get('check_error') for row in (listing.get('scenes') or {}).get('items') or []) and 'scenes' not in affected:
+        affected.append('scenes')            # a scene whose check could not run stays off the pages until it is checked
+    order = [name for name, _ in AREAS]
+    affected.sort(key=order.index)
+    return {'reason': 'quota' if any(QUOTA.search(note) for note in hit) else 'refused', 'affected': affected,
+            'words': [AREA_WORDS[name] for name in affected]}
+
+
+def scene_public(row, index):
+    """One kept scene as the workspace shows it: whether its product check passed, how the product got into the picture,
+    and whether the product in it is the model's own render (only then is it called locked)."""
+    check = row.get('check') if row.get('check') in ('passed', 'failed') else 'unchecked'
+    if row.get('check_error'):
+        check = 'pending'                    # the check could not run (quota, timeout): it runs at the next build
+    placed = row.get('placed') or ('composite' if row.get('model') == 'composite' else None)
+    return {'index': index, 'url': row.get('url'), 'title': row.get('title'), 'body': row.get('body'), 'role': row.get('role'),
+            'check': check, 'placed': placed, 'restored': row.get('restored') is True,
+            # composite: the render set into a photograph; restored: the render put back over the painted product
+            'locked': placed == 'composite' or row.get('restored') is True, 'usable': brandkit_set.usable_scene(row),
+            'issues': [str(item)[:200] for item in row.get('check_issues') or []][:3],
+            'flags': [FLAG_WORDS.get(name, name) for name in row.get('check_flags') or []][:6]}
+
+
+def page_public(page):
+    """One built page with its notes sorted for the seller and the review's and the checks' names in words."""
+    review = page.get('review') if isinstance(page.get('review'), dict) else None
+    checks = page.get('checks') if isinstance(page.get('checks'), dict) else None
+    out = {**page, 'note_view': note_view(page.get('notes') or []), 'ready': page_status(page)['ready']}
+    if review:
+        out['review'] = {**review, 'veto_words': [VETO_WORDS.get(str(kind), str(kind)) for kind in review.get('vetoes') or []]}
+    if checks:
+        out['checks'] = {**checks, 'issue_words': sorted({CHECK_WORDS.get(str(name), str(name)) for name in checks.get('issues') or []})}
+    return out
+
+
+def forget_scene(project_id, index, url=None):
+    """Take one kept scene out of the stored set, with what the set remembers of its failures, so the next build makes
+    that one again and only that one: make_scenes keeps the pictures made with the same settings and makes the missing
+    ones. ``url``, when given, must be the scene's own, so a page showing an older set never removes another picture."""
+    def change(project, listing):
+        store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else {}
+        items = list(store.get('items') or [])
+        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(items):
+            raise KeyError(index)
+        if url and items[index].get('url') != url:
+            raise ValueError('场景图已经变化，请刷新后再试。')
+        row = items.pop(index); role = row.get('role')
+        # failures are remembered by role and order ("work2"): the slot this picture held, and the one now left empty
+        ordinal = sum(1 for other in store['items'][:index] if other.get('role') == role) + 1
+        names = {'%s%d' % (role, ordinal), '%s%d' % (role, sum(1 for other in items if other.get('role') == role) + 1)}
+        failed = [entry for entry in store.get('failed') or [] if not (isinstance(entry, dict) and entry.get('scene') in names)]
+        listing['scenes'] = {**store, 'items': items, 'failed': failed}
+    with LOCK:
+        if any(task.get('project_id') == project_id and task.get('status') in ('queued', 'running') for task in all_records(KIND)):
+            import engine
+            raise engine.JobConflictError('这个项目的套图正在生成，请等待完成后再重画场景图。')
+        return _update(project_id, change)
+
+
+def redraw_scene(project_id, index, url=None):
+    """Make one scene picture again: it leaves the kept set and a build starts, which makes only that one."""
+    import engine
+    engine.require_runtime('render')
+    project = get('project', project_id)
+    if not project.get('analysis') or project.get('status') != 'ready':
+        raise ValueError('请先等待模型分析完成')
+    forget_scene(project_id, index, url)
+    return submit(project_id, {})
+
+
 # ---- tasks ----
 
 def _task_update(task_id, **changes):
@@ -661,15 +851,20 @@ def state(project_id):
     brand = brand_kit.Brand(brand_record, listing.get('product_color'))
     parts = ready_components(project)
     size_mm, known = product_size(project, product)
+    plan = planned(project, product, parts)
     return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
-            'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
-            'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
+            'pages': [page_public(page) for page in listing.get('pages') or []], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
+            # the notes grouped and ordered for the seller, with the pages the plan holds back; the layout log folded away
+            'notes_view': note_view(listing.get('notes') or [], [(brandkit_set.KINDS[row['kind']][0], row['skipped']) for row in plan if row.get('skipped')]),
+            # what the last build could not finish because the AI service refused it (quota): the workspace offers to fill it in
+            'degraded': degraded(listing),
+            'plan': plan, 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
             # which pages will carry the logo, the legal line and each badge, and what no page will show (before a build)
-            'brand_usage': brandkit_set.brand_usage(brand_record, [row['kind'] for row in planned(project, product, parts) if not row.get('skipped')]),
+            'brand_usage': brandkit_set.brand_usage(brand_record, [row['kind'] for row in plan if not row.get('skipped')]),
             'order': list(brandkit_set.ORDER), 'auto': list(AUTO_ORDER),
-            'scenes': [{key: row.get(key) for key in ('url', 'title', 'body', 'role')} for row in (listing.get('scenes') or {}).get('items', [])],
+            'scenes': [scene_public(row, index) for index, row in enumerate((listing.get('scenes') or {}).get('items', []))],
             'scene_options': _scene_options(),
             'layout_available': brandkit_render.available(),
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
@@ -1335,7 +1530,7 @@ def _run(task_id):
         TASKS.pop(task_id, None)
 
 
-REVIEW_WORDS = {'passed': '通过', 'failed': '未通过', 'not_verified': '未审核', 'manual_review': '需人工查看'}
+REVIEW_WORDS = {'passed': '通过', 'revised': '修改后通过', 'failed': '未通过', 'not_verified': '未审核', 'manual_review': '需人工查看'}
 
 
 def page_status(page):
@@ -1349,7 +1544,7 @@ def page_status(page):
     layout = 'passed' if checks.get('passed') else 'failed'
     return {'file': page.get('file'), 'kind': page.get('kind'), 'title': brandkit_set.KINDS.get(page.get('kind'), ('', ''))[0],
             'layout': layout, 'review': state, 'score': review.get('score'), 'vetoes': [v for v in vetoes if v],
-            'summary': str(review.get('summary') or '')[:600], 'issues': issues, 'ready': layout == 'passed' and state == 'passed'}
+            'summary': str(review.get('summary') or '')[:600], 'issues': issues, 'ready': layout == 'passed' and state in ('passed', 'revised')}
 
 
 def review_manifest(project, listing, included):

@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=33">
+<link rel="stylesheet" href="/static/styles.css?v=34">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -134,6 +134,11 @@
 <button id="zoomImage" type="button" class="icon-button" title="查看原图" aria-label="查看原图"><svg class="icon"><use href="#i-expand"/></svg></button>
 </div>
 </div>
+<section id="listingStage" class="listing-stage" aria-label="套图结果" hidden>
+<header id="listingStageHead" class="listing-stage-head"></header>
+<div id="listingStageNotice"></div>
+<div id="listingStageBody" class="listing-stage-body"></div>
+</section>
 <div id="viewer" class="viewer">
 <div id="realtimeViewport" class="realtime-viewport" hidden></div>
 <div id="viewportStatus" class="viewport-status" role="status" aria-live="polite" hidden>
@@ -649,9 +654,10 @@
 <a id="listingDownloadReviewed" class="button secondary" href="#" hidden title="只包含版式检查和视觉审核都通过的图片，并附每张图的审核状态">下载已通过审核的（ZIP）</a><a id="listingDownload" class="button subtle" href="#" hidden title="包含全部已生成的图片，没通过或没审核的也在内，并附每张图的审核状态">下载草稿（全部）</a>
 <span id="listingStatus" class="listing-status" role="status"></span>
 </div>
+<div id="listingDegraded" class="listing-degraded-slot"></div>
 <div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
 <div id="listingPlan" class="listing-plan" role="group" aria-label="要生成的图片"></div>
-<ul id="listingNotes" class="listing-notes"></ul>
+<ul id="listingNotes" class="listing-notes" aria-label="生成提示"></ul>
 <div id="listingPages" class="listing-pages"></div>
 </section>
 </div>
@@ -893,6 +899,6 @@
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
 <script src="/static/app.js?v=33" defer>
 </script>
-<script src="/static/listing.js?v=37" defer></script>
+<script src="/static/listing.js?v=38" defer></script>
 </body>
 </html>
