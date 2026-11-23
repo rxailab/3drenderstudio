@@ -31,7 +31,7 @@ class SlimPollingTests(unittest.TestCase):
             self.replace(module, 'PROCESSES', {})
             self.replace(module, 'QUEUE', queue.Queue())
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         outputs = [{'job_id': 'j%d' % index, 'shot_id': shot, 'quality': quality, 'version': 1, 'created_at': index,
                     'png_url': '/files/alpha/%d.png' % index, 'jpg_url': '/files/alpha/%d.jpg' % index,
                     'checks': {'large': 'x' * 2000}, 'metrics': {'large': list(range(200))}}
