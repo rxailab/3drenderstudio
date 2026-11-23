@@ -32,6 +32,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageFilter, ImageMath, ImageOps
 
 import ecommerce_platforms as presets
+import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, all_records, atomic_json
 
 KIND = 'ecommerce_export'
@@ -510,10 +511,11 @@ def product_matte(task_id, project_id, output, cancelled=lambda: False):
         atomic_json(folder / 'request.json', request)
         command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '4', '--python-exit-code', '1',
                    '--python', str(MATTE_SCRIPT), '--', str(folder / 'request.json')]
-        started = time.monotonic()
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # Coverage at 16 samples is short work: the light lane, beside a render (on the CPU when one is running).
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, ident=task_id, lane=blender_runner.LIGHT, cancelled=cancelled, cancel_error=ExportCancelled,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.monotonic()
             PROCESSES[task_id] = process
             try:
                 while process.poll() is None:

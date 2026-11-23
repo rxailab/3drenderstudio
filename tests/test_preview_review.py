@@ -68,7 +68,7 @@ class PreviewReviewTests(unittest.TestCase):
     def test_pick_rejects_out_of_bounds_before_running_blender(self):
         job,original=self.fixtures()
         body={'output_id':'j','shot_id':'hero','quality':'preview','version':1,'points':[{'id':'a','x':float('nan'),'y':.5}]}
-        with patch('engine.subprocess.run') as process:
+        with patch('blender_runner.run') as process:
             with self.assertRaises(ValueError):engine.pick_output('p',body)
             process.assert_not_called()
 

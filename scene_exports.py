@@ -11,6 +11,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
+import blender_runner
 from studio_store import ROOT,DATA,LOCK,get,put,all_records,atomic_json
 
 QUEUE=queue.Queue()
@@ -92,10 +93,12 @@ def stop(ident):
             if proc and proc.poll() is None:proc.terminate()
         return e
 
-def run_process(item,command,log_path,timeout):
-    started=time.monotonic()
-    with log_path.open('w',encoding='utf-8') as log:
-        proc=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+def run_process(item,command,log_path,timeout,lane=None):
+    # Packing a scene renders nothing: Blender takes the light lane; c4dpy is not Blender and runs ungated (still registered).
+    with log_path.open('w',encoding='utf-8') as log,blender_runner.launched(
+            command,ident=item['id'],lane=lane,cancelled=lambda:get('export',item['id'])['status']=='cancelled',
+            stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT) as proc:
+        started=time.monotonic()
         PROCESSES[item['id']]=proc
         try:
             while proc.poll() is None:
@@ -162,7 +165,7 @@ def _execute(ident):
         if not exe:raise RuntimeError('未找到 Blender')
         command=[exe,'-b','--factory-startup','--disable-autoexec','--python-exit-code','1','--python',str(ROOT/'blender/export_scene.py'),'--',str(request_file)]
         update(ident,stage='打包 Blender 场景、纹理并校验重开')
-        code=run_process(item,command,base/'blender-export.log',600)
+        code=run_process(item,command,base/'blender-export.log',600,lane=blender_runner.LIGHT)
         result=read_result(package/'result.json',code)
         warnings=result.get('warnings',[])
         atomic_json(package/'export-source.json',{k:item[k] for k in ['project_id','shot_id','shot_label','quality','version','source_sha256']})
