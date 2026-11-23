@@ -1338,9 +1338,14 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
     failed_before = {row.get('scene'): row for row in ((previous or {}).get('failed') or [])
                      if (previous or {}).get('key') == key and isinstance(row, dict)}
     import scene_imagegen
-    spare = {}
+    # A kept picture goes back to the slot it was made for ("use2"); one from before slots were recorded fills its role's
+    # slots in order. Redrawing the first of two "use" scenes then remakes that one, not the second.
+    own = {}; spare = {}
     for row in kept:
-        spare.setdefault(row.get('role'), []).append(row)
+        if row.get('slot') and row['slot'] not in own:
+            own[row['slot']] = row
+        else:
+            spare.setdefault(row.get('role'), []).append(row)
     if kept:
         notes.append('场景图沿用上次生成的 %d 张，补生成缺少的 %d 张。' % (len(kept), max(0, len(briefs) - len(kept))))
     # Per scene, in brief order: its row, its notes and its failure memory. Filled by the workers out of order and read
@@ -1351,8 +1356,11 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
             raise InterruptedError()
         name = '%s%d' % (brief['role'], sum(1 for other in briefs[:index] if other['role'] == brief['role']) + 1)
         before = failed_before.get(name) or {}
-        if spare.get(brief['role']):
-            slots[index] = spare[brief['role']].pop(0)
+        mine = own.pop(name, None)
+        if mine is None and spare.get(brief['role']):
+            mine = spare[brief['role']].pop(0)
+        if mine is not None:
+            slots[index] = mine
             if before and failures is not None:
                 failed[index].append(before)          # kept for later, not dropped because a kept picture filled the slot
             continue
@@ -1402,7 +1410,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
             said[index].append('第 %d 张场景图由产品模型渲染后合成进背景图：产品按实际尺寸摆放，没有经过图像模型重画。' % (index + 1))
         slots[index] = {'path': str(picture['png']), 'title': caption['title'], 'body': caption['body'], 'role': brief['role'],
                         # how the picture came to be: the model's render set into a backdrop, or painted by the image model
-                        'placed': 'composite' if composite else 'painted',
+                        'placed': 'composite' if composite else 'painted', 'slot': name,
                         # the product's own render put back over the one the image model painted (scene_imagegen)
                         'restored': (record.get('restored') or (picture.get('record') or {}).get('restored')) is True,
                         'focus': [round((box[0] + box[2]) / 2, 3), round((box[1] + box[3]) / 2, 3)], 'box': box,

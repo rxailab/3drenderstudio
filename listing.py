@@ -11,6 +11,7 @@ A page prints only numbers the user entered or that were measured on the model.
 """
 import concurrent.futures
 import copy
+import functools
 import hashlib
 import io
 import math
@@ -325,7 +326,7 @@ def _scene_record(row):
                    'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'restored': row.get('restored'), 'people': row.get('people'),
                    'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or [],
             # a check that could not run (quota, timeout) is run again on this picture at the next build
-            'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck')}
+            'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck'), 'slot': row.get('slot')}
 
 
 def _update(project_id, change):
@@ -514,6 +515,10 @@ def set_default_brand(project_id, clear=False):
         _write_shared(lambda data: data.pop('default', None))
     else:
         project = get('project', project_id)
+        listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
+        if not isinstance(listing.get('brand'), dict):
+            # a project without a saved brand would make the blank factory brand everyone's default
+            raise ValueError('这个项目还没有保存过品牌设置，先保存品牌再设为默认。')
         _, record, _ = stored(project)
         _remember_brand('default', project, record)
     return brand_sources(project_id)
@@ -724,6 +729,15 @@ def _own_lines(hint):
     return rows[:MAX_FEATURES]
 
 
+def _project_tagged(function):
+    """Run ``function(project_id, ...)`` with its AI requests tagged with the project, so they count toward its spend."""
+    @functools.wraps(function)
+    def wrapper(project_id, *args, **kwargs):
+        import ai_client
+        return ai_client.in_project(project_id, function, project_id, *args, **kwargs)
+    return wrapper
+
+
 def drafted_features(features, hint, language, product):
     """(features, notes): the drafted selling points the user actually gave. Pliers uploaded with no description were
     printed with "Angled cutting edges" and "Cylinder grip": the drafter made points up from the product name and the
@@ -747,6 +761,7 @@ def drafted_features(features, hint, language, product):
     return clean[:MAX_FEATURES], notes
 
 
+@_project_tagged
 def draft(project_id, body):
     """Write the product record's words from the model's names and the user's notes (by the copy model when one is configured)."""
     import info_layer
@@ -832,6 +847,7 @@ UNIT_MM = {'mm': 1, '毫米': 1, 'cm': 10, '厘米': 10, '公分': 10, 'm': 1000
            '″': 25.4, '英寸': 25.4, 'ft': 304.8, 'feet': 304.8, 'foot': 304.8, '英尺': 304.8}
 
 
+@_project_tagged
 def extract(project_id, body):
     """Sort a pasted product description into the product record by the text model, keeping only what the text says:
     a field with a number the text does not contain is left out. Fields the text fills replace what was there; the
@@ -995,10 +1011,15 @@ def plain_note(note):
             if match:
                 return (said(match) if callable(said) else said), False
         return text, True
+    return worded(text), False
+
+
+def worded(text):
+    """The review's and the checks' own names (scene_product_mismatch, text_overflow, scene2) replaced by words."""
+    text = str(text or '')
     for words in (VETO_WORDS, CHECK_WORDS):
-        text = re.sub(r'\b(%s)\b' % '|'.join(sorted(words, key=len, reverse=True)), lambda m, words=words: words[m.group(1)], text)
-    text = re.sub(r'\bscene(\d+)\b', lambda m: '第 %s 张场景图' % m.group(1), text)
-    return text, False
+        text = re.sub(r'(?<![A-Za-z_])(%s)(?![A-Za-z_])' % '|'.join(sorted(words, key=len, reverse=True)), lambda m, words=words: words[m.group(1)], text)
+    return re.sub(r'(?<![A-Za-z_])scene(\d+)(?![A-Za-z_\d])', lambda m: '第 %s 张场景图' % m.group(1), text)
 
 
 def note_level(text):
@@ -1087,7 +1108,11 @@ def page_public(page):
     checks = page.get('checks') if isinstance(page.get('checks'), dict) else None
     out = {**page, 'note_view': note_view(page.get('notes') or []), 'ready': page_status(page)['ready']}
     if review:
-        out['review'] = {**review, 'veto_words': [VETO_WORDS.get(str(kind), str(kind)) for kind in review.get('vetoes') or []]}
+        # the reviewer writes in the seller's language but names its own checks ("构成scene_product_mismatch"): put into words
+        issues = [{key: worded(value) if key in ('region', 'evidence', 'fix') else value for key, value in item.items()} if isinstance(item, dict)
+                  else worded(item) for item in review.get('issues') or []]
+        out['review'] = {**review, 'summary': worded(review.get('summary')), 'issues': issues,
+                         'veto_words': [VETO_WORDS.get(str(kind), str(kind)) for kind in review.get('vetoes') or []]}
     if checks:
         out['checks'] = {**checks, 'issue_words': sorted({CHECK_WORDS.get(str(name), str(name)) for name in checks.get('issues') or []})}
     return out
@@ -1124,6 +1149,17 @@ def redraw_scene(project_id, index, url=None):
     project = get('project', project_id)
     if not project.get('analysis') or project.get('status') != 'ready':
         raise ValueError('请先等待模型分析完成')
+    # Taken out only when the build that follows can make a new one: otherwise the paid picture would just be gone.
+    import brandkit_set
+    product, _, _ = stored(project)
+    settings = product.get('scenes') or {}
+    if not brandkit_set.image_model_ready():
+        raise ValueError('图像模型未配置或已关闭，现在重画不了这张场景图（原图保留）。')
+    if not settings.get('enabled', True):
+        raise ValueError('场景图已关闭：请先在「场景」里打开 AI 场景图，再重画（原图保留）。')
+    pages = product.get('pages')
+    if isinstance(pages, list) and not set(pages) & {'T12', 'T04', 'T08'}:
+        raise ValueError('图片清单里没有用到场景图的页面（海报、场景+参数、使用场景组图），重画的图不会被使用（原图保留）。')
     forget_scene(project_id, index, url)
     return submit(project_id, {})
 

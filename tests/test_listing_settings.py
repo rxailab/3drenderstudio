@@ -96,6 +96,11 @@ class SharedBrandTests(StoreCase):
         listing.adopt_shared_brand(ident)
         self.assertEqual(listing.state(ident)['brand']['name'], 'OTHER')
 
+    def test_a_project_without_a_saved_brand_cannot_become_the_default(self):
+        second = self.second()
+        with self.assertRaisesRegex(ValueError, '还没有保存过品牌'):
+            listing.set_default_brand(second)
+
     def test_the_default_brand_wins_over_the_last_one_until_it_is_cleared(self):
         listing.save_brand('fixture', {'name': 'DEFAULTCO'})
         listing.set_default_brand('fixture')

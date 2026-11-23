@@ -866,6 +866,27 @@ class BuildTests(StoreCase):
             self.assertEqual(busy.status_code, 409)
             self.assertEqual(len(store.get('project', 'fixture')['listing']['scenes']['items']), 2)
 
+    def test_a_scene_is_redrawn_only_when_a_new_one_can_be_made_and_goes_back_to_its_own_slot(self):
+        self.with_scenes()
+        listing.build('fixture')
+        kept = [row['url'] for row in listing.state('fixture')['scenes']]
+        # no image model: the picture stays where it is, nothing is taken out
+        with patch.object(listing.brandkit_set, 'image_model_ready', return_value=False):
+            with self.assertRaisesRegex(ValueError, '原图保留'):
+                listing.redraw_scene('fixture', 0, kept[0])
+        self.assertEqual([row['url'] for row in store.get('project', 'fixture')['listing']['scenes']['items']], kept)
+        import app as application
+        self.assertEqual(application.app.test_client().post('/api/projects/fixture/listing/scenes/0/redraw', json=[1]).status_code, 400)
+        # every kept row knows the slot it was made for; a rebuild puts it back there, so the clicked one is the one made again
+        slots = [row.get('slot') for row in store.get('project', 'fixture')['listing']['scenes']['items']]
+        self.assertTrue(all(slots), slots)
+        first_brief = self.scenes[0]; made = len(self.scenes)
+        listing.forget_scene('fixture', 0, url=kept[0])
+        listing.build('fixture')
+        self.assertEqual(len(self.scenes), made + 1)
+        self.assertEqual(self.scenes[-1]['scene'], first_brief['scene'])                 # the first scene's own brief, not another
+        self.assertEqual([row['url'] for row in listing.state('fixture')['scenes']][1:], kept[1:])
+
     def test_the_state_says_what_a_refused_ai_service_left_undone(self):
         def refused(project, record):
             record['notes'] = ['翻译产品文字时文本模型没有回应（AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402））。',
@@ -1334,6 +1355,12 @@ class WorkpieceNameTests(unittest.TestCase):
 class ResultsViewTests(unittest.TestCase):
     """What the workspace shows of a built set: the notes a seller reads, grouped and ordered, and the scenes' status."""
 
+
+    def test_the_reviewers_own_check_names_are_put_into_words_even_inside_chinese(self):
+        page = listing.page_public({'notes': [], 'review': {'summary': '属于实质差异，构成scene_product_mismatch。', 'vetoes': ['scene_product_mismatch'],
+                                                            'issues': [{'region': 'scene2', 'evidence': '构成scene_product_mismatch'}, 'text_overflow']}})
+        self.assertEqual(page['review']['summary'], '属于实质差异，构成场景里的产品与模型不符。')
+        self.assertEqual(page['review']['issues'], [{'region': '第 2 张场景图', 'evidence': '构成场景里的产品与模型不符'}, '文字超出文本框'])
     def test_layout_log_lines_are_technical_and_the_actionable_ones_read_in_chinese(self):
         self.assertEqual(listing.plain_note('d3: value pill longer than its line'), ('d3: value pill longer than its line', True))
         self.assertEqual(listing.plain_note('headline: stock phrase replaced by the figures (BUILT TOUGH)')[1], False)

@@ -360,7 +360,8 @@ def submit(project_id, body):
         _snapshot(project,source)
         task={'id':uuid.uuid4().hex,'project_id':project_id,'status':'queued','stage':'等待材质代理执行','error':None,'source':source,'points':copy.deepcopy(points),'prompt':prompt.strip(),'use_base_color':body.get('use_base_color',False),'request_hash':request_hash,'base_plan_hash':_hash(project['plan']),'created_at':time.time(),'downloaded_files':{}}
         put(KIND,task)
-        threading.Thread(target=_run,args=(task['id'],),daemon=True,name='material-'+task['id'][:8]).start()
+        import ai_client
+        threading.Thread(target=ai_client.tagged(project_id,_run),args=(task['id'],),daemon=True,name='material-'+task['id'][:8]).start()
         return task
 
 
@@ -596,7 +597,8 @@ def schedule_after_preview(project_id, completed_job_id):
             'chain':chain,'render_shot_ids':chain['shot_ids'],'baseline_plan':copy.deepcopy(project['plan']),'baseline_outputs':records}
         put(KIND,task)
         _set_auto_state(project,chain,'queued',task['stage'],task_id=task['id'])
-        threading.Thread(target=_run,args=(task['id'],),daemon=True,name='automatic-material-'+task['id'][:8]).start()
+        import ai_client
+        threading.Thread(target=ai_client.tagged(task['project_id'],_run),args=(task['id'],),daemon=True,name='automatic-material-'+task['id'][:8]).start()
 
 
 def finish_failed_preview(project_id, job_id):

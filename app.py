@@ -711,6 +711,7 @@ def listing_scene_redraw(ident,index):
     """Make one scene picture again: it leaves the kept set and a build starts, which makes only that one (the others are kept)."""
     import listing
     body=request.get_json(silent=True) or {}
+    if not isinstance(body,dict):raise ValueError('请求内容无效')
     try:return jsonify(listing.redraw_scene(ident,index,body.get('url') if isinstance(body.get('url'),str) else None)),202
     except engine.JobConflictError as exc:abort(409,description=str(exc))
 

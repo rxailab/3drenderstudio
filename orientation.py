@@ -760,7 +760,9 @@ def submit(project_id, body):
                 'base_version': project['version'], 'shot_id': body.get('shot_id') if isinstance(body.get('shot_id'), str) else None,
                 'created_at': time.time()}
         put(KIND, task)
-        threading.Thread(target=_run, args=(task['id'],), daemon=True, name='orient-' + task['id'][:8]).start()
+        import ai_client
+        # its vision requests count toward the project's AI spend
+        threading.Thread(target=ai_client.tagged(project_id, _run), args=(task['id'],), daemon=True, name='orient-' + task['id'][:8]).start()
         return task_view(task)
 
 

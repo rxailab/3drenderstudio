@@ -20,10 +20,18 @@ function listingOpen() {
   if(typeof setInspectorTab==='function')setInspectorTab('listing');else listingActivate();
 }
 // Called whenever the 套图 tab is shown (and when another project is opened with it showing).
-let listingSwitching=null;
+let listingSwitching=null,listingSeen='';
+function listingProjectSeen() { return current?`${current.id}|${current.version}|${current.status}|${current.analysis?1:0}`:''; }
 async function listingActivate(refresh=true) {
   if(!current || !listingVisible())return;
-  if(listingProject===current.id && (listingState || !refresh)){if(refresh)listingLoad(false).catch(()=>{});return;}
+  if(listingProject===current.id && (listingState || !refresh)){
+    // The project changed under the panel (its analysis finished, a plan edit): what the panel shows is read again, or
+    // 生成套图 stays disabled after an upload until the seller switches tabs.
+    const seen=listingProjectSeen();
+    if(refresh || (listingState && seen!==listingSeen)){listingSeen=seen;listingLoad(false).catch(()=>{});}
+    return;
+  }
+  listingSeen=listingProjectSeen();
   const target=current.id;
   if(listingSwitching===target)return;            // already switching to this project (a redraw and the tab both asked)
   listingSwitching=target;
@@ -253,7 +261,11 @@ function listingMountingHTML() {
     <p class="field-help" id="listingMountingNote">壁挂产品在场景图里挂在墙上、正面朝镜头。安装方式是场景图的生成依据之一：改动后，下次生成套图会重新生成场景图（会产生图像模型费用）。</p></fieldset>`;
 }
 async function listingSaveMounting(value) {
-  const id=listingOpenFor();if(!id || listingBusy)return;
+  const id=listingOpenFor();if(!id)return;
+  if(listingBusy){
+    // not saved while another action runs: the choice shown goes back to the saved one, not left looking saved
+    toast('正在处理上一个操作，请稍后再改安装方式',true);if(listingTab==='usecase')listingRenderUsecase();return;
+  }
   listingBusy=true;
   try{const state=await api(`/api/projects/${id}/listing/mounting`,{method:'PUT',body:{mounting:value}});
     if(id!==listingOpenFor())return;
@@ -463,7 +475,9 @@ function listingCostText(estimate) {
 }
 function listingRenderCost(state,active) {
   const cost=$('listingCost'),spend=$('listingSpend'),estimate=state.estimate,basis=estimate?.basis || {};
-  if(cost){const text=active || !state.ready?'':listingCostText(estimate);cost.hidden=!text;cost.textContent=text;
+  // estimated by the server from the saved settings: unsaved scene or page changes are said, not silently ignored
+  if(cost){const text=active || !state.ready?'':listingCostText(estimate)+(listingDirty.product?'（有未保存的改动，保存后按新设置重新估算）':'');
+    cost.hidden=!text;cost.textContent=text;
     cost.title=text?`估算：每张新场景图约 ${basis.tries || 1.5} 次图像模型调用（1536 px medium 每次约 $${basis.image_call || 0.075}），每页视觉审核约 $${(basis.review_page || [0.04,0.08]).join('–')}；沿用的场景图、标题和审核结果不再收费。实际费用以服务商账单为准。`:'';}
   if(spend){const s=state.spend;spend.hidden=!(s && s.calls);
     spend.textContent=s && s.calls?`本项目已记录的 AI 花费约 ${listingUSD(s.usd)}（${s.calls} 次调用${s.unpriced?`，其中 ${s.unpriced} 次的模型价格未知，未计入`:''}；按官方原价估算，${s.since?new Date(s.since*1000).toLocaleDateString('zh-CN')+' 起':'从本版本起'}记录）。`:'';}
@@ -521,6 +535,7 @@ function listingRenderMain() {
     listingSetHTML($('listingStageBody'),shown);
     listingSetHTML($('listingPages'),'<p class="field-help">套图显示在左侧主画面：点任意一张查看大图、审核结果和提示。</p>');
   }else{
+    listingSetHTML($('listingStageBody'),'');           // a hidden copy would duplicate the detail's ids and buttons
     const back=stage && listingHasResults() && listingStageOff?'<p><button type="button" class="button subtle" data-action="stage-set">在主画面查看套图</button></p>':'';
     listingSetHTML($('listingPages'),back+shown);
   }
@@ -560,6 +575,10 @@ function listingOnStageKey(event) {
 
 // ---- reading the forms ----
 function listingOnInput(event) {
+  listingOnInputOnce(event);
+  if(listingState && listingDirty.product)listingRenderCost(listingState,listingTaskActive());   // the estimate says it is stale
+}
+function listingOnInputOnce(event) {
   const node=event.target,scope=node.dataset.scope,key=node.dataset.key;if(!scope || !listingEdit)return;
   const p=listingEdit.product,index=Number(node.dataset.index);
   if(scope==='product'){p[key]=key==='size_mm'?listingNumber(node.value):node.value;listingDirty.product=true;}
@@ -672,7 +691,7 @@ async function listingOnClick(event) {
       const id=listingProject;
       const state=await api(`/api/projects/${id}/listing/brand/copy`,{method:'POST',body:{source}});
       if(listingOpenFor()!==id)return;
-      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);listingRenderBrand();toast('品牌已复制到这个项目');
+      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);if(listingTab==='brand')listingRenderBrand();toast('品牌已复制到这个项目');
     }
     else if(action==='brand-default' || action==='brand-default-clear'){
       const id=listingProject,clear=action==='brand-default-clear';
