@@ -43,14 +43,17 @@ def project(size_mm=900):
 def library(test):
     folder = Path(tempfile.mkdtemp()); test.addCleanup(shutil.rmtree, folder, True)
     holder = patch.object(scene_backdrop, 'LIBRARY', folder); holder.start(); test.addCleanup(holder.stop)
+    # Whether a place looks new is a vision model's answer: none here unless a test gives one
+    looks = patch.object(scene_imagegen, 'place_check', return_value=None); test.looks = looks.start(); test.addCleanup(looks.stop)
     return folder
 
 
-def stock(folder, spec, geometry=GOOD):
-    """A measured backdrop in the library."""
+def stock(folder, spec, geometry=GOOD, look=scene_backdrop.LOOK):
+    """A measured backdrop in the library (made under ``look``; None: before places were asked to look new)."""
     place = folder / spec['id']; place.mkdir(parents=True)
     Image.new('RGB', (16, 16), (150, 150, 150)).save(place / 'backdrop.png'); Image.new('L', (16, 16), 255).save(place / 'support.png')
     (place / 'depth.npy').write_bytes(b'x'); (place / 'geometry.json').write_text(json.dumps(geometry))
+    (place / 'backdrop.json').write_text(json.dumps({'version': 1, 'id': spec['id'], **({'look': look} if look else {})}))
     return place
 
 
@@ -135,6 +138,58 @@ class LibraryTests(unittest.TestCase):
                 scene_backdrop.ensure(small)
         self.assertEqual(paint.call_count, scene_backdrop.MAX_REJECTED)
         self.assertEqual(json.loads((folder / 'backdrop.json').read_text())['prompt'], small['prompt'])    # how the picture was really made
+
+    def test_a_place_that_looks_used_is_painted_again_and_then_given_up_for_this_time(self):
+        self.looks.side_effect = [{'new': False, 'issues': ['the bench top is scored']}, {'new': True, 'issues': []}]
+        with patch.object(scene_backdrop, 'can_measure', return_value=True), patch.object(scene_backdrop, '_paint', return_value=self.png) as paint, \
+                patch.object(scene_backdrop, 'measure', side_effect=self.measured(GOOD)):
+            folder, _ = scene_backdrop.ensure(self.spec)
+        self.assertEqual(paint.call_count, 2); self.assertTrue((self.folder / (self.spec['id'] + '.worn-1.png')).is_file())
+        made = json.loads((folder / 'backdrop.json').read_text())
+        self.assertEqual((made['look'], made['looked']), (scene_backdrop.LOOK, True))
+        self.assertIn('brand new and spotless', self.spec['prompt'])
+        shutil.rmtree(folder); self.looks.side_effect = None
+        self.looks.return_value = {'new': False, 'issues': ['oil on the floor']}
+        with patch.object(scene_backdrop, 'can_measure', return_value=True), patch.object(scene_backdrop, '_paint', return_value=self.png) as paint, \
+                patch.object(scene_backdrop, 'measure') as measure:
+            with self.assertRaises(scene_backdrop.Unavailable):
+                scene_backdrop.ensure(self.spec)
+        self.assertEqual(paint.call_count, scene_backdrop.PAINTS); measure.assert_not_called()
+        # a worn picture is not a measurement failure: it never uses up the place's measurement tries
+        self.assertFalse((self.folder / (self.spec['id'] + '.rejected.json')).exists())
+        worn = json.loads((self.folder / (self.spec['id'] + '.worn.json')).read_text())
+        self.assertEqual((worn['count'], worn['look']), (1, scene_backdrop.LOOK)); self.assertIn('oil on the floor', worn['reason'])
+        with patch.object(scene_backdrop, 'can_measure', return_value=True), patch.object(scene_backdrop, '_paint', return_value=self.png) as paint:
+            with self.assertRaises(scene_backdrop.Unavailable):
+                scene_backdrop.ensure(self.spec)                             # the second worn round
+            with self.assertRaises(scene_backdrop.Unavailable) as said:
+                scene_backdrop.ensure(self.spec)                             # paused: nothing painted
+        self.assertEqual(paint.call_count, scene_backdrop.PAINTS); self.assertIn('陈旧或脏乱', str(said.exception))
+        # after the pause the place is painted again, and a picture that looks new is kept
+        self.looks.return_value = {'new': True, 'issues': []}
+        with patch.object(scene_backdrop, 'WORN_PAUSE', -1), patch.object(scene_backdrop, 'can_measure', return_value=True), \
+                patch.object(scene_backdrop, '_paint', return_value=self.png), patch.object(scene_backdrop, 'measure', side_effect=self.measured(GOOD)):
+            self.assertTrue(scene_backdrop.ensure(self.spec)[0].is_dir())
+
+    def test_a_backdrop_made_before_places_had_to_look_new_is_looked_at_once(self):
+        place = stock(self.folder, self.spec, look=None)
+        self.assertIsNone(scene_backdrop.ready(self.spec))
+        self.assertFalse(scene_backdrop.revet(self.spec))                    # nobody could look: it stays out
+        self.looks.return_value = {'new': True, 'issues': []}
+        self.assertTrue(scene_backdrop.revet(self.spec)); self.assertEqual(scene_backdrop.ready(self.spec), place)
+        (place / 'backdrop.json').write_text(json.dumps({'version': 1, 'id': self.spec['id']}))       # an old one again, that looks used
+        self.looks.return_value = {'new': False, 'issues': ['the bench top is scored']}; self.looks.reset_mock()
+        self.assertFalse(scene_backdrop.revet(self.spec)); self.assertFalse(scene_backdrop.revet(self.spec))
+        self.assertEqual(self.looks.call_count, 1)                           # marked worn: not asked again
+        self.assertEqual(scene_backdrop._made(place)['worn'], ['the bench top is scored'])
+        self.assertIsNone(scene_backdrop.ready(self.spec))
+
+    def test_an_old_backdrop_is_looked_at_under_the_place_lock(self):
+        stock(self.folder, self.spec, look=None); seen = []
+        def check(path):
+            seen.append(scene_backdrop._place_lock(self.spec).locked()); return {'new': True, 'issues': []}
+        self.looks.side_effect = check
+        self.assertTrue(scene_backdrop.revet(self.spec)); self.assertEqual(seen, [True])
 
     def test_without_the_measuring_environment_nothing_is_painted(self):
         with patch.object(scene_backdrop, 'can_measure', return_value=False), patch.object(scene_backdrop, '_paint') as paint:

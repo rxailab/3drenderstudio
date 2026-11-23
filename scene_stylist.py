@@ -98,7 +98,8 @@ GENERIC = {'id': 'generic', 'label': '通用陈列', 'setting': 'studio', 'size_
            'props': [(('potted plant',), 'behind', 'upright'), (('book',), 'beside', 'upright'), (('ceramic vase',), 'beside', 'upright')]}
 # Floor and wall per setting: preferred catalogue textures, then a search, then a plain colour.
 SURFACES = {
-    'workshop': {'floor': ('scuffed_cement', 'smooth_concrete_floor', 'concrete floor'), 'wall': ('concrete_wall_008', 'plaster_grey_04', 'concrete wall'),
+    # Every place is shown new: no scuffed, stained or weathered texture is chosen (WORN_SURFACE).
+    'workshop': {'floor': ('smooth_concrete_floor', 'concrete floor'), 'wall': ('plaster_grey_04', 'concrete_wall_008', 'concrete wall'),
                  'floor_color': [.55, .53, .5], 'wall_color': [.6, .6, .58]},
     # At home the wall is plain paint: a clean backdrop the product stands out against.
     'kitchen': {'floor': ('oak_veneer_01', 'wood_table', 'wood table'), 'wall': (), 'floor_color': [.62, .5, .38], 'wall_color': [.9, .89, .86]},
@@ -109,6 +110,8 @@ SURFACES = {
                'floor_color': [.55, .52, .47], 'wall_color': [.5, .42, .34]},
     'studio': {'floor': ('white_plaster_02', 'plaster'), 'wall': (), 'floor_color': [.8, .8, .78], 'wall_color': [.86, .86, .84]},
 }
+WORN_SURFACE = re.compile(r'\b(?:worn|dirty|dirt|grimy|grime|grunge|grungy|rust|rusty|rusted|scuffed|stained|stains|old|aged|weathered|'
+                          r'damaged|cracked|peeling|mossy|muddy|decayed|broken|rotten|graffiti|scratched|dusty)\b', re.I)
 # How large a prop may be next to the product, by where it goes: (smallest, ideal, largest) as shares of the product's size.
 PROP_SIZE = {'on_top': (.05, .3, .75), 'inside': (.05, .3, .75), 'beside': (.08, .45, .9), 'behind': (.45, 1.1, 1.8)}
 EXCLUDED = ('weapons', 'firearms', 'buildings', 'structures', 'trees', 'ground cover', 'rocks', 'ships', 'creature')
@@ -121,7 +124,7 @@ Return data only:
 - props: 3 to 9 things. concept is a short plain English noun phrase for ONE thing ("adjustable wrench", "potted plant"); prefer things from available_models, which lists every ready-made model that can actually be used, and do not ask for the product itself or another product of its kind. zone says where it goes: on_top (resting on the product's flat top), inside (in a drawer or compartment that will be opened to show it), beside (on the ground next to it), behind (taller things set back to give depth). pose is flat for things that lie down (hand tools, books lying), upright for things that stand, auto if unsure.
 - open_compartment: true only if the product visibly has drawers or a compartment and showing its contents helps.
 - summary: one sentence in the user's language describing the scene.
-Choose things a real user of this product would have at hand; a believable scene beats a full one. Small products sit on a table or counter: their props go beside and behind, never on_top. Never use zone inside unless open_compartment is true. audience, when present, says who the picture is for, the question they need answered and what to emphasise; planned_picture is the picture already agreed for them. Choose the setting and the props that serve it, as far as loose objects around the product can: this kind of scene has no people in it, so summary describes only the place and the objects that will be there, even when planned_picture mentions a person. hint, when present, is what the user asked for in their own words and takes priority.'''
+Choose things a real user of this product would have at hand; a believable scene beats a full one. The place and everything in it is new and clean, never worn or dirty. Small products sit on a table or counter: their props go beside and behind, never on_top. Never use zone inside unless open_compartment is true. audience, when present, says who the picture is for, the question they need answered and what to emphasise; planned_picture is the picture already agreed for them. Choose the setting and the props that serve it, as far as loose objects around the product can: this kind of scene has no people in it, so summary describes only the place and the objects that will be there, even when planned_picture mentions a person. hint, when present, is what the user asked for in their own words and takes priority.'''
 
 STRATEGIST_PROMPT = '''You plan product imagery for online shops. You are shown one product (a render of its 3D model, with facts about it) and a library of buyer segments. Each segment says who buys, the question they need answered before buying, the kinds of image that answer it and what to emphasise. Under each are numbered references: published images described in words (what the picture shows, and what it does well). They are study notes on composition, not content to copy.
 Decide which segment this product's usage scene should address and plan one picture for it. Return data only:
@@ -133,7 +136,7 @@ Decide which segment this product's usage scene should address and plan one pict
 - summary: one sentence in the user's language describing the planned picture.
 - people: true when the picture shows a person, or a person's hands, using the product. Things that are held or operated by hand while they work (hand tools, power tools, garden machines, instruments) are best shown in use by a person; things that stand on their own (cabinets, storage, furniture) often need nobody. When required_people is given it decides: true means a person is clearly visible using or handling the product, false means nobody is in the picture, not even a hand, and the product is shown at rest in the place where it is used. people_framing says how a person appears: 'hands' (the usual case) means a close-up of the hands operating the product and the thing it is working on, cropped tight, with no face, head or whole figure; 'person' means the person is visible from about the waist up.
 - complex: true when it needs a place that a floor, one back wall and a few loose objects around the product cannot give: a jobsite, a vehicle, a lawn, a furnished room, the outdoors.
-- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. With people_framing 'hands', describe the hands on the product and what the product is working on at the point of contact (the pipe being cut, the nut being turned, the board being drilled), and keep faces and whole figures out of it. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture.
+- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. With people_framing 'hands', describe the hands on the product and what the product is working on at the point of contact (the pipe being cut, the nut being turned, the board being drilled), and keep faces and whole figures out of it. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture. Every place is brand new and spotless, as on the day it was fitted out, with bright, clean light: new benches and tables with smooth, unmarked tops, freshly painted walls, clean floors, a new and clean van. Never ask for anything old, worn, weathered, scratched, rusty, stained, oily, greasy, dusty, dirty or cluttered, and no dim or yellowed light.
 - setting: the closest of supported_settings, used when the scene is built from 3D props instead.
 - azimuth, elevation: the camera angle on the product that suits the picture, in degrees, in the convention of hero_view: azimuth 0 faces the product's front and elevation is the height above level. Stay within 70 degrees of the front.
 Plan a picture a shop could really use: the product is the subject, complete and prominent. hint, when present, is what the user asked for in their own words and takes priority over the references.'''
@@ -456,10 +459,12 @@ def _surface(kind, setting, folder, textures, cancelled):
     """A floor or wall for the setting: a preferred texture, a found one, or just its colour."""
     preset = SURFACES[setting]; color = preset[kind + '_color']
     for name in preset[kind]:
-        asset_id = name if name in textures else None
+        asset_id = name if name in textures and _looks_new(name, textures) else None
         if asset_id is None:
-            found = scene_props.search(name, kind='textures', limit=1, require=('wall',) if kind == 'wall' else (), assets=textures)
-            asset_id = found[0]['asset_id'] if found else None
+            found = scene_props.search(name, kind='textures', limit=6, require=('wall',) if kind == 'wall' else (), assets=textures)
+            asset_id = next((row['asset_id'] for row in found if _looks_new(row['asset_id'], textures) and (kind == 'wall' or 'wall' not in
+                             {str(value).lower() for value in (textures or {}).get(row['asset_id'], {}).get('categories', [])} or 'floor' in
+                             {str(value).lower() for value in (textures or {}).get(row['asset_id'], {}).get('categories', [])})), None)
         if asset_id:
             try:
                 record = scene_props.fetch_surface(asset_id, folder, '2k', cancelled)
@@ -468,6 +473,13 @@ def _surface(kind, setting, folder, textures, cancelled):
             return {'asset_id': record['asset_id'], 'name': record['name'], 'textures': record['textures'], 'tile_m': record['tile_m'],
                     'color': color, 'source_url': record['source_url'], 'license': record['license']}
     return {'color': color}
+
+
+def _looks_new(asset_id, textures):
+    """Whether a catalogue texture is not one of used, dirty or weathered surfaces, by its id, name and tags."""
+    asset = (textures or {}).get(asset_id) or {}
+    words = ' '.join([str(asset_id), str(asset.get('name', ''))] + [str(value) for value in asset.get('tags', []) or []])
+    return not WORN_SURFACE.search(words.replace('_', ' ').replace('-', ' '))
 
 
 def _layout(project, plan, shot, props, units, seed, keywords, folder, elevation_open, wall_distance_m=.6):

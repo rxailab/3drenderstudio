@@ -81,6 +81,7 @@ Compare the product in GENERATED with the references. Return data only:
 - contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; a screw, bolt or nail being driven is on the same straight line as the bit or driver, head against its tip; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
 - used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; cutting pliers hold the wire deep in the jaws near the pivot, square to the blades, never at the tips; a hammer's face meets the nail head squarely with the nail perpendicular to the surface, or the nail's shank sits in the claw's slot with the handle levered back, never the claw just pressed against a wall). True when the product is at rest or no rules are given.
 - rests_stably: when nothing holds the product, it rests the way it really would on its surface: lying on a side or standing on its base, its weight over what carries it. False when it is balanced on a tip, an edge, a jaw point or a handle end, propped at an angle with nothing holding it, or floating above the surface. True when hands hold it.
+- surroundings_new: everything around the product looks brand new and clean. False when any work surface, table, bench, shelf, wall, floor, vehicle interior or object in the scene looks used: worn, scratched, scored, dented, drilled, chipped, rusty, stained, oily, greasy, dusty or dirty, with peeling paint, or with rubbish or a mess strewn about. Judge the condition of the surfaces and things, not whether the place is a working one: tools, parts, boxes and supplies set out or hanging in their places are not wear, and neither are reflections, shadows, natural wood grain or the even texture of concrete or plaster. False only for wear or dirt that can clearly be seen; true when unsure. The product itself is not judged here. When false, one of the issues says what looks used (\"the workbench top is scratched and stained\").
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
@@ -277,6 +278,55 @@ REST_RULE = ('It rests stably, the way a person would put it down: lying on a si
              'with nothing holding it, and never floating.')
 
 
+# Every place a product is shown in is new: the image model's own idea of a workshop, a van or a jobsite is a used one
+# (an old bench scored and drilled, oil on the floor, scuffed walls), which makes the product look second-hand too.
+NEW_PLACE = ('THE PLACE IS NEW. Everything around the product is brand new and spotless, as on the day it was fitted out: '
+             'new furniture and work surfaces with smooth, unmarked tops, freshly painted clean walls, clean floors, a new and '
+             'clean vehicle interior, new tools and objects. No wear, scratches, dents, holes, burn marks, rust, peeling paint, '
+             'stains, oil, grease, dust, dirt or grime anywhere, no rubbish and no mess. Tidy and orderly.')
+# The scene text is free text (the strategist's, or the user's hint): words asking for wear are taken out of it, so it
+# never argues with NEW_PLACE.
+WORN = re.compile(r'(?P<art>\b(?:an?)\s+)?(?<![\w-])(?P<word>well[- ](?:worn|used)|worn|weathered|grimy|greasy|oily|'
+                  r'(?:oil|grease|paint)[- ](?:stained|splattered|spattered|covered)|dirty|dusty|dust[- ]covered|rust(?:y|ed)|battered|'
+                  r'beat[- ]up|scuffed|stained|scratched|dented|chipped|peeling|shabby|cluttered|messy|lived[- ]in|gritty|muddy|grubby|'
+                  r'filthy|mucky|smudged|scorched|old|aged|ageing|aging|vintage|rustic|time[- ]?worn|run[- ]down)(?![\w-])'
+                  r'(?P<tail>\s*,\s*|\s+(?:and|or)\s+)?\s*', re.I)
+PLACE_FLAGS = frozenset(('surroundings_new',))      # about the place, not the product: they do not make the product "changed"
+WORN_FIX = ('the place looks used or dirty: make every surface, wall, floor, vehicle interior and piece of furniture around the '
+            'product brand new and spotless, with no wear, scratches, stains, oil, dust or mess')
+WORN_NOTE = '背景环境显得陈旧或脏乱。'
+
+
+# A wear word that is negated ("no dusty corners", "never worn or dirty", "free of grease") asks for a clean place: kept.
+NEGATED = re.compile(r'(?i)\b(?:no|not|never|without|nothing|free\s+of|free\s+from)\s+(?:(?:any|a|an)\s+)?(?:(?:%s)\b(?:\s*,\s*|\s+(?:and|or|nor)\s+)?)+'
+                     % WORN.pattern.split('(?P<word>', 1)[1].split(')(?![\\w-])', 1)[0])
+
+
+def fresh(text):
+    """``text`` with the words that ask for wear or dirt taken out ("an old, oily workbench" -> "a workbench"). Text without
+    such words comes back as it was; negated ones ("no dusty corners") stay, since they already ask for a clean place."""
+    text = str(text or ''); kept = []
+
+    def keep(match):
+        kept.append(match.group(0)); return '\1%d\1' % (len(kept) - 1)
+
+    def cut(match):
+        article = match.group('art')
+        return '\0%s ' % article.strip() if article else ''
+    guarded = NEGATED.sub(keep, text)
+    cleaned = WORN.sub(cut, guarded)
+    if cleaned == guarded:
+        return text
+    def article(m):
+        vowel = m.group(2).lower() in 'aeiou'; said = m.group(1)
+        word = 'an' if vowel else 'a'
+        return (word.upper() if said.isupper() and len(said) > 1 else word.capitalize() if said[0].isupper() else word) + ' '
+    cleaned = re.sub(r'\0([Aa][Nn]?) (?=(\w))', article, cleaned).replace('\0', '')
+    cleaned = re.sub(r'\s+([.,;:])', r'\1', re.sub(r'\s{2,}', ' ', cleaned)).strip()
+    cleaned = re.sub(r'(^|[.!?]\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), cleaned)
+    return re.sub(r'\x01(\d+)\x01', lambda m: kept[int(m.group(1))], cleaned)
+
+
 def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None):
     """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
@@ -286,7 +336,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     product was posed for the scene: its words say how it is held and where it meets the work.
     """
     hands = people is True and framing == 'hands'
-    scene = scene_audience.scrub(re.sub(r'\s+', ' ', str(scene or '')).strip())[:1500]
+    scene = fresh(scene_audience.scrub(re.sub(r'\s+', ' ', str(scene or '')).strip()))[:1500]
     product = re.sub(r'\s+', ' ', str(product or 'product')).strip()[:120]
     size = ''
     if size_mm:
@@ -304,6 +354,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
             'A believable place where this product is used, the product set down there ready for use.' if people is False
             else 'A believable place where this product is used, with a person using it.')),
+        NEW_PLACE,
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
         'signs, captions or other text anywhere in the picture, and no watermark.%s Nothing is added to the product: no extra grip, '
         'sleeve, cover, cap, strap or bracket on it. Whatever it touches (a wire, pipe, branch, board) meets it as one whole piece, '
@@ -500,7 +551,8 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
 
 
 FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
-                  'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'rests_stably', 'scale_plausible')
+                  'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'rests_stably', 'scale_plausible',
+                  'surroundings_new')
 
 
 def fidelity_schema():
@@ -550,8 +602,13 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
         return {'status': 'unchecked', 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
     flags = {name: answer[name] for name in FIDELITY_FLAGS}
     faithful = all(flags.values()); visible = answer['person_visible']; face = answer['face_visible']
+    kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)      # the product, apart from the place round it
     issues = [] if faithful else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
     note = re.sub(r'\s+', ' ', answer['note']).strip()[:300]
+    if not flags['surroundings_new']:
+        issues = issues[:5] + [WORN_FIX]          # the product's own differences first: corrections keep the first six
+        if kept:
+            note = WORN_NOTE + note[:300 - len(WORN_NOTE)]
     hands = people is True and framing == 'hands'
     wrong_people = people in PEOPLE_FIXES and visible != people
     # Hands were asked for: a picture that shows a face or a whole figure is as wrong as one with nobody in it.
@@ -566,8 +623,37 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
     if hands:
         seen.update(framing='hands', face_visible=face)
     return {'status': 'passed' if faithful and not wrong_people else 'failed', 'flags': flags, 'issues': issues, 'note': note,
-            'product_consistent': faithful, 'people': seen}
+            'product_consistent': kept, 'people': seen}
 
+
+PLACE_PROMPT = '''You check a photograph of an empty place that products will be shown in, for an online shop: a room, a workshop, a bench or table top, a vehicle. Every place must look brand new: as on the day it was fitted out.
+Return data only:
+- new: true when everything in the picture looks new and clean. False when any work surface, table, bench, shelf, wall, floor, vehicle interior or object looks used: worn, scratched, scored, dented, drilled, chipped, rusty, stained, oily, greasy, dusty or dirty, with peeling paint, or with rubbish or mess lying about. Judge the condition of the surfaces and things, not whether the place is a working one: tools, parts, boxes and supplies set out or hanging in their places are not wear, and neither are reflections, shadows, fine natural wood grain, knots or the even texture of concrete or plaster. False only for wear or dirt that can clearly be seen; true when unsure.
+- issues: up to 3 short, concrete things in English that look used ("the bench top is scored and has drilled holes"). Empty when new is true.'''
+
+
+def place_check(path):
+    """Whether a picture of an empty place looks new: {'new': bool, 'issues': [...]}, or None when no vision model answered."""
+    import ai_client as ai
+    import ai_config
+    value = ai_config.get_vision_config()
+    if not all(value.get(key) for key in ('enabled', 'api_key', 'model')):
+        return None
+    schema = {'type': 'object', 'properties': {'new': {'type': 'boolean'},
+                                               'issues': {'type': 'array', 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200},
+                                                          'minItems': 0, 'maxItems': 3}},
+              'required': ['new', 'issues'], 'additionalProperties': False}
+    try:
+        body = ai._payload(value, PLACE_PROMPT, {'picture': 'PLACE'}, schema, max_tokens=500)
+        message = body['messages'][-1]
+        if not isinstance(message.get('content'), list):
+            raise ValueError('unexpected request shape')
+        message['content'][:0] = [{'type': 'text', 'text': 'PLACE: the photograph to check.'}, ai._image(path, value['provider'], max_size=1536)]
+        answer = ai._response(ai._post(value, body), value, ai.TOOL_NAME)
+        ai._check_schema(answer, schema)
+    except Exception:
+        return None
+    return {'new': bool(answer['new']), 'issues': [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']][:3]}
 
 def _lock_verdict(lock, box):
     """A failed check for a picture whose product the measurement says was not kept."""
@@ -676,19 +762,22 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             break
         corrections = verdict['issues']
         wrong_people = verdict.get('people', {}).get('ok') is False
+        wrong = {name for name, ok in (verdict.get('flags') or {}).items() if ok is False}
         retry = ('产品被移动或改动，正在重新生成' if lock['status'] != 'kept' else
+                 '背景显得陈旧或脏乱，正在按崭新的环境重新生成' if wrong and wrong <= PLACE_FLAGS and not wrong_people else
                  '产品与参考图不一致，正在重新生成' if not wrong_people else
                  '画面里出现了人脸或整个人，正在重新生成手部特写' if hands and verdict['people'].get('visible') else
                  '画面里没有操作产品的手，正在重新生成' if hands else
                  '画面里没有人物，正在重新生成' if people else '画面里出现了人物，正在重新生成')
-        wrong = {name for name, ok in (verdict.get('flags') or {}).items() if ok is False}
-        if number == limit == MAX_ATTEMPTS and lock['status'] == 'kept' and not wrong_people and wrong and wrong <= USAGE_FLAGS:
-            limit += 1; retry = '握持、用法或摆放还不对，按核对意见再试一次'
+        if number == limit == MAX_ATTEMPTS and lock['status'] == 'kept' and not wrong_people and wrong and wrong <= USAGE_FLAGS | PLACE_FLAGS:
+            limit += 1; retry = ('背景仍显陈旧或脏乱，按崭新的环境再试一次' if wrong <= PLACE_FLAGS else '握持、用法或摆放还不对，按核对意见再试一次')
     # A passing picture wins; otherwise one that kept the product, then got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
     if chosen is None:
+        # A picture whose only fault is the place beats one whose product is wrong.
         chosen = min(reversed(attempts), key=lambda item: (item['check']['lock']['status'] != 'kept',
-                                                           item['check'].get('people', {}).get('ok') is False, len(item['check']['issues'])))
+                                                           item['check'].get('people', {}).get('ok') is False,
+                                                           item['check'].get('product_consistent') is False, len(item['check']['issues'])))
     stem = folder.name
     png = folder / (stem + '.png'); jpg = folder / (stem + '.jpg')
     png.write_bytes(chosen['file'].read_bytes())       # untouched: the model's own provenance metadata stays in the file
