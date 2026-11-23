@@ -73,7 +73,7 @@
       "accent": "#E7B53C",
       "line": "#6E767D"
     },
-    "palette_note": "bg/accent come from the job palette (brandkit_set.py); the ground is a lit radial built from --bg (key light 22%/14% mixed 32% toward #6A7380, darker floor) plus 5% feTurbulence grain; job.ground='carbon' adds the 20px diagonal pattern. The accent is one token (--accent); --hi (74% accent) colours the headline keyword, --hi-meta (58% accent) the eyebrow. No coloured rim glow by default.",
+    "palette_note": "bg/accent come from the job palette (listing_theme.py); the ground is a lit radial built from --bg (key light 22%/14% mixed 32% toward #6A7380, darker floor) plus 5% feTurbulence grain; job.ground='carbon' adds the 20px diagonal pattern. The accent is one token (--accent); --hi (74% accent) colours the headline keyword, --hi-meta (58% accent) the eyebrow. No coloured rim glow by default.",
     "spacing_unit": 8,
     "safe_margin": 72,
     "min_margin": 60,
