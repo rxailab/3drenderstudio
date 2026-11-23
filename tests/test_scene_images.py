@@ -52,6 +52,7 @@ MODELS = {
 TEXTURES = {
     'scuffed_cement': asset('Scuffed Cement', ['floor', 'concrete', 'indoor'], ['worn'], [2000, 2000], kind=1),
     'concrete_wall_008': asset('Concrete Wall 008', ['wall', 'concrete'], ['panels'], [2710, 2710], kind=1),
+    'smooth_concrete_floor': asset('Smooth Concrete Floor', ['floor', 'concrete', 'indoor'], ['clean'], [2000, 2000], kind=1),
     'marble_01': asset('Marble 01', ['floor', 'indoor', 'clean', 'wall'], ['marble'], [2000, 2000], kind=1),
 }
 ANALYSIS = {'objects': [{'name': 'G-07C抽屉(2)_8', 'type': 'MESH', 'materials': ['红色']}, {'name': 'G-不锈钢台面_2', 'type': 'MESH', 'materials': ['金属']}],
@@ -359,7 +360,8 @@ class StylistFlowTests(unittest.TestCase):
         self.assertEqual([prop['id'] for prop in scene['props']], ['p%d' % (n + 1) for n in range(len(scene['props']))])
         for path in scene_set.files(scene):
             self.assertTrue(Path(path).is_file()); self.assertIn(self.data / 'fixture' / 'props', Path(path).parents)
-        self.assertEqual((scene['surface']['asset_id'], scene['wall']['asset_id']), ('scuffed_cement', 'concrete_wall_008'))
+        # the scuffed cement is in the catalogue but never chosen: every place is shown new
+        self.assertEqual((scene['surface']['asset_id'], scene['wall']['asset_id']), ('smooth_concrete_floor', 'concrete_wall_008'))
         self.assertEqual(self.request['keywords'], ('抽屉', 'drawer'))
         preview = store.get('job', task['job_id'])
         self.assertEqual((preview['kind'], preview['shot_ids'], preview['version']), ('preview', ['scene'], 2))

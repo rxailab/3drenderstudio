@@ -328,7 +328,7 @@ class FidelityTests(unittest.TestCase):
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
                  'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'rests_stably': True,
-                 'scale_plausible': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
+                 'scale_plausible': True, 'surroundings_new': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
@@ -436,6 +436,55 @@ class FidelityTests(unittest.TestCase):
         both, _ = self.check(self.verdict(person_visible=False, parts_consistent=False, issues=['one handle is missing']), people=True)
         self.assertEqual((both['status'], both['product_consistent'], len(both['issues']), both['issues'][1]), ('failed', False, 2, 'one handle is missing'))
 
+    def test_a_worn_or_dirty_place_fails_the_picture_but_not_the_product(self):
+        # Users found scenes on old, scored benches and in dirty vans: the place is checked too, and asked to be new.
+        result, body = self.check(self.verdict(surroundings_new=False, issues=['the bench top is scored and stained'], note='背景陈旧。'))
+        self.assertEqual((result['status'], result['product_consistent'], result['flags']['surroundings_new']), ('failed', True, False))
+        self.assertEqual(result['issues'], ['the bench top is scored and stained', scene_imagegen.WORN_FIX])
+        self.assertTrue(result['note'].startswith(scene_imagegen.WORN_NOTE))
+        self.assertIn('surroundings_new', body['tools'][0]['input_schema']['required'])
+        self.assertIn('- surroundings_new:', scene_imagegen.FIDELITY_PROMPT)
+        # wrong in both the product and the place: the product is not consistent, and both are said
+        both, _ = self.check(self.verdict(surroundings_new=False, parts_consistent=False, issues=['a wheel is missing']))
+        self.assertEqual((both['product_consistent'], both['issues']), (False, ['a wheel is missing', scene_imagegen.WORN_FIX]))
+        # five product issues: all of them stay ahead of the place's
+        many, _ = self.check(self.verdict(surroundings_new=False, parts_consistent=False, issues=['issue %d' % n for n in range(5)]))
+        self.assertEqual(many['issues'][:5], ['issue %d' % n for n in range(5)])
+
+    def test_every_scene_asks_for_a_new_place_and_words_asking_for_wear_are_taken_out(self):
+        for people in (None, False, True):
+            text = scene_imagegen.prompt('tool cabinet', 900, 'An old, oily workbench in a weathered garage.', people=people)
+            self.assertIn(scene_imagegen.NEW_PLACE, text)
+            self.assertIn('THE SCENE. A workbench in a garage.', text)
+        for said, meant in (('An old, oily workbench with a worn and dusty top by a weathered wall.', 'A workbench with a top by a wall.'),
+                            ('a weathered, old oak table and an old anvil', 'An oak table and an anvil'),
+                            ('The open rear of a well-used work van; rusty tools.', 'The open rear of a work van; tools.'),
+                            ('A 40-year-old engineer holds it in a household garage.', 'A 40-year-old engineer holds it in a household garage.'),
+                            ('Hold the bold golden handle.', 'Hold the bold golden handle.'),
+                            # a negated wear word already asks for a clean place: kept as written
+                            ('no dusty or oily surfaces anywhere', 'no dusty or oily surfaces anywhere'),
+                            ('never cluttered, a tidy van', 'never cluttered, a tidy van'),
+                            ('A bright new workshop, never worn or dirty.', 'A bright new workshop, never worn or dirty.'),
+                            ('a clean bench, not dirty or greasy, and an old vise', 'A clean bench, not dirty or greasy, and a vise'),
+                            # text without wear words comes back untouched
+                            ('plain text. lower start', 'plain text. lower start'),
+                            ('AN OLD BENCH', 'A BENCH')):
+            self.assertEqual(scene_imagegen.fresh(said), meant)
+
+    def test_an_empty_place_is_looked_at_for_wear(self):
+        sent = {}
+        def post(config, body):
+            sent['body'] = body
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch',
+                                                            'input': {'new': False, 'issues': ['the bench top is scored']}}]}
+        with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
+            self.assertEqual(scene_imagegen.place_check(self.generated), {'new': False, 'issues': ['the bench top is scored']})
+        self.assertEqual(sum(block.get('type') == 'image' for block in sent['body']['messages'][-1]['content']), 1)
+        with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=ValueError('down')):
+            self.assertIsNone(scene_imagegen.place_check(self.generated))
+        with patch.object(ai_config, 'get_vision_config', return_value={**self.vision, 'api_key': ''}):
+            self.assertIsNone(scene_imagegen.place_check(self.generated))
+
     def test_a_check_that_cannot_run_keeps_the_picture_and_says_it_was_not_checked(self):
         self.assertEqual(self.check(ValueError('AI 请求超时'))[0]['status'], 'unchecked')
         self.assertEqual(self.check({'product_present': True})[0]['status'], 'unchecked')                # not the agreed answer
@@ -507,6 +556,15 @@ class CreateTests(unittest.TestCase):
         self.assertTrue(record['anchor']['closeup_url'].endswith('/closeup1.jpg'))
         self.assertEqual(Path(self.closeups[0]).name, 'closeup1.jpg')                 # the vision model compares the product side by side
         self.assertEqual(record['check']['lock']['status'], 'kept')
+
+    def test_when_nothing_passes_a_worn_place_beats_a_changed_product(self):
+        worn = {'status': 'failed', 'product_consistent': True, 'flags': {'surroundings_new': False},
+                'issues': ['the bench is scored', scene_imagegen.WORN_FIX], 'note': '背景陈旧。'}
+        wrong = {'status': 'failed', 'product_consistent': False, 'flags': {'parts_consistent': False}, 'issues': ['a wheel is missing'], 'note': '少轮。'}
+        self.verdicts = [worn, wrong]
+        record = self.create()['record']
+        self.assertEqual((record['attempts'], record['check']['issues']), (2, worn['issues']))
+        self.assertIn('CORRECTIONS', self.prompts[1]); self.assertIn(scene_imagegen.WORN_FIX, self.prompts[1])
 
     def test_the_product_is_rendered_in_the_pose_chosen_for_the_scene_and_the_prompt_says_how_it_is_held(self):
         self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]

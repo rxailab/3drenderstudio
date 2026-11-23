@@ -34,6 +34,10 @@ import engine
 from studio_store import DATA, ROOT, atomic_json
 
 VERSION = 1
+LOOK = 2                      # how the places look: 2, brand new (a backdrop made before, or found worn, is made again)
+PAINTS = 2                    # pictures painted for one backdrop before a worn-looking place is given up for this time
+WORN_ROUNDS = 2               # rounds of PAINTS that all looked used: then no more paints for this place for WORN_PAUSE
+WORN_PAUSE = 24 * 3600        # seconds; worn pictures are not measurement failures and never give a place up for good
 LIBRARY = DATA / 'backdrops'
 FLOOR_FROM_M = .6             # a product longer than this stands on the floor; a smaller one on the place's table or bench
 SIZES = (('small', .08, .3), ('medium', .3, .6), ('large', .6, 1.8))
@@ -50,17 +54,20 @@ DEPTH_MODEL = 'models--apple--DepthPro-hf'
 # lit by the sun, which the light model of blender/backdrop.py does not find, and grass is not a plane to stand on.
 # 'room' is the place seen across its floor; 'behind' what is seen behind its table or bench, when that is not the same.
 PLACES = {
-    'home_starter': {'room': 'a bright, tidy living room at home, a sofa and a bookshelf far behind',
-                     'surface': 'a plain light wooden table', 'floor': 'a light wooden floor'},
-    'diy_project': {'room': 'a home garage during a home improvement project, timber boards leaning at one side and a half-finished wooden frame far behind',
-                    'surface': 'a sturdy plywood work table', 'floor': 'a smooth sealed concrete floor'},
-    'workshop_hobbyist': {'room': 'a well-kept private garage workshop, hand tools on a pegboard on the wall and a wooden workbench against the wall at one side',
-                          'behind': 'the wall of a well-kept private workshop, hand tools hanging on a pegboard',
-                          'surface': 'a solid wooden workbench', 'floor': 'a smooth, light grey sealed concrete floor'},
-    'site_team': {'room': 'a small renovation jobsite, a bare plastered room with a stepladder and folded dust sheets at one side',
-                  'surface': 'a clean plywood board laid across two trestles', 'floor': 'a swept bare screed floor'},
-    'industrial_maintenance': {'room': 'a clean industrial plant room with pipework and grey control cabinets along the walls',
-                               'surface': 'a stainless steel work table', 'floor': 'a grey epoxy-painted floor'},
+    'home_starter': {'room': 'a bright, newly furnished living room at home, a new sofa and a bookshelf far behind',
+                     'surface': 'a new plain light wooden table with a smooth, flawless top', 'floor': 'a new light wooden floor'},
+    'diy_project': {'room': 'a clean, newly built home garage during a home improvement project, new timber boards stacked neatly at one side and a '
+                            'half-finished wooden frame of fresh pale timber far behind',
+                    'surface': 'a new, sturdy work table with a smooth, clean birch plywood top', 'floor': 'a smooth, clean, new sealed concrete floor'},
+    'workshop_hobbyist': {'room': 'a newly fitted-out private garage workshop, new hand tools neatly on a white pegboard on the wall and a new '
+                                  'workbench against the wall at one side',
+                          'behind': 'the freshly painted wall of a newly fitted-out private workshop, new hand tools hanging neatly on a pegboard',
+                          'surface': 'a brand-new workbench with a smooth, flawless light beech top',
+                          'floor': 'a smooth, clean, light grey sealed concrete floor'},
+    'site_team': {'room': 'a freshly plastered, clean room being renovated, a new stepladder and neatly folded white dust sheets at one side',
+                  'surface': 'a new, clean plywood board laid across two new trestles', 'floor': 'a clean, new screed floor, swept spotless'},
+    'industrial_maintenance': {'room': 'a clean, new industrial plant room with new pipework and grey control cabinets along the walls',
+                               'surface': 'a new stainless steel work table with a clean, unmarked top', 'floor': 'a clean, new grey epoxy-painted floor'},
 }
 # How the place is photographed for each size of product. The image model does not keep to distances it is told, so what
 # a picture is framed for is measured afterwards (FRAMED) and the picture filed under that size.
@@ -81,13 +88,17 @@ HEIGHT_M = {'floor': (.9, 2.0), 'surface': (.12, 1.1)}       # the camera above 
 FRAMED = {'small': (.12, .34), 'medium': (.3, .8), 'large': (.7, 1.9)}
 FLOOR_PROMPT = ('Photograph of an empty corner of {room}, no people. {camera} The lower half of the picture is {plane}, completely empty in the '
                 'middle: nothing stands or lies on it, a clear open area at least {clear} wide. Soft, even daylight from large windows behind the '
-                'camera and ceiling lights, gentle soft shadows, no hard sun patches on the floor. Natural colours, realistic, sharp, '
+                'camera and ceiling lights, gentle soft shadows, no hard sun patches on the floor. {new} Natural colours, realistic, sharp, '
                 'product-catalogue photography background. No text, no logos, no people, no vehicles, nothing in the centre of the floor.')
 SURFACE_PROMPT = ('Photograph of the top of {plane}, seen from its long side, no people. {camera} The lower half of the picture is the table top, '
                   'completely empty in the middle: nothing stands or lies on it, a clear open area at least {clear} wide. Behind it, slightly out '
                   'of focus, {room}. Soft, even daylight from large windows behind the camera and ceiling lights, gentle soft shadows, no hard sun '
-                  'patches on the table top. Natural colours, realistic, product-catalogue photography background. No text, no logos, no people, '
-                  'nothing in the centre of the table top.')
+                  'patches on the table top. {new} Natural colours, realistic, product-catalogue photography background. No text, no logos, '
+                  'no people, nothing in the centre of the table top.')
+# The image model's own workshop is a used one: an old bench scored and drilled. Every place is shown as new (LOOK).
+NEW_PLACE = ('Everything is brand new and spotless, as on the day it was fitted out: the surface in front is smooth and unmarked, '
+             'walls freshly painted, every object new and in order. No wear, scratches, scoring, dents, holes, burn marks, rust, '
+             'peeling paint, stains, oil, grease, dust, dirt or rubbish anywhere.')
 
 _LOCKS = {}; _GUARD = threading.Lock()
 
@@ -129,7 +140,7 @@ def _spec(segment_id, stand, size):
     template = FLOOR_PROMPT if stand == 'floor' else SURFACE_PROMPT
     return {'id': '%s-%s-%s' % (segment_id, stand, size), 'segment': segment_id, 'stand': stand, 'size': size,
             'prompt': template.format(room=place['room'] if stand == 'floor' else place.get('behind', place['room']), plane=place[stand],
-                                      camera=camera['camera'], clear=camera['clear'])}
+                                      camera=camera['camera'], clear=camera['clear'], new=NEW_PLACE)}
 
 
 def spec_for(segment_id, longest_m):
@@ -196,13 +207,62 @@ def ready(spec):
         return None
     if gate(geometry, spec) or not all((folder / name).is_file() for name in ('backdrop.png', 'support.png', 'depth.npy')):
         return None
-    return folder
+    return folder if _made(folder).get('look') == LOOK else None
+
+
+def _made(folder):
+    try:
+        value = json.loads((folder / 'backdrop.json').read_text(encoding='utf-8'))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError, UnicodeError):
+        return {}
+
+
+def revet(spec):
+    """A backdrop made before places were asked to look new (LOOK), looked at once: kept and marked when it does look new.
+    Returns whether it is ready now. One that looks used is marked so, and is painted again when it is next asked for."""
+    import scene_imagegen
+    with _place_lock(spec):                         # never while ensure() is filing a new picture under the same id
+        folder = LIBRARY / spec['id']; made = _made(folder)
+        if not made or made.get('look') == LOOK or made.get('worn_look') == LOOK:
+            return bool(ready(spec))
+        return _revet(spec, folder, made, scene_imagegen)
+
+
+def _place_lock(spec):
+    with _GUARD:
+        return _LOCKS.setdefault('%s-%s' % (spec['segment'], spec['stand']), threading.Lock())
+
+
+def _revet(spec, folder, made, scene_imagegen):
+    try:
+        geometry = json.loads((folder / 'geometry.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError, UnicodeError):
+        return False
+    if gate(geometry, spec) or not (folder / 'backdrop.png').is_file():
+        return False
+    looks = scene_imagegen.place_check(folder / 'backdrop.png')
+    if looks is None:                              # nobody could look: it stays out, and a new one is painted when it is asked for
+        return False
+    atomic_json(folder / 'backdrop.json', {**made, **({'look': LOOK} if looks['new'] else {'worn_look': LOOK, 'worn': looks['issues']})})
+    return bool(looks['new'])
+
+
+def _worn(spec):
+    """The rounds of this place painted lately that all looked used: {'count', 'at', 'reason'} or {}."""
+    try:
+        value = json.loads((LIBRARY / (spec['id'] + '.worn.json')).read_text(encoding='utf-8'))
+    except (OSError, ValueError, UnicodeError):
+        return {}
+    if not isinstance(value, dict) or value.get('look') != LOOK or time.time() - float(value.get('at', 0)) > WORN_PAUSE:
+        return {}
+    return value
 
 
 def _rejected(spec):
     try:
         value = json.loads((LIBRARY / (spec['id'] + '.rejected.json')).read_text(encoding='utf-8'))
-        return value if isinstance(value, dict) and value.get('version') == VERSION else {}
+        return value if isinstance(value, dict) and value.get('version') == VERSION and value.get('look') == LOOK else {}
     except (OSError, ValueError, UnicodeError):
         return {}
 
@@ -277,9 +337,7 @@ def ensure(spec, cancelled=None, progress=None):
     as it likes, so a new one is filed under the size it turned out to be framed for; the spec returned is that one, and may
     be the place's backdrop for another size. Raises Unavailable when no usable picture came of it."""
     stop = cancelled or (lambda: False); say = progress or (lambda stage: None)
-    with _GUARD:
-        lock = _LOCKS.setdefault('%s-%s' % (spec['segment'], spec['stand']), threading.Lock())
-    with lock:                                      # two listings asking for the same new place: it is made once
+    with _place_lock(spec):                                      # two listings asking for the same new place: it is made once
         folder = ready(spec)
         if folder:
             return folder, spec
@@ -288,14 +346,27 @@ def ensure(spec, cancelled=None, progress=None):
             raise Unavailable('这个场所的背景图 %d 次都没有通过测量（%s）' % (rejected['count'], rejected.get('reason', '')))
         if not can_measure():
             raise Unavailable('没有安装测量背景图用的深度模型环境')
-        say('生成空场景的背景图（每个场所只做一次，之后所有产品共用）')
-        content = _paint(spec['prompt'], stop, say)
+        worn = _worn(spec)
+        if worn.get('count', 0) >= WORN_ROUNDS:
+            raise Unavailable('这个场所最近画出的背景图都显得陈旧或脏乱（%s），暂不再画' % worn.get('reason', '')[:160])
+        import scene_imagegen
         LIBRARY.mkdir(parents=True, exist_ok=True)
         work = LIBRARY / ('.%s-%s' % (spec['id'], uuid.uuid4().hex[:8])); work.mkdir()
         try:
-            (work / 'backdrop.png').write_bytes(content)
-            engine.verify_image(work / 'backdrop.png', 'PNG')
-            if stop(): raise InterruptedError()
+            for number in range(1, PAINTS + 1):
+                say('生成空场景的背景图（每个场所只做一次，之后所有产品共用）' if number == 1 else '背景显得陈旧或脏乱，按崭新的场所重新生成')
+                (work / 'backdrop.png').write_bytes(_paint(spec['prompt'], stop, say))
+                engine.verify_image(work / 'backdrop.png', 'PNG')
+                if stop(): raise InterruptedError()
+                say('核对背景是否崭新整洁')
+                looks = scene_imagegen.place_check(work / 'backdrop.png')
+                if looks is None or looks['new']:
+                    break
+                shutil.copyfile(work / 'backdrop.png', LIBRARY / ('%s.worn-%d.png' % (spec['id'], number)))
+            else:
+                why = '; '.join(looks['issues'])[:300]
+                atomic_json(LIBRARY / (spec['id'] + '.worn.json'), {'look': LOOK, 'count': worn.get('count', 0) + 1, 'reason': why, 'at': time.time()})
+                raise Unavailable('生成的背景图显得陈旧或脏乱（%s）' % '; '.join(looks['issues'])[:200])
             say('测量背景图的地面、相机和灯（每个场所只做一次，需要几分钟）')
             geometry = measure(work, stop)
             reason = flaw(geometry, spec['stand']) if geometry else 'the depth model did not finish'
@@ -311,10 +382,11 @@ def ensure(spec, cancelled=None, progress=None):
                 # not the picture that was asked for: the asked size has used one of its tries
                 count = rejected.get('count', 0) + 1; why = reason or 'the picture is framed for %s products and was kept for those' % filed['size']
                 shutil.copyfile(work / 'backdrop.png', LIBRARY / ('%s.rejected-%d.png' % (spec['id'], count)))
-                atomic_json(LIBRARY / (spec['id'] + '.rejected.json'), {'version': VERSION, 'count': count, 'reason': why, 'at': time.time()})
+                atomic_json(LIBRARY / (spec['id'] + '.rejected.json'), {'version': VERSION, 'look': LOOK, 'count': count, 'reason': why, 'at': time.time()})
             if not filed:
                 raise Unavailable('新生成的背景图没有通过测量（%s）' % reason)
-            atomic_json(work / 'backdrop.json', {'version': VERSION, **{key: filed[key] for key in ('id', 'segment', 'stand', 'size')},
+            atomic_json(work / 'backdrop.json', {'version': VERSION, 'look': LOOK, 'looked': looks is not None,
+                                                 **{key: filed[key] for key in ('id', 'segment', 'stand', 'size')},
                                                  'prompt': spec['prompt'], 'framed_for_m': round(framed_for(geometry), 3), 'made_at': time.time()})
             target = LIBRARY / filed['id']
             if target.exists():
@@ -379,6 +451,9 @@ def create(project, plan, proposal, azimuth, size_mm, folder, cancelled=None, pr
 
     # The backdrop framed for this size; else one the place already has for another size, in a part of which the product
     # may still be shown large enough; a new picture is paid for only when none of those has room for it.
+    for candidate in [spec] + siblings(spec):        # backdrops made before places were asked to look new: looked at once
+        if stop(): raise InterruptedError()
+        revet(candidate)
     own = ready(spec); result = None; tried = set()
     for candidate in ([spec] if own else []) + [other for other in siblings(spec) if ready(other)]:
         tried.add(candidate['id']); result = set_into(candidate, ready(candidate))
