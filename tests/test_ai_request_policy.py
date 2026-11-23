@@ -23,7 +23,7 @@ class RequestPolicyIntegrationTests(unittest.TestCase):
 
     def test_blocked_model_is_rejected_before_loading_or_encoding_user_images(self):
         config = {**CONFIG, 'model': 'gpt-5.5-2026-04-23'}
-        with patch('ai_client._image') as encode, patch('ai_client.urllib.request.build_opener') as opener:
+        with patch('ai_transport._image') as encode, patch('ai_client.urllib.request.build_opener') as opener:
             with self.assertRaisesRegex(ValueError, '停用 GPT-5.5'):
                 ai_client._payload(config, 'system', {}, image_path='never-read-this-image.png')
             encode.assert_not_called(); opener.assert_not_called()
