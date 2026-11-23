@@ -155,10 +155,29 @@ def projects():
         known=active.get(job.get('project_id'))
         if known is None or (known['status']=='queued' and job['status']=='running'):
             active[job.get('project_id')]={key:job.get(key) for key in ('id','kind','quality','status','progress','origin')}
+    if request.args.get('fields')=='summary':
+        # The home poll needs only what the cards and the sidebar draw; full records ran to megabytes.
+        return conditional(jsonify([{**project_summary(item),'active_job':active.get(item.get('id'))} for item in all_records('project')]))
     return jsonify([{**public_project(item),'active_job':active.get(item.get('id'))} for item in all_records('project')])
 
+def project_summary(project):
+    """A library card: the image to show, the status line and the counts, nothing the card does not read."""
+    initial=project.get('initial_preview')
+    return {'id':project.get('id'),'name':project.get('name'),'status':project.get('status'),'version':project.get('version'),
+            'created_at':project.get('created_at'),'analyzed':bool(project.get('analysis')),
+            'initial_preview':{'status':initial.get('status')} if isinstance(initial,dict) else None,
+            'shot_count':len(((project.get('plan') or {}).get('shots')) or []),
+            # Every output stays (the sidebar counts thumbnails too), each cut to what picks and draws the card image.
+            'outputs':[{key:output.get(key) for key in ('shot_id','quality','jpg_url','png_url')} for output in project.get('outputs') or []]}
+
+def conditional(response):
+    """An ETag over the exact body: a poll that sends it back gets an empty 304 while nothing changed."""
+    response.headers['Cache-Control']='no-cache'
+    response.add_etag()
+    return response.make_conditional(request)
+
 @app.get('/api/projects/<ident>')
-def project(ident): return jsonify(engine.project_view(ident))
+def project(ident): return conditional(jsonify(engine.project_view(ident)))
 
 @app.delete('/api/projects/<ident>')
 def project_delete(ident):

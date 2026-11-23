@@ -638,6 +638,20 @@ async function api(path, options = {}) {
   if(!res.ok){const error=new Error(data.error || `请求失败 (${res.status})`);error.status=res.status;error.payload=data;throw error;}
   return data;
 }
+// Polls send back the ETag of what they already hold; an unchanged answer is an empty 304
+// (null here) instead of the whole record again. The tag is kept per received object, so any
+// other code that replaces it (a save, an open, a delete) makes the next poll fetch in full.
+const receivedTags=new WeakMap();
+async function apiIfChanged(path,held) {
+  const tag=held && typeof held==='object'?receivedTags.get(held):null;
+  const res=await fetch(path,tag?{headers:{'If-None-Match':tag}}:{});
+  if(res.status===304 && tag)return null;
+  let data;
+  try{data=await res.json();}catch(_){const error=new Error('本机服务返回了无法读取的结果，请重试核对。');error.status=res.status;error.uncertain=true;throw error;}
+  if(!res.ok){const error=new Error(data.error || `请求失败 (${res.status})`);error.status=res.status;error.payload=data;throw error;}
+  const etag=res.headers?.get?.('ETag');if(etag && data && typeof data==='object')receivedTags.set(data,etag);
+  return data;
+}
 function toast(message, error = false) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').className = 'toast' + (error ? ' error' : ''); $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, error ? 8000 : 4500); }
 // The background high-quality pass never locks the workspace: any request pre-empts it.
 // The project's render queue: the running job first, then what waits behind it in the order it will run.
@@ -930,7 +944,8 @@ function projectCardImage(p) {
   return [...outputs].reverse().find(output=>output.shot_id==='hero') || outputs.at(-1) || null;
 }
 function projectCardStatus(p) {
-  const outputs=(p.outputs || []).filter(output=>output.quality!=='thumbnail'),finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,polished=outputs.filter(output=>output.quality==='showcase').length,previews=outputs.length-finals-polished,shotCount=p.plan?.shots?.length || 0;
+  // Library rows are slim summaries (shot_count, analyzed); the open project is the full record.
+  const outputs=(p.outputs || []).filter(output=>output.quality!=='thumbnail'),finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,polished=outputs.filter(output=>output.quality==='showcase').length,previews=outputs.length-finals-polished,shotCount=(p.plan?p.plan.shots?.length:p.shot_count) || 0;
   const job=p.active_job || p.jobs?.find(item=>['running','queued'].includes(item.status)),initial=p.initial_preview?.status;
   if(job || ['queued','running'].includes(initial) || p.status==='analyzing'){
     const kind=job?.kind || (p.status==='analyzing'?'analyze':'preview'),queued=job?job.status==='queued':initial==='queued';
@@ -938,7 +953,7 @@ function projectCardStatus(p) {
     const value=Number(job?.progress),progress=!queued && job?.status==='running' && Number.isFinite(value) && value>0?Math.min(100,Math.round(value)):null;
     return {tone:'active',text:queued?label.replace(/^正在/,'')+' · 已排队':label+' · 后台继续',progress};
   }
-  if(['failed','interrupted','cancelled'].includes(p.status) && !p.analysis){
+  if(['failed','interrupted','cancelled'].includes(p.status) && !(p.analysis || p.analyzed)){
     return {tone:'warning',text:p.status==='failed'?'分析失败 · 可重试':p.status==='cancelled'?'分析已取消 · 可继续':'分析已中断 · 可继续'};
   }
   if(['failed','interrupted'].includes(initial) && !outputs.length)return {tone:'warning',text:'白底主图需处理 · 可继续'};
@@ -1711,7 +1726,15 @@ function renderProject() {
   if(!dirty && !planSavePromise && syncSignature!==`${current.id}:${current.version}:${!!current.analysis}`)syncSettings();
   updateAiMode();renderViewer();renderShots();renderJob();renderInspection();renderSceneExports();renderActionState();refreshEcommerce();
 }
-async function refreshList() { const request=++libraryRequest,projects=await api('/api/projects');if(request!==libraryRequest)return;allProjects=projects.filter(project=>!deletedProjectIds.has(project.id));allProjects.sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));renderLibrary(); }
+// The tag belongs to the summary list as received; once a poll swaps in an open project or a
+// delete filters it, allProjects is another array and the next refresh fetches in full.
+let receivedList=null;
+async function refreshList() {
+  const request=++libraryRequest,projects=await apiIfChanged('/api/projects?fields=summary',receivedList===allProjects?allProjects:null);
+  if(request!==libraryRequest || projects===null)return;
+  allProjects=projects.filter(project=>!deletedProjectIds.has(project.id));allProjects.sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));
+  const tag=receivedTags.get(projects);receivedList=tag?allProjects:null;if(tag)receivedTags.set(allProjects,tag);renderLibrary();
+}
 function leaveProjectView() {
   if(current && $('instructionInput').value)instructionDrafts.set(current.id,$('instructionInput').value);
   // Exiting is navigation. Unacknowledged and saved requests keep their keys.
@@ -1811,8 +1834,10 @@ async function poll() {
   try{
     if(current){
       const id=current.id,requestId=projectRequest,oldVersion=current.version,reviewEpoch=reviewRevision;
-      const project=await api('/api/projects/'+encodeURIComponent(id));
-      if(current?.id===id && requestId===projectRequest && !busy && !planSavePromise && !projectLoading && !realismBusy && !materialAgentSubmitting && reviewEpoch===reviewRevision && current.version===oldVersion){
+      // Unchanged (304) leaves current as it is: no re-render, only the material tasks below.
+      const held=current,project=await apiIfChanged('/api/projects/'+encodeURIComponent(id),held);
+      if(project===null){if(current===held && requestId===projectRequest)await refreshMaterialTasks(id);}
+      else if(current?.id===id && requestId===projectRequest && !busy && !planSavePromise && !projectLoading && !realismBusy && !materialAgentSubmitting && reviewEpoch===reviewRevision && current.version===oldVersion){
         const priorOutputs=current.outputs?.length,priorStyle=current.plan.style;
         current=project;if(!dirty && project.plan.style!==priorStyle)styleFocusNotice='棚拍风格已更新，生成预览后查看变化。';
         allProjects=allProjects.map(item=>item.id===project.id?project:item);renderLibrary();
