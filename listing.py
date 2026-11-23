@@ -1159,6 +1159,9 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         if has.get('T08') and sum(1 for row in scenes if row.get('check') != 'failed') < 2:
             # a mosaic of scenes whose product check failed (a wrong grip, a tool balanced on a point) is not shown
             has['T08'] = False; why['T08'] = '通过核对的场景图不到 2 张（没通过的场景图不放进场景拼图页）'
+        if has.get('T04') and not any(brandkit_set.usable_scene(row) for row in scenes):
+            # a scene whose product check failed (moved, redrawn, wrongly installed) is never shown on a page
+            has['T04'] = False; why['T04'] = '没有通过核对的场景图（没通过的场景图不放进页面）'
         work = folder / '_layout'
         made = [row for row in rows if has.get(row['kind'])]
         ctx['kinds'] = [row['kind'] for row in made]          # the pages of this set: which of them carries which brand badge

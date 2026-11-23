@@ -104,6 +104,32 @@ def first_poses(base, azimuth, ups=None, turns=TURNS):
     return rows
 
 
+# A product with a front (doors, drawers, a lock, a control panel) is shown from it: a pose that turns its back or a side to
+# the camera is never offered. Measured on a user's picture: a wall cabinet stood in a van with its keyhole back plate to the camera.
+FRONTED = re.compile(r'(?i)door|drawer|lock|front|panel|display|screen|dial|button|门|抽屉|锁|面板|屏')
+FACING = .3               # the front's share toward the camera, at least (about 72 degrees round at most)
+
+
+def fronted(project):
+    """Whether the product has a front to be seen from: by its part names, or because it hangs on a wall."""
+    import mounting
+    names = ' '.join(str(item.get('name') or '') for item in ((project.get('analysis') or {}).get('objects') or [])[:200] if isinstance(item, dict))
+    return bool(FRONTED.search(names)) or mounting.of(project) == 'wall'
+
+
+def facing(base, rotation, azimuth):
+    """How much of the product's front (-Y in its main pose ``base``) faces a camera at ``azimuth`` in pose ``rotation``: -1 to 1."""
+    m = orientation._product(orientation.matrix(rotation), [list(row) for row in zip(*orientation.matrix(base))])
+    front = [-m[0][1], -m[1][1], -m[2][1]]                    # the image of (0, -1, 0)
+    toward = axes(azimuth)['toward']
+    return sum(a * b for a, b in zip(front, toward))
+
+
+def facing_camera(rows, base, azimuth):
+    """The candidate poses (id, label, rotation) that show the product's front: the main one always stays."""
+    return [row for row in rows if row[0] in ('as_is@0', 'chosen') or facing(base, row[2], azimuth) >= FACING]
+
+
 def adjusted_poses(chosen, azimuth):
     return [(ident, label, moved(chosen, azimuth, axis, degrees)) for ident, label, axis, degrees in ADJUSTMENTS]
 
@@ -239,7 +265,9 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
     try:
         say('渲染候选使用姿态')
         # Held, the product is seen in the air; set down, standing on a floor, so that what it rests on shows.
-        rows = _pictured(project, plan, first_poses(base, azimuth), view, held, folder, stop)
+        front = fronted(project)
+        candidates = first_poses(base, azimuth)
+        rows = _pictured(project, plan, facing_camera(candidates, base, azimuth) if front else candidates, view, held, folder, stop)
         refused = []
         if not held:
             # Set down, only the poses it can really rest in are shown: the vision model cannot choose one it would fall from.
@@ -258,7 +286,8 @@ def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=No
         if held:
             if stop(): raise InterruptedError()
             say('渲染姿态微调')
-            rows = _pictured(project, plan, adjusted_poses(first['row']['rotation'], azimuth), view, held, folder, stop)
+            adjusted = adjusted_poses(first['row']['rotation'], azimuth)
+            rows = _pictured(project, plan, facing_camera(adjusted, base, azimuth) if front else adjusted, view, held, folder, stop)
             sheet = orientation.sheet(rows, rows[0]['path'].parent / 'sheet.png', columns=COLUMNS, cell=SIZE)
             sheets.append(sheet)
             if stop(): raise InterruptedError()

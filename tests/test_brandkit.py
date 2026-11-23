@@ -322,6 +322,42 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(scene_audience.rank('Combination Pliers', 'Combination Pliers')[:1], ['mobile_tradesperson'])
         self.assertNotIn('mobile_tradesperson', scene_audience.rank('wireless earbuds', 'wireless earbuds'))
 
+    def test_a_wall_cabinet_is_hung_on_a_wall_in_every_scene_and_never_shown_at_a_van(self):
+        # A user's picture: a wall-mounted cabinet stood on a van floor, its back to the camera. The van was the
+        # third scene of every cabinet (NEIGHBOUR), and the place texts stood every product on a floor.
+        import scene_audience, scene_stylist
+        project = {'name': 'Wall-Mounted Tool Cabinet', 'plan': {'dimensions_mm': [850, 220, 480]}}
+        settings = {'hint': '', 'audience': 'auto', 'people': 'auto'}
+        for picked in ('site_team', 'mobile_tradesperson'):
+            first = {'scene': 'The cabinet stands on the van floor beside a drill.', 'segment_id': picked, 'people': False, 'framing': None,
+                     'summary': 's', 'reference_id': 'R1', 'reason': 'why', 'max_dimension_mm': 850}
+            with self.subTest(strategist=picked), patch.object(scene_stylist, 'propose', return_value=first), \
+                    patch.object(scene_stylist, '_source_image', return_value=None):
+                briefs = brandkit_set.scene_briefs(project, settings, 3)
+            proposals = [brief['proposal'] for brief in briefs]
+            self.assertNotIn('mobile_tradesperson', [row['segment_id'] for row in proposals])
+            self.assertEqual({row['mounting'] for row in proposals}, {'wall'})
+            for row in proposals:
+                self.assertIn('wall', row['scene']); self.assertNotIn('van', row['scene'].lower()); self.assertFalse(row.get('backdrop'))
+        # a product too big to carry is not set out at a van either; a pair of pliers still may be
+        self.assertFalse(scene_audience.fits('mobile_tradesperson', None, .9))
+        self.assertTrue(scene_audience.fits('mobile_tradesperson', None, .2))
+        self.assertNotIn('mobile_tradesperson', set(scene_audience.NEIGHBOUR.values()))                  # never anyone's fallback
+        self.assertNotIn('mobile_tradesperson', [scene_audience.NEIGHBOUR[key] for key in ('site_team', 'workshop_hobbyist', 'industrial_maintenance')])
+
+    def test_a_scene_whose_product_check_failed_is_never_on_a_page(self):
+        failed = {'check': 'failed', 'role': 'use', 'title': 'x', 'body': '', 'focus': [.5, .5]}
+        self.assertFalse(brandkit_set.usable_scene(failed))
+        self.assertTrue(brandkit_set.usable_scene({**failed, 'check': 'passed'}))
+        self.assertTrue(brandkit_set.usable_scene({**failed, 'check': 'unchecked'}))
+        product = {'title': 'Wall Cabinet', 'headline': '', 'subline': '', 'features': [], 'specs': []}
+        ctx = {'scenes': [failed, {**failed, 'role': 'place'}], 'copy': {}, 'language': 'en', 'product': product, 'assets': {},
+               'stock_lines': True}
+        for kind in ('T04', 'T08'):
+            self.assertEqual(brandkit_set._jobs_for(kind, ctx), [], kind)
+        source = Path(brandkit_set.__file__).read_text(encoding='utf-8')
+        self.assertNotIn("made[0] if made else None", source)                   # the poster no longer falls back to a failed scene
+
     def test_close_ups_of_located_points_are_cut_from_the_heros_own_camera(self):
         """The points are found on the hero: the zoom it is cropped from must be the same view (a flat tool's size page
         is drawn from above, which once turned the zoom top-down too)."""

@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
@@ -86,6 +86,48 @@ class InspectTests(unittest.TestCase):
                 self.assertAlmostEqual(report['scale'], scale, delta=.025)
                 self.assertAlmostEqual(report['shift'][0] * 640, shift[0], delta=6); self.assertAlmostEqual(report['shift'][1] * 640, shift[1], delta=6)
                 self.assertLess(report['changed'], scene_lock.MAX_CHANGED)
+
+    def test_a_product_drawn_a_little_larger_is_found_at_its_size_and_put_back_there_with_its_own_proportions(self):
+        # Pictures whose product came out a few percent larger were kept before; the render now goes back at that size.
+        picture = scene(self.layer, scale=1.05)
+        report = scene_lock.inspect(self.layer, picture); self.assertEqual(report['status'], 'kept', report)
+        scale, _, _, score = scene_lock.fit(self.layer, picture, report['scale'], *report['shift'])
+        self.assertAlmostEqual(scale, 1.05, delta=.008); self.assertGreater(score, scene_lock.FIT_MIN)
+
+    def test_the_render_is_put_back_where_the_product_was_found_and_what_is_in_front_stays(self):
+        picture = scene(self.layer, shift=(4, -3))
+        report = scene_lock.inspect(self.layer, picture); self.assertEqual(report['status'], 'kept')
+        # the image model's product redrawn with a stripe across it: the restored picture has the render there again
+        scribbled = picture.copy(); draw = ImageDraw.Draw(scribbled)
+        middle = ((self.box[0] + self.box[2]) // 2 + 4, (self.box[1] + self.box[3]) // 2 - 3)
+        inside = next((x, y) for x in range(middle[0], self.box[2]) for y in (middle[1],) if self.layer.getpixel((x - 4, y + 3))[3] == 255)
+        draw.rectangle((inside[0] - 2, inside[1] - 2, inside[0] + 2, inside[1] + 2), fill=(0, 255, 0))
+        restored = scene_lock.restore(self.layer, scribbled, report)
+        self.assertEqual(restored.size, scribbled.size)
+        self.assertNotEqual(restored.getpixel(inside), (0, 255, 0))                     # the product is the render again
+        self.assertEqual(restored.getpixel((3, 3)), scribbled.getpixel((3, 3)))          # the place is the model's
+
+    def test_the_render_is_fitted_to_the_pixel_before_it_is_put_back(self):
+        # The check finds the product to a few canvas pixels and a percent; pasting there doubled its outline.
+        picture = scene(self.layer, shift=(5, 3))
+        report = scene_lock.inspect(self.layer, picture); self.assertEqual(report['status'], 'kept')
+        scale, dx, dy, score = scene_lock.fit(self.layer, picture, report['scale'], *report['shift'])
+        self.assertAlmostEqual(scale, 1.0, delta=.006); self.assertAlmostEqual(dx * SIZE[0], 5, delta=1.5); self.assertAlmostEqual(dy * SIZE[1], 3, delta=1.5)
+        self.assertGreater(score, scene_lock.FIT_MIN)
+        restored = scene_lock.restore(self.layer, picture, report)
+        off = ImageChops.difference(restored, picture.convert('RGB')).convert('L').point(lambda value: 255 if value > 60 else 0)
+        self.assertLess(sum(1 for value in off.getdata() if value), 200)
+        # a picture whose product the render cannot be laid onto is left as painted
+        self.assertIsNone(scene_lock.restore(self.layer, Image.new('RGB', SIZE, (90, 90, 90)), report))
+
+    def test_a_product_drawn_much_smaller_and_off_its_anchor_is_still_found(self):
+        # Measured on a wall cabinet: the image model hung it at 84% of its anchored size, 8% higher; the narrow search
+        # stopped at its edge, misaligned the tiles and threw away a picture whose product was right.
+        picture = scene(self.layer, shift=(-12, -50), scale=.84)
+        report = scene_lock.inspect(self.layer, picture)
+        self.assertEqual(report['status'], 'kept', report)
+        self.assertAlmostEqual(report['scale'], .84, delta=.02)
+        self.assertAlmostEqual(report['shift'][1] * SIZE[1], -50, delta=8)
 
     def test_a_product_drawn_somewhere_else_is_moved(self):
         far = scene(self.layer, shift=(150, 110))
