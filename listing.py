@@ -346,11 +346,325 @@ def save_product(project_id, body):
     return state(project_id)
 
 
-def save_brand(project_id, body):
+def save_brand(project_id, body, remember=True):
+    """Save the project's brand. ``remember`` also keeps it as the account's last brand, which new projects start from."""
+    saved = {}
+
     def change(project, listing):
-        listing['brand'] = brand_kit.validate(body, listing.get('brand') if isinstance(listing.get('brand'), dict) else None)
+        listing['brand'] = saved['record'] = brand_kit.validate(body, listing.get('brand') if isinstance(listing.get('brand'), dict) else None)
+        saved['project'] = project
     _update(project_id, change)
+    if remember:
+        _remember_brand('last', saved['project'], saved['record'])
     return state(project_id)
+
+
+# ---- the brand shared between projects ----
+# A brand is kept on each project; the account keeps two more in data/brand_shared.json: the last one saved anywhere,
+# and the one the seller set as default. A new project starts from the default, else from the last one. A logo lives in
+# a project's own folder (components.path_of serves only a project's own files), so the shared copy keeps the file in
+# data/brand_logos/ and every project that takes the brand gets its own copy.
+BRAND_SHARED = 'brand_shared.json'
+BRAND_LOGOS = 'brand_logos'
+LOGO_NAME = re.compile(r'^[0-9a-f]{16}\.png$')
+
+
+def _read_shared():
+    try:
+        data = json.loads((DATA / BRAND_SHARED).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_shared(change):
+    from studio_store import atomic_json
+    with LOCK:
+        data = _read_shared(); change(data)
+        atomic_json(DATA / BRAND_SHARED, data)
+
+
+def shared_brands():
+    """{'last': entry or None, 'default': entry or None}; an entry is {'record', 'logo_file', 'project_id', 'project_name', 'at'}."""
+    data = _read_shared(); out = {}
+    for slot in ('last', 'default'):
+        entry = data.get(slot)
+        try:
+            entry = ({**entry, 'record': brand_kit.validate({**entry['record'], 'logo': None})}
+                     if isinstance(entry, dict) and isinstance(entry.get('record'), dict) else None)
+        except ValueError:
+            entry = None
+        if entry and not (isinstance(entry.get('logo_file'), str) and LOGO_NAME.match(entry['logo_file'])):
+            entry['logo_file'] = None
+        out[slot] = entry
+    return out
+
+
+def _logo_bytes(project_id, logo_url):
+    path = components.path_of(project_id, logo_url)
+    try:
+        return path.read_bytes() if path else None
+    except OSError:
+        return None
+
+
+def _write_once(target, data):
+    if not target.is_file():
+        temp = target.with_name(target.name + '.tmp'); temp.write_bytes(data); temp.replace(target)
+
+
+def _remember_brand(slot, project, record):
+    """Keep ``record`` (a project's validated brand) as the account's ``slot`` brand, its logo copied out of the project."""
+    logo_file = None
+    data = _logo_bytes(project['id'], record.get('logo')) if record.get('logo') else None
+    if data:
+        folder = DATA / BRAND_LOGOS; folder.mkdir(parents=True, exist_ok=True)
+        logo_file = hashlib.sha256(data).hexdigest()[:16] + '.png'
+        _write_once(folder / logo_file, data)
+    entry = {'record': {**record, 'logo': None}, 'logo_file': logo_file, 'project_id': project['id'],
+             'project_name': str(project.get('name') or '')[:100], 'at': time.time()}
+    _write_shared(lambda data: data.__setitem__(slot, entry))
+
+
+def _own_logo(project_id, data):
+    """A logo picture copied into the project's own brand folder: its /files/ address."""
+    folder = DATA / project_id / 'listing' / 'brand'; folder.mkdir(parents=True, exist_ok=True)
+    target = folder / ('logo-%s.png' % hashlib.sha256(data).hexdigest()[:12])
+    _write_once(target, data)
+    return components.url(target)
+
+
+def _entry_brand(project_id, entry):
+    """The brand record of a shared entry for ``project_id``, its logo copied in."""
+    record = dict(entry['record']); record['logo'] = None
+    if entry.get('logo_file'):
+        try:
+            record['logo'] = _own_logo(project_id, (DATA / BRAND_LOGOS / entry['logo_file']).read_bytes())
+        except OSError:
+            pass
+    return brand_kit.validate(record)
+
+
+def adopt_shared_brand(project_id):
+    """A new project starts with the default brand, else the last one saved. Returns True when one was given."""
+    shared = shared_brands(); entry = shared['default'] or shared['last']
+    if not entry:
+        return False
+    record = _entry_brand(project_id, entry)
+
+    def change(project, listing):
+        if not isinstance(listing.get('brand'), dict):
+            listing['brand'] = record
+    _update(project_id, change)
+    return True
+
+
+def _entry_public(entry):
+    if not entry:
+        return None
+    record = entry['record']
+    return {'project_id': entry.get('project_id'), 'project_name': entry.get('project_name', ''), 'at': entry.get('at'),
+            'name': record.get('name', ''), 'preset': record.get('preset'), 'accent': record.get('accent'), 'logo': bool(entry.get('logo_file'))}
+
+
+def brand_sources(project_id):
+    """What the brand panel offers to copy: the other projects with a saved brand, and the account's default and last brand."""
+    rows = []
+    for project in all_records('project'):
+        listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
+        if project.get('id') == project_id or not isinstance(listing.get('brand'), dict):
+            continue
+        try:
+            record = brand_kit.validate(listing['brand'])
+        except ValueError:
+            continue
+        rows.append({'id': project['id'], 'project_name': str(project.get('name') or '')[:100], 'name': record['name'], 'preset': record['preset'],
+                     'accent': record['accent'], 'logo': bool(record['logo']), 'at': project.get('updated_at')})
+    rows.sort(key=lambda row: row.get('at') or 0, reverse=True)
+    shared = shared_brands()
+    return {'projects': rows[:60], 'default': _entry_public(shared['default']), 'last': _entry_public(shared['last'])}
+
+
+def copy_brand(project_id, source):
+    """Take another project's brand (``source``: its id), or the account's 'default' / 'last' one, with its logo copied in."""
+    if source in ('default', 'last'):
+        entry = shared_brands()[source]
+        if not entry:
+            raise ValueError('还没有设置默认品牌' if source == 'default' else '还没有保存过品牌')
+        record = _entry_brand(project_id, entry)
+    else:
+        if not isinstance(source, str) or not re.fullmatch(r'[0-9A-Za-z_-]{1,64}', source) or source == project_id:
+            raise ValueError('请选择另一个项目')
+        try:
+            other = get('project', source)
+        except KeyError:
+            raise ValueError('那个项目已不存在') from None
+        listing = other.get('listing') if isinstance(other.get('listing'), dict) else {}
+        if not isinstance(listing.get('brand'), dict):
+            raise ValueError('那个项目还没有保存品牌')
+        record = brand_kit.validate(listing['brand'])
+        data = _logo_bytes(source, record.get('logo')) if record.get('logo') else None
+        record = {**record, 'logo': _own_logo(project_id, data) if data else None}
+    return save_brand(project_id, record)
+
+
+def set_default_brand(project_id, clear=False):
+    """Make this project's saved brand the one every new project starts with (``clear``: new projects take the last one again)."""
+    if clear:
+        _write_shared(lambda data: data.pop('default', None))
+    else:
+        project = get('project', project_id)
+        _, record, _ = stored(project)
+        _remember_brand('default', project, record)
+    return brand_sources(project_id)
+
+
+# ---- how the product is installed (mounting.py): the seller's word over what was read from its name and parts ----
+MOUNTINGS = {'': '自动', 'wall': '壁挂', 'free': '落地·台面'}
+
+
+def mounting_view(project, product):
+    import mounting
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    told = str(metadata.get('mounting') or '').strip().lower()
+    setting = 'wall' if told in mounting.KINDS else 'free' if told in ('free', 'none', 'floor', 'bench', 'handheld') else ''
+    hint = ((product.get('scenes') or {}).get('hint') or '') if isinstance(product.get('scenes'), dict) else ''
+    detected, why = mounting.reason({**project, 'metadata': {**metadata, 'mounting': ''}}, hint)
+    return {'setting': setting, 'detected': detected or 'free', 'reason': why, 'used': mounting.of(project, hint) or 'free'}
+
+
+def save_mounting(project_id, value):
+    """metadata['mounting'] = '' (decided from the name and parts), 'wall' or 'free'. It is part of the scene key, so a
+    change makes the scene pictures again at the next build."""
+    if not isinstance(value, str) or value not in MOUNTINGS:
+        raise ValueError('安装方式只能是自动、壁挂或落地·台面')
+    with LOCK:
+        project = get('project', project_id)
+        metadata = dict(project.get('metadata')) if isinstance(project.get('metadata'), dict) else {}
+        if value:
+            metadata['mounting'] = value
+        else:
+            metadata.pop('mounting', None)
+        project['metadata'] = metadata
+        put('project', project)
+    return state(project_id)
+
+
+# ---- what the AI costs: the next build's estimate and what this project has spent ----
+# List prices, US$. An image-model call at 1536 px medium is about $0.075 (README v47) and a scene takes about 1.5
+# calls (a retry after a failed check); a page's vision review is $0.04-0.08. Only an estimate: kept scenes, cached
+# copy and cached reviews cost nothing, and the provider's own bill is the real figure.
+IMAGE_CALL_USD = 0.075
+IMAGE_TRIES = 1.5
+REVIEW_PAGE_USD = (0.04, 0.08)
+# US$ per million tokens (input, output) by model family, for the spend line; a model not listed is counted, not priced.
+PRICES = (('gpt-image', 8.0, 30.0), ('opus', 5.0, 25.0), ('sonnet', 3.0, 15.0), ('haiku', 1.0, 5.0),
+          ('gpt-6', 2.0, 10.0), ('gemini', 0.75, 3.75), ('deepseek', 0.15, 0.6))
+
+
+def estimate(project, product, listing, plan):
+    """The approximate AI cost of the next build: {'new_scenes', 'kept_scenes', 'review_pages', 'usd': [low, high]}."""
+    kinds = {row['kind'] for row in plan if not row.get('skipped')}
+    settings = product.get('scenes') or brandkit_set.default_scenes()
+    new = kept = 0
+    if kinds & {'T12', 'T04', 'T08'} and settings.get('enabled') and brandkit_set.image_model_ready():
+        store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else {}
+        keys = {brandkit_set.scene_key(project, product, settings), brandkit_set.legacy_scene_key(project, product, settings)}
+        if store.get('key') in keys:
+            try:
+                import scene_imagegen
+                retry = scene_imagegen.USAGE_RETRY
+            except Exception:
+                retry = 1
+            # what make_scenes keeps: pictures still on disk, except a failed one that has not had its extra try yet
+            kept = sum(1 for row in store.get('items') or [] if isinstance(row, dict) and Path(row.get('path') or '').is_file()
+                       and not (row.get('check') == 'failed' and (row.get('usage_retry') or 0) < retry))
+        kept = min(kept, settings['count']); new = settings['count'] - kept
+    try:
+        vision = brandkit_review.available()[1]
+    except Exception:
+        vision = False
+    pages = len(kinds) if vision else 0
+    scenes = new * IMAGE_CALL_USD * IMAGE_TRIES
+    return {'new_scenes': new, 'kept_scenes': kept, 'review_pages': pages,
+            'usd': [round(scenes + pages * REVIEW_PAGE_USD[0], 2), round(scenes + pages * REVIEW_PAGE_USD[1], 2)],
+            'basis': {'image_call': IMAGE_CALL_USD, 'tries': IMAGE_TRIES, 'review_page': list(REVIEW_PAGE_USD)}}
+
+
+def _row_cost(row):
+    """US$ of one usage-log line at list price, or None for a model without a known price. A cached answer is free."""
+    if row.get('cached'):
+        return 0.0
+    model = str(row.get('model') or '').lower()
+    price = next(((low, high) for name, low, high in PRICES if name in model), None)
+    if not price:
+        return None
+    usage = row.get('usage') if isinstance(row.get('usage'), dict) else {}
+    number = lambda key: usage.get(key) if type(usage.get(key)) in (int, float) else 0
+    tokens_in = number('input_tokens') or number('prompt_tokens'); tokens_out = number('output_tokens') or number('completion_tokens')
+    # a cache read is billed at a tenth of the input price, a cache write at 1.25 times
+    return (tokens_in * price[0] + number('cache_read_input_tokens') * price[0] * 0.1
+            + number('cache_creation_input_tokens') * price[0] * 1.25 + tokens_out * price[1]) / 1e6
+
+
+_SPEND = {}
+_SPEND_LOCK = threading.Lock()
+
+
+def _scan_usage(path):
+    """{project id: {'usd', 'calls', 'unpriced', 'since'}} of one log file, read on from where the last call stopped
+    (the workspace polls during a build: the 20 MB log is not read again each time)."""
+    try:
+        info = path.stat()
+    except OSError:
+        return {}
+    with _SPEND_LOCK:
+        seen = _SPEND.get(str(path))
+        if not seen or seen['file'] != (info.st_dev, info.st_ino) or info.st_size < seen['offset']:
+            seen = _SPEND[str(path)] = {'file': (info.st_dev, info.st_ino), 'offset': 0, 'totals': {}}
+        if info.st_size > seen['offset']:
+            try:
+                with open(path, 'rb') as handle:
+                    handle.seek(seen['offset']); chunk = handle.read(info.st_size - seen['offset'])
+            except OSError:
+                return seen['totals']
+            end = chunk.rfind(b'\n') + 1              # a line still being written is read next time
+            for line in chunk[:end].splitlines():
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                project_id = row.get('project') if isinstance(row, dict) else None
+                if not isinstance(project_id, str) or not project_id:
+                    continue                           # written before lines carried a project: never attributed
+                total = seen['totals'].setdefault(project_id, {'usd': 0.0, 'calls': 0, 'unpriced': 0, 'since': None})
+                cost = _row_cost(row)
+                total['calls'] += 1
+                if cost is None:
+                    total['unpriced'] += 1
+                else:
+                    total['usd'] += cost
+                stamp = row.get('ts') if type(row.get('ts')) in (int, float) else None
+                if stamp and (total['since'] is None or stamp < total['since']):
+                    total['since'] = stamp
+            seen['offset'] += end
+        return seen['totals']
+
+
+def spend(project_id):
+    """What the usage log says this project spent since its lines carry the project: {'usd', 'calls', 'unpriced', 'since'}."""
+    import ai_client
+    import studio_store
+    folder = Path(ai_client.USAGE_DIR or studio_store.DATA)
+    out = {'usd': 0.0, 'calls': 0, 'unpriced': 0, 'since': None}
+    for name in (ai_client.USAGE_LOG + '.1', ai_client.USAGE_LOG):
+        total = _scan_usage(folder / name).get(project_id)
+        if total:
+            out['usd'] += total['usd']; out['calls'] += total['calls']; out['unpriced'] += total['unpriced']
+            if total['since'] and (out['since'] is None or total['since'] < out['since']):
+                out['since'] = total['since']
+    out['usd'] = round(out['usd'], 3)
+    return out
 
 
 def save_logo(project_id, stream, filename):
@@ -870,6 +1184,10 @@ def state(project_id):
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
             'options': {'workpieces': list(WORKPIECES), 'materials': list(MATERIALS), 'modes': list(MODES), 'languages': list(LANGUAGES),
                         'workpiece_names': WORKPIECE_NAMES, 'material_names': MATERIAL_NAMES},
+            # how the product is installed, why the workspace thinks so, and the seller's override (a change remakes the scenes)
+            'mounting': mounting_view(project, product),
+            # the next build's AI cost (an estimate at list price) and what this project's logged requests cost so far
+            'estimate': estimate(project, product, listing, plan), 'spend': spend(project_id),
             'task': latest(project_id), 'ready': bool(project.get('analysis')) and project.get('status') == 'ready',
             'available': bool(engine.runtime_status().get('capabilities', {}).get('render', True))}
 
@@ -891,7 +1209,9 @@ def submit(project_id, body=None):
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
                 'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
-    thread = threading.Thread(target=_run, args=(task['id'],), name='listing', daemon=True)
+    import ai_client
+    # every AI request of the build is logged with this project (its spend in the workspace; see spend())
+    thread = threading.Thread(target=ai_client.tagged(project_id, _run), args=(task['id'],), name='listing', daemon=True)
     TASKS[task['id']] = thread; thread.start()
     return public_task(task)
 
@@ -1427,8 +1747,10 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
             return kind, result
         progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
+        import ai_client
+        # pool threads start with an empty context: the page reviews made there are tagged with the project here
         with concurrent.futures.ThreadPoolExecutor(3) as pool:
-            for kind, result in pool.map(one, made):
+            for kind, result in pool.map(lambda row: ai_client.in_project(project_id, one, row), made):
                 laid[kind] = result
         for row in made:
             kind = row['kind']; result = laid[kind]

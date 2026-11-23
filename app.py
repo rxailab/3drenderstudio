@@ -246,7 +246,13 @@ def create_project(base,name='',metadata=None,platform=None):
         plan.update(ecommerce_platforms.plan_recommendation(preset,plan,new_project=True));validate(plan)
         p['ecommerce']={'platform':preset['id']}
     with LOCK:
-        put('project',p);engine.submit(ident,'analyze');return engine.project_view(ident)
+        put('project',p)
+        try:
+            import listing
+            listing.adopt_shared_brand(ident)          # a new project starts with the account's default (else last saved) brand
+        except Exception:
+            pass                                       # a brand that cannot be copied never stops an upload
+        engine.submit(ident,'analyze');return engine.project_view(ident)
 
 def _component_uploads():
     """The components sent with a new project: [(file, fields)], checked before anything is saved."""
@@ -625,6 +631,35 @@ def listing_product(ident):
 def listing_brand(ident):
     import listing
     return jsonify(listing.save_brand(ident,request.get_json(force=True)))
+
+@app.get('/api/projects/<ident>/listing/brands')
+def listing_brand_sources(ident):
+    """The brands this project can take: other projects' saved brands, the account's default and last one."""
+    import listing
+    get('project',ident)
+    return jsonify(listing.brand_sources(ident))
+
+@app.post('/api/projects/<ident>/listing/brand/copy')
+def listing_brand_copy(ident):
+    import listing
+    body=request.get_json(force=True)
+    if not isinstance(body,dict): raise ValueError('请选择要复制的品牌')
+    return jsonify(listing.copy_brand(ident,body.get('source')))
+
+@app.post('/api/projects/<ident>/listing/brand/default')
+def listing_brand_default(ident):
+    """This project's saved brand becomes the one new projects start with ({clear:true}: they take the last one saved again)."""
+    import listing
+    body=request.get_json(silent=True) or {}
+    return jsonify(listing.set_default_brand(ident,clear=isinstance(body,dict) and body.get('clear') is True))
+
+@app.put('/api/projects/<ident>/listing/mounting')
+def listing_mounting(ident):
+    """How the product is installed: '' (decided from its name and parts), 'wall' or 'free'. A change remakes the scenes."""
+    import listing
+    body=request.get_json(force=True)
+    if not isinstance(body,dict): raise ValueError('安装方式格式无效')
+    return jsonify(listing.save_mounting(ident,body.get('mounting')))
 
 @app.route('/api/projects/<ident>/listing/logo',methods=['POST','DELETE'])
 def listing_logo(ident):

@@ -2087,7 +2087,7 @@ test('one-click hero optimization saves a draft and submits the latest real sour
   const p=heroOptimizationProject();p.outputs.push({...p.outputs[0],job_id:'hero-new',created_at:40,png_url:'/files/a/runs/new/hero.png',blend_url:'/files/a/runs/new/hero.blend'});
   const h=await setup(t,{projects:[p]});enableHeroOptimization(h);await h.run("openProject('a')");
   input(h,'instructionInput','保留这段尚未提交的要求');input(h,'exposure','0.4');
-  assert.equal(h.node('optimizeHeroButton').hidden,false);assert.equal(h.node('optimizeHeroButton').disabled,false);assert.equal(h.node('renderButton').classList.contains('primary'),true);assert.equal(h.node('optimizeHeroButton').classList.contains('primary'),false);assert.equal(h.node('optimizeHeroButton').closest('[role="tabpanel"]').id,'inspectorReview');
+  assert.equal(h.node('optimizeHeroButton').hidden,false);assert.equal(h.node('optimizeHeroButton').disabled,false);assert.equal(h.node('listingOpen').classList.contains('primary'),true,'an analysed model leads to the listing set');assert.equal(h.node('renderButton').classList.contains('primary'),false);assert.equal(h.node('optimizeHeroButton').classList.contains('primary'),false);assert.equal(h.node('optimizeHeroButton').closest('[role="tabpanel"]').id,'inspectorReview');
   const pending=h.run('optimizeHero()');await tick();await h.run('optimizeHero()');await pending;
   const writes=h.calls.filter(call=>call.method==='POST');assert.deepEqual(writes.map(call=>call.url),['/api/projects/a/plan','/api/projects/a/hero-optimize']);
   const request=writes[1];assert.equal(request.body.expected_version,2);assert.equal(request.body.final_resolution,2000);assert.equal(request.body.shot_id,'hero');
@@ -2099,7 +2099,7 @@ test('one-click hero optimization saves a draft and submits the latest real sour
 test('hero optimization availability is scoped to white full shots and independent of the legacy render worker',async t=>{
   const p=heroOptimizationProject();const h=await setup(t,{ready:false,projects:[p]});enableHeroOptimization(h);await h.run("openProject('a')");
   assert.equal(h.node('optimizeHeroButton').disabled,false);assert.equal(h.node('previewButton').disabled,true);
-  h.run("activeShot='campaign';cameraShot='campaign';syncCamera();renderProject()");assert.equal(h.node('optimizeHeroButton').hidden,true);assert.equal(h.node('renderButton').classList.contains('primary'),true);
+  h.run("activeShot='campaign';cameraShot='campaign';syncCamera();renderProject()");assert.equal(h.node('optimizeHeroButton').hidden,true);assert.equal(h.node('listingOpen').classList.contains('primary'),true);assert.equal(h.node('renderButton').classList.contains('secondary'),true);
   h.run("draft.shots.find(s=>s.id==='campaign').style='white';renderProject()");assert.equal(h.node('optimizeHeroButton').hidden,false);assert.equal(h.node('optimizeHeroButton').disabled,true);assert.match(h.node('optimizeHeroReason').textContent,/先生成预览/);
   h.run("draft.shots.find(s=>s.id==='campaign').kind='detail';renderProject()");assert.equal(h.node('optimizeHeroButton').hidden,true);
   h.run("activeShot='hero';cameraShot='hero';syncCamera();serviceDisconnected=true;renderProject()");assert.equal(h.node('optimizeHeroButton').disabled,true);assert.match(h.node('optimizeHeroReason').textContent,/连接/);
@@ -2285,8 +2285,8 @@ test('export submits the chosen settings once and then shows the verified files'
   assert.equal(tiles[1].querySelector('a').getAttribute('href'),'#','a file outside this project is never linked');
   assert.equal(result.querySelectorAll('img[onerror]').length,0);assert.equal(tiles[1].dataset.issue,'true');
   assert.match(result.querySelector('.ecommerce-issues').textContent,/图片来自旧方案 v1/);
-  assert.equal(h.node('ecommerceExport').disabled,false);assert.equal(h.node('ecommerceExport').textContent,'导出平台套图');
-  assert.match(h.node('toast').textContent,/平台套图已导出/);
+  assert.equal(h.node('ecommerceExport').disabled,false);assert.equal(h.node('ecommerceExport').textContent,'导出平台主图/白底图');
+  assert.match(h.node('toast').textContent,/平台主图\/白底图已导出/);
 });
 
 test('a running export can be cancelled and a running render blocks a new export',async t=>{
@@ -2459,6 +2459,9 @@ test('usage scenes are made with the listing set: the panel points there and kee
   p.outputs=[...(p.outputs || []),{id:'old-scene',shot_id:'scene',quality:'generated',version:1,created_at:5,png_url:'/files/a/scene_ai/x/scene/x.png',jpg_url:'/files/a/scene_ai/x/scene/x.jpg'}];
   await h.run('poll()');await tick();
   assert.equal(h.node('sceneHistory').hidden,false);assert.match(h.node('sceneHistoryTitle').textContent,/（1）/);
+  // the earlier pictures sit with the listing's scene settings, no longer in the 调整 tab
+  assert.equal(h.node('sceneHistory').closest('[role="tabpanel"]').id,'inspectorListing');assert.equal(h.node('sceneHistory').dataset.count,'1');
+  assert.equal(h.node('inspectorReview').querySelector('#sceneHistory'),null);
   h.node('sceneOpenListing').click();await tick();
   assert.equal(h.calls.some(call=>/\/scene(\/recommend)?$/.test(call.url) && call.method==='POST'),false);
 });
@@ -2686,4 +2689,26 @@ test('the 套图 tab is first, open when a project opens, and holds the whole wo
   for(const id of ['listingPanel','listingBuild','listingPlan','listingPages'])assert.ok(h.node('inspectorListing').querySelector('#'+id),id);
   h.node('inspectorReviewTab').click();await tick();
   assert.equal(h.node('inspectorListing').hidden,true);assert.equal(h.w.document.body.classList.contains('listing-wide'),false);
+});
+
+test('the listing sub-tabs move with the arrow keys like the inspector tabs',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");await tick();
+  const clicked=[];for(const tab of h.w.document.querySelectorAll('[data-listing-tab]'))tab.addEventListener('click',()=>clicked.push(tab.dataset.listingTab));
+  const first=h.node('listingTabProduct');first.focus();
+  first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  assert.equal(h.w.document.activeElement.id,'listingTabComponents');assert.deepEqual(clicked,['components']);
+  h.w.document.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'End',bubbles:true}));
+  assert.equal(h.w.document.activeElement.id,'listingTabArticulation');
+  h.w.document.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  assert.equal(h.w.document.activeElement.id,'listingTabProduct','wraps round');
+});
+
+test('once the model is analysed the topbar leads to the listing set, and the export tab names its own white-background pictures',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");await tick();
+  assert.equal(h.node('listingOpen').textContent,'生成套图');
+  assert.ok(h.node('listingOpen').classList.contains('primary'));assert.ok(h.node('renderButton').classList.contains('secondary'));
+  assert.equal(h.node('ecommerceExport').textContent,'导出平台主图/白底图');
+  assert.doesNotMatch(h.node('inspectorEcommerce').textContent,/平台套图/);
+  const p=h.records.get('a');p.analysis=null;p.status='analyzing';await h.run('poll()');await tick();
+  assert.ok(h.node('renderButton').classList.contains('primary'),'before analysis nothing leads to the set');
 });

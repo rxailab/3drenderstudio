@@ -2,6 +2,7 @@
 import base64
 import contextlib
 import contextvars
+import functools
 import copy
 from camera_controls import CAMERA_FIELDS, ORTHO_SCALE_LIMITS, PROJECTIONS
 import io
@@ -62,6 +63,9 @@ USAGE_LOG_LIMIT = 20 * 1024 * 1024        # past this the log is moved aside onc
 USAGE_DIR = None                          # the log's folder; None is studio_store.DATA. The tests point it elsewhere so fake
                                           # transports never add lines to the real log (tests/conftest.py).
 CALLER = contextvars.ContextVar('ai_caller', default='')
+# The project the requests are made for (set by listing builds and scene jobs), so its spend can be summed from the log.
+# Lines written before this existed carry no project and are never attributed to one.
+PROJECT = contextvars.ContextVar('ai_project', default='')
 _TALLIES = contextvars.ContextVar('ai_tallies', default=())
 _USAGE_LOCK = threading.Lock()
 
@@ -74,6 +78,27 @@ def calling(name):
         yield
     finally:
         CALLER.reset(token)
+
+
+@contextlib.contextmanager
+def for_project(project_id):
+    """Tag the usage-log lines of the requests that follow with ``project_id``."""
+    token = PROJECT.set(str(project_id or '')[:64])
+    try:
+        yield
+    finally:
+        PROJECT.reset(token)
+
+
+def in_project(project_id, function, *args, **kwargs):
+    """Run ``function`` with its requests tagged with ``project_id``: for a new thread, which starts with an empty context."""
+    with for_project(project_id):
+        return function(*args, **kwargs)
+
+
+def tagged(project_id, function):
+    """``function`` wrapped to run under ``project_id``: a thread's target that keeps its own arguments."""
+    return functools.partial(in_project, project_id, function)
 
 
 @contextlib.contextmanager
@@ -127,7 +152,8 @@ def log_usage(entry):
     try:
         import studio_store
         path = Path(USAGE_DIR or studio_store.DATA) / USAGE_LOG
-        line = json.dumps({'ts': round(time.time(), 3), **entry}, ensure_ascii=False, allow_nan=False) + '\n'
+        project = PROJECT.get()
+        line = json.dumps({'ts': round(time.time(), 3), **({'project': project} if project else {}), **entry}, ensure_ascii=False, allow_nan=False) + '\n'
         with _USAGE_LOCK:
             if path.is_file() and path.stat().st_size > USAGE_LOG_LIMIT:
                 path.replace(path.with_name(USAGE_LOG + '.1'))

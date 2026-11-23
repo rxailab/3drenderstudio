@@ -123,7 +123,12 @@
 
 **修改与生成。**
 
-- `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。
+- `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。保存品牌时，它也记为账户里「最近保存的品牌」，新项目默认使用它（设了默认品牌时用默认品牌）。
+- `GET /api/projects/{id}/listing/brands`：可复制的品牌 `{projects:[{id, project_name, name, preset, accent, logo}], default, last}`。
+- `POST /api/projects/{id}/listing/brand/copy`：`{source}`，`source` 为另一个项目的 id、`default` 或 `last`；替换本项目的品牌，标志图片复制进本项目。返回套图状态。
+- `POST /api/projects/{id}/listing/brand/default`：把本项目已保存的品牌设为默认；`{clear:true}` 取消默认。返回同 `…/listing/brands`。
+- `PUT /api/projects/{id}/listing/mounting`：`{mounting}`，`''`（自动识别）、`wall`（壁挂）或 `free`（落地·台面），存到 `metadata.mounting`。它在场景缓存键里，改动后下次生成会重画场景图。套图状态的 `mounting` 为 `{setting, detected, reason, used}`。
+- 套图状态另有 `estimate`（下一次生成的 AI 费用估算：`new_scenes`、`kept_scenes`、`review_pages`、`usd:[低, 高]`，按官方原价）与 `spend`（`data/ai_usage.jsonl` 里带本项目 `project` 标记的记录合计：`usd`、`calls`、`unpriced`、`since`）。
 - `POST /api/projects/{id}/listing/logo`（`multipart/form-data` 的 `file`，PNG / JPG / WebP，不超过 8 MB）与 `DELETE` 同一地址。
 - `POST /api/projects/{id}/listing/extract`：`{text, language?}`。把粘贴的产品介绍（最多 8000 字）由文本模型分到产品信息各栏：`title`、`model`、`size_mm`（介绍写明的最长边，换算成毫米）、`headline`、`subline`、`features`（含对应部件）、`specs`、`figures`。只采用介绍里写到的内容：数字不在介绍里的条目被略去，写进 `drafted.notes`；`drafted.source` 为 `extracted`。提取到的栏目替换原内容，其余保留；`language` 不给时按介绍的文字判断。原文存为产品信息的 `source`（也可经 `PUT …/listing/product` 修改）。没有配置文本模型时返回错误。
 - `POST /api/projects/{id}/listing/draft`：`{hint, language, replace}`。按模型部件名称和 `hint` 起草标题、卖点、规格；配置了 AI 时由文案模型撰写。`replace` 不为 `true` 时只填空着的内容。模型给出而 `hint` 里没有的数字会被去掉。

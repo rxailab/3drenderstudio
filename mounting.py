@@ -50,3 +50,44 @@ def of(project, hint=''):
     if PARTS.search(names):
         return 'wall'
     return None
+
+
+def reason(project, hint=''):
+    """(kind, why) for the seller: what of() decides and the words it decided from, in Chinese.
+
+    It follows of() step by step (tests/test_mounting.py checks that both always agree), so the workspace can show
+    "判断为壁挂：名称含 Wall-Mounted" next to the control that overrides it.
+    """
+    project = project if isinstance(project, dict) else {}
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    told = str(metadata.get('mounting') or '').strip().lower()
+    if told in KINDS:
+        return told, '你设为壁挂'
+    if told in ('free', 'none', 'floor', 'bench', 'handheld'):
+        return None, '你设为落地·台面'
+    fields = (('名称', project.get('name')), ('类目', metadata.get('product_category')), ('标题', metadata.get('title')), ('场景说明', hint))
+    words = ' '.join(str(value or '') for _, value in fields)
+
+    def where(pattern):
+        # the field the deciding words came from; the joined text decides, as in of()
+        for label, value in fields:
+            found = pattern.search(str(value or ''))
+            if found:
+                return label, found.group(0).strip()
+        found = pattern.search(words)
+        return '名称和类目', found.group(0).strip()
+    if NOT_WALL.search(words):
+        return None, '判断为落地·台面：%s写明 %s' % where(NOT_WALL)
+    if WORDS.search(words):
+        return 'wall', '判断为壁挂：%s含 %s' % where(WORDS)
+    if STANDS.search(words):
+        return None, '判断为落地·台面：%s含 %s' % where(STANDS)
+    seen = project.get('orientation') if isinstance(project.get('orientation'), dict) else {}
+    described = str(seen.get('product') or '')
+    if WORDS.search(described) and not NOT_WALL.search(described):
+        return 'wall', '判断为壁挂：识别朝向时视觉模型称它为 %s' % described.strip()[:60]
+    names = ' '.join(str(item.get('name') or '') for item in ((project.get('analysis') or {}).get('objects') or [])[:200] if isinstance(item, dict))
+    found = PARTS.search(names)
+    if found:
+        return 'wall', '判断为壁挂：零件名含 %s' % found.group(0)
+    return None, '判断为落地·台面：名称、类目和零件名里没有壁挂的说法'

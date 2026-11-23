@@ -65,13 +65,29 @@ function listingSchedule() {
 function listingField(label,html,help='') { return `<label class="listing-field"><span class="field-label">${esc(label)}</span>${html}${help?`<span class="field-help">${esc(help)}</span>`:''}</label>`; }
 function listingInput(scope,key,value,attrs='') { return `<input type="text" data-scope="${scope}" data-key="${esc(key)}" value="${esc(value ?? '')}" ${attrs}>`; }
 function listingRenderPanel() {
-  for(const tab of document.querySelectorAll('[data-listing-tab]'))tab.setAttribute('aria-selected',String(tab.dataset.listingTab===listingTab));
+  // One panel serves the five sub-tabs: it is labelled by the selected one, which alone is in the tab order (arrows move along).
+  for(const tab of document.querySelectorAll('[data-listing-tab]')){const on=tab.dataset.listingTab===listingTab;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;
+    if(on && tab.id)$('listingPanel')?.setAttribute('aria-labelledby',tab.id);}
+  listingSyncSceneHistory();
   if(!listingState || !listingEdit)return;
   if(listingTab==='product')listingRenderProduct();
   else if(listingTab==='components')listingRenderComponents();
   else if(listingTab==='brand')listingRenderBrand();
   else if(listingTab==='articulation')listingRenderArticulation();
   else listingRenderUsecase();
+}
+// The earlier usage-scene pictures (app.js fills #sceneHistory) belong with the scene settings: shown on that sub-tab only.
+function listingSyncSceneHistory() {
+  const node=$('sceneHistory');if(!node)return;
+  node.hidden=listingTab!=='usecase' || !Number(node.dataset.count || 0);
+}
+// Opening an earlier scene picture shows it in the viewer, which the built set may be covering.
+function listingShowModel() { if(listingStageShown()){listingStageOff=true;listingRenderMain();} }
+// Asks before anything is removed or replaced: the app's decision dialog when it is there, the browser's otherwise.
+async function listingConfirm(id,title,text,label,danger=true) {
+  if(typeof chooseAction==='function')
+    return await chooseAction(id,title,`<p>${esc(text)}</p>`,[{value:'cancel',label:'取消'},{value:'yes',label,danger,primary:!danger}])==='yes';
+  return typeof window.confirm==='function'?!!window.confirm(text):true;
 }
 function listingPartsHTML(index,chosen) {
   const parts=listingState.parts || [];
@@ -181,7 +197,36 @@ function listingRenderBrand() {
     <div class="listing-logo"><span class="field-label">标志图片</span>${used.logo?`<img src="${esc(used.logo)}" alt="品牌标志"><button type="button" class="button subtle" data-action="logo-remove">移除</button>`:'<span class="field-help">未上传；页眉显示品牌名称文字。</span>'}<span class="field-help">${esc(listingUsageLine('logo'))}</span>
       <input id="listingLogoFile" type="file" accept=".png,.jpg,.jpeg,.webp" aria-label="上传标志图片"></div>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>
-    <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>`;
+    <div class="listing-save"><button type="button" class="button secondary" data-action="save-brand">保存品牌风格</button></div>
+    <section class="listing-share" aria-labelledby="listingShareTitle"><h3 class="listing-heading" id="listingShareTitle">多个项目共用</h3><div id="listingShare">${listingShareHTML()}</div></section>`;
+  if(!listingShare || listingShare.project!==listingOpenFor())listingLoadShare();
+}
+// ---- brands shared between projects: copy another project's brand, or set this one as the default for new projects ----
+let listingShare=null;          // {project, data:{projects, default, last}} from /listing/brands, read when the brand tab opens
+function listingShareHTML() {
+  const id=listingOpenFor(),share=listingShare && listingShare.project===id?listingShare.data:null;
+  if(!share)return '<p class="field-help">正在读取其他项目的品牌…</p>';
+  const brandName=row=>row.name?`「${row.name}」`:'未命名品牌';
+  const own=share.default && share.default.project_id===id;
+  const next=share.default?`新项目默认使用${brandName(share.default)}（来自「${share.default.project_name}」，已设为默认）。`
+    :share.last?`新项目沿用最近保存的品牌${brandName(share.last)}（来自「${share.last.project_name}」）；设为默认后就固定使用它。`
+    :'新项目还没有可沿用的品牌；保存品牌后，新项目会自动沿用。';
+  const projects=Array.isArray(share.projects)?share.projects:[];
+  const options=projects.map(row=>`<option value="${esc(row.id)}">${esc(row.project_name)} · ${esc(row.name || '未命名品牌')}${row.logo?'（含标志）':''}</option>`).join('');
+  return `<p class="field-help" id="listingShareNext">${esc(next)}</p>
+    ${projects.length || (share.default && !own)?`<div class="listing-share-row"><label class="field-label" for="listingBrandSource">从其他项目复制品牌</label>
+      <select id="listingBrandSource"><option value="">选择项目…</option>${share.default && !own?'<option value="default">默认品牌</option>':''}${options}</select>
+      <button type="button" class="button subtle" data-action="brand-copy">复制到这个项目</button></div>
+      <p class="field-help">复制会替换这个项目当前的品牌设置，标志图片一并复制过来。</p>`:'<p class="field-help">其他项目还没有保存过品牌。</p>'}
+    <div class="listing-share-row"><button type="button" class="button subtle" data-action="brand-default" aria-describedby="listingShareNext">${own?'用当前设置更新默认品牌':'设为默认品牌'}</button>
+      ${own?'<button type="button" class="button subtle" data-action="brand-default-clear">取消默认</button>':''}</div>`;
+}
+function listingRenderShare() { const node=$('listingShare');if(node && listingTab==='brand')node.innerHTML=listingShareHTML(); }
+async function listingLoadShare() {
+  const id=listingOpenFor();if(!id)return;
+  try{const data=await api(`/api/projects/${id}/listing/brands`);if(id!==listingOpenFor())return;listingShare={project:id,data};}
+  catch(error){if(id===listingOpenFor() && $('listingShare'))$('listingShare').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;return;}
+  listingRenderShare();
 }
 // The font library's pairings, each previewed in its own faces (served by /brandkit/fonts.css).
 function listingFontPicker(b) {
@@ -196,6 +241,26 @@ function listingFontPicker(b) {
       <strong>${esc(pair.label.zh)}</strong><span>${esc(pair.note.zh)}</span>
       <span class="listing-font-names">${esc(pair.display)} · ${esc(pair.text)} · ${esc(pair.cjk)}</span></label>`).join('')}</fieldset>`;
 }
+// How the product is installed (mounting.py): what was read from its name and parts, and the seller's override.
+const listingMountWords={wall:'壁挂',free:'落地·台面'};
+function listingMountingHTML() {
+  const m=listingState.mounting;if(!m)return '';
+  const choice=(value,label)=>`<label class="listing-check"><input type="radio" name="listingMounting" data-scope="mounting" value="${value}" ${m.setting===value?'checked':''} ${listingBusy?'disabled':''}> ${esc(label)}</label>`;
+  const why=m.setting?`已手动设为${listingMountWords[m.setting]}。自动识别的结果：${m.reason}`:m.reason;
+  return `<fieldset class="listing-mounting" aria-describedby="listingMountingReason listingMountingNote"><legend class="field-label">安装方式</legend>
+    <p class="listing-mounting-reason" id="listingMountingReason">${esc(why)}</p>
+    <div class="listing-mounting-choices">${choice('',`自动（${listingMountWords[m.detected] || '落地·台面'}）`)}${choice('wall','壁挂')}${choice('free','落地·台面')}</div>
+    <p class="field-help" id="listingMountingNote">壁挂产品在场景图里挂在墙上、正面朝镜头。安装方式是场景图的生成依据之一：改动后，下次生成套图会重新生成场景图（会产生图像模型费用）。</p></fieldset>`;
+}
+async function listingSaveMounting(value) {
+  const id=listingOpenFor();if(!id || listingBusy)return;
+  listingBusy=true;
+  try{const state=await api(`/api/projects/${id}/listing/mounting`,{method:'PUT',body:{mounting:value}});
+    if(id!==listingOpenFor())return;
+    listingAdopt(state,false);toast(value?`已设为${listingMountWords[value]}；下次生成会重新生成场景图`:'已改回自动识别');}
+  catch(error){toast(error.message,true);}
+  finally{listingBusy=false;if(listingTab==='usecase' && listingOpenFor()===id){listingRenderUsecase();$('listingPanel').querySelector(`[data-scope="mounting"][value="${listingState?.mounting?.setting || ''}"]`)?.focus();}listingRenderMain();}
+}
 function listingRenderUsecase() {
   const u=listingEdit.product.usecase,o=listingState.options,round=['pipe','rod'].includes(u.kind);
   const select=(key,values,names)=>`<select data-scope="usecase" data-key="${key}">${values.map(value=>`<option value="${esc(value)}" ${u[key]===value?'selected':''}>${esc(names[value] || value)}</option>`).join('')}</select>`;
@@ -203,6 +268,7 @@ function listingRenderUsecase() {
   const triple=(key,labels)=>`<span class="listing-grid3">${labels.map((label,index)=>`<input type="text" inputmode="decimal" data-scope="usecase-triple" data-key="${key}" data-index="${index}" value="${esc(u[key][index])}" aria-label="${esc(label)}" title="${esc(label)}">`).join('')}</span>`;
   const sc=listingEdit.product.scenes || {enabled:true,count:3,audience:'auto',people:'auto',hint:''},so=listingState.scene_options || {audiences:[],people:{},max:3};
   $('listingPanel').innerHTML=`
+    ${listingMountingHTML()}
     <h3 class="listing-heading">AI 场景图</h3>
     <p class="field-help">生成套图时，按目标人群策划使用场景，由图像模型围绕锁定的产品渲染生成（产品外形不会被改动），再排进海报主图、场景参数图和使用场景组图。${so.image_ready?'':'<strong>图像模型未配置</strong>：可在 AI 设置里开启；未开启时海报用纯色版，需要场景的页面会跳过。'}</p>
     <label class="listing-check listing-toggle"><input type="checkbox" data-scope="scenes" data-key="enabled" ${sc.enabled?'checked':''}> 生成 AI 场景图</label>
@@ -383,6 +449,25 @@ function listingDownloadsHTML(href,pages,ready,ran) {
   const reviewed=ready?`<a class="button ${ran?'primary':'secondary'}" href="${esc(href)}?reviewed=1">下载已通过审核的 ${ready}/${pages.length} 张</a>`:'';
   return reviewed+`<a class="button ${ran && ready?'subtle':'secondary'}" href="${esc(href)}">${ready===pages.length?'下载全部':'下载草稿（全部）'}</a>`;
 }
+const listingStageSaid={queued:'套图排队中',pictures:'正在渲染素材',scenes:'正在生成场景图',compose:'正在排版和审核',done:'套图已生成'};
+const listingUSD=value=>'US$'+(Number(value) || 0).toFixed(2);
+// What the next build will roughly cost (state.estimate) and what this project's logged AI requests cost (state.spend).
+function listingCostText(estimate) {
+  if(!estimate)return '';
+  const [low,high]=estimate.usd || [0,0],parts=[];
+  if(estimate.new_scenes)parts.push(`新场景图 ${estimate.new_scenes} 张`);
+  if(estimate.kept_scenes)parts.push(`沿用 ${estimate.kept_scenes} 张`);
+  if(estimate.review_pages)parts.push(`视觉审核 ${estimate.review_pages} 页`);
+  if(!estimate.new_scenes && !estimate.review_pages)return `预估 AI 费用很低：没有新场景图，也不做视觉审核${estimate.kept_scenes?`（沿用 ${estimate.kept_scenes} 张场景图）`:''}`;
+  return `预估 AI 费用约 ${listingUSD(low)}${high>low?'–'+listingUSD(high).slice(3):''}（${parts.join('、')}，按官方原价估算）`;
+}
+function listingRenderCost(state,active) {
+  const cost=$('listingCost'),spend=$('listingSpend'),estimate=state.estimate,basis=estimate?.basis || {};
+  if(cost){const text=active || !state.ready?'':listingCostText(estimate);cost.hidden=!text;cost.textContent=text;
+    cost.title=text?`估算：每张新场景图约 ${basis.tries || 1.5} 次图像模型调用（1536 px medium 每次约 $${basis.image_call || 0.075}），每页视觉审核约 $${(basis.review_page || [0.04,0.08]).join('–')}；沿用的场景图、标题和审核结果不再收费。实际费用以服务商账单为准。`:'';}
+  if(spend){const s=state.spend;spend.hidden=!(s && s.calls);
+    spend.textContent=s && s.calls?`本项目已记录的 AI 花费约 ${listingUSD(s.usd)}（${s.calls} 次调用${s.unpriced?`，其中 ${s.unpriced} 次的模型价格未知，未计入`:''}；按官方原价估算，${s.since?new Date(s.since*1000).toLocaleDateString('zh-CN')+' 起':'从本版本起'}记录）。`:'';}
+}
 function listingRenderMain() {
   const state=listingState;if(!state)return;
   const task=state.task,active=listingTaskActive(),pages=state.pages || [],kinds=state.kinds;
@@ -414,6 +499,10 @@ function listingRenderMain() {
     :active?`${task.detail || (task.status==='queued'?'排队中':'正在生成')} · ${Math.round(task.progress || 0)}%`
     :task?.status==='failed'?`上次生成失败：${task.error || ''}`:task?.status==='cancelled'?'上次生成已取消。'
     :pages.length?`共 ${pages.length} 张，${new Date((state.built_at || 0)*1000).toLocaleString('zh-CN',{hour12:false})} 生成${degraded?'，部分未完成':''}。`:'还没有生成套图。';
+  // The line above changes every poll (its percentage); screen readers hear only when the stage or the outcome changes.
+  const said=active?(listingStageSaid[task.stage] || '正在生成套图'):$('listingStatus').textContent;
+  const announce=$('listingAnnounce');if(announce && announce.textContent!==said)announce.textContent=said;
+  listingRenderCost(state,active);
   const filler=$('listingDegraded');if(filler)listingSetHTML(filler,listingDegradedHTML(degraded,active));
   const view=state.notes_view || listingNoteFallback(state.notes,state.plan.filter(row=>row.skipped).map(row=>[kinds[row.kind]?.zh || row.kind,row.skipped]));
   const busy=listingComponentsBusy()?[{text:'有组件还在处理，完成后再生成会把它们放进套图。',level:'warn',count:1}]:[];
@@ -450,7 +539,7 @@ async function listingResultsAction(button) {
   if(action==='fill-in'){await listingBuildNow();return true;}
   if(action==='scene-redraw'){
     const ask='重画这张场景图？其余场景图和已经做好的部分都会沿用，只重新生成这一张，然后重新排版（会产生图像模型费用）。';
-    if(typeof window.confirm==='function' && !window.confirm(ask))return true;
+    if(!await listingConfirm('sceneRedrawDialog','重画这张场景图？',ask,'重画这张',false))return true;
     if(listingBusy)return true;listingBusy=true;listingRenderMain();
     try{
       await listingSavePending();
@@ -493,13 +582,14 @@ function listingOnInput(event) {
 }
 async function listingOnChange(event) {
   const node=event.target;
-  if(node.dataset.scope==='component'){
+  if(node.dataset.scope==='mounting'){if(node.checked)await listingSaveMounting(node.value);}
+  else if(node.dataset.scope==='component'){
     const key=node.dataset.key,value=node.type==='checkbox'?node.checked:key==='quantity'?Number(node.value):key==='size_mm'?listingNumber(node.value):node.value;
     try{await api(`/api/projects/${listingProject}/components/${node.dataset.id}`,{method:'PUT',body:{[key]:value}});await listingLoad(false);}
     catch(error){toast(error.message,true);listingLoad(false).catch(()=>{});}
   }else if(node.id==='listingLogoFile' && node.files.length){
     const form=new FormData();form.append('file',node.files[0]);
-    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingRenderBrand();toast('标志已上传');}catch(error){toast(error.message,true);}
+    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingShare=null;listingRenderBrand();toast('标志已上传');}catch(error){toast(error.message,true);}
   }else listingOnInput(event);
 }
 async function listingSaveProduct(quiet) {
@@ -512,7 +602,7 @@ async function listingSaveProduct(quiet) {
 async function listingSaveBrand(quiet) {
   const b=listingEdit.brand;
   const state=await api(`/api/projects/${listingProject}/listing/brand`,{method:'PUT',body:{preset:b.preset,name:b.name,accent:b.accent,dark:b.dark,badges:b.badges,legal:b.legal,unit:b.unit,fonts:b.fonts,badge_style:b.badge_style,texture:b.texture}});
-  listingDirty.brand=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
+  listingDirty.brand=false;listingShare=null;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }
 async function listingSavePending() { if(listingDirty.product)await listingSaveProduct(true);if(listingDirty.brand)await listingSaveBrand(true); }
 async function listingBuildNow(fresh=false) {
@@ -560,14 +650,37 @@ async function listingOnClick(event) {
     }
     else if(action==='component-turn'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'PUT',body:{turn:button.dataset.turn}});await listingLoad(false);}
     else if(action==='component-refresh'){await api(`/api/projects/${listingProject}/components/${id}/refresh`,{method:'POST'});await listingLoad(false);}
-    else if(action==='component-remove'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
+    else if(action==='component-remove'){
+      const row=(listingState.components || []).find(item=>item.id===id),name=row?.name?`「${row.name}」`:'这个组件';
+      if(!await listingConfirm('componentRemoveDialog','删除组件？',`删除${name}后，它的文件和抠图会一并删除，套装清单和主图里不再出现它。删除后无法恢复，需要时请重新上传。`,'删除组件'))return;
+      await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
     else if(action==='articulation-run'){
       button.disabled=true;button.textContent='识别中…';
       const id=listingProject,data=await api(`/api/projects/${id}/articulation`,{method:'POST',body:{}});
       if(listingOpenFor()!==id)return;
       listingArticulation={project:id,data};listingRenderArticulation(false);toast('已开始重新识别活动部件');
     }
-    else if(action==='logo-remove'){listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingRenderBrand();}
+    else if(action==='logo-remove'){
+      if(!await listingConfirm('logoRemoveDialog','移除品牌标志？','移除后，下次生成的套图不再印标志，页眉改为显示品牌名称文字。需要时可以重新上传。','移除标志'))return;
+      listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingShare=null;listingRenderBrand();}
+    else if(action==='brand-copy'){
+      const source=$('listingBrandSource')?.value || '',share=listingShare?.data;
+      if(!source){toast('请先选择要复制的项目',true);$('listingBrandSource')?.focus();return;}
+      const row=source==='default'?share?.default:(share?.projects || []).find(item=>item.id===source);
+      const from=source==='default'?'默认品牌':`「${row?.project_name || '所选项目'}」的品牌`;
+      if(!await listingConfirm('brandCopyDialog','复制品牌？',`用${from}替换这个项目的品牌风格、名称、颜色、徽标、说明文字和标志。这个项目当前的品牌设置不会保留。`,'复制并替换',false))return;
+      const id=listingProject;
+      const state=await api(`/api/projects/${id}/listing/brand/copy`,{method:'POST',body:{source}});
+      if(listingOpenFor()!==id)return;
+      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);listingRenderBrand();toast('品牌已复制到这个项目');
+    }
+    else if(action==='brand-default' || action==='brand-default-clear'){
+      const id=listingProject,clear=action==='brand-default-clear';
+      if(!clear)await listingSavePending();                 // the default is the brand as saved: typed changes go in first
+      const data=await api(`/api/projects/${id}/listing/brand/default`,{method:'POST',body:clear?{clear:true}:{}});
+      if(listingOpenFor()!==id)return;
+      listingShare={project:id,data};listingRenderShare();toast(clear?'已取消默认品牌：新项目沿用最近保存的品牌':'已设为默认品牌：之后新建的项目会使用它');
+    }
   }catch(error){toast(error.message,true);}
 }
 function listingInit() {
