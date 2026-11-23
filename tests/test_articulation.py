@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 import articulation  # noqa: E402
 import brandkit_set  # noqa: E402
+import listing_scenes  # noqa: E402
 
 PROBE = {'parts': [{'id': 1, 'object': 'Half A', 'pieces': None}, {'id': 2, 'object': 'Half B', 'pieces': None},
                    {'id': 3, 'object': 'Rivet', 'pieces': None}]}
@@ -298,7 +299,7 @@ class HintTests(unittest.TestCase):
         product = {'title': 'Cabinet'}; settings = {'hint': ''}
         still = {'id': 'p', 'model_path': 'm.glb', 'plan': {}}
         moving = {**still, 'articulation': self.RECORD}
-        with patch.object(brandkit_set, 'POSES_SHOWN', brandkit_set.POSES_SHOWN + 1):
+        with patch.object(listing_scenes, 'POSES_SHOWN', listing_scenes.POSES_SHOWN + 1):
             changed = (brandkit_set.scene_key(still, product, settings), brandkit_set.scene_key(moving, product, settings))
         self.assertEqual(changed[0], brandkit_set.scene_key(still, product, settings))          # nothing moves: its scenes are kept
         self.assertNotEqual(changed[1], brandkit_set.scene_key(moving, product, settings))

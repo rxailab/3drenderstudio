@@ -19,6 +19,8 @@ sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / 'tests'))
 import brand_kit
 import brandkit_render
 import brandkit_set
+import listing_assets
+import listing_jobs
 import components
 import listing
 from test_listing import PARTS, StoreCase
@@ -235,7 +237,7 @@ class ReviseTests(unittest.TestCase):
                 cells[y * nx + x] = 1                                 # a badge just under it
         result = {'width': 1000, 'height': 1000, 'probe': {'nx': nx, 'ny': ny, 'cells': cells, 'objects': ['Handle', 'Label_MORA']}}
         region = brandkit_set.part_region(result, ['Handle'], least=.1, margin=.5)
-        with patch.object(brandkit_set, '_uncut', side_effect=lambda window, *rest: window):
+        with patch.object(listing_assets, '_uncut', side_effect=lambda window, *rest: window):
             plain = brandkit_set.part_region(result, ['Handle'], least=.1, margin=.5)
         self.assertEqual(brandkit_set._cuts(plain, brandkit_set.part_map(result, (0, 0, 1, 1))), ['Label_MORA'])     # as it was: through the badge
         parts = brandkit_set.part_map(result, (0, 0, 1, 1))
@@ -461,7 +463,7 @@ class ReviseTests(unittest.TestCase):
                'stock_lines': True}
         for kind in ('T04', 'T08'):
             self.assertEqual(brandkit_set._jobs_for(kind, ctx), [], kind)
-        source = Path(brandkit_set.__file__).read_text(encoding='utf-8')
+        source = Path(listing_jobs.__file__).read_text(encoding='utf-8')
         self.assertNotIn("made[0] if made else None", source)                   # the poster no longer falls back to a failed scene
 
     def test_close_ups_of_located_points_are_cut_from_the_heros_own_camera(self):
