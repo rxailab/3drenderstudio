@@ -12,7 +12,7 @@ function harness(answers) {
   const c={calls:[],renders:{library:0,project:0,tasks:0},statusNames:{ready:'可开始拍摄'},deletedProjectIds:new Set(),libraryRequest:0,projectRequest:0,reviewRevision:0,
     polling:false,busy:false,planSavePromise:null,projectLoading:false,realismBusy:false,materialAgentSubmitting:false,dirty:false,styleFocusNotice:'',
     current:null,allProjects:[],system:{available:true},serviceDisconnected:false,
-    updateSystemStatus(){},renderActionState(){},resumeInstructionPreflight:async()=>{},scheduleThumbnails(){},
+    updateSystemStatus(){},renderActionState(){},resumeInstructionPreflight:async()=>{},scheduleThumbnails(){},materialBusy:false,automaticMaterialBusy(){return c.materialBusy;},
     api:async path=>({available:true,path}),
     Error,JSON,Number,Math,Object,WeakMap};
   c.renderLibrary=()=>c.renders.library++;c.renderProject=()=>c.renders.project++;c.refreshMaterialTasks=async()=>c.renders.tasks++;
@@ -65,4 +65,14 @@ test('home cards read the slim fields the same way as a full record',()=>{
   const done={status:'ready',outputs:[{quality:'standard'},{quality:'thumbnail'}]};
   assert.deepEqual(c.projectCardStatus({...done,analyzed:true,shot_count:3}),c.projectCardStatus({...done,analysis:{},plan:{shots:[{},{},{}]}}));
   assert.equal(c.projectCardStatus({...done,analyzed:true,shot_count:3}).text,'1 张 4K 成品 · 3 个镜头');
+});
+
+test('a material task that ends while the project is unchanged (304) redraws the buttons it locked',async()=>{
+  const project={id:'a',name:'A',version:2,plan:{style:'clean',shots:[]},outputs:[],jobs:[]};
+  const c=harness({'/api/projects/a':()=>['"p1"',project]});
+  c.current={id:'a',version:2,plan:{style:'clean'},outputs:[]};c.allProjects=[{id:'a'}];
+  await c.poll();const before=c.renders.project;
+  c.materialBusy=true;c.refreshMaterialTasks=async()=>{c.renders.tasks++;c.materialBusy=false;};
+  await c.poll();
+  assert.equal(c.renders.project,before+1);
 });
