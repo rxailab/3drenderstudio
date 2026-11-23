@@ -315,6 +315,19 @@ def planned(project, product, parts):
 
 # ---- saving ----
 
+def _scene_record(row):
+    """What is kept of a scene picture between builds."""
+    return {'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
+                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
+                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts'),
+                   # what the next build needs to know before it makes a failed scene again: whether it already had its
+                   # extra try and how it was made (without these every rebuild paid for the failed scenes once more)
+                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'people': row.get('people'),
+                   'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or [],
+            # a check that could not run (quota, timeout) is run again on this picture at the next build
+            'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck')}
+
+
 def _update(project_id, change):
     with LOCK:
         project = get('project', project_id)
@@ -1014,17 +1027,37 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
 
     # Usage scenes: made by the image model around the locked product, kept while the settings stay the same.
     scenes = []; scene_store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else None; scene_key = None
+    scene_failures = []          # scenes whose every picture lost the product: remembered, so they are not paid for on every rebuild
     if kinds & {'T12', 'T04', 'T08'}:
         key = brandkit_set.scene_key(project, product, product['scenes'])
         scene_folder = DATA / project_id / 'listing' / ('scenes-' + key)
+        legacy = brandkit_set.legacy_scene_key(project, product, product['scenes'])
+        if scene_store and scene_store.get('key') == legacy and legacy != key:
+            # saved under the key before v48: carried over, not paid for again
+            carried = brandkit_set.carry_over(scene_store, DATA / project_id / 'listing' / ('scenes-' + legacy), scene_folder, key)
+            if carried:
+                # saved at once: the folder has moved, and a build that stops early must not leave the record pointing at the old one
+                scene_store = carried
+                _update(project_id, lambda project, listing, carried=carried: listing.__setitem__('scenes', carried))
 
         def say(index, total, detail):
             progress('scenes', index / max(1, total), detail)
         try:
-            scenes, scene_key, scene_notes = brandkit_set.make_scenes(project, product, scene_folder, cancelled, say, scene_store)
+            scenes, scene_key, scene_notes = brandkit_set.make_scenes(project, product, scene_folder, cancelled, say, scene_store, scene_failures)
         except InterruptedError:
             raise ListingCancelled() from None
         notes += scene_notes
+        replaces_other = bool(scene_store and scene_store.get('items') and scene_store.get('key') != key)
+        if scene_key or (scene_failures and not replaces_other):
+            # kept now, not only when the whole set is built: a later failure or a cancel must not throw paid pictures away
+            made = [_scene_record(row) for row in scenes if row.get('role') not in ('workpiece', 'earlier')]
+
+            def keep_scenes(project, listing, made=made, key=scene_key or key, failed=list(scene_failures)):
+                listing['scenes'] = {'key': key, 'items': made, 'failed': failed, 'at': time.time()}
+            _update(project_id, keep_scenes)
+            scene_key = scene_key or key
+        elif scene_failures:
+            scene_failures = []          # a set of another key is kept as it is; the failures of this one are not filed over it
     folder = DATA / project_id / 'listing' / ('build-' + uuid.uuid4().hex[:10]); folder.mkdir(parents=True)
     assets_folder = folder / 'assets'; assets_folder.mkdir()
     if 'usecase' in shots:
@@ -1156,7 +1189,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
             if has[kind] and not ready:          # a page that had what it needs until now: say what went missing
                 has[kind] = False; why[kind] = reason
         why['T13'] = '活动部件的姿态图没有渲染出 2 张以上'
-        if has.get('T08') and sum(1 for row in scenes if row.get('check') != 'failed') < 2:
+        if has.get('T08') and sum(1 for row in scenes if brandkit_set.usable_scene(row)) < 2:
             # a mosaic of scenes whose product check failed (a wrong grip, a tool balanced on a point) is not shown
             has['T08'] = False; why['T08'] = '通过核对的场景图不到 2 张（没通过的场景图不放进场景拼图页）'
         if has.get('T04') and not any(brandkit_set.usable_scene(row) for row in scenes):
@@ -1246,14 +1279,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         notes.append('产品的真实尺寸没有填写，按模型文件的单位估计为最长边 %g mm，没有生成尺寸图。' % size_mm)
     if brand.accent_source == 'product':
         notes.append('品牌色取自产品本身的颜色 %s；可在品牌设置里改成你的品牌色。' % brand.accent)
-    scene_rows = [{'path': row['path'], 'url': components.url(row['path']), 'title': row['title'], 'body': row.get('body', ''),
-                   'focus': row['focus'], 'role': row['role'], 'summary': row.get('summary'), 'model': row.get('model'), 'check': row.get('check'), 'caption': row.get('caption'), 'box': row.get('box'),
-                   'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts'),
-                   # what the next build needs to know before it makes a failed scene again: whether it already had its
-                   # extra try and how it was made (without these every rebuild paid for the failed scenes once more)
-                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'people': row.get('people'),
-                   'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or []}
-                  for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
+    scene_rows = [_scene_record(row) for row in made_scenes if row['role'] not in ('workpiece', 'earlier')]
 
     def change(project, listing):
         listing.update(pages=pages, built_at=time.time(), notes=notes, product_color=product_color, folder=folder.name, translations=translations,
@@ -1261,7 +1287,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                                                 'features': {row['title']: {'point': row['point'], 'parts': row.get('parts') or []}
                                                              for row in product['features'] if row.get('point')}})
         if scene_key:
-            listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'at': time.time()}
+            listing['scenes'] = {'key': scene_key, 'items': scene_rows, 'failed': scene_failures, 'at': time.time()}
         listing.setdefault('product', written); listing.setdefault('brand', brand_record)
         kept_scenes = scene_key or (scene_store or {}).get('key')
         keep = {folder.name} | ({'scenes-' + kept_scenes} if kept_scenes else set())

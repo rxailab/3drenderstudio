@@ -375,12 +375,14 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(made, []); self.assertEqual(rows[1]['check'], 'failed')
 
     def test_what_a_rebuild_needs_to_know_about_a_scene_is_stored_with_the_listing(self):
-        import inspect
         import listing
-        source = inspect.getsource(listing)
-        stored = source[source.index('scene_rows = [{'):source.index("for row in made_scenes")]
-        for key in ('usage_retry', 'placed', 'people', 'check_issues', 'check_flags'):
-            self.assertIn("'%s'" % key, stored)
+        row = {'path': str(Path(tempfile.gettempdir()) / 'scene1.png'), 'title': 't', 'focus': [.5, .5], 'role': 'use', 'usage_retry': 1,
+               'placed': 'painted', 'people': False, 'check_issues': ['x'], 'check_flags': ['rests_stably'], 'check_error': True,
+               'recheck': {'reference': 'r.png'}}
+        with patch.object(listing.components, 'url', return_value='/files/x'):
+            stored = listing._scene_record(row)
+        for key in ('usage_retry', 'placed', 'people', 'check_issues', 'check_flags', 'check_error', 'recheck'):
+            self.assertEqual(stored[key], row[key], key)
 
 
 def save_npy(path, rows):

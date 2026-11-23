@@ -430,6 +430,124 @@ class ReviseTests(unittest.TestCase):
         self.assertEqual(made, ['use'])
         self.assertEqual([(row['role'], row['check']) for row in out], [('use', 'passed'), ('place', 'passed'), ('other', 'failed')])
 
+    def test_a_scene_whose_check_could_not_run_stays_off_the_pages_and_is_checked_again_without_painting(self):
+        import scene_imagegen
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        picture = folder / 'scene1.png'; Image.new('RGB', (8, 8)).save(picture)
+        reference = folder / 'reference.png'; Image.new('RGB', (8, 8)).save(reference)
+        row = {'path': str(picture), 'role': 'use', 'check': 'unchecked', 'check_error': True, 'focus': [.5, .5],
+               'recheck': {'reference': str(reference), 'closeup': None, 'product': 'wall cabinet', 'people': False, 'framing': None,
+                           'size_mm': 850, 'mounting': 'wall', 'usage': None}}
+        self.assertFalse(brandkit_set.usable_scene(row))
+        self.assertTrue(brandkit_set.usable_scene({**row, 'check_error': False}))          # no vision model at all: nothing owed
+        self.assertEqual(brandkit_set.swappable_scenes({'scenes': [row, {**row, 'check': 'failed', 'check_error': False},
+                                                                   {**row, 'check': 'passed', 'check_error': False}],
+                                                        'assets': {'scene1': 'a', 'scene2': 'b', 'scene3': 'c'}}), [('scene3', 'c', [.5, .5])])
+        calls = []
+        def check(references, path, product, people=None, framing=None, closeup=None, size_mm=None, **extra):
+            calls.append((references, path, people, extra)); return {'status': 'failed', 'flags': {'installed_correctly': False}, 'issues': ['on the floor']}
+        with patch.object(scene_imagegen, 'check', side_effect=check):
+            out, notes = brandkit_set.recheck_scenes([row, {**row, 'check_error': False, 'check': 'passed'}])
+        self.assertEqual(calls, [([str(reference)], str(picture), False, {'mounting': 'wall'})])     # only the one owed a check
+        self.assertEqual((out[0]['check'], out[0]['check_error'], out[0]['check_flags']), ('failed', False, ['installed_correctly']))
+        self.assertIn('补做了一张场景图的产品核对', notes[0])
+        with patch.object(scene_imagegen, 'check', return_value={'status': 'unchecked', 'error': True, 'issues': []}):
+            again, notes = brandkit_set.recheck_scenes([row])
+        self.assertTrue(again[0]['check_error']); self.assertEqual(notes, [])                   # still owed
+
+    def test_the_scene_key_follows_what_the_pictures_are_made_from(self):
+        project = {'model_path': 'm.glb', 'name': 'Tool Cabinet', 'metadata': {'product_category': ''},
+                   'plan': {'rotation': [0, 0, 0], 'dimensions_mm': [850, 220, 480]}}
+        settings = {'hint': '', 'people': 'auto', 'count': 3}
+        key = brandkit_set.scene_key(project, {'title': 'A'}, settings)
+        self.assertEqual(brandkit_set.scene_key(project, {'title': 'Another title'}, settings), key)       # words only: no repaint
+        for changed in ({**project, 'name': 'Wall-Mounted Tool Cabinet'}, {**project, 'metadata': {'mounting': 'wall'}},
+                        {**project, 'plan': {**project['plan'], 'dimensions_mm': [600, 220, 480]}}):
+            self.assertNotEqual(brandkit_set.scene_key(changed, {'title': 'A'}, settings), key)
+        # a set saved under the old key is carried over, folder, paths and all
+        root = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, root, True)
+        old = root / 'scenes-old'; (old / 'scene1').mkdir(parents=True); (old / 'scene1' / 'scene1.png').write_bytes(b'x')
+        store = {'key': 'old', 'items': [{'path': str(old / 'scene1' / 'scene1.png'), 'recheck': {'reference': str(old / 'scene1' / 'reference.png')}}]}
+        moved = brandkit_set.carry_over(store, old, root / 'scenes-new', 'new')
+        self.assertEqual(moved['key'], 'new'); self.assertTrue(Path(moved['items'][0]['path']).is_file())
+        self.assertTrue(moved['items'][0]['recheck']['reference'].startswith(str(root / 'scenes-new')))
+        self.assertIsNone(brandkit_set.carry_over(store, old, root / 'scenes-new', 'new'))          # nothing left to move
+
+    def test_a_scene_that_keeps_losing_the_product_is_tried_once_more_then_left_out(self):
+        import scene_imagegen, scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        made = []
+        def generate(project, proposal, *args):
+            made.append(proposal['scene'])
+            if proposal['scene'] == 'other':
+                raise scene_imagegen.ProductNotKept('moved every time')
+            picture = folder / (proposal['scene'] + '.png'); Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'passed'}}, {'png': picture, 'record': {}}
+        settings = {'enabled': True, 'count': 3, 'hint': '', 'audience': 'auto', 'people': 'auto'}
+        previous = None
+        for build in range(3):
+            failures = []
+            with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                    patch.object(brandkit_set, 'scene_briefs', return_value=[{'role': r, 'proposal': {'scene': r}} for r in ('use', 'place', 'other')]), \
+                    patch.object(brandkit_set, 'captions', return_value=[{'title': 't', 'body': ''}] * 3), \
+                    patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                    patch.object(scene_stylist, 'generate', side_effect=generate):
+                rows, key, notes = brandkit_set.make_scenes({'id': 'p'}, {'scenes': settings, 'language': 'en'}, folder, lambda: False,
+                                                            lambda *a: None, previous, failures)
+            previous = {'key': 'k', 'items': rows, 'failed': failures}
+        self.assertEqual(made.count('other'), 2)                                  # the first build and one more, then not again
+        self.assertEqual(failures[0]['count'], 2); self.assertIn('不再付费重画', ' '.join(notes))
+        self.assertEqual(made.count('use'), 1)                                    # the good ones were kept, not made again
+
+    def test_failure_memory_survives_kept_slots_and_quota_errors_and_a_failed_recheck_gets_one_more_try(self):
+        import scene_imagegen, scene_stylist
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        briefs = [{'role': r, 'proposal': {'scene': s}} for r, s in (('use', 'a'), ('use', 'b'), ('other', 'c'))]
+        outcome = {}
+        def generate(project, proposal, *args):
+            what = outcome.get(proposal['scene'], 'ok')
+            if what == 'lost': raise scene_imagegen.ProductNotKept('lost')
+            if what == 'quota': raise scene_imagegen.ImageError('HTTP 402')
+            picture = folder / (proposal['scene'] + '.png'); Image.new('RGB', (8, 8)).save(picture)
+            return None, {'check': {'status': 'passed'}}, {'png': picture, 'record': {}}
+        def build(previous):
+            failures = []
+            with patch.object(brandkit_set, 'image_model_ready', return_value=True), patch.object(brandkit_set, 'scene_key', return_value='k'), \
+                    patch.object(brandkit_set, 'scene_briefs', return_value=briefs), \
+                    patch.object(brandkit_set, 'captions', return_value=[{'title': 't', 'body': ''}] * 3), \
+                    patch.object(brandkit_set, 'seen_captions', side_effect=lambda product, rows: (rows, 0)), \
+                    patch.object(scene_stylist, 'generate', side_effect=generate):
+                rows, _, _ = brandkit_set.make_scenes({'id': 'p'}, {'scenes': {'enabled': True, 'count': 3, 'hint': '', 'audience': 'auto',
+                                                                              'people': 'hands'}, 'language': 'en'},
+                                                      folder, lambda: False, lambda *a: None, previous, failures)
+            return {'key': 'k', 'items': rows, 'failed': failures}
+        outcome['c'] = 'lost'
+        first = build(None)
+        self.assertEqual([(row['scene'], row['count']) for row in first['failed']], [('other1', 1)])
+        outcome['c'] = 'quota'
+        second = build(first)
+        self.assertEqual([(row['scene'], row['count']) for row in second['failed']], [('other1', 1)])     # a 402 neither counts nor resets
+        # a scene whose re-check fails is made once more like any scene that failed its check
+        picture = folder / 'x.png'; Image.new('RGB', (8, 8)).save(picture); reference = folder / 'r.png'; Image.new('RGB', (8, 8)).save(reference)
+        with patch.object(scene_imagegen, 'check', return_value={'status': 'failed', 'issues': [], 'flags': {}}):
+            out, _ = brandkit_set.recheck_scenes([{'path': str(picture), 'check': 'unchecked', 'check_error': True, 'usage_retry': 1,
+                                                   'recheck': {'reference': str(reference)}}])
+        self.assertEqual((out[0]['check'], out[0]['usage_retry']), ('failed', 0))
+
+    def test_small_logic_fixes(self):
+        self.assertEqual(brandkit_set._stated_lengths({'specs': [{'value': '1,200 mm'}]}), [(1200.0, '1200', 'mm')])
+        self.assertFalse(brandkit_set.hangs_on_wall('the tool cabinet stands on the floor against the wall'))
+        self.assertTrue(brandkit_set.hangs_on_wall('the cabinet is mounted on the freshly painted wall'))
+        root = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, root, True)
+        kept = [{'path': str(root / 'scene2' / 'scene2.png')}]
+        self.assertEqual(brandkit_set._free_folder(root, 'scene1', kept), root / 'scene1')
+        self.assertEqual(brandkit_set._free_folder(root, 'scene2', kept), root / 'scene2-2')         # a kept scene lives there
+        import scene_stylist
+        first = {'scene': 'Hands cut wire.', 'segment_id': 'workshop_hobbyist', 'people': True, 'framing': 'hands'}
+        with patch.object(scene_stylist, 'propose', return_value=first), patch.object(scene_stylist, '_source_image', return_value=None):
+            briefs = brandkit_set.scene_briefs({'name': 'Pliers'}, {'hint': '', 'audience': 'auto', 'people': 'hands'}, 2)
+        self.assertEqual(briefs[1]['role'], 'use')                                 # hands at work again, not a place
+
     def test_pages_with_no_copy_never_fall_back_to_stock_or_broken_lines(self):
         product = {'title': 'Rolling Tool Cabinet', 'features': [], 'figures': [], 'specs': [], 'headline': '', 'subline': ''}
         ctx = {'product': product, 'language': 'en', 'scenes': [{'title': 'In use', 'role': 'use'}, {'title': 'At the workbench', 'role': 'place'},

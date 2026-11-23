@@ -14,12 +14,15 @@ import re
 
 KINDS = ('wall',)
 # "wall" as its own word (not drywall, firewall), followed by how it is fixed or what it is.
-WORDS = re.compile(r'(?i)(?<![a-z])wall[\s_-]*(?:mount(?:ed|ing|able)?|hung|hanging|cabinet|cupboard|box|rack|unit|shelf|shelves)(?![a-z])'
+WORDS = re.compile(r'(?i)(?<![a-z])wall[\s_-]*(?:mount(?:ed|ing|able)?|hung|hanging|cabinet|cupboard|box|rack|unit|shelf|shelves|storage|'
+                   r'organi[sz]er|hooks?|bracket)(?![a-z])|(?<![a-z])pegboard(?![a-z])'
                    r'|(?<![a-z])mount(?:ed|s)?\s+(?:on|to)\s+(?:the\s+|a\s+)?wall(?![a-z])|(?<![a-z])hangs?\s+on\s+(?:the|a)\s+wall(?![a-z])'
                    r'|壁挂|挂墙|墙挂|挂壁|墙面安装|墙上安装|吊柜|壁掛|掛牆|牆掛|掛壁|牆面安裝|牆上安裝')
-# what says it is NOT fixed to a wall: "no wall mounting needed", "free-standing", "不需挂墙"
-NOT_WALL = re.compile(r'(?i)(?:no|not|without|never|non)[\s-]+(?:\w+[\s-]+)?wall[\s_-]*mount|free[\s-]*standing|floor[\s-]*standing'
-                      r'|不(?:需|用|必)?(?:要)?(?:挂墙|壁挂|上墙)|落地')
+# what says it is NOT fixed to a wall: "no wall mounting needed", "non-wall", "不需挂墙" (a "non-slip wall mount" is one)
+NOT_WALL = re.compile(r'(?i)(?<![a-z])(?:no|not|without|never)[\s-]+(?:\w+[\s-]+)?wall[\s_-]*mount|(?<![a-z])non[\s-]*wall(?![a-z])'
+                      r'|不(?:需|用|必)?(?:要)?(?:挂墙|壁挂|上墙)')
+# what says it stands: only when nothing says it hangs ("壁挂式 可落地" hangs, and can also stand)
+STANDS = re.compile(r'(?i)free[\s-]*standing|floor[\s-]*standing|落地')
 # parts made only for hanging it: keyhole slots and wall brackets (a lock's keyhole or a caster's mounting hole is not one)
 PARTS = re.compile(r'(?i)key[\s_-]*hole[\s_-]*slot|(?<![a-z])wall[\s_-]*(?:bracket|mount|plate|rail|hook)|french[\s_-]*cleat|挂孔|葫芦孔')
 
@@ -38,6 +41,8 @@ def of(project, hint=''):
         return None
     if WORDS.search(words):
         return 'wall'
+    if STANDS.search(words):
+        return None
     seen = project.get('orientation') if isinstance(project.get('orientation'), dict) else {}
     if WORDS.search(str(seen.get('product') or '')) and not NOT_WALL.search(str(seen.get('product') or '')):
         return 'wall'
