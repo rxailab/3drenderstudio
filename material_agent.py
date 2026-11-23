@@ -517,12 +517,17 @@ def _restore_baseline(task, project, job, reason):
             if (DATA/project['id']).resolve() not in path.parents: return False
             try: engine.verify_image(path,fmt)
             except Exception: return False
-        blend=(DATA/output.get('blend_url','')[7:]).resolve()
-        if (DATA/project['id']).resolve() not in blend.parents or not blend.is_file(): return False
+        # The scene is optional: the pictures and the plan are what is restored. A scene that escapes the project still
+        # refuses the restore; one that is gone (never saved for this render) restores the output without a scene.
+        url=output.get('blend_url')
+        if url is not None:
+            blend=(DATA/url[7:]).resolve() if isinstance(url,str) and url.startswith('/files/') else None
+            if blend is None or (DATA/project['id']).resolve() not in blend.parents: return False
     project.setdefault('history',[]).append({'version':project['version'],'plan':copy.deepcopy(project['plan']),'at':time.time(),'reason':reason})
     project['plan']=copy.deepcopy(task['baseline_plan']);project['version']+=1
     for output in baseline:
         restored=copy.deepcopy(output);restored['version']=project['version'];restored['adopted_from_version']=output['version']
+        if restored.get('blend_url') and not (DATA/restored['blend_url'][7:]).is_file():restored.update(blend_url=None,blend_sha256=None)
         restored['automatic_material_restored_from']=task['id'];project['outputs'].append(restored)
     put('project',project)
     task.update(decision='reverted',restored_version=project['version'],stage=reason);put(KIND,task)

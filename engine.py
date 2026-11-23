@@ -674,7 +674,9 @@ def pick_output(project_id,body):
         for key in ['x','y']:
             value=point.get(key)
             if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=1: raise ValueError('点选位置必须在图片内')
-    source=(DATA/selected.get('blend_url','')[7:]).resolve()
+    url=selected.get('blend_url')
+    if not isinstance(url,str) or not url.startswith('/files/'): raise ValueError('该镜头没有保存 Blender 工程，请重新生成该镜头预览后再点选部件')
+    source=(DATA/url[7:]).resolve()
     if (DATA/project_id).resolve() not in source.parents or source.suffix!='.blend' or not source.is_file(): raise ValueError('该镜头工程不存在，无法定位部件')
     require_runtime('pick')
     exe=blender_path()
@@ -909,13 +911,25 @@ def recover_review_candidate(record):
         verify_image(DATA/best['png_url'][7:]);verify_image(DATA/best['jpg_url'][7:])
         if not (DATA/best['blend_url'][7:]).is_file(): return record,None
         return copy.deepcopy(best),copy.deepcopy(pending['adjustment'])
-    except (KeyError,OSError,ValueError,RuntimeError): return record,None
+    except (KeyError,TypeError,OSError,ValueError,RuntimeError): return record,None      # TypeError: a candidate without a scene
+
+
+def discard_candidate_scenes(candidates,best):
+    """Delete the saved scenes of correction candidates that lost. A candidate keeps its scene while it may still be
+    adopted as the shot's output (recover_review_candidate needs it); one that lost is only a picture in the comparison
+    rows (attempts keep its png_url), and nothing records or opens its .blend."""
+    for candidate in candidates:
+        url=candidate.get('blend_url')
+        if candidate is best or candidate.get('blend_url')==best.get('blend_url') or not isinstance(url,str) or not url.startswith('/files/'):continue
+        path=(DATA/url[7:]).resolve()
+        if DATA.resolve() in path.parents and path.suffix.lower()=='.blend':path.unlink(missing_ok=True)
+        candidate['blend_url']=None;candidate['blend_sha256']=None
 
 
 def review_and_correct(job,project,shot,out,record,result):
     plan=copy.deepcopy(job['plan']);current_plan=plan
     protected=instruction_protected_roots(plan)
-    best_record=record;best_plan=plan;best_round=0
+    best_record=record;best_plan=plan;best_round=0;candidates=[]
     review=inspect_preview(job,record,result,effective_plan(plan,shot['id']),project.get('analysis'))
     attempts=[{'round':0,'exposure':effective_plan(plan,shot['id'])['exposure'],'light_softness':effective_plan(plan,shot['id'])['light_softness'],'lighting':copy.deepcopy(effective_plan(plan,shot['id']).get('lighting',{})),'score':review.get('score',0),'png_url':record['png_url'],'decision_reason':'原始预览，作为本轮比较基准。'}]
     for number in range(1,min(2,int(plan.get('max_corrections',2)))+1):
@@ -956,7 +970,7 @@ def review_and_correct(job,project,shot,out,record,result):
             best_record['review']['status']='manual_review'
             break
         candidate_job={**job,'plan':candidate}
-        candidate_record=output_record(candidate_job,shot,candidate_out,candidate_result)
+        candidate_record=output_record(candidate_job,shot,candidate_out,candidate_result);candidates.append(candidate_record)
         review=inspect_preview(job,candidate_record,candidate_result,effective_plan(candidate,shot['id']),project.get('analysis'))
         result=candidate_result
         comparison=compare_candidates(best_record,candidate_record)
@@ -967,6 +981,7 @@ def review_and_correct(job,project,shot,out,record,result):
         if not comparison['accepted']:
             break
         current_plan=candidate
+    discard_candidate_scenes(candidates,best_record)
     for item in attempts: item['applied']=item['round']==best_round
     best_record['corrections']=copy.deepcopy(attempts);record['corrections']=copy.deepcopy(attempts)
     best_review=best_record['review']
@@ -999,6 +1014,10 @@ def commit_review_results(job,selected,adjustments):
 
 def output_record(job,shot,out,result):
     png=next(out.glob('*.png'),None);jpg=next(out.glob('*.jpg'),None);blend=next(out.glob('*.blend'),None)
+    if blend and result.get('scene_file')=='proof':
+        # A throwaway render (a thumbnail) saved its scene only so the camera / light hooks could reopen it; execute has
+        # verified that proof, so the file goes and the record carries no scene (blender/worker.py scene_file_policy).
+        blend.unlink(missing_ok=True);blend=None
     if not png: raise RuntimeError('渲染未生成 PNG')
     size=verify_image(png,'PNG')
     if not jpg:
