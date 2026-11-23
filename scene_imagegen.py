@@ -31,6 +31,7 @@ import hashlib
 import io
 import json
 import re
+import shutil
 import socket
 import subprocess
 import time
@@ -52,7 +53,7 @@ REFERENCE_TIMEOUT = 900
 MAX_ATTEMPTS = 2               # the first picture, and one correction when the product changed
 # A picture that kept the product but got its use wrong (held by one handle, the wire at the tip, balanced on a point)
 # is the image model's commonest miss and the one a correction most often fixes: it gets one try more.
-USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible'))
+USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible', 'installed_correctly'))
 USAGE_RETRY = 1                # recorded on a scene made with that extra try, so older failed scenes are tried again once
 RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
 RENDER_SAMPLES = 48
@@ -80,8 +81,9 @@ Compare the product in GENERATED with the references. Return data only:
 - held_correctly: when hands hold the product, each hand is on a part made to be held (a handle, a grip, a body), from the side a user holds it, with the working end (jaws, blade, bit, nozzle, bar) pointing at the work; no hand holds a blade, a battery, a guard or a cutting part, and every arm leads back to the same person. Hand tools are held one way only: pliers, cutters and scissors by both handles, in the palm with the fingers wrapped round them, never pinched at the head, the jaws or the pivot; a hammer by the lower half of its handle, never by the head or the neck; a screwdriver by its handle, the shaft in line with the forearm and the bit in the screw; a saw by its handle. usage_rules, when given, say how this product is held. True when no hand touches it.
 - contact_plausible: everything that meets the product (a wire, cable, pipe, branch, board or screw) touches it or passes in front of or behind it as one continuous piece, and a thing being cut or gripped lies between the jaws or blade where it would really be; a screw, bolt or nail being driven is on the same straight line as the bit or driver, head against its tip; nothing passes through solid metal or plastic, and no loose bits (wire ends, strands, offcuts) stick out from behind the product without joining something visible.
 - used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; cutting pliers hold the wire deep in the jaws near the pivot, square to the blades, never at the tips; a hammer's face meets the nail head squarely with the nail perpendicular to the surface, or the nail's shank sits in the claw's slot with the handle levered back, never the claw just pressed against a wall). True when the product is at rest or no rules are given.
-- rests_stably: when nothing holds the product, it rests the way it really would on its surface: lying on a side or standing on its base, its weight over what carries it. False when it is balanced on a tip, an edge, a jaw point or a handle end, propped at an angle with nothing holding it, or floating above the surface. True when hands hold it.
+- rests_stably: when nothing holds the product, it rests the way it really would on its surface (a product whose mounting is 'wall', hanging flat against a wall, rests stably): lying on a side or standing on its base, its weight over what carries it. False when it is balanced on a tip, an edge, a jaw point or a handle end, propped at an angle with nothing holding it, or floating above the surface. True when hands hold it.
 - surroundings_new: everything around the product looks brand new and clean. False when any work surface, table, bench, shelf, wall, floor, vehicle interior or object in the scene looks used: worn, scratched, scored, dented, drilled, chipped, rusty, stained, oily, greasy, dusty or dirty, with peeling paint, or with rubbish or a mess strewn about. Judge the condition of the surfaces and things, not whether the place is a working one: tools, parts, boxes and supplies set out or hanging in their places are not wear, and neither are reflections, shadows, natural wood grain or the even texture of concrete or plaster. False only for wear or dirt that can clearly be seen; true when unsure. The product itself is not judged here. When false, one of the issues says what looks used (\"the workbench top is scratched and stained\").
+- installed_correctly: when mounting in the facts is 'wall', the product hangs on a vertical wall with its back against it, at a natural height, and does not stand on a floor, a bench, a table, a shelf or a vehicle floor. True when mounting is not 'wall'.
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
@@ -99,6 +101,8 @@ PEOPLE_RULES = {
     False: ('PEOPLE. Nobody is in the picture: no person, no hands or other body parts, no silhouettes, shadows or reflections of '
             'people. The product lies or stands on its base ready for use in the scene, resting stably.'),
 }
+PEOPLE_WALL = ('PEOPLE. Nobody is in the picture: no person, no hands or other body parts, no silhouettes, shadows or reflections of '
+               'people. The product hangs on its wall, ready for use.')
 PEOPLE_FIXES = {True: 'no person is visible: show a person clearly using or handling the product, hands on it, arms and upper body in frame',
                 False: 'a person or a part of one is visible: remove every person, hand and body part from the picture'}
 PEOPLE_NOTES = {True: '画面里没有出现人物，与「包含人物」的要求不符。', False: '画面里出现了人物，与「不含人物」的要求不符。'}
@@ -281,8 +285,8 @@ REST_RULE = ('It rests stably, the way a person would put it down: lying on a si
 # Every place a product is shown in is new: the image model's own idea of a workshop, a van or a jobsite is a used one
 # (an old bench scored and drilled, oil on the floor, scuffed walls), which makes the product look second-hand too.
 NEW_PLACE = ('THE PLACE IS NEW. Everything around the product is brand new and spotless, as on the day it was fitted out: '
-             'new furniture and work surfaces with smooth, unmarked tops, freshly painted clean walls, clean floors, a new and '
-             'clean vehicle interior, new tools and objects. No wear, scratches, dents, holes, burn marks, rust, peeling paint, '
+             'new furniture and work surfaces with smooth, unmarked tops, freshly painted clean walls, clean floors, new tools '
+             'and objects, and any vehicle in the scene new and clean inside. No wear, scratches, dents, holes, burn marks, rust, peeling paint, '
              'stains, oil, grease, dust, dirt or grime anywhere, no rubbish and no mess. Tidy and orderly.')
 # The scene text is free text (the strategist's, or the user's hint): words asking for wear are taken out of it, so it
 # never argues with NEW_PLACE.
@@ -327,7 +331,17 @@ def fresh(text):
     return re.sub(r'\x01(\d+)\x01', lambda m: kept[int(m.group(1))], cleaned)
 
 
-def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None):
+# A product made to hang on a wall (mounting.py) is shown hanging there: never stood on a floor, a bench or a van floor.
+WALL_RULE = ('IT HANGS ON A WALL. The product is made to be mounted on a wall: it hangs on a vertical wall, its back flat against '
+             'the wall and held by its fixings, at a natural height (a cabinet at about chest height), with only the wall behind it '
+             'and nothing under it. It never stands on a floor, a bench, a table, a shelf or a vehicle floor, and its front faces the '
+             'camera exactly as in image 1.')
+INSTALL_FIX = ('the product must hang on a wall: its back flat against a vertical wall at a natural height with nothing under it, '
+               'never standing on a floor, bench, table, shelf or vehicle floor')
+
+
+def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None,
+           mounting=None):
     """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
@@ -335,7 +349,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     ``framing`` 'hands' asks for a close-up of the hands at work and no face. ``pose`` is scene_pose's record when the
     product was posed for the scene: its words say how it is held and where it meets the work.
     """
-    hands = people is True and framing == 'hands'
+    hands = people is True and framing == 'hands'; wall = mounting == 'wall'
     scene = fresh(scene_audience.scrub(re.sub(r'\s+', ' ', str(scene or '')).strip()))[:1500]
     product = re.sub(r'\s+', ' ', str(product or 'product')).strip()[:120]
     size = ''
@@ -344,14 +358,16 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
             '%d cm' % round(size_mm / 10) if size_mm >= 100 else '%d mm' % round(size_mm))
     lines = [
         'Complete this photograph for an online shop. Image 1 is the unfinished photograph.',
-        'THE PRODUCT is a %s.%s It is already in image 1, in its final place, on a plain grey ground. It is finished and fixed: '
+        'THE PRODUCT is a %s.%s It is already in image 1, in its final place, %s. It is finished and fixed: '
         'keep it exactly as it is, in the same position, at the same size and angle, with the same shape, parts, colours and materials. '
         'Do not move, turn, resize, redraw, simplify or tidy it, and put no logo or lettering on it. Its moving parts (drawers, doors, '
         'lids, jaws, blades, sliders) stay exactly as image 1 shows them: never open, pull out, close, fold or move any of them, '
-        'whatever the scene says. Only the light falling on it may change, to match the scene.' % (product, size),
-        'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it stands: what it rests on '
-        'or is held by, the shadow it casts, the place around it. The perspective, scale and light of the scene must agree with the '
-        'product. Nothing of the grey ground may remain. THE SCENE. ' + (scene or (
+        'whatever the scene says. Only the light falling on it may change, to match the scene.' % (
+            product, size, 'in front of a plain grey ground' if wall else 'on a plain grey ground'),
+        'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it %s, the place '
+        'around it. The perspective, scale and light of the scene must agree with the product. Nothing of the grey ground may '
+        'remain. THE SCENE. ' % ('hangs: the wall it is mounted on, directly behind it, and the soft shadow it casts on that wall' if wall
+                                 else 'stands: what it rests on or is held by, the shadow it casts') + (scene or (
             'A believable place where this product is used, the product set down there ready for use.' if people is False
             else 'A believable place where this product is used, with a person using it.')),
         NEW_PLACE,
@@ -361,7 +377,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'in front of it, behind it or between its jaws, never through it, with no stray ends or strands around it. A screw, bolt or '
         'nail being driven sits exactly on the line of the bit or driver, its head on the bit\'s tip and its point going straight into '
         'the work along that same line. Composition for a %s frame.'
-        % (((' and its surroundings', ' ' + REST_RULE) if people is False else
+        % (((' and its surroundings', ' ' + (WALL_RULE if wall else REST_RULE)) if people is False else
             (', the hands and the surroundings', ' The hands are an ordinary adult\'s, bare or in plain work gloves suited to the task, '
              'holding the product by the parts made to be held, from the user\'s side, its working end pointing at the work: '
              'pliers and cutters by both handles with the fingers wrapped round them, never pinched at the head; a hammer by the '
@@ -387,7 +403,10 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     if hands:
         lines.insert(3 if not (pose and pose.get('description')) else 4, HANDS_RULE)
     elif people in PEOPLE_RULES:
-        lines.insert(3 if not (pose and pose.get('description')) else 4, PEOPLE_RULES[people])
+        lines.insert(3 if not (pose and pose.get('description')) else 4,
+                     PEOPLE_WALL if wall and people is False else PEOPLE_RULES[people])
+    if wall and people is not False:
+        lines.insert(2, WALL_RULE)
     if corrections:
         fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:6] if str(item).strip())
         if fixes:
@@ -552,7 +571,7 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
 
 FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
                   'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'rests_stably', 'scale_plausible',
-                  'surroundings_new')
+                  'installed_correctly', 'surroundings_new')
 
 
 def fidelity_schema():
@@ -562,7 +581,7 @@ def fidelity_schema():
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None, usage=None):
+def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None, usage=None, mounting=None):
     """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
@@ -579,7 +598,7 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
     schema = fidelity_schema()
     try:
         facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN',
-                 'size_mm': round(float(size_mm)) if size_mm else None,
+                 'size_mm': round(float(size_mm)) if size_mm else None, 'mounting': mounting or 'not wall-mounted',
                  'usage_rules': [str(rule)[:usage_rules.LENGTH] for rule in (usage or [])[:usage_rules.LIMIT]]}
         body = ai._payload(value, FIDELITY_PROMPT, facts, schema, max_tokens=1500)
         blocks = []
@@ -605,6 +624,12 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
     kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)      # the product, apart from the place round it
     issues = [] if faithful else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
     note = re.sub(r'\s+', ' ', answer['note']).strip()[:300]
+    if mounting != 'wall' and not flags['installed_correctly']:
+        flags['installed_correctly'] = True              # only a wall-mounted product can be wrongly installed
+        faithful = all(flags.values()); kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)
+        issues = [] if faithful else issues
+    if not flags['installed_correctly'] and INSTALL_FIX not in issues:
+        issues = [INSTALL_FIX] + issues[:5]
     if not flags['surroundings_new']:
         issues = issues[:5] + [WORN_FIX]          # the product's own differences first: corrections keep the first six
         if kept:
@@ -664,8 +689,29 @@ def _lock_verdict(lock, box):
     return {'status': 'failed', 'issues': [issue], 'note': LOCK_NOTES[status], 'product_consistent': False}
 
 
+REJECTED_KEPT = 6               # sets of rejected attempts kept per project, newest first
+
+
+def _set_aside(project, folder, attempts):
+    """Copy a scene's rejected attempts, with what the check said of each, to scene_ai/rejected/ (the last few sets)."""
+    try:
+        place = DATA / project['id'] / 'scene_ai' / 'rejected'
+        target = place / ('%s-%d' % (folder.name, int(time.time()))); target.mkdir(parents=True, exist_ok=True)
+        for name in ('canvas.png', 'reference.png'):
+            if (folder / name).is_file():
+                shutil.copyfile(folder / name, target / name)
+        for item in attempts:
+            shutil.copyfile(item['file'], target / Path(item['file']).name)
+        (target / 'checks.json').write_text(json.dumps([{'file': Path(item['file']).name, 'check': item['check'], 'prompt': item['prompt'][:6000]}
+                                                         for item in attempts], ensure_ascii=False, indent=1, default=str), encoding='utf-8')
+        for old in sorted(place.iterdir(), key=lambda path: path.stat().st_mtime, reverse=True)[REJECTED_KEPT:]:
+            shutil.rmtree(old, ignore_errors=True)
+    except (OSError, KeyError, TypeError, ValueError):
+        pass                    # keeping evidence must never be why a scene fails differently
+
+
 def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None,
-           pose='auto', hint='', articulation=None, usage_rules=None):
+           pose='auto', hint='', articulation=None, usage_rules=None, mounting=None):
     """Make the scene picture. Returns {'png', 'jpg', 'width', 'height', 'record'} with files inside ``folder``.
 
     ``people`` is True when a person must be in the picture and False when
@@ -695,14 +741,16 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     if articulation:
         # the moving parts set for this moment (opened, slid, pulled out): every candidate pose and the locked render show it
         plan = {**plan, 'articulation': {key: value for key, value in articulation.items() if key != 'label'}}
+    # A product on a wall hangs as it is made to, front to the room: no other pose is looked for.
     posed = scene_pose.decide(project, _reference_plan(plan), azimuth, elevation, scene, product, hold, stop, say,
-                              pose if pose in scene_pose.MODES else 'auto', hint, **({'usage': usage_rules} if usage_rules else {}))
+                              'keep' if mounting == 'wall' else pose if pose in scene_pose.MODES else 'auto', hint,
+                              **({'usage': usage_rules} if usage_rules else {}))
     if stop(): raise InterruptedError()
     staged = product_render(project, {**plan, 'rotation': posed['rotation']}, azimuth, elevation, size_mm, size, stop, say)
     if stop(): raise InterruptedError()
     # The anchor: the product's own render in its final place; the mask keeps it, the model paints the rest.
     with Image.open(staged['path']) as cutout:
-        canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'none',
+        canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'wall' if mounting == 'wall' else 'none',
                                                posed.get('work_side') if posed.get('changed') or posed.get('description') else None)
     canvas_path = folder / 'canvas.png'; canvas.save(canvas_path)
     reference = Image.new('RGB', size, (255, 255, 255)); reference.paste(layer, mask=layer.getchannel('A'))
@@ -716,7 +764,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
         if stop(): raise InterruptedError()
         say('图像模型正在生成场景' if number == 1 else retry)
         text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
-                      (articulation or {}).get('label'))
+                      (articulation or {}).get('label'), mounting)
 
         def call(value):
             nonlocal masked
@@ -744,10 +792,23 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             usage[key] = usage.get(key, 0) + amount
         if stop(): raise InterruptedError()
         say('核对产品位置与外形')
+        restored = None
         with Image.open(target) as picture:
             lock = scene_lock.inspect(layer, picture)
             closeup = None
             if lock['status'] == 'kept':
+                # The image model's product is only its drawing of it: the render goes back in its place, so the size,
+                # proportions and parts are the product's own. The model's original stays beside it as attempt*.model.png.
+                put_back = scene_lock.restore(layer, picture, lock)
+                if put_back is not None:                # None: the render does not lie cleanly on it; the painting stays
+                    restored = folder / ('attempt%d.restored.png' % number); put_back.save(restored)
+                else:
+                    closeup = folder / ('closeup%d.jpg' % number)
+                    scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
+        if restored:
+            # replace(), not rename(): a scene folder made again already holds these files, and rename() will not overwrite on Windows
+            target.replace(folder / ('attempt%d.model.png' % number)); restored.replace(target)
+            with Image.open(target) as picture:
                 closeup = folder / ('closeup%d.jpg' % number)
                 scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
         if lock['status'] != 'kept':
@@ -755,9 +816,10 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
         else:
             say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
             verdict = check([reference_path], target, product, people, framing, closeup, size_mm,
-                            **({'usage': usage_rules} if usage_rules else {}))
+                            **({'usage': usage_rules} if usage_rules else {}), **({'mounting': mounting} if mounting else {}))
         verdict['lock'] = lock
-        attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup})
+        attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup,
+                         'original': folder / ('attempt%d.model.png' % number) if restored else target})
         if verdict['status'] != 'failed':
             break
         corrections = verdict['issues']
@@ -773,6 +835,12 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             limit += 1; retry = ('背景仍显陈旧或脏乱，按崭新的环境再试一次' if wrong <= PLACE_FLAGS else '握持、用法或摆放还不对，按核对意见再试一次')
     # A passing picture wins; otherwise one that kept the product, then got the people right, then the fewest differences, the later on a tie.
     chosen = next((item for item in attempts if item['check']['status'] != 'failed'), None)
+    if chosen is None and not any(item['check']['lock']['status'] == 'kept' for item in attempts):
+        # every picture moved or redrew the product: none of them shows this product, so none is kept. The attempts are
+        # set aside (the listing's scene folder is cleared when it holds no scene), so what went wrong can be looked at.
+        _set_aside(project, folder, attempts)
+        raise ImageError('图像模型每次都改动了产品的位置、大小或外形（%s），这张场景图没有采用。'
+                         % LOCK_NOTES.get(attempts[-1]['check']['lock']['status'], '')[:60].rstrip('。'))
     if chosen is None:
         # A picture whose only fault is the place beats one whose product is wrong.
         chosen = min(reversed(attempts), key=lambda item: (item['check']['lock']['status'] != 'kept',
@@ -780,13 +848,14 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                                                            item['check'].get('product_consistent') is False, len(item['check']['issues'])))
     stem = folder.name
     png = folder / (stem + '.png'); jpg = folder / (stem + '.jpg')
-    png.write_bytes(chosen['file'].read_bytes())       # untouched: the model's own provenance metadata stays in the file
+    png.write_bytes(chosen['file'].read_bytes())       # with the product put back; the model's own file (and its provenance) is 'original'
     with Image.open(png) as picture:
         picture.convert('RGB').save(jpg, quality=95, subsampling=0)
     width, height = chosen['size']
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
     import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
+              'restored': chosen['original'] != chosen['file'], 'mounting': mounting, 'original': url(chosen['original']),
               'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),

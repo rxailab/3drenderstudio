@@ -17,7 +17,7 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 for folder in (ROOT, ROOT / 'tests'):
@@ -328,7 +328,7 @@ class FidelityTests(unittest.TestCase):
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
                  'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'rests_stably': True,
-                 'scale_plausible': True, 'surroundings_new': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
+                 'scale_plausible': True, 'installed_correctly': True, 'surroundings_new': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
@@ -484,6 +484,28 @@ class FidelityTests(unittest.TestCase):
             self.assertIsNone(scene_imagegen.place_check(self.generated))
         with patch.object(ai_config, 'get_vision_config', return_value={**self.vision, 'api_key': ''}):
             self.assertIsNone(scene_imagegen.place_check(self.generated))
+
+    def test_a_wall_product_is_asked_to_hang_on_a_wall_and_fails_when_it_stands(self):
+        text = scene_imagegen.prompt('wall-mounted tool cabinet', 850, 'A workshop.', people=False, mounting='wall')
+        self.assertIn(scene_imagegen.WALL_RULE, text); self.assertNotIn(scene_imagegen.REST_RULE, text)
+        self.assertIn('in front of a plain grey ground', text); self.assertIn('the wall it is mounted on', text)
+        self.assertNotIn('lies or stands on its base', text)
+        held = scene_imagegen.prompt('wall-mounted tool cabinet', 850, 'A workshop.', people=True, framing='person', mounting='wall')
+        self.assertIn(scene_imagegen.WALL_RULE, held)
+        standing = scene_imagegen.prompt('tool cart', 900, 'A workshop.', people=False)
+        self.assertNotIn(scene_imagegen.WALL_RULE, standing); self.assertIn(scene_imagegen.REST_RULE, standing)
+        self.assertNotIn('van', scene_imagegen.NEW_PLACE.lower())                 # no vehicle put in every scene's head
+        sent = {}
+        def post(config, body):
+            sent['body'] = body
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'name': 'submit_photography_patch',
+                                                            'input': self.verdict(installed_correctly=False, issues=['it stands on the floor'])}]}
+        with patch.object(ai_config, 'get_vision_config', return_value=self.vision), patch('ai_client._post', side_effect=post):
+            result = scene_imagegen.check(self.references, self.generated, 'wall cabinet', False, mounting='wall')
+        self.assertEqual((result['status'], result['product_consistent']), ('failed', False))
+        self.assertEqual(result['issues'][:2], [scene_imagegen.INSTALL_FIX, 'it stands on the floor'])
+        self.assertEqual(json.loads(sent['body']['messages'][-1]['content'][-1]['text'])['mounting'], 'wall')
+        self.assertIn('installed_correctly', scene_imagegen.USAGE_FLAGS)          # gets the extra try a wrong use gets
 
     def test_a_check_that_cannot_run_keeps_the_picture_and_says_it_was_not_checked(self):
         self.assertEqual(self.check(ValueError('AI 请求超时'))[0]['status'], 'unchecked')
@@ -667,6 +689,42 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(made['record']['check']['issues'], ['one', 'two', 'three'])
         self.assertIn('PEOPLE. Nobody is in the picture', self.prompts[0])
 
+    def test_a_wall_product_keeps_its_pose_hangs_higher_and_is_put_back_from_its_render(self):
+        seen = []
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, mounting=None):
+            seen.append(mounting); return {'status': 'passed', 'issues': [], 'note': '一致。'}
+        def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
+            # the image model keeps the product where it is but paints its own version of it: another red, and bars down its middle
+            self.prompts.append(text)
+            with Image.open(images[0]) as canvas:
+                picture = canvas.convert('RGB')
+            pixels = picture.load(); width, height = picture.size
+            product = [(x, y) for y in range(0, height, 2) for x in range(0, width, 2) if pixels[x, y] != scene_lock.GROUND]
+            left = min(x for x, _ in product); right = max(x for x, _ in product); top = min(y for _, y in product); bottom = max(y for _, y in product)
+            for y in range(height):
+                for x in range(width):
+                    pixels[x, y] = (225, 228, 230) if pixels[x, y] == scene_lock.GROUND else (176, 40, 36)
+            middle = (left + right) // 2
+            ImageDraw.Draw(picture).rectangle((middle - 6, top + 20, middle + 6, bottom - 20), fill=(30, 200, 60))
+            buffer = io.BytesIO(); picture.save(buffer, 'PNG')
+            return {'png': buffer.getvalue(), 'size': list(size), 'usage': {'total_tokens': 100}}
+        with patch.object(scene_imagegen, 'check', side_effect=check), patch.object(scene_imagegen, 'edit', side_effect=edit):
+            made = self.create(people=False, mounting='wall')
+        self.assertEqual((self.pose_calls[-1]['mode'], seen), ('keep', ['wall']))
+        self.assertIn(scene_imagegen.WALL_RULE, self.prompts[-1])
+        box = made['record']['anchor']['box']
+        self.assertLess((box[1] + box[3]) / 2, .5)                              # higher in the frame than a product set down
+        record = made['record']
+        self.assertEqual((record['restored'], record['mounting']), (True, 'wall'))
+        self.assertTrue(record['original'].endswith('/attempt1.model.png'))
+        folder = self.data / 'fixture' / 'scene_ai' / 't1' / 'scene'
+        with Image.open(folder / 'scene.png') as picture, Image.open(folder / 'attempt1.model.png') as painted:
+            middle = (round((box[0] + box[2]) / 2 * picture.width), round((box[1] + box[3]) / 2 * picture.height))
+            self.assertEqual(painted.convert('RGB').getpixel(middle), (30, 200, 60))   # the image model's invented bars
+            restored = picture.convert('RGB').getpixel(middle)
+            self.assertGreater(restored[0], 150); self.assertLess(restored[1], 80)       # the render's red block again, lit like the picture
+            self.assertEqual(picture.convert('RGB').getpixel((5, 5)), (225, 228, 230))  # the wall is the image model's
+
     def test_a_product_that_moved_or_was_redrawn_is_made_again_without_asking_the_vision_model(self):
         self.locks = ['moved', 'kept']
         self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
@@ -676,11 +734,13 @@ class CreateTests(unittest.TestCase):
         self.assertIn('CORRECTIONS.', self.prompts[1]); self.assertIn('must stay exactly where it is in image 1', self.prompts[1])
         self.assertIn('产品被移动或改动，正在重新生成', stages)
         self.assertEqual(made['record']['discarded'], [{'url': '/files/fixture/scene_ai/t1/scene/attempt1.png', 'issues': [scene_imagegen.LOCK_FIXES['moved']], 'lock': 'moved'}])
+        # Redrawn every time: no picture shows this product, so there is no scene (a page never gets a redrawn product).
         self.locks = ['changed', 'changed']
-        made = self.create()
-        self.assertEqual((made['record']['check']['status'], made['record']['check']['lock']['status']), ('failed', 'changed'))
-        self.assertIn('parts of the product were redrawn (around its', made['record']['check']['issues'][0])
-        self.assertEqual(made['record']['check']['note'], scene_imagegen.LOCK_NOTES['changed'])
+        with self.assertRaisesRegex(scene_imagegen.ImageError, '改动了产品的位置、大小或外形'):
+            self.create()
+        kept = sorted((self.data / 'fixture' / 'scene_ai' / 'rejected').iterdir())          # set aside to be looked at
+        self.assertEqual(sorted(path.name for path in kept[-1].iterdir()), ['attempt1.png', 'attempt2.png', 'canvas.png', 'checks.json', 'reference.png'])
+        self.assertIn('parts of the product were redrawn (around its', self.prompts[-1])
         # When neither passes, a picture that kept the product beats one that did not, whatever else it got wrong.
         self.locks = ['kept', 'moved']
         self.verdicts = [{'status': 'failed', 'issues': ['one', 'two', 'three'], 'note': 'x', 'people': {'ok': False}}]
@@ -880,7 +940,7 @@ class SceneFlowTests(unittest.TestCase):
         return {**self.reply, **({'segment_id': facts['required_segment']} if 'required_segment' in facts else {})}
 
     def create(self, record, plan, azimuth, elevation, scene, product, size_mm, folder, cancelled=None, progress=None, people=None, framing=None,
-               pose='auto', hint=''):
+               pose='auto', hint='', mounting=None):
         self.created.append({'azimuth': azimuth, 'elevation': elevation, 'scene': scene, 'product': product, 'size_mm': size_mm, 'plan': copy.deepcopy(plan),
                              'people': people, 'framing': framing, 'pose': pose, 'hint': hint})
         folder.mkdir(parents=True, exist_ok=True)

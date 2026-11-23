@@ -24,7 +24,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 VERSION = 1
 GROUND = (198, 200, 203)          # the plain ground the anchor stands on; nothing of it may remain in the picture
 # The product's longer side as a share of the canvas's shorter side, and how far down its centre sits.
-PLACING = {'hands': (.56, .53), 'person': (.36, .58), 'none': (.5, .55)}
+# A product on a wall sits higher in the frame, with the wall around it and the room below it.
+PLACING = {'hands': (.56, .53), 'person': (.36, .58), 'none': (.5, .55), 'wall': (.46, .43)}
 LONG = 3.0                        # a cut-out this many times longer than it is wide is a long, thin tool
 LONG_HANDS = .8                   # held in hands, its length fills this share of the frame (hands then come out life-size)
 ROOM = .07                        # of the canvas: the product moves this far away from the side its work lies on
@@ -41,6 +42,13 @@ MAX_CHANGED = .1                  # share of the product's tiles that may disagr
 MIN_CHANGED = 2                   # and never fewer tiles than this: one tile is the model's ordinary wobble
 SEARCH_SCALES = (.94, .97, 1.0, 1.03, 1.06)
 SEARCH_SHIFT = .06                # of the canvas, either way
+# The image model often draws the product smaller or a little off its anchor (a wall cabinet came back 16% smaller):
+# it is first looked for over this wide range at a small size, then the usual search runs around where it was found.
+WIDE = 128                        # longer side, in pixels, of that first look
+WIDE_SCALES = tuple(round(.7 + .025 * step, 3) for step in range(25))      # .7 to 1.3
+WIDE_SHIFT = .15                  # of the canvas, either way
+FIT = 1024                        # longer side, in pixels, at which the render is fitted before it is put back
+FIT_MIN = .3                      # edge agreement the fitted render needs at that size; below it the picture is left as painted
 STATUSES = ('kept', 'moved', 'changed', 'hidden')
 
 
@@ -114,8 +122,8 @@ def _agreement(a, b, region=None):
 class _Views:
     """The render and the picture at the working size, with the render's edges ready to be moved about."""
 
-    def __init__(self, layer, picture):
-        small = _small(layer, WORK); self.size = small.size
+    def __init__(self, layer, picture, longest=WORK):
+        small = _small(layer, longest); self.size = small.size
         self.matte = small.getchannel('A')
         self.bounds = self.matte.getbbox()
         self.centre = ((self.bounds[0] + self.bounds[2]) / 2, (self.bounds[1] + self.bounds[3]) / 2) if self.bounds else (0, 0)
@@ -140,8 +148,17 @@ def locate(layer, generated):
     if views.bounds is None:
         return 1.0, 0.0, 0.0, 0.0
     size = views.size; reach = SEARCH_SHIFT * max(size); step = reach / 4
-    best = max(((views.score(scale, ix * step, iy * step), scale, ix * step, iy * step)
-                for scale in SEARCH_SCALES for ix in range(-4, 5) for iy in range(-4, 5)), key=lambda row: row[0])
+    # where it is roughly, over a wide range of sizes and places, at a small size
+    wide = _Views(layer, generated, WIDE); far = WIDE_SHIFT * max(wide.size); stride = 2.0
+    rows = int(far // stride)
+    _, s0, x0, y0 = max(((wide.score(scale, ix * stride, iy * stride), scale, ix * stride, iy * stride)
+                         for scale in WIDE_SCALES for ix in range(-rows, rows + 1) for iy in range(-rows, rows + 1)), key=lambda row: row[0])
+    x0 *= size[0] / wide.size[0]; y0 *= size[1] / wide.size[1]
+    # then the usual search around both: where the anchor put it, and where the first look found it
+    centres = [(1.0, 0.0, 0.0)] + ([(s0, x0, y0)] if (s0, x0, y0) != (1.0, 0.0, 0.0) else [])
+    candidates = {(round(c_scale * scale, 4), c_x + ix * step, c_y + iy * step) for c_scale, c_x, c_y in centres
+                  for scale in (SEARCH_SCALES if c_scale == 1.0 else (.97, 1.0, 1.03)) for ix in range(-4, 5) for iy in range(-4, 5)}
+    best = max(((views.score(scale, dx, dy), scale, dx, dy) for scale, dx, dy in candidates), key=lambda row: row[0])
     _, scale, dx, dy = best
     fine = max(((views.score(scale + ds, dx + ix * step / 3, dy + iy * step / 3), scale + ds, dx + ix * step / 3, dy + iy * step / 3)
                 for ds in (-.012, 0, .012) for ix in range(-2, 3) for iy in range(-2, 3)), key=lambda row: row[0])
@@ -214,25 +231,8 @@ def inspect(layer, generated):
     report = {'version': VERSION, 'score': score, 'scale': scale, 'shift': [dx, dy]}
     if score < MIN_SCORE:
         return {**report, 'status': 'moved', 'covered': None, 'changed': None, 'regions': []}
-    # Compare in the place the product was found: the render moved there, the picture as it is.
-    bounds = layer.getchannel('A').getbbox(); centre = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
-    placed = layer if (scale, dx, dy) == (1.0, 0.0, 0.0) else _transformed(layer, scale, dx * width, dy * height, centre, Image.Resampling.BICUBIC)
-    views = _Views(placed, picture); size = views.size
-    solid = views.matte.point(lambda value: 255 if value > 200 else 0)
-    core = solid.filter(ImageFilter.MinFilter(5))
-    box = solid.getbbox() or (0, 0, 1, 1); extent = max(box[2] - box[0], box[3] - box[1]); radius = max(2.0, extent * .035)
-    area = _total(solid) / 255 or 1
-    # What is in front of the product: colours the render has nowhere near, in patches that reach its outline (a hand comes from outside).
-    # The light is fitted twice: the second time without what turned out to be in front of the product, which would skew it.
-    lit = _harmonised(views.render, views.picture, core)
-    apart = ImageChops.multiply(_foreign(lit, views.picture, radius).point(lambda value: 255 if value > FOREIGN else 0), solid)
-    own = ImageChops.multiply(core, ImageChops.invert(apart))
-    if _total(own) > _total(core) * .15:
-        lit = _harmonised(views.render, views.picture, own)
-        apart = ImageChops.multiply(_foreign(lit, views.picture, radius).point(lambda value: 255 if value > FOREIGN else 0), solid)
-    cleaned = apart.filter(ImageFilter.MedianFilter(5)).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
-    rim = ImageChops.subtract(solid, solid.filter(ImageFilter.MinFilter(max(3, 2 * round(extent * .012) + 1))))
-    covered = _reaching(cleaned, rim, max(12, round(area * .004))).filter(ImageFilter.MaxFilter(5))
+    placed, views, solid, covered, area, box, extent = _in_front(layer, picture, scale, dx, dy)
+    size = views.size
     hidden = _total(ImageChops.multiply(covered, solid)) / 255 / area
     # Tile by tile: does the picture still show the render's edges where the product is in view?
     visible = ImageChops.multiply(views.near, ImageChops.invert(covered))
@@ -259,6 +259,86 @@ def inspect(layer, generated):
     status = ('moved' if hidden > ABSENT else 'hidden' if hidden > MAX_HIDDEN else
               'changed' if share > MAX_CHANGED and len(changed) >= MIN_CHANGED else 'kept')
     return {**report, 'status': status}
+
+
+def _in_front(layer, picture, scale, dx, dy):
+    """The render moved to where the product was found, and what in the picture is in front of it (a hand, the workpiece),
+    at the working size: (placed layer at full size, views, solid matte, covered mask, matte area, matte box, extent)."""
+    width, height = layer.size
+    bounds = layer.getchannel('A').getbbox(); centre = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
+    placed = layer if (scale, dx, dy) == (1.0, 0.0, 0.0) else _transformed(layer, scale, dx * width, dy * height, centre, Image.Resampling.BICUBIC)
+    views = _Views(placed, picture)
+    solid = views.matte.point(lambda value: 255 if value > 200 else 0)
+    core = solid.filter(ImageFilter.MinFilter(5))
+    box = solid.getbbox() or (0, 0, 1, 1); extent = max(box[2] - box[0], box[3] - box[1]); radius = max(2.0, extent * .035)
+    area = _total(solid) / 255 or 1
+    # What is in front of the product: colours the render has nowhere near, in patches that reach its outline (a hand comes from outside).
+    # The light is fitted twice: the second time without what turned out to be in front of the product, which would skew it.
+    lit = _harmonised(views.render, views.picture, core)
+    apart = ImageChops.multiply(_foreign(lit, views.picture, radius).point(lambda value: 255 if value > FOREIGN else 0), solid)
+    own = ImageChops.multiply(core, ImageChops.invert(apart))
+    if _total(own) > _total(core) * .15:
+        lit = _harmonised(views.render, views.picture, own)
+        apart = ImageChops.multiply(_foreign(lit, views.picture, radius).point(lambda value: 255 if value > FOREIGN else 0), solid)
+    cleaned = apart.filter(ImageFilter.MedianFilter(5)).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+    rim = ImageChops.subtract(solid, solid.filter(ImageFilter.MinFilter(max(3, 2 * round(extent * .012) + 1))))
+    covered = _reaching(cleaned, rim, max(12, round(area * .004))).filter(ImageFilter.MaxFilter(5))
+    return placed, views, solid, covered, area, box, extent
+
+
+def fit(layer, generated, scale, dx, dy):
+    """The scale and shift (shares of the canvas) at which the render lies exactly on the product in the picture, refined
+    from the check's coarse ones (found at WORK pixels, a few canvas pixels and about a percent out), and the edge agreement
+    there: (scale, dx, dy, score). Searched on the product's own area at FIT pixels: shift, then size, then shift again."""
+    width, height = layer.size; factor = min(1.0, FIT / max(width, height))
+    small = _small(layer, FIT); picture = generated.convert('RGB').resize(small.size, Image.Resampling.LANCZOS)
+    bounds = small.getchannel('A').getbbox()
+    if bounds is None:
+        return scale, dx, dy, 0.0
+    pad = round(max(small.size) * (SEARCH_SHIFT + .04))
+    crop = (max(0, bounds[0] - pad), max(0, bounds[1] - pad), min(small.width, bounds[2] + pad), min(small.height, bounds[3] + pad))
+    piece = small.crop(crop); centre = ((bounds[0] + bounds[2]) / 2 - crop[0], (bounds[1] + bounds[3]) / 2 - crop[1])
+    render = Image.new('RGB', piece.size, GROUND); render.paste(piece, mask=piece.getchannel('A'))
+    near = piece.getchannel('A').filter(ImageFilter.MaxFilter(5))
+    render_edges = ImageChops.multiply(_edges(render), near); seen = _edges(picture.crop(crop))
+
+    def score(s, x, y):
+        return _agreement(_transformed(render_edges, s, x, y, centre), seen, _transformed(near, s, x, y, centre))
+    s, x, y = scale, dx * small.width, dy * small.height
+    for step, reach, scales in ((1.0, 4, (0,)), (None, 0, (-.015, -.012, -.009, -.006, -.003, 0, .003, .006, .009, .012, .015)), (.5, 3, (0,))):
+        if step is None:
+            s = max(((score(s + ds, x, y), s + ds) for ds in scales), key=lambda row: row[0])[1]
+            continue
+        _, x, y = max(((score(s, x + ix * step, y + iy * step), x + ix * step, y + iy * step)
+                       for ix in range(-reach, reach + 1) for iy in range(-reach, reach + 1)), key=lambda row: row[0])
+    return round(s, 4), round(x / small.width, 5), round(y / small.height, 5), round(score(s, x, y), 4)
+
+
+def restore(layer, generated, report):
+    """The picture with the product put back as the render, where the check found it: the image model paints the place, the
+    light and what is in front of the product, but the product itself is the model's own render, at its real proportions
+    and with every one of its parts. Only for a picture whose ``report`` says 'kept'. Returns an RGB image of the picture's size,
+    or None when the render cannot be fitted exactly onto the product in the picture."""
+    width, height = layer.size
+    picture = generated.convert('RGB')
+    own_size = picture.size
+    if own_size != (width, height):
+        picture = picture.resize((width, height), Image.Resampling.LANCZOS)
+    scale, dx, dy, fitted = fit(layer, picture, float(report.get('scale', 1.0)), *(float(value) for value in report.get('shift', [0, 0])))
+    if fitted < FIT_MIN:
+        return None                     # the render does not lie cleanly on the painted product: pasting it would double its outline
+    placed, views, solid, covered, _, _, _ = _in_front(layer, picture, scale, dx, dy)
+    # what is in front of the product, at full size; the product's own matte at full size, a pixel inside its outline
+    front = covered.resize((width, height), Image.Resampling.BILINEAR).filter(ImageFilter.MaxFilter(3))
+    matte = placed.getchannel('A').filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(.8))
+    alpha = ImageChops.multiply(matte, ImageChops.invert(front))
+    render = Image.new('RGB', (width, height), GROUND); render.paste(placed.convert('RGB'), mask=placed.getchannel('A'))
+    # the model's light on it: the render given the exposure and cast the picture has where the product is in view
+    seen = ImageChops.multiply(placed.getchannel('A').point(lambda value: 255 if value > 200 else 0).filter(ImageFilter.MinFilter(5)),
+                               ImageChops.invert(front))
+    lit = _harmonised(render, picture, seen)
+    restored = Image.composite(lit, picture, alpha)
+    return restored if own_size == (width, height) else restored.resize(own_size, Image.Resampling.LANCZOS)
 
 
 def describe(report, box):

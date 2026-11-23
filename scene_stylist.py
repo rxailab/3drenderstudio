@@ -136,8 +136,9 @@ Decide which segment this product's usage scene should address and plan one pict
 - summary: one sentence in the user's language describing the planned picture.
 - people: true when the picture shows a person, or a person's hands, using the product. Things that are held or operated by hand while they work (hand tools, power tools, garden machines, instruments) are best shown in use by a person; things that stand on their own (cabinets, storage, furniture) often need nobody. When required_people is given it decides: true means a person is clearly visible using or handling the product, false means nobody is in the picture, not even a hand, and the product is shown at rest in the place where it is used. people_framing says how a person appears: 'hands' (the usual case) means a close-up of the hands operating the product and the thing it is working on, cropped tight, with no face, head or whole figure; 'person' means the person is visible from about the waist up.
 - complex: true when it needs a place that a floor, one back wall and a few loose objects around the product cannot give: a jobsite, a vehicle, a lawn, a furnished room, the outdoors.
-- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. With people_framing 'hands', describe the hands on the product and what the product is working on at the point of contact (the pipe being cut, the nut being turned, the board being drilled), and keep faces and whole figures out of it. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture. Every place is brand new and spotless, as on the day it was fitted out, with bright, clean light: new benches and tables with smooth, unmarked tops, freshly painted walls, clean floors, a new and clean van. Never ask for anything old, worn, weathered, scratched, rusty, stained, oily, greasy, dusty, dirty or cluttered, and no dim or yellowed light.
+- scene: the picture in plain English, 40 to 110 words, written for an image generator: the place and its light, what the person (if any) is doing with the product, where the product stands in the frame and how much of the frame it takes. With people_framing 'hands', describe the hands on the product and what the product is working on at the point of contact (the pipe being cut, the nut being turned, the board being drilled), and keep faces and whole figures out of it. Call the product by what it is ("the tool cabinet") and do not describe its design; its exact look is supplied separately as renders. Never name a brand, a model number or a publisher, and ask for no text in the picture. Every place is brand new and spotless, as on the day it was fitted out, with bright, clean light: new benches and tables with smooth, unmarked tops, freshly painted walls, clean floors. Never ask for anything old, worn, weathered, scratched, rusty, stained, oily, greasy, dusty, dirty or cluttered, and no dim or yellowed light.
 - setting: the closest of supported_settings, used when the scene is built from 3D props instead.
+Where the product is: mounting 'wall' means the product is made to hang on a wall (a wall cabinet, a tool board): the picture always shows it mounted flat against a wall by its back, at a natural height, its front toward the camera, never standing on a floor, a bench, a table or a vehicle floor. A vehicle (a van, a pick-up) suits only small things a tradesperson carries to the job; never choose a segment listed in places_not_suited.
 - azimuth, elevation: the camera angle on the product that suits the picture, in degrees, in the convention of hero_view: azimuth 0 faces the product's front and elevation is the height above level. Stay within 70 degrees of the front.
 Plan a picture a shop could really use: the product is the subject, complete and prominent. hint, when present, is what the user asked for in their own words and takes priority over the references.'''
 
@@ -241,13 +242,20 @@ def _hero(plan):
     return next((shot for shot in plan['shots'] if shot['id'] == 'hero'), plan['shots'][0])
 
 
-def _view(plan, azimuth=None, elevation=None):
-    """The angle to show the product from: the proposed one, kept to its front, else close to the main image."""
+WALL_VIEW = (40.0, 0.0, 12.0)      # a product on a wall: at most this far round from its front, and seen from about level
+
+
+def _view(plan, azimuth=None, elevation=None, mounting=None):
+    """The angle to show the product from: the proposed one, kept to its front, else close to the main image. A product
+    on a wall is seen from in front and about level with it, as a person standing in the room sees it."""
     hero = _hero(plan)
     if type(azimuth) not in (int, float):
         azimuth = hero.get('azimuth', 35) if abs(hero.get('azimuth', 35)) <= 70 else 35
     if type(elevation) not in (int, float):
         elevation = hero.get('elevation', 20) + 4
+    if mounting == 'wall':
+        turn, low, high = WALL_VIEW
+        return round(max(-turn, min(turn, float(azimuth))), 1), round(max(low, min(high, float(elevation))), 1)
     return round(max(-70.0, min(70.0, float(azimuth))), 1), round(max(8.0, min(55.0, float(elevation))), 1)
 
 
@@ -290,7 +298,8 @@ def with_method(proposal, requested=None):
     # A person appears as hands at work unless the user asked to see the person.
     result['framing'] = ('person' if choice == 'include' else 'hands') if result.get('people') else None
     if proposal.get('source') == 'rules' and 'scene' in proposal:
-        result['scene'] = scene_audience.fixed_scene(proposal.get('segment_id'), result['people']) if proposal.get('segment_id') else proposal['scene']
+        result['scene'] = (scene_audience.fixed_scene(proposal.get('segment_id'), result['people'], proposal.get('mounting'))
+                           if proposal.get('segment_id') else proposal['scene'])
     return result
 
 
@@ -327,6 +336,11 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
                                'images_that_answer_it': item['priority'], 'emphasis': item['focus'],
                                'references': [{'id': row['id'], 'shows': row['title'] + '：' + row['locator'], 'does_well': row['note']}
                                               for row in item['references']]} for item in segments]}
+        import mounting as mounted
+        mount = mounted.of(project, hint)
+        facts['mounting'] = mount or 'stands, lies or is held'
+        longest = max((float(value) for value in (plan.get('dimensions_mm') or []) if isinstance(value, (int, float))), default=0) / 1000 or None
+        facts['places_not_suited'] = [item['id'] for item in segments if not scene_audience.fits(item['id'], mount, longest)]
         if hint: facts['hint'] = hint
         if required: facts['required_segment'] = required
         if reference: facts['required_reference'] = reference
@@ -336,8 +350,8 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
             answer = _ask(config, STRATEGIST_PROMPT, facts, strategist_schema(segments), image_path)
             segment_id = required or answer['segment_id'] or None
             row = scene_audience.reference(reference or answer['reference_id'], segment_id) if segment_id else None
-            azimuth, elevation = _view(plan, answer['azimuth'], answer['elevation'])
-            return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'ai',
+            azimuth, elevation = _view(plan, answer['azimuth'], answer['elevation'], mount)
+            return with_method({**base, 'segment_id': segment_id, 'mounting': mount, 'reference_id': row['id'] if row else None, 'source': 'ai',
                                 'reason': _line(answer['reason'], 300), 'product': _line(answer['product'], 60),
                                 'max_dimension_mm': answer['max_dimension_mm'], 'summary': _line(answer['summary'], 300),
                                 'people': answer['people'] if people == 'auto' else people in ('include', 'hands'), 'complex': answer['complex'],
@@ -350,12 +364,19 @@ def propose(project, hint='', audience=None, reference=None, image_path=None, pe
     segment_id, row, reason = scene_audience.propose_rules(_text_of(project), strong, required, RECIPE_SEGMENTS.get(recipe['id']))
     if reference:
         row = scene_audience.reference(reference, segment_id)
+    import mounting as mounted
+    mount = mounted.of(project, hint)
+    if segment_id and not scene_audience.fits(segment_id, mount, max((float(value) for value in (plan.get('dimensions_mm') or [])
+                                                                       if isinstance(value, (int, float))), default=0) / 1000 or None):
+        # the words pointed at a place this product does not belong in (a wall cabinet's "工具箱" at a van)
+        segment_id = scene_audience.NEIGHBOUR.get(segment_id); row = None
     chosen = scene_audience.segment(segment_id) if segment_id else None
-    azimuth, elevation = _view(plan)
-    return with_method({**base, 'segment_id': segment_id, 'reference_id': row['id'] if row else None, 'source': 'rules', 'reason': reason,
+    azimuth, elevation = _view(plan, mounting=mount)
+    return with_method({**base, 'segment_id': segment_id, 'mounting': mount, 'reference_id': row['id'] if row else None, 'source': 'rules', 'reason': reason,
                         'product': _line(project.get('name') or recipe['label'], 60), 'max_dimension_mm': None,
                         'summary': '面向「%s」：%s。' % (chosen['label'], chosen['priority']) if chosen else '%s的通用使用场景。' % recipe['label'],
-                        'people': people in ('include', 'hands'), 'complex': False, 'scene': chosen['scene'] if chosen else '',
+                        'people': people in ('include', 'hands'), 'complex': False,
+                        'scene': scene_audience.fixed_scene(segment_id, people in ('include', 'hands'), mount) if chosen else '',
                         'setting': recipe['setting'],
                         'azimuth': azimuth, 'elevation': elevation})
 
@@ -653,14 +674,16 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
         raise ValueError('镜头数量已达上限，请先删除一个镜头。')
     plan.pop('scene_set', None); plan.pop('scene_brief', None)
     plan.get('scene_checkpoints', {}).pop(SHOT_ID, None); plan.get('shot_adjustments', {}).pop(SHOT_ID, None)
-    azimuth, elevation = _view(plan, proposal.get('azimuth'), proposal.get('elevation'))
+    import mounting as mounted
+    mount = proposal['mounting'] if 'mounting' in proposal else mounted.of(project, hint)
+    azimuth, elevation = _view(plan, proposal.get('azimuth'), proposal.get('elevation'), mount)
     size_mm, basis = real_size(project, recipe_for(project, hint)['size_mm'], proposal.get('max_dimension_mm'))
     scene = proposal.get('scene') or ''
     if hint and proposal.get('source') != 'ai':
         scene = (scene + ' ' + hint).strip()     # the strategist already read the hint; rules have not
     folder = folder or (DATA / project['id'] / 'scene_ai' / uuid.uuid4().hex / 'scene')
     picture = None; painted_because = None
-    if proposal.get('backdrop') and proposal.get('people') is False:
+    if proposal.get('backdrop') and proposal.get('people') is False and mount != 'wall':
         # The product at rest in a place, nobody in the picture: its own model is rendered into a photograph of the
         # empty place (scene_backdrop.py) instead of being drawn again by the image model. A size guessed from the
         # category alone is not a size to build a picture on.
@@ -677,7 +700,7 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
                                         size_mm if basis != 'category' else None, folder, cancelled, progress,
                                         people=proposal['people'] if type(proposal.get('people')) is bool else None,
                                         framing=proposal.get('framing') if proposal.get('framing') in scene_audience.FRAMINGS else None,
-                                        pose=pose, hint=hint, **{name: proposal[key] for key, name in (('articulation', 'articulation'), ('usage', 'usage_rules')) if proposal.get(key)})
+                                        pose=pose, hint=hint, mounting=mount, **{name: proposal[key] for key, name in (('articulation', 'articulation'), ('usage', 'usage_rules')) if proposal.get(key)})
     plan['shots'].append({'id': SHOT_ID, 'label': '使用场景', 'kind': 'full', 'style': 'soft', 'projection': 'perspective',
                           'azimuth': azimuth, 'elevation': elevation, 'focal_length': 55})
     plan['scene_brief'] = _brief(proposal, 'generate')

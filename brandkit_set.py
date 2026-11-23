@@ -842,10 +842,11 @@ def scene_asset(source, target):
 
 # ---- usage scenes (from the image model, the product locked by its mask) ----
 
-SCENE_PLAN = 6        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
+SCENE_PLAN = 7        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
                       # 3: moving parts set and usage rules from the pose agent; 4: long tools held larger in hand close-ups;
                       # 5: every place brand new and clean, never worn or dirty; 6: wear judged by the surfaces' condition, not by
-                      # tools set out in a working place)
+                      # tools set out in a working place; 7: wall-mounted products hung on a wall, places that suit the product,
+                      # the front to the camera, the product put back from its render)
 
 
 def scene_key(project, product, settings):
@@ -862,9 +863,27 @@ def scene_briefs(project, settings, count):
     is used, and the same for the next most likely buyer. Returns [{'proposal', 'role'}]."""
     import scene_audience
     import scene_stylist
+    import mounting as mounted
     first = scene_stylist.propose(project, settings['hint'], settings['audience'], None, scene_stylist._source_image(project), settings['people'])
-    briefs = [{'proposal': first, 'role': 'use'}]
+    mount = mounted.of(project, settings['hint']); longest = _longest_m(project, first)
+    metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
+    text = ' '.join(str(value) for value in (project.get('name', ''), metadata.get('product_category', ''), settings['hint']))
+    ranked = scene_audience.rank(text, text)
+
+    def suited(segment_id):
+        return bool(segment_id) and bool(scene_audience.segment(segment_id)) and scene_audience.fits(segment_id, mount, longest)
     segment = first.get('segment_id')
+    if segment and not suited(segment):
+        # a place this product does not belong in (a wall cabinet at a van): the next buyer whose place suits it
+        segment = next((item for item in ranked + [scene_audience.NEIGHBOUR.get(segment)] + [row['id'] for row in scene_audience.SEGMENTS]
+                        if item != first.get('segment_id') and suited(item)), None)
+        first = {**first, 'segment_id': segment, 'reference_id': None, 'summary': (scene_audience.segment(segment) or {}).get('label', ''),
+                 'scene': scene_audience.fixed_scene(segment, bool(first.get('people')), mount)}
+    elif mount == 'wall' and not re.search(r'(?i)\bwall|mounted|hang', str(first.get('scene') or '')):
+        # the strategist's scene sets the product down somewhere: a wall-mounted one is hung on the place's wall instead
+        first = {**first, 'scene': scene_audience.fixed_scene(segment, bool(first.get('people')), mount)}
+    first = {**first, 'mounting': mount}
+    briefs = [{'proposal': first, 'role': 'use'}]
     people_allowed = settings['people'] != 'include'
     if count >= 2:
         if settings['people'] in ('include', 'hands'):
@@ -872,24 +891,25 @@ def scene_briefs(project, settings, count):
             second = {**first, 'scene': first.get('scene', '') + ' A different moment of the same job, seen from another side.'}
         else:
             # the product at rest in the buyer's place, nobody there: set into a backdrop photograph when one can be had
-            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False), 'backdrop': True}
+            # (a backdrop is a floor or a table top: a wall-mounted product is painted on a wall instead)
+            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False, mount), 'backdrop': mount != 'wall'}
         briefs.append({'proposal': second, 'role': 'place' if people_allowed else 'use'})
     if count >= 3:
-        metadata = project.get('metadata', {}) if isinstance(project.get('metadata'), dict) else {}
-        text = ' '.join(str(value) for value in (project.get('name', ''), metadata.get('product_category', ''), settings['hint']))
-        others = [item for item in scene_audience.rank(text, text) if item != segment]
+        others = [item for item in ranked if item != segment and suited(item)]
         if not others and segment:
-            # nothing else in the product's words: the neighbouring buyer, never the first scene again
+            # nothing else in the product's words: the neighbouring buyer, never the first scene again, and never a place
+            # the product does not belong in
             neighbour = scene_audience.NEIGHBOUR.get(segment)
-            others = [neighbour] if neighbour and scene_audience.segment(neighbour) else []
+            others = [neighbour] if neighbour != segment and suited(neighbour) else []
         other = others[0] if others else None
         wants = first.get('people') if settings['people'] == 'auto' else settings['people'] in ('include', 'hands')
         third = {**first, 'segment_id': other or segment, 'people': bool(wants), 'framing': first.get('framing') if wants else None,
-                 'scene': scene_audience.fixed_scene(other, bool(wants)) if other else
+                 'scene': scene_audience.fixed_scene(other, bool(wants), mount) if other else
                           (first.get('scene', '') + ' Another setting where the same buyer would use it.')}
         if other:
             # the third scene's own plan, not the first one's carried over
-            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='', backdrop=not wants)
+            third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='',
+                         backdrop=not wants and mount != 'wall')
         briefs.append({'proposal': third, 'role': 'other'})
     briefs = briefs[:count]
     import articulation
@@ -900,6 +920,26 @@ def scene_briefs(project, settings, count):
         stored = project
     shown = _scene_states(articulation.states(stored), [brief['role'] for brief in briefs])
     return [_with_moving_parts(project, brief, state) for brief, state in zip(briefs, shown)]
+
+
+def usable_scene(row):
+    """Whether a scene picture may go on a page: one whose product check failed (moved, redrawn, wrongly installed or
+    used) is never shown, not even when no other scene is there; the page then does without it."""
+    return isinstance(row, dict) and row.get('check') != 'failed'
+
+
+def _longest_m(project, proposal):
+    """The product's longest side in metres: the stated or measured size, else the strategist's estimate; None when unknown."""
+    sizes = (project.get('plan') or {}).get('dimensions_mm') if isinstance(project.get('plan'), dict) else None
+    try:
+        if sizes and max(float(value) for value in sizes) > 0:
+            return max(float(value) for value in sizes) / 1000
+    except (TypeError, ValueError):
+        pass
+    try:
+        return float(proposal.get('max_dimension_mm')) / 1000 if proposal.get('max_dimension_mm') else None
+    except (TypeError, ValueError):
+        return None
 
 
 POSES_SHOWN = 2       # how the scenes share out the product's states; a change makes the scenes of products with moving parts again
@@ -1815,7 +1855,7 @@ def _jobs_for(kind, ctx):
     if kind == 'T12':
         # The poster takes a picture the image model made; a studio render of the workpiece stays on the inside pages.
         made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
-        scene_index = next((index for index in made if ctx['scenes'][index].get('check') != 'failed'), made[0] if made else None)
+        scene_index = next((index for index in made if usable_scene(ctx['scenes'][index])), None)
         scene = ctx['scenes'][scene_index] if scene_index is not None else None
         brand = ctx.get('brand'); slot = bool(brand and brand.name) and not getattr(brand, 'logo_path', None)      # the logo itself stands for the name
         base = {'headline': _headline(headline, ctx['language'], 40), 'support': _clip(product['subline'], 90) or None, 'brand_slot': slot,
@@ -1901,9 +1941,11 @@ def _jobs_for(kind, ctx):
     if kind == 'T04':
         # A scene whose product check passed, other than the poster's when there is one.
         made = [index for index, row in enumerate(ctx['scenes']) if row['role'] in ('use', 'place', 'other')]
-        poster = next((index for index in made if ctx['scenes'][index].get('check') != 'failed'), made[0] if made else None)
-        # Fidelity first: the poster's scene again rather than one whose product check failed.
-        order = sorted(range(len(ctx['scenes'])), key=lambda index: (ctx['scenes'][index].get('check') == 'failed', index == poster, index))
+        poster = next((index for index in made if usable_scene(ctx['scenes'][index])), None)
+        # Only a scene whose product check did not fail; the poster's scene again rather than none.
+        order = sorted((index for index in range(len(ctx['scenes'])) if usable_scene(ctx['scenes'][index])), key=lambda index: (index == poster, index))
+        if not order:
+            return []
         scene = ctx['scenes'][order[0]]; name = 'scene%d' % (order[0] + 1)
         specs = _chip_rows(ctx, 3)
         if len(specs) < 3:           # a word spec (a material) fills the row after the numbers
@@ -1916,9 +1958,11 @@ def _jobs_for(kind, ctx):
         return [_job(kind, ctx, scene=name, focus=scene['focus'], eyebrow=t['T04_eyebrow'], headline=t['T04_headline'],
                      scene_product=assets[name].get('_product'), specs=specs[:count], assets={name: assets[name]}) for count in counts]
     if kind == 'T08':
-        good = [index for index in range(len(ctx['scenes'])) if ctx['scenes'][index].get('check') != 'failed']
-        # A scene whose product check failed is left out while two others can carry the page.
-        ranked = good[:3] if len(good) >= 2 else sorted(range(len(ctx['scenes'])), key=lambda index: (index not in good, index))[:3]
+        good = [index for index in range(len(ctx['scenes'])) if usable_scene(ctx['scenes'][index])]
+        # A scene whose product check failed is never on the page; with fewer than two others there is no page.
+        if len(good) < 2:
+            return []
+        ranked = good[:3]
         items = [{'asset': 'scene%d' % (index + 1), 'title': _clip(ctx['scenes'][index]['title'], 20),
                   'body': _clause_lines(_clip(ctx['scenes'][index].get('body'), 44), ctx['language'], 8) or None,
                   'focus': ctx['scenes'][index]['focus'], 'box': assets['scene%d' % (index + 1)].get('_product')} for index in sorted(ranked)]

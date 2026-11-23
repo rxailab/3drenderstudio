@@ -88,8 +88,10 @@ SEGMENTS = (
 )
 # The next most likely buyer when the product's words point at no second segment: a different setting for the third
 # scene of a listing, so it does not repeat the first.
-NEIGHBOUR = {'home_starter': 'diy_project', 'diy_project': 'home_starter', 'workshop_hobbyist': 'mobile_tradesperson',
-             'mobile_tradesperson': 'site_team', 'site_team': 'mobile_tradesperson', 'industrial_maintenance': 'mobile_tradesperson',
+# A van is never the fallback: it suits only what a tradesperson carries to the job (fits), and it was the third scene of
+# every cabinet, workshop and maintenance product while it was the neighbour of three segments.
+NEIGHBOUR = {'home_starter': 'diy_project', 'diy_project': 'home_starter', 'workshop_hobbyist': 'site_team',
+             'mobile_tradesperson': 'site_team', 'site_team': 'workshop_hobbyist', 'industrial_maintenance': 'workshop_hobbyist',
              'home_garden': 'pro_landscape', 'pro_landscape': 'home_garden'}
 # A reference whose picture shows the product at work, usually in someone's hands.
 IN_USE = re.compile(r'使用|操作|锯切|标记|探测|组装|拧|钻孔|喷涂|工作现场|工作场景|排查|用[^，。；：]{1,14}(?:打磨|处理)|mowing|on the job|troubleshooting', re.I)
@@ -218,8 +220,48 @@ def propose_rules(text, strong='', required=None, recipe_segment=None):
     return chosen['id'], pick_reference(chosen['id'], False), '按产品名称和部件判断，购买者最接近「%s」：他们关心%s。' % (chosen['label'], chosen['question'])
 
 
-def fixed_scene(segment_id, people):
-    """The picture to ask for when no model wrote one: the segment's scene, with or without a person in it."""
+# Where each buyer would hang a wall-mounted product: the place of the segment, with the product on its wall.
+WALL_SCENES = {
+    'home_starter': 'a bright, tidy, newly furnished utility room at home',
+    'diy_project': 'a clean, new home garage, fresh timber boards stacked neatly below',
+    'workshop_hobbyist': 'a newly fitted-out private workshop, a brand-new workbench with a smooth, unmarked top below it',
+    'site_team': 'the clean, freshly painted store room of a small building firm, new shelving beside it',
+    'industrial_maintenance': 'a clean, new industrial plant room, new pipework and grey control cabinets along the walls',
+    'home_garden': 'the inside wall of a new, tidy garden shed',
+    'pro_landscape': 'the inside wall of a clean, new equipment store at a park depot',
+}
+VEHICLES = ('mobile_tradesperson',)     # places in or at a vehicle: only for what is carried there
+CARRIED_M = .6                          # longer than this, a product is not carried to the job and set out on a van floor
+
+
+def fits(segment_id, mounting=None, longest_m=None):
+    """Whether a buyer's place can show this product: a wall-mounted one, or one too big to carry, is not shown at a van."""
+    if segment_id in VEHICLES:
+        if mounting == 'wall':
+            return False
+        try:
+            if longest_m and float(longest_m) > CARRIED_M:
+                return False
+        except (TypeError, ValueError):
+            pass
+    return True
+
+
+def wall_scene(segment_id, people):
+    """The segment's place with the product hung on its wall."""
+    place = WALL_SCENES.get(segment_id, 'a clean, newly fitted-out workshop')
+    if people:
+        return ('%s. The product is mounted on the freshly painted wall at about chest height, its front toward the camera; a person '
+                'in plain work clothes takes a tool from it.' % (place[0].upper() + place[1:]))
+    return ('%s. The product hangs on the freshly painted wall at about chest height, mounted flat by its back, its front toward '
+            'the camera, nothing under it but the wall.' % (place[0].upper() + place[1:]))
+
+
+def fixed_scene(segment_id, people, mounting=None):
+    """The picture to ask for when no model wrote one: the segment's scene, with or without a person in it. A wall-mounted
+    product (``mounting`` 'wall') is hung on the wall of the place, never set down in it."""
+    if mounting == 'wall':
+        return wall_scene(segment_id, people)
     chosen = segment(segment_id)
     if not chosen:
         return ('A believable place where this product is used, with a person using it.' if people else
