@@ -292,7 +292,7 @@ class AIClientTests(unittest.TestCase):
                 if provider=='anthropic':
                     return {'stop_reason':'tool_use','content':[{'type':'tool_use','name':'submit_preview_review','input':value}]}
                 return {'choices':[{'finish_reason':'stop','message':{'content':json.dumps(value)}}]}
-            with self.subTest(provider=provider),patch('ai_client._post',side_effect=[wire(invalid),wire(valid)]) as send,patch('ai_client.apply_patch',wraps=ai_client.apply_patch) as apply,patch('ai_client._image',return_value={'type':'image','source':{'type':'fixture'}}) as image:
+            with self.subTest(provider=provider),patch('ai_client._post',side_effect=[wire(invalid),wire(valid)]) as send,patch('ai_client.apply_patch',wraps=ai_client.apply_patch) as apply,patch('ai_transport._image',return_value={'type':'image','source':{'type':'fixture'}}) as image:
                 result=ai_client.review_preview(self.plan,ANALYSIS,'fixture.png',{'known_metric':1},{**CONFIG,'provider':provider})
                 self.assertEqual(result,valid)
                 self.assertEqual(send.call_count,2)

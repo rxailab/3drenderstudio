@@ -6,7 +6,7 @@ writes into the temporary folder, never into the real data/ (tests once left dat
 
 Tests that drive the real ai_client._post with a fake transport would otherwise append their made-up token counts to
 data/ai_usage.jsonl, the log that is there to measure what real builds cost (v40). The whole run writes it to a
-temporary folder instead; a test that checks the log points ai_client.USAGE_DIR at its own folder."""
+temporary folder instead; a test that checks the log points ai_transport.USAGE_DIR at its own folder."""
 import os
 import sys
 import tempfile
@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 
 import ai_client
+import ai_transport
 
 _FOLDER = tempfile.TemporaryDirectory(prefix='ai_usage_')
-ai_client.USAGE_DIR = _FOLDER.name
+ai_transport.USAGE_DIR = _FOLDER.name

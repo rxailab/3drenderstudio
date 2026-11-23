@@ -13,6 +13,7 @@ for folder in (ROOT, ROOT / 'tests'):
     if str(folder) not in sys.path: sys.path.insert(0, str(folder))
 
 import ai_client
+import ai_transport
 import brandkit_review
 import brandkit_set
 import listing
@@ -152,7 +153,7 @@ class CostTests(StoreCase):
     def setUp(self):
         super().setUp()
         self.log = self.data / 'usage'; self.log.mkdir()
-        mocked = patch.object(ai_client, 'USAGE_DIR', str(self.log)); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(ai_transport, 'USAGE_DIR', str(self.log)); mocked.start(); self.addCleanup(mocked.stop)
         listing._SPEND.clear()
 
     def test_the_estimate_counts_new_scene_pictures_and_reviewed_pages_at_list_price(self):
