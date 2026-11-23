@@ -14,11 +14,14 @@ import uuid
 from pathlib import Path
 from PIL import Image, ImageStat
 from studio_store import ROOT,DATA,LOCK,get,put,all_records,atomic_json
+import app_log
+import tasks
 from planner import enrich,apply_material_note
 from quality_gate import EVALUATION_PROTOCOL, compare_candidates, instruction_protected_roots
 from blender.light_direction import CONTRACT_VERSION as LIGHT_DIRECTION_CONTRACT_VERSION, file_digest as light_scene_digest, requested_angles, validate_report as validate_light_direction_report
 from camera_controls import CONTRACT_VERSION as CAMERA_CONTRACT_VERSION,shot_request,validate_report as validate_camera_report,matches_result as camera_matches_result
 
+log=app_log.get('engine')
 QUEUE=queue.Queue()
 PROCESSES={}
 RUNNING_JOBS=set()
@@ -73,7 +76,9 @@ def shutdown():
 atexit.register(shutdown)
 
 def blender_path():
-    candidates=[os.getenv('BLENDER_PATH'),shutil.which('blender'),r'D:\blender\blender.exe',r'D:\FORM-LAB Studio\runtime\blender\blender.exe']
+    # BLENDER_PATH (.env), then PATH, then the standard Windows install folder. No machine-specific paths here: a Blender
+    # elsewhere is named in .env.
+    candidates=[os.getenv('BLENDER_PATH'),shutil.which('blender')]
     candidates += [str(p) for p in Path('C:/Program Files/Blender Foundation').glob('*/blender.exe')]
     return next((p for p in candidates if p and Path(p).is_file()),None)
 
@@ -1199,6 +1204,7 @@ def _run_job(ident):
             except (KeyError,ValueError,OSError): pass
     except InterruptedError: pass
     except Exception as exc:
+        log.exception('job %s (%s) failed',ident,j.get('kind'))
         update_job(ident,status='failed',stage='执行失败',error=str(exc),finished_at=time.time())
         if j['kind']=='analyze':
             with LOCK:
@@ -1220,7 +1226,8 @@ def _run_job(ident):
 def worker():
     while True:
         ident=QUEUE.get()
-        try: run_job(ident)
+        # tasks.run logs what escapes run_job and fails a job left queued/running, so one bad job never stops the queue.
+        try: tasks.run(ident,run_job,kind='job',message='执行失败',fields={'stage':'执行失败'},stamp='finished_at')
         finally: QUEUE.task_done()
 
 def start():
@@ -1239,4 +1246,4 @@ def start():
         initial=project.get('initial_preview')
         if isinstance(initial,dict) and initial.get('status')=='pending' and project.get('analysis') and project.get('status')=='ready':
             schedule_initial_preview(project['id'])
-    threading.Thread(target=worker,daemon=True,name='blender-worker').start()
+    tasks.daemon(worker,'blender-worker')

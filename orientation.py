@@ -41,9 +41,12 @@ import uuid
 from pathlib import Path
 
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 VERSION = 2
 KIND = 'orient_task'
+log = app_log.get('orientation')
 ACTIVE = {'queued', 'running'}
 TIMEOUT = 420
 SIZE = 320
@@ -757,7 +760,8 @@ def submit(project_id, body):
                 'base_version': project['version'], 'shot_id': body.get('shot_id') if isinstance(body.get('shot_id'), str) else None,
                 'created_at': time.time()}
         put(KIND, task)
-        threading.Thread(target=_run, args=(task['id'],), daemon=True, name='orient-' + task['id'][:8]).start()
+        tasks.start(task['id'], _run, 'orient-' + task['id'][:8], kind=KIND, message='朝向检查未完成，模型保持当前朝向。',
+                    fields={'stage': '朝向未检查'}, stamp='finished_at')
         return task_view(task)
 
 
@@ -803,6 +807,7 @@ def _run(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('orientation task %s failed', task_id)
         with LOCK:
             task = get(KIND, task_id)
             if task['status'] != 'cancelled':

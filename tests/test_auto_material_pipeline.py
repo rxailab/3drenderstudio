@@ -21,7 +21,7 @@ class AutomaticMaterialTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.old=(store.DATA,agent.DATA,engine.QUEUE)
         store.DATA=agent.DATA=self.root;engine.QUEUE=queue.Queue()
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         folder=self.root/'fixture';folder.mkdir()
         Image.new('RGB',(8,8),'white').save(folder/'image.png');Image.new('RGB',(8,8),'white').save(folder/'image.jpg')
         (folder/'scene.blend').write_bytes(b'fixture saved scene')

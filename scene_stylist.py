@@ -41,8 +41,11 @@ import scene_audience
 import scene_props
 import scene_set
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 KIND = 'scene_task'
+log = app_log.get('scene_stylist')
 ACTIVE = {'queued', 'running'}
 RUNNING_TASKS = set()
 SHOT_ID = 'scene'
@@ -850,6 +853,7 @@ def _run(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('scene task %s failed', task_id)
         with LOCK:
             task = get(KIND, task_id)
             if task['status'] != 'cancelled':
@@ -929,7 +933,7 @@ def submit(project_id, body):
                 'hint': hint, 'audience': audience, 'reference': reference, 'method': method, 'people': people, 'pose': pose, 'seed': seed,
                 'base_version': project['version'], 'created_at': time.time()}
         put(KIND, task)
-        threading.Thread(target=_run, args=(task['id'],), daemon=True, name='scene-' + task['id'][:8]).start()
+        tasks.start(task['id'], _run, 'scene-' + task['id'][:8], kind=KIND, fields={'stage': '场景未生成'}, stamp='finished_at')
         return public(task)
 
 

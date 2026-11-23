@@ -438,7 +438,7 @@ class ServiceFlowTests(unittest.TestCase):
         for module in (store, engine, service):
             self.mock(module, 'DATA', self.root)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         service._INFLIGHT.clear(); self.addCleanup(service._INFLIGHT.clear)
         folder = self.root / 'fixture/runs/source'; folder.mkdir(parents=True)
         Image.new('RGB', (32, 32), 'white').save(folder / 'hero.png')

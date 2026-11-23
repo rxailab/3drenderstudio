@@ -267,7 +267,7 @@ class Fixture(unittest.TestCase):
         for target, name, value in ((engine, 'require_runtime', None), (engine, 'blender_path', '/usr/bin/blender')):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', project('充电式电钻'))
         self.pictured = []; self.upright = {'row': 'flip', 'confident': True, 'reason': '电池底座在下。', 'product': 'cordless drill', 'also': [],
                                             'rests_on': 'It stands upright on the flat underside of its battery pack.', 'carried_by': 'flat_underside',

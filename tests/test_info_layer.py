@@ -297,7 +297,7 @@ class SceneProbeRuntimeTests(unittest.TestCase):
         for module in (store, engine, info_layer):
             item_patch = patch.object(module, 'DATA', cls.data); item_patch.start(); cls.addClassCleanup(item_patch.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         plan = planner.default_plan(); plan.update(visual_review=False)
         job = {'id': 'job', 'project_id': 'p', 'status': 'running', 'plan': plan, 'version': 1, 'quality': 'preview'}; store.put('job', job)
         record = {'id': 'p', 'name': '工具柜', 'version': 1, 'status': 'ready', 'metadata': {}, 'plan': plan, 'outputs': [], 'history': [], 'model_path': str(model)}

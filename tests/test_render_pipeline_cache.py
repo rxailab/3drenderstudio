@@ -26,7 +26,7 @@ class RenderPipelineCacheTests(unittest.TestCase):
         for item in self.patches:
             item.start()
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.folder = self.root / 'fixture' / 'old'
         self.folder.mkdir(parents=True)
         Image.new('RGB', (8, 8), 'grey').save(self.folder / 'image.png')

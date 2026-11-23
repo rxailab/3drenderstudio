@@ -309,7 +309,7 @@ class StylistFlowTests(unittest.TestCase):
                                     (scene_stylist, '_config', None)):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', project())
         scene_props._MEMORY.clear(); self.addCleanup(scene_props._MEMORY.clear)
         mocked = patch.object(scene_props, 'catalogue', side_effect=lambda kind='models', refresh=False: MODELS if kind == 'models' else TEXTURES)
@@ -503,7 +503,7 @@ for name, size in (('tool', (.03, .03, .2)), ('can', (.06, .06, .16)), ('crate',
         patches = [patch.object(module, 'DATA', cls.data) for module in (store, engine, scene_stylist)]
         for item in patches: item.start(); cls.addClassCleanup(item.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         plan = planner.default_plan(); plan.update(visual_review=False, look='showcase')
         cls.job = {'id': 'job', 'project_id': 'p', 'status': 'running', 'plan': plan, 'version': 1, 'quality': 'preview'}
         store.put('job', cls.job)

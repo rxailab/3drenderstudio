@@ -113,7 +113,7 @@ class LightDirectionBlenderTests(unittest.TestCase):
             mocked=patch.object(module,'DATA',self.data);mocked.start();self.addCleanup(mocked.stop)
         mocked=patch.object(engine,'ROOT',self.runtime);mocked.start();self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.plan=planner.default_plan()
         self.plan['shots'][0].update(azimuth=0,elevation=math.degrees(math.atan2(2,6)))
         store.put('project',{'id':'p','version':1,'name':'Fixture','model_path':'synthetic fixture','plan':self.plan,'outputs':[],

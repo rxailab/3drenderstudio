@@ -26,6 +26,9 @@ from pathlib import Path
 
 from studio_store import DATA, LOCK, get, put, all_records
 
+import app_log
+import tasks
+
 import articulation
 import brand_kit
 import brandkit_assets
@@ -35,6 +38,7 @@ import brandkit_set
 import components
 
 KIND = 'listing_task'
+log = app_log.get('listing')
 MAX_FEATURES = 8
 MAX_SPECS = 10
 MAX_FIGURES = 3
@@ -696,7 +700,7 @@ def submit(project_id, body=None):
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
                 'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
-    thread = threading.Thread(target=_run, args=(task['id'],), name='listing', daemon=True)
+    thread = tasks.thread(task['id'], _run, 'listing', kind=KIND, message='套图生成失败，请重试。')
     TASKS[task['id']] = thread; thread.start()
     return public_task(task)
 
@@ -1325,6 +1329,7 @@ def _run(task_id):
     except KeyError:
         pass
     except Exception as exc:
+        log.exception('listing build %s of project %s failed', task_id, project_id)
         message = str(exc)[:300] if isinstance(exc, ValueError) and str(exc) else '套图生成失败，请重试。'
         try:
             if not cancelled():

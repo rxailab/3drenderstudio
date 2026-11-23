@@ -38,7 +38,7 @@ class Fixture(unittest.TestCase):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(scene_stylist, 'QUEUE_POLL', .01); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', project())
         scene_props._MEMORY.clear(); self.addCleanup(scene_props._MEMORY.clear)
         for name, effect in (('catalogue', lambda kind='models', refresh=False: MODELS if kind == 'models' else TEXTURES),

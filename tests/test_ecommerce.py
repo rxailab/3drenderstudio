@@ -219,7 +219,7 @@ class StoreCase(unittest.TestCase):
         self.addCleanup(context.stop)
         ecommerce._MEASUREMENTS.clear()
         with store.connection() as database:
-            database.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            database.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.mattes = {}
         context = patch.object(ecommerce, 'product_matte', side_effect=lambda task, project, output, cancelled=None: self.mattes[output['png_url']].copy())
         self.matte_calls = context.start()
@@ -560,7 +560,7 @@ class RuntimeTests(unittest.TestCase):
             context.start()
             cls.addClassCleanup(context.stop)
         with store.connection() as database:
-            database.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            database.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         model = cls.data / 'p' / 'originals' / 'bottle.glb'
         model.parent.mkdir(parents=True)
         shutil.copy2(ROOT / 'samples' / 'matte-pump-bottle.glb', model)
