@@ -4,12 +4,14 @@
 <link rel="stylesheet" href="engine/base.css">
 <style>
   /* T12 · hero poster. One product story: a heavy extended-caps headline (two-tone), one support line carrying the
-     number, optional figure chips / key stat / platform badge / brand slot / close-up inset. Three modes:
+     number, optional figure chips / key stat / platform badge / brand slot / close-up inset. Five modes:
        overlay – full-bleed scene, text on a gradient scrim in the quieter half (default when a scene is given); with
                  job.product_box the scene is moved so the product clears the words, and a scene with no room for
                  them falls back to band
        band    – scene on the top 70%, hard-edged warm-dark band below (the DeWalt variant)
-       solid   – studio light ground, product large (may bleed right/bottom), text column top-left. */
+       solid   – studio light ground, product large (may bleed right/bottom), text column top-left.
+       split   – studio cut-out; the page split into a brand-colour block (every word) and the light field, the product across the seam
+       center  – studio cut-out centred and large; the words under it ('below') or one/two words set huge behind it ('behind'). */
   #canvas{--bg:#E9E6E0;--text:#1C1F22;--muted:#4F575E;--accent:#D0612A;--wm:rgba(0,0,0,.045)}
   #canvas.studio{background:linear-gradient(to bottom,rgba(150,112,72,0) 58%,rgba(150,112,72,.13) 100%),radial-gradient(120% 90% at 50% 62%,#FFFFFF 0%,#F7F4EF 40%,var(--bg) 100%)}
   .hl{font-family:var(--f-display);font-weight:900;font-stretch:116%;text-transform:uppercase;letter-spacing:-.01em;line-height:.92;color:var(--ink);text-wrap:balance}
@@ -48,6 +50,18 @@
   .on-dark .circle-inset{--ring-gap:var(--dark)}
   .inset-ring{position:absolute;border-radius:50%;pointer-events:none}
   #canvas[lang=zh] .stat .stat-label{text-transform:none;letter-spacing:.04em}
+  /* split: the brand-colour block (the accent deepened until cream reads on it) carries every word */
+  .block{position:absolute;background:var(--block,#211915)}
+  .on-dark.on-block .txt .hi{color:var(--block-hi,var(--cream))}
+  .on-block .sub{color:rgba(244,239,227,.92)}
+  .on-block .rule,.on-block .stat-rule{background:var(--block-hi,var(--cream))}
+  .studio .on-block .badge{background:rgba(0,0,0,.2);border-color:rgba(244,239,227,.55)}
+  .studio .on-block .badge-v{color:var(--cream)}
+  .studio .on-block .badge-l{color:rgba(244,239,227,.86)}
+  .on-block .badge-v sup{color:var(--block-hi,var(--cream))}
+  /* center 'behind': one or two words set huge, tight leading so the line box hugs the caps */
+  .hl.huge{line-height:.84;letter-spacing:-.02em;white-space:pre}
+  #canvas[lang=zh] .txt.hl.huge{line-height:1.04;letter-spacing:0}
 </style></head>
 <body><div id="canvas"></div>
 <script src="engine/runtime.js"></script>
@@ -173,7 +187,8 @@ function hlCandidates(o) {
   if (zh) {
     const lines = raw.split('\n').map(s => s.replace(ZH_END, '').trim()).filter(Boolean);
     if (!lines.length) return [{str: '', k: 1, score: 0}];
-    const out = [{str: lines.join('\n'), k: lines.length > 1 ? lines.length : Math.min(o.maxHl, 2), score: 0, wrap: lines.length === 1}];
+    // keepLines (split's narrow column): a written line stays one line, the type shrinks instead (the renderer's phrase check)
+    const out = [{str: lines.join('\n'), k: lines.length > 1 || o.keepLines ? lines.length : Math.min(o.maxHl, 2), score: 0, wrap: lines.length === 1}];
     if (o.join && lines.length > 1 && !/\[\[|\{/.test(raw)) out.push({str: lines[0] + '\u2002[[' + lines.slice(1).join('\u2002') + ']]', k: 1, score: 2, joined: true});
     return out;
   }
@@ -209,16 +224,17 @@ const supportText = support ? String(support).replace(/[.。]\s*$/, '') : null; 
 function stack(x, y, w, o) {
   const parent = o.parent;
   const hlSizes = o.hlSizes, maxHl = o.maxHl || 3;
-  const cands = hlCandidates({maxHl, join: !!o.join});
+  const cands = hlCandidates({maxHl, join: !!o.join, keepLines: !!o.keepLines});
   const hl = T.text('headline', cands[0].str, x, y, w, 'hl', {tier: 'headline', maxLines: zh ? Math.max(maxHl, written(headline)) : maxHl, parent, allow: o.allow});
   let sp = null;
-  if (supportText) sp = T.text('support', supportText, x, y, Math.min(w, o.subW || w), 'sub', {tier: 'secondary', maxLines: 2, parent, allow: o.allow});
+  const subLines = o.subLines || 2;
+  if (supportText) sp = T.text('support', supportText, x, y, Math.min(w, o.subW || w), 'sub', {tier: 'secondary', maxLines: subLines, parent, allow: o.allow});
   const levels = zh ? ['phrase', 'word', 'none'] : ['none'];
   const subSizes = o.subSizes || (zh ? [48, 46, 44, 42] : [52, 50, 48, 46, 44]);   // ≈3.3% H, ≥ the 360px-thumbnail floor
   const px = hs => zh ? Math.round(hs * (o.zhScale || 0.84)) : hs;
   const gapOf = () => Math.round(parseFloat(hl.style.fontSize) * 0.34);             // ≈ half the cap height, on every layout
-  const fitSub = () => {                          // the support line: largest size and most phrase-safe break that fits 2 lines
-    for (const lv of levels) { zhWrap(sp, lv); for (const s of subSizes) { sp.style.fontSize = s + 'px'; if (fitsIn(sp, 2)) return s; } }
+  const fitSub = () => {                          // the support line: largest size and most phrase-safe break that fits 2 lines (split's column: 3)
+    for (const k of subLines > 2 ? [2, subLines] : [2]) for (const lv of levels) { zhWrap(sp, lv); for (const s of subSizes) { sp.style.fontSize = s + 'px'; if (fitsIn(sp, k)) return s; } }
     zhWrap(sp, 'none'); sp.style.fontSize = subSizes[subSizes.length - 1] + 'px'; return null;
   };
   if (sp) fitSub();
@@ -311,11 +327,11 @@ function chipRow(x, y, dark, parent, allow) {    // up to 3 icon+value chips, 24
   let cx = x; for (const c of made) { c.move(cx, y); cx += c.w + 24; }
   return {x, y, w: total, h: CH, n: made.length};
 }
-function chipColumn(x, y, maxW, parent) {         // solid mode: chips stacked in the text column
+function chipColumn(x, y, maxW, parent, dark) {   // solid mode: chips stacked in the text column (split: dark chips on the colour block)
   if (!figs.length) return null;
   let cy = y, w = 0; const out = [];
   for (let i = 0; i < figs.length; i++) {
-    const f = figs[i]; const c = T.chip('chip' + (i + 1), x, cy, {icon: f.icon, value: f.value, unit: f.unit, label: f.label, text: f.text}, {h: CH, parent});
+    const f = figs[i]; const c = T.chip('chip' + (i + 1), x, cy, {icon: f.icon, value: f.value, unit: f.unit, label: f.label, text: f.text}, {h: CH, parent, dark});
     metaLabel(c);
     if (c.w > maxW) { c.el.remove(); T.notes.push('a figure chip dropped: wider than the column'); continue; }
     out.push(c); w = Math.max(w, c.w); cy += CH + 16;
@@ -531,6 +547,278 @@ if (mode === 'band') {
       sp.querySelector('.stat-label').setAttribute('data-tier', 'meta');
       if (sp.getBoundingClientRect().bottom > T.rect(s.hl).y - 4 * G) { sp.remove(); T.notes.push('stat dropped: no room in the landscape panel'); } }
   }
+} else if (mode === 'split' || mode === 'center') {
+  /* ---- split / center: studio cut-out posters with the same inputs as solid.
+     split  – the page split into a brand-colour block (job.split_side, job.split_ratio of the width) and the light field;
+              every word on the block, the product straddling the seam (part of it on each field), clear of the words.
+     center – the product centred and large; center_type 'below': headline + support centred under it; 'behind': a
+              one/two-word headline set huge across the top, the product standing in front of it (its top may reach the
+              letters' line box only as far as the renderer's words-on-product test allows), the support small at the
+              bottom. A longer headline cannot be set huge: the page takes 'below'. ---- */
+  if (!job.hero) throw new Error(mode + ' mode needs a hero');
+  T.root.classList.add('studio');
+  const a = T.asset(job.hero), cb = a.content_bbox || [0, 0, 1, 1];
+  const hull = (Array.isArray(a.hull) && a.hull.length >= 3) ? a.hull : [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
+  const cw0 = a.width * (cb[2] - cb[0]), ch0 = a.height * (cb[3] - cb[1]);
+  const tall = H / W >= 1.15, gap = 36, mgX = Math.round(W * 0.06), mgB = Math.round(H * 0.055);
+  const minHl = Math.ceil(14 * W / 360);        // the headline floor at the 360px thumbnail (P4)
+  const capS = cap - 0.01;                       // the drawn width is rounded to whole px: stay under the 1.25x upscale warning
+  const grow = r => ({x: r.x - gap, y: r.y - gap, w: r.w + 2 * gap, h: r.h + 2 * gap});
+  const inPoly = (p, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if (((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) c = !c; } return c; };
+  const clearOf = (keep, poly) => keep.every(r => { for (let i = 0; i < poly.length; i++) if (T.segRect(poly[i], poly[(i + 1) % poly.length], r, 0)) return false;
+    return ![[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].some(p => inPoly(p, poly)); });
+  // the renderer's words-on-product test: a 17x17 grid over the line box, counted inside the hull or within d px of it (the
+  // hull joins the centres of a 1/220 grid, so the product's edge may stand a few px outside it)
+  const nearEdge = (p, poly, d) => poly.some((a, i) => { const b = poly[(i + 1) % poly.length], vx = b[0] - a[0], vy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / (vx * vx + vy * vy || 1)));
+    return Math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy) <= d; });
+  const gridHits = (r, poly) => {
+    const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), d = 6 + Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 220;
+    let n = 0; for (let i = 0; i <= 16; i++) for (let j = 0; j <= 16; j++) {
+    const p = [r.x + r.w * i / 16, r.y + r.h * j / 16]; if (inPoly(p, poly) || nearEdge(p, poly, d)) n++; } return n; };
+  const at = (sc, cx, cy) => { const iw = a.width * sc, ih = a.height * sc, ix = cx - cb[0] * iw, iy = cy - cb[1] * ih;
+    return {sc, cx, cy, cw: cw0 * sc, ch: ch0 * sc, iw, ih, ix, iy, poly: hull.map(([u, v]) => [ix + u * iw, iy + v * ih])}; };
+  const inside = p => p.ix >= -0.5 && p.iy >= -0.5 && p.ix + p.iw <= W + 0.5 && p.iy + p.ih <= H + 0.5;   // the whole picture in frame (no crop)
+  const putHero = (p, keyed) => {
+    if (p.cy + p.ch < floorY - 8) {
+      const sh = T.el('div', {class: 'shadow', 'data-exempt': '1'}); const swd = p.cw * 0.86;
+      T.box(sh, p.cx + (p.cw - swd) / 2, p.cy + p.ch - 46, swd, 60);
+    }
+    if (keyed && !document.getElementById('t12Key')) {
+      // over the colour block a multiply blend would dye the product: the white backdrop is keyed out instead (as T01 does)
+      const ns = 'http://www.w3.org/2000/svg', holder = document.createElementNS(ns, 'svg'), k = job.hero_key_gain ?? 20;
+      holder.setAttribute('width', 0); holder.setAttribute('height', 0); holder.style.position = 'absolute'; T.root.appendChild(holder);
+      holder.innerHTML = `<defs><filter id="t12Key" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+        <feColorMatrix type="matrix" in="SourceGraphic" result="keyed" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ${-k / 3} ${-k / 3} ${-k / 3} 0 ${k}"/>
+        <feComposite in="keyed" in2="SourceAlpha" operator="in"/></filter></defs>`;
+    }
+    const im = T.img('hero', job.hero, {x: p.ix, y: p.iy, w: p.iw, h: p.ih}, {blend: keyed ? '' : 'multiply'});
+    if (keyed) {
+      im.style.filter = 'url(#t12Key)';
+      /* a luminance key also clears the product's own white highlights (holes onto the block): where the picture can be
+         read, the backdrop is the near-white flooded in from the border, and only it (and the product's rim) is keyed */
+      const src = new Image();
+      src.onload = () => { try {
+        const w = src.naturalWidth, h = src.naturalHeight, c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d'); ctx.drawImage(src, 0, 0); const d = ctx.getImageData(0, 0, w, h), px = d.data;
+        // near-white, opened by r px first so a highlight that meets the backdrop through a thin neck is not flooded
+        const n = w * h, r = 3, white = new Uint8Array(n), core = new Uint8Array(n), bg = new Uint8Array(n), q = new Int32Array(n); let qt = 0;
+        for (let i = 0; i < n; i++) white[i] = px[4 * i] >= 252 && px[4 * i + 1] >= 252 && px[4 * i + 2] >= 252 ? 1 : 0;
+        const spread = (src, keepAll) => {     // separable square min (keepAll) / max filter of radius r
+          const tmp = new Uint8Array(n), out = new Uint8Array(n);
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = keepAll; for (let d = -r; d <= r; d++) { const xx = x + d; const b = xx < 0 || xx >= w ? keepAll : src[y * w + xx]; v = keepAll ? v & b : v | b; } tmp[y * w + x] = v; }
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = keepAll; for (let d = -r; d <= r; d++) { const yy = y + d; const b = yy < 0 || yy >= h ? keepAll : tmp[yy * w + x]; v = keepAll ? v & b : v | b; } out[y * w + x] = v; }
+          return out;
+        };
+        const eroded = spread(white, 1);
+        const seed = i => { if (!core[i] && eroded[i]) { core[i] = 1; q[qt++] = i; } };
+        for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+        for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+        for (let qh = 0; qh < qt; qh++) { const i = q[qh], x = i % w;
+          if (x > 0) seed(i - 1); if (x < w - 1) seed(i + 1); if (i >= w) seed(i - w); if (i < n - w) seed(i + w); }
+        const grown = spread(core, 0);
+        for (let i = 0; i < n; i++) bg[i] = grown[i] & white[i];
+        const soft = i => Math.max(0, Math.min(255, Math.round(255 * 14 * (1 - (px[4 * i] + px[4 * i + 1] + px[4 * i + 2]) / 765))));
+        const al = new Uint8ClampedArray(n);
+        for (let i = 0; i < n; i++) {
+          const x = i % w, rim = !bg[i] && ((x > 0 && bg[i - 1]) || (x < w - 1 && bg[i + 1]) || (i >= w && bg[i - w]) || (i < n - w && bg[i + w]));
+          al[i] = bg[i] || rim ? soft(i) : 255;
+        }
+        for (let i = 0; i < n; i++) { px[4 * i] = px[4 * i + 1] = px[4 * i + 2] = 0; px[4 * i + 3] = al[i]; }
+        ctx.putImageData(d, 0, 0);
+        const url = `url(${c.toDataURL('image/png')})`;
+        im.style.filter = ''; im.style.webkitMaskImage = im.style.maskImage = url; im.style.webkitMaskSize = im.style.maskSize = '100% 100%';
+      } catch (e) { /* the picture cannot be read here (a tainted canvas): the luminance key stays */ } };
+      src.src = a.file;
+    }
+    T.layoutInfo.hero_scale = +p.sc.toFixed(3);
+    T.layoutInfo.hero_cover = +((p.cw * p.ch) / (W * H)).toFixed(3);
+    T.layoutInfo.hero_bbox = [p.cx, p.cy, p.cw, p.ch].map(Math.round);
+    return im;
+  };
+  const lift = id => { const e = document.querySelector(`[data-qa="${id}"]`); if (e && e.parentNode === T.root) T.root.appendChild(e); };
+
+  if (mode === 'split') {
+    const side = job.split_side === 'right' ? 'right' : 'left';
+    const ratio = Math.min(0.55, Math.max(0.38, Number(job.split_ratio) || 0.46));
+    const bw = Math.round(W * ratio), bx = side === 'left' ? 0 : W - bw, seam = side === 'left' ? bw : bx;
+    /* the block: the brand accent, deepened toward the warm dark only as far as cream text needs (≥4.8:1); the accent
+       words on it: the accent lifted toward cream until it stands off the block (≥3.2:1, display sizes only) */
+    (function () {
+      const hex = String((job.palette || {}).accent || getComputedStyle(T.root).getPropertyValue('--accent') || '#D0612A').trim().replace('#', '');
+      const rgb = /^[0-9a-f]{6}$/i.test(hex) ? [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)) : [208, 97, 42];
+      const dark = [30, 27, 25], cream = [244, 239, 227];
+      const lum = c => { const l = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }; return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); };
+      const con = (p, q) => { const x = lum(p), y = lum(q); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+      const mix = (c, to, t) => c.map((v, i) => Math.round(v + (to[i] - v) * t));
+      let t = 0, blk = rgb; while (con(blk, cream) < 4.8 && t < 1) { t += 0.05; blk = mix(rgb, dark, t); }
+      let u = 0, hi = rgb; while (con(hi, blk) < 3.2 && u < 1) { u += 0.05; hi = mix(rgb, cream, u); }
+      T.root.style.setProperty('--block', `rgb(${blk.join(',')})`); T.root.style.setProperty('--block-hi', `rgb(${hi.join(',')})`);
+      T.layoutInfo.block_color = `rgb(${blk.join(',')})`;
+    })();
+    const block = T.el('div', {class: 'block', 'data-qa': 'block', 'data-kind': 'shape', 'data-allow': textIds.concat(['rule']).join(',')});
+    T.box(block, bx, 0, bw, H);
+    const cont = T.el('div', {class: 'on-dark on-block'}); cont.style.position = 'absolute'; cont.style.inset = '0'; cont.style.zIndex = 2;
+    // the text column: the block less a margin on both sides (the seam side is where the product comes in)
+    const x0 = bx + m, colW = bw - 2 * m;
+    let y0 = m;
+    const bd = badge(x0, m - 12, cont);
+    if (bd) y0 = bd.y + bd.h + 5 * G;
+    const rule = T.el('div', {class: 'rule', 'data-qa': 'rule', 'data-kind': 'shape'}, cont); T.box(rule, x0, y0, 72, 10);
+    const sizes = (zh ? (job.compact ? [116, 104, 96, 88, 80, 72, 66, 60] : [128, 116, 104, 96, 88, 80, 72, 66, 60])
+      : job.compact ? [80, 72, 66, 60, 56, 52, 48] : [96, 88, 80, 72, 66, 60, 56, 52, 48]).filter(v => (zh ? v * 0.84 : v) >= minHl);
+    const s = stack(x0, y0 + 10 + 4 * G, colW, {parent: cont, hlSizes: sizes, maxHl: 4, subW: colW, hmax: Math.round(H * 0.46), allow: ['block'], hcost: 20, keepLines: true, subLines: 3});
+    let yy = T.rect(s.sp || s.hl).y + T.rect(s.sp || s.hl).h + 5 * G;
+    const chips = chipColumn(x0, yy, colW, cont, true);
+    if (chips) yy = chips.y + chips.h;
+    const slotBox = job.brand_slot ? brandSlot(x0, floorY - m - 72, 'left', cont) : null;
+    // the key figure (when no chips carry the figures) at the foot of the block, only as wide as it is
+    let st = null;
+    if (!chips && stat) {
+      st = T.stat('stat', x0, 0, colW, {value: stat.value, unit: stat.unit, label: stat.label}, {dark: true, parent: cont});
+      const v = st.querySelector('.stat-value'); let fs = 128;
+      while (fs > 72 && v.scrollWidth > v.clientWidth + 1) { fs -= 8; v.style.fontSize = fs + 'px'; }
+      const lab = st.querySelector('.stat-label'); lab.setAttribute('data-tier', 'meta');
+      const top = (slotBox ? slotBox.y - 4 * G : floorY - m) - st.getBoundingClientRect().height;
+      if (top < yy + 4 * G || v.scrollWidth > v.clientWidth + 1 || lineInfo(lab).lines > 2) { st.remove(); st = null; T.notes.push('stat dropped: no room on the colour block'); }
+      else st.style.top = Math.round(top) + 'px';
+    }
+    const keep = s.rects().concat([T.rect(rule)], chips ? [chips] : [], slotBox ? [slotBox] : [], bd ? [bd] : [], st ? [T.rect(st)] : []).map(grow);
+    // the product: as large as clears the words with a share of it (≈⅓ preferred) on the block side of the seam
+    const lightW = W - bw;
+    const sFit = Math.min(capS, (floorY - mgB - m * 0.5) / ch0, (lightW - mgX) / (0.5 * cw0), (W - 2 * mgX) / cw0);
+    const shares = [0.32, 0.26, 0.38, 0.2, 0.44, 0.15, 0.5];
+    // size against straddle: a share far from ⅓ costs size (score = scale × (1 − 0.8·|share − 0.32|))
+    let pick = null, bestScore = 0;
+    for (let sc = sFit * (job.hero_fill ?? 1); sc >= sFit * 0.45 && sc > bestScore; sc *= 0.975) {
+      const cw = cw0 * sc, ch = ch0 * sc, yLo = Math.round(m * 0.5), yHi = Math.round(floorY - mgB - ch);
+      if (yHi < yLo) continue;
+      const yMid = Math.min(yHi, Math.max(yLo, Math.round((floorY - ch) / 2 + H * 0.05)));      // a touch below the middle
+      const ys = [yMid];
+      for (let d = 16; yMid + d <= yHi || yMid - d >= yLo; d += 16) { if (yMid + d <= yHi) ys.push(yMid + d); if (yMid - d >= yLo) ys.push(yMid - d); }
+      let found = null;
+      for (const sh of shares) {
+        const cx = side === 'left' ? seam - sh * cw : seam - (1 - sh) * cw;
+        for (const cy of ys) { const p = at(sc, cx, cy); if (inside(p) && clearOf(keep, p.poly)) { found = {...p, share: sh}; break; } }
+        if (found) break;
+      }
+      if (found) { const score = sc * (1 - 0.8 * Math.abs(found.share - 0.32)); if (score > bestScore) { bestScore = score; pick = found; } }
+    }
+    if (!pick) {       // no straddling place clears the words: the product whole in the light field
+      const sc = Math.min(capS, (lightW - 2 * mgX) / cw0, (floorY - 2 * m) / ch0), cw = cw0 * sc, ch = ch0 * sc;
+      pick = {...at(sc, side === 'left' ? bw + (lightW - cw) / 2 : (lightW - cw) / 2, (floorY - ch) / 2), share: 0};
+      T.notes.push('split: no straddling place clears the words; the product is set in the light field');
+    }
+    putHero(pick, true);
+    T.layoutInfo.split = {side, ratio: +ratio.toFixed(3), seam, share: pick.share};
+  } else {
+    let ctype = job.center_type === 'behind' ? 'behind' : 'below';
+    const bd = badge(m, m - 12, null);
+    const slotBox = job.brand_slot ? brandSlot(W - m, m, 'right', null) : null;
+    const top0 = Math.max(m, ...[bd, slotBox].filter(Boolean).map(r => r.y + r.h + 4 * G));
+    const keep = [bd, slotBox].filter(Boolean);
+    let bottom = floorY - m;
+    const centreChips = () => {        // the chip row centred above `bottom`
+      const y = bottom - CH, row = chipRow(m, y, false, null, null); if (!row) return null;
+      const dx = Math.round((W - row.w) / 2 - m);
+      for (let i = 1; i <= 3; i++) { const e = document.querySelector(`[data-qa="chip${i}"]`); if (e) e.style.left = (parseFloat(e.style.left) + dx) + 'px'; }
+      bottom = y - 4 * G; return {x: m + dx, y, w: row.w, h: CH};
+    };
+    let words = [], regTop = Math.round(m * 0.6), pick = null, huge = null;
+    if (ctype === 'behind') {
+      const raw = String(headline || '').trim();
+      const parts = zh ? raw.split(/\n|[，、；：。,;:]+/).map(t => t.replace(ZH_END, '').trim()).filter(Boolean) : raw.split(/\s+/).filter(Boolean);
+      const short = parts.length >= 1 && parts.length <= 2 && parts.every(w => T.plain(w).length <= (zh ? 6 : 12));
+      if (short) {
+        // the support small at the very bottom, chips above it; the product between, standing in front of the words
+        if (supportText) {
+          const sw = Math.min(W - 2 * m, Math.round(W * 0.72));
+          const sp = T.text('support', supportText, (W - sw) / 2, 0, sw, 'sub', {tier: 'secondary', maxLines: 2}); sp.style.textAlign = 'center';
+          let ok = false;
+          for (const lv of zh ? ['phrase', 'word', 'none'] : ['none']) { zhWrap(sp, lv); for (const fz of zh ? [44, 42] : [46, 44, 42]) { sp.style.fontSize = fz + 'px'; if (fitsIn(sp, 2)) { ok = true; break; } } if (ok) break; }
+          sp.style.top = Math.round(bottom - T.rect(sp).h) + 'px'; bottom = T.rect(sp).y - 4 * G;
+          words.push(textRect(sp));
+        }
+        const chips = centreChips(); if (chips) words.push(chips);
+        const k2 = words.concat(keep).map(grow), regBot = bottom - 2 * G;
+        const hl = T.text('headline', '', m, top0, W - 2 * m, 'hl huge', {tier: 'headline', maxLines: 2}); hl.style.textAlign = 'center';
+        const opts = parts.length === 2 && !zh ? [parts.join('\n'), parts.join(' ')] : [parts.join('\n')];
+        const setHuge = capH => {        // the largest size (and line split) whose line box stays within capH
+          let best = null;
+          for (const str of opts) {
+            T.markup(hl, str); const k = written(str);
+            for (let fs = zh ? 340 : 420; fs >= Math.max(minHl, zh ? 110 : 120); fs -= 6) {
+              hl.style.fontSize = fs + 'px';
+              if (fitsIn(hl, k) && T.rect(hl).h <= capH) { if (!best || fs > best.fs) best = {str, fs}; break; }
+            }
+          }
+          if (best) { T.markup(hl, best.str); hl.style.fontSize = best.fs + 'px'; }
+          return best;
+        };
+        const placeUnder = hr => {      // as large as fits; its top may reach the line box only as far as the renderer's test allows
+          let p0 = null;
+          const sFit = Math.min(capS, (W - 2 * mgX) / cw0, (regBot - (hr.y + hr.h * 0.5)) / ch0);
+          for (let sc = sFit * (job.hero_fill ?? 1); sc >= sFit * 0.45 && !p0; sc *= 0.975) {
+            const p = at(sc, (W - cw0 * sc) / 2, regBot - ch0 * sc);
+            if (inside(p) && clearOf(k2, p.poly) && gridHits(hr, p.poly) <= 2) p0 = p;
+          }
+          if (!p0) return null;
+          // then up toward the words (a short product would leave a gap), and centred if it still floats well above the foot
+          for (let cy = p0.cy - 8; cy >= m * 0.5; cy -= 8) { const p = at(p0.sc, p0.cx, cy); if (!inside(p) || gridHits(hr, p.poly) > 2 || !clearOf(k2, p.poly)) break; p0 = p; }
+          if (p0.cy + p0.ch < regBot - 4 * G) p0 = at(p0.sc, p0.cx, Math.round((p0.cy + regBot - p0.ch) / 2));
+          return p0;
+        };
+        // the words as huge as leaves the product a fair share of the page (≥16% of it), else the step that gives it the most
+        let chosen = null;
+        for (const f of tall ? [0.34, 0.30, 0.26, 0.22] : [0.38, 0.33, 0.28, 0.24]) {
+          const set = setHuge(Math.round(H * f)); if (!set) continue;
+          const p = placeUnder(textRect(hl)); if (!p) continue;
+          const cover = p.cw * p.ch / (W * H);
+          if (!chosen || cover > chosen.cover + 0.01) chosen = {set, p, cover};
+          if (cover >= 0.16) break;
+        }
+        if (chosen) {
+          T.markup(hl, chosen.set.str); hl.style.fontSize = chosen.set.fs + 'px'; twoTone(hl, chosen.set.str, 'none');
+          huge = hl; pick = chosen.p; T.layoutInfo.headline_px = chosen.set.fs; words.push(textRect(hl));
+        } else {
+          hl.remove(); for (const id of ['support', 'chip1', 'chip2', 'chip3']) document.querySelector(`[data-qa="${id}"]`)?.remove();
+          words = []; bottom = floorY - m;
+          T.notes.push("center 'behind': the words and the product do not both fit large; headline set below the product");
+        }
+      } else T.notes.push("center 'behind' takes a one/two-word headline; headline set below the product");
+      if (!huge) ctype = 'below';
+    }
+    T.layoutInfo.center_type = ctype;
+    if (!huge) {
+      const chips = centreChips(); if (chips) words.push(chips);
+      const sizesB = tall ? (job.compact ? [96, 88, 80, 72, 66] : [112, 104, 96, 88, 80, 72, 66]) : (job.compact ? [88, 80, 72, 66, 60] : [104, 96, 88, 80, 72, 66, 60]);
+      const sizesZh = job.compact ? [152, 140, 128, 116, 104, 96, 88] : [176, 164, 152, 140, 128, 116, 104, 96];
+      const subW = Math.min(W - 2 * m, 1100);
+      const s = stack(m, 0, W - 2 * m, {hlSizes: zh ? sizesZh : sizesB, maxHl: 3, subW, hmax: Math.round(H * (tall ? 0.30 : 0.27)),
+        fill: zh ? 0.6 : 0, join: zh, hcost: 40});
+      s.hl.style.textAlign = 'center';
+      if (s.sp) { s.sp.style.textAlign = 'center'; s.sp.style.left = Math.round((W - subW) / 2) + 'px'; }
+      s.place(Math.round(bottom - s.h));
+      words = words.concat(s.rects());
+      const regBot = T.rect(s.hl).y - 5 * G, k2 = words.concat(keep).map(grow);
+      const sFit = Math.min(capS, (W - 2 * mgX) / cw0, (regBot - regTop) / ch0);
+      for (let sc = sFit * (job.hero_fill ?? 1); sc >= sFit * 0.45 && !pick; sc *= 0.975) {
+        const cw = cw0 * sc, ch = ch0 * sc;
+        const p = at(sc, (W - cw) / 2, Math.round(regTop + (regBot - regTop - ch) / 2));
+        if (inside(p) && clearOf(k2, p.poly)) pick = p;
+      }
+    }
+    if (!pick) {
+      const sc = Math.min(capS, (W - 2 * mgX) / cw0, (H * 0.4) / ch0), cw = cw0 * sc, ch = ch0 * sc;
+      pick = at(sc, (W - cw) / 2, Math.round((floorY - ch) / 2));
+      T.notes.push('center: no placement of the product clears the words at a useful size');
+    }
+    putHero(pick, false);
+  }
+  // keep the words above the product picture in paint order (the huge headline stays behind it)
+  for (const id of ['support', 'chip1', 'chip2', 'chip3', 'brand_slot', 'brand_slot_t', 'badge']) lift(id);
+  if (mode === 'center' && T.layoutInfo.center_type === 'below') lift('headline');
+  T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 2, style: 'burst'});
 } else if (mode !== 'overlay') {
   /* ---- solid: studio light ground with a warm floor. 1:1 and 4:5: a full-width text block on top (designed 2-line
      break), optional chip row, and the whole product below it, centred, ≥6% margin, contact shadow. Landscape: a
