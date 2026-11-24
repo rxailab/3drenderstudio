@@ -283,7 +283,8 @@
   "zh subhead: when it wraps, the break goes after the clause punctuation nearest the middle",
   "ring rows: with <=3 insets the headline moves to a left column and the product fills the right side above the row when that is larger (57% of canvas height for the tote vs 33% before); 4:5 circles r=136",
   "ring cols: circles r<=136 (8.8% of W), 20px column gap, so the product reaches ~65% of the canvas height; captions keep the min_margin",
-  "ring captions: en callouts in one casing (title case, small words lower)"
+  "ring captions: en callouts in one casing (title case, small words lower)",
+  "split, rail_side 'right': the page mirrored - close-up rail, accent gaps and seam on the right, captions right-aligned to the outer margin (band tabs flush to the right edge), headline + subhead + hero in the left column (hero_overlap breaks into the rail leftward)"
  ],
  "render_outputs": [
   {
@@ -348,6 +349,7 @@
   "ring_style": "'accent' (default) | 'grey'",
   "tile_min_visible": "0.85: a tile wider than its picture keeps at least this share of the picture's height and extends its sides with a blurred copy, instead of cover-cropping parts away",
   "ring_side_headline": "true (default): ring rows with <=3 insets put the headline + subhead in a left column and the product full height on the right when that makes it >=12% larger; falls back to the top headline when the copy does not fit the column",
-  "headline_accent": "en: number of leading words in the accent (default: all but the last 2 words when there are 4+, joiners like '&' kept inside, with a line break after the accent unit); zh: number of leading characters (default len-3 for 6+ characters, e.g. 帆布皮革|托特包); false = no accent"
+  "headline_accent": "en: number of leading words in the accent (default: all but the last 2 words when there are 4+, joiners like '&' kept inside, with a line break after the accent unit); zh: number of leading characters (default len-3 for 6+ characters, e.g. 帆布皮革|托特包); false = no accent",
+  "rail_side": "'left' (default) | 'right' (split only: mirror, close-up rail on the right, hero + headline on the left)"
  }
 }

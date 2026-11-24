@@ -244,7 +244,8 @@
     "macro crop: cover, zoom job.macro_zoom (default 1.0, pulled back so the object reads whole), upscale cap 1.25 by shrinking the frame, edge snap 0.09, named parts (features[].parts) never sliced, optional overscan",
     "rim light off by default (job.rim true or opacity: neutral warm white #FFF1DC, 12px blur)",
     "specs chips (job.specs) under f1 when there is room, skipped with a note otherwise",
-    "notes: stock copy, body that repeats its title, panel widened, copy over budget"
+    "notes: stock copy, body that repeats its title, panel widened, copy over budget",
+    "rail, panel_side 'right': the page mirrored - copy panel on the right, macro bleeding off the left and bottom with its shadow (or fade) on the right edge, ringed second close-up near the macro's right edge with its leader running from the caption bar's start; the key light moves to the copy side"
   ],
   "render_outputs": [
     {
@@ -290,7 +291,8 @@
     "grain": "false removes grain",
     "band_min_macro": "share of H under which a band macro is noted as short (0.5)",
     "text_margin": "outer margin px (72)",
-    "max_detail_scale": "upscale cap (1.25)"
+    "max_detail_scale": "upscale cap (1.25)",
+    "panel_side": "'left' (default: copy panel left, macro bleeding right) | 'right' (rail only: mirror)"
   },
   "elements_note": "measured on the en fixture version 0 (1500x1500, rail); band layout (one close-up): header, then f1 full measure, then the macro full width from ~0.37H to the floor"
 }
