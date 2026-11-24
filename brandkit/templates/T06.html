@@ -373,12 +373,18 @@ if (blueprint) {
   [['0', 1], ['.6', 1], ['1', 0]].forEach(([o, a]) => mk('stop', {offset: o, 'stop-color': '#fff', 'stop-opacity': a}, fade));
   const fm = mk('mask', {id: 'bpFadeMask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H}, df);
   mk('rect', {x: gx, y: gy, width: gw, height: gh, fill: 'url(#bpFade)'}, fm);
-  // the product's own pixels (anything not the picture's white ground), grown a little, cut out of the grid: a convex
-  // hull would also blank the gaps of an open shape (a caliper's jaws)
+  // the product's own pixels (anything opaque that is not the picture's white ground), grown a little, cut out of the
+  // grid: a convex hull would also blank the gaps of an open shape (a caliper's jaws). A transparent pixel is ground
+  // too (an RGBA render not laid on white), so the cut is built from alpha as well as colour: the product as
+  // alpha = 3A - R - G - B on the thresholded channels (opaque and not pure white), dilated, then laid black on white.
   const flt = mk('filter', {id: 'bpCut', x: '-5%', y: '-5%', width: '110%', height: '110%', 'color-interpolation-filters': 'sRGB'}, df);
-  const ct = mk('feComponentTransfer', {}, flt), steps = Array(39).fill(0); steps[38] = 1;
+  const ct = mk('feComponentTransfer', {result: 'th'}, flt), steps = Array(39).fill(0); steps[38] = 1;
   for (const c of ['R', 'G', 'B']) mk('feFunc' + c, {type: 'discrete', tableValues: steps.join(' ')}, ct);
-  mk('feMorphology', {operator: 'erode', radius: Math.max(4, Math.round(10 * u))}, flt);
+  mk('feFuncA', {type: 'discrete', tableValues: '0 1'}, ct);
+  mk('feColorMatrix', {in: 'th', type: 'matrix', result: 'prod', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 -1 -1 3 0'}, flt);
+  mk('feMorphology', {in: 'prod', operator: 'dilate', radius: Math.max(4, Math.round(10 * u)), result: 'grown'}, flt);
+  mk('feFlood', {'flood-color': '#fff', 'flood-opacity': 1, result: 'paper'}, flt);
+  mk('feComposite', {in: 'grown', in2: 'paper', operator: 'over'}, flt);
   const pm = mk('mask', {id: 'bpCutMask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H}, df);
   mk('rect', {x: 0, y: 0, width: W, height: H, fill: '#fff'}, pm);
   const cut = (a, x, y, w, h, deg) => mk('image', {href: a.file, x: x.toFixed(1), y: y.toFixed(1), width: w.toFixed(1), height: h.toFixed(1),

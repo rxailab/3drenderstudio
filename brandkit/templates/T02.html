@@ -99,10 +99,13 @@ if (rimOn) (function buildRim() {
   add('feComposite', {in: 'm1', in2: 'm2', operator: 'arithmetic', k2: 1, k3: 1, result: 'm3'});
   add('feGaussianBlur', {in: 'm3', stdDeviation: 0.8, result: 'mask'});
   add('feGaussianBlur', {in: 'mask', stdDeviation: job.rim_blur ?? 12, result: 'blur'});
-  add('feOffset', {in: 'blur', dx: -8, dy: -8, result: 'moved'});
+  // toward the key light: up-left, or up-right when the page is mirrored (panel_side 'right')
+  const rimDx = flip ? 8 : -8;
+  add('feOffset', {in: 'blur', dx: rimDx, dy: -8, result: 'moved'});
   add('feComposite', {in: 'moved', in2: 'mask', operator: 'out', result: 'halo'});
   add('feFlood', {'flood-color': job.rim_color || '#FFF1DC', result: 'tint'});
   add('feComposite', {in: 'tint', in2: 'halo', operator: 'in'});
+  T.layoutInfo.rim = {dx: rimDx, dy: -8};
 })();
 
 /* ---------- helpers ---------- */
