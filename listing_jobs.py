@@ -50,9 +50,22 @@ def _job(template_id, ctx, **fields):
             'fonts': brandkit_assets.job_fonts(brand_kit.fonts_of(brand, ctx['language']), ctx['language']), **extra, **fields}
 
 
-# The mode a template draws when a job names none (T04 overlay on the square and 4:5 canvases, T05 the grid...), so a
-# recipe can say 'from' the mode a builder's version really has.
+# The mode a template draws when a job names none (T05 the grid...), so a recipe can say 'from' the mode a builder's
+# version really has. T12 and T04 choose by the job itself (_mode_of).
 DEFAULT_MODES = {'T03': 'split', 'T04': 'overlay', 'T05': 'grid', 'T06': 'onproduct', 'T12': 'solid', 'T13': 'auto'}
+
+
+def _mode_of(kind, job):
+    """The mode the template draws a job in: its own, else the template's default for it (T12.html: a scene poster
+    without a mode is an overlay; T04.html: a canvas wider than 1.2 : 1 draws 'side')."""
+    if job.get('mode'):
+        return job['mode']
+    if kind == 'T12':
+        return 'overlay' if job.get('scene') else 'solid'
+    if kind == 'T04':
+        canvas = job.get('canvas') or {}
+        return 'side' if canvas.get('width', 0) > 1.2 * max(1, canvas.get('height', 1)) else 'overlay'
+    return DEFAULT_MODES.get(kind)
 
 
 def preset_jobs(kind, jobs, recipe):
@@ -67,7 +80,7 @@ def preset_jobs(kind, jobs, recipe):
     out = []
     for entry in recipe.get('prefer') or []:
         out += [{**job, **every, **(entry.get('set') or {})} for job in jobs
-                if entry.get('from') == '*' or entry.get('from') == (job.get('mode') or DEFAULT_MODES.get(kind))]
+                if entry.get('from') == '*' or entry.get('from') == _mode_of(kind, job)]
     out += [{**job, **every} for job in jobs]
     seen, kept = set(), []
     for job in out:
@@ -438,7 +451,7 @@ def _jobs_for(kind, ctx):
                    'dimensions': [dimension(row, ebox, 'right' if flat else 'below') for row in turned]}
         # Figures on the product first (the Amazon dimension pages); a table when the page is too narrow for them.
         modes = ('onproduct', 'table')
-        extra = [{'label': _clip(row['label'], 18), 'value': row['value']} for row in product['specs']
+        extra = [{'label': _clip(row['label'], 18), 'name': _clip(row['label'], 18), 'value': row['value']} for row in product['specs']
                  if not any(word in row['label'].lower() for word in ('高', '宽', '长', '深', '厚', '直径', 'height', 'width', 'length', 'depth',
                                                                       'thick', 'diameter', 'size', 'dimension', '尺寸'))][:3]
         return [_job(kind, ctx, mode=mode, hero='side', eyebrow=_clip(title, 24) or t['T06_eyebrow'], headline=t['T06_headline'], dimensions=dims,

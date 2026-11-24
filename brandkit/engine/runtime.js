@@ -29,7 +29,8 @@
     // the brand's ground texture, under everything; else the preset's own (job.style.texture: the blueprint's drafting grid)
     const own = TPL.job.style && TPL.job.style.texture;
     if (TPL.job.texture) TPL.texture(TPL.job.texture);
-    else if (own && own.kind) TPL.texture(own.kind, { opacity: own.opacity, ink: own.ink });
+    // a template that draws its own drafting grid (T06 ground_style 'blueprint') gets no second one under it
+    else if (own && own.kind && TPL.job.ground_style !== 'blueprint') TPL.texture(own.kind, { opacity: own.opacity, ink: own.ink });
     TPL.applyStyle(r);                                      // the brand preset: type, corners, leader lines, frame marks
     return r;
   };

@@ -57,6 +57,11 @@ class RecipeTests(unittest.TestCase):
     def test_a_version_without_a_mode_is_matched_by_the_mode_its_template_draws(self):
         out = listing_jobs.preset_jobs('T04', [{'specs': []}], {'T04': {'prefer': [{'from': 'overlay', 'set': {'mode': 'glass'}}]}})
         self.assertEqual(out[0]['mode'], 'glass')
+        # a scene poster without a mode is drawn as an overlay (T12.html), so a recipe 'from' solid leaves it alone
+        poster = listing_jobs.preset_jobs('T12', [{'scene': 'scene1'}], {'T12': {'prefer': [{'from': 'solid', 'set': {'mode': 'split'}}]}})
+        self.assertEqual(poster, [{'scene': 'scene1'}])
+        wide = listing_jobs.preset_jobs('T04', [{'canvas': {'width': 1600, 'height': 1000}}], {'T04': {'prefer': [{'from': 'overlay', 'set': {'mode': 'glass'}}]}})
+        self.assertNotIn('mode', wide[0])                                       # a wide canvas draws 'side', not overlay
 
     def test_the_default_preset_has_no_recipe_and_its_jobs_are_as_before(self):
         self.assertNotIn('layout', brand_kit.PRESETS['frame']); self.assertNotIn('fonts', brand_kit.PRESETS['frame'])
@@ -133,6 +138,23 @@ class PresetTests(unittest.TestCase):
         self.assertEqual(brand_kit.fonts_of(brand_kit.Brand({'preset': 'editorial', 'fonts': 'tech'}), 'en'), 'tech')
         for value in brand_kit.PRESETS.values():
             self.assertTrue(value.get('fonts') is None or value['fonts'] in brandkit_assets.PAIRINGS)
+
+    def test_a_seller_can_choose_the_default_pairing_under_a_preset_with_its_own(self):
+        chosen = brand_kit.validate({'preset': 'editorial', 'fonts': brandkit_assets.DEFAULT_PAIRING})
+        self.assertFalse(chosen['fonts_auto'])
+        self.assertEqual(brand_kit.fonts_of(brand_kit.Brand(chosen), 'en'), brandkit_assets.DEFAULT_PAIRING)
+        # left unchosen (and a record from before presets had pairings) the preset's own is used, and the workspace is told so
+        auto = brand_kit.Brand(brand_kit.validate({'preset': 'editorial', 'fonts': None}))
+        self.assertEqual(brand_kit.fonts_of(auto, 'en'), 'elegant')
+        self.assertIsNone(auto.public()['fonts']); self.assertEqual(auto.public()['fonts_used'], 'elegant')
+        legacy = brand_kit.validate({'badges': []}, {'preset': 'editorial', 'fonts': brandkit_assets.DEFAULT_PAIRING})
+        self.assertTrue(legacy['fonts_auto'])
+        stored = brand_kit.Brand({'preset': 'editorial', 'fonts': brandkit_assets.DEFAULT_PAIRING})     # read back from disk
+        self.assertEqual(brand_kit.fonts_of(stored, 'en'), 'elegant'); self.assertIsNone(stored.public()['fonts'])
+        # a later save keeps the seller's explicit choice
+        kept = brand_kit.validate({'name': 'X'}, chosen)
+        self.assertFalse(kept['fonts_auto']); self.assertEqual(kept['fonts'], brandkit_assets.DEFAULT_PAIRING)
+        self.assertEqual({row['id']: row['fonts'] for row in brand_kit.presets()}['editorial'], 'elegant')
 
     def test_every_preset_reads_on_its_own_ground_on_every_page(self):
         for preset in brand_kit.PRESETS:

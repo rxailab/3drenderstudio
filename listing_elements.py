@@ -56,7 +56,9 @@ def ground(brand, height):
     elif kind == 'accent':
         items += [{'type': 'texture', 'kind': 'glow', 'x': -250, 'y': -300, 'w': 1100, 'h': 1100, 'color': '#ffffff', 'opacity': .2, 'falloff': 1.2},
                   {'type': 'texture', 'kind': 'vignette', 'x': -150, 'y': -150, 'w': 1300, 'h': height + 300, 'color': '#000000', 'opacity': .16, 'falloff': 2.4}]
-    elif brand.preset == 'clean':
+    elif kind == 'blueprint':
+        items += [{'type': 'texture', 'kind': 'grid', 'x': 0, 'y': 0, 'w': 1000, 'h': height, 'color': '#ffffff', 'opacity': .06, 'step': 40, 'size': 1}]
+    elif brand.preset in ('clean', 'catalogue'):
         items += [{'type': 'rect', 'x': 0, 'y': height * .62, 'w': 1000, 'h': height * .38, 'fill': '#ffffff', 'gradient': {'to': '#eef0f2'}}]
     return items
 

@@ -239,7 +239,15 @@ def validate(value, current=None):
     unit = value.get('unit', current.get('unit', 'mm'))
     if unit not in UNITS:
         raise ValueError('尺寸单位只能是 mm 或 in')
-    fonts = value.get('fonts', current.get('fonts', brandkit_assets.DEFAULT_PAIRING))
+    # fonts None: not chosen, the preset's own pairing is used (fonts_auto). A record from before presets had their own
+    # pairings always holds the default one, so the default without the mark reads as not chosen too.
+    if 'fonts' in value:
+        # a stored record read again (Brand(record)) carries its own mark
+        fonts = value['fonts']; fonts_auto = fonts in (None, '') or value.get('fonts_auto') is True
+    else:
+        fonts = current.get('fonts')
+        fonts_auto = current.get('fonts_auto', fonts in (None, brandkit_assets.DEFAULT_PAIRING))
+    fonts = fonts or brandkit_assets.DEFAULT_PAIRING
     if fonts not in brandkit_assets.PAIRINGS:
         raise ValueError('未知的字体搭配')
     badge_style = value.get('badge_style', current.get('badge_style', 'auto'))
@@ -256,7 +264,7 @@ def validate(value, current=None):
             'dark': _color(value['dark'], '深色') if 'dark' in value else current.get('dark'),
             'badges': [_text(badge, 16, '徽标文字') for badge in badges if _text(badge, 16, '徽标文字')],
             'legal': _text(value.get('legal', current.get('legal', '')), 200, '说明文字'),
-            'unit': unit, 'logo': logo, 'fonts': fonts, 'badge_style': badge_style, 'texture': texture}
+            'unit': unit, 'logo': logo, 'fonts': fonts, 'fonts_auto': bool(fonts_auto), 'badge_style': badge_style, 'texture': texture}
 
 
 def dominant_color(path):
@@ -290,7 +298,11 @@ class Brand:
     """A brand record resolved to the colours and type styles the templates draw with."""
 
     def __init__(self, record=None, product_color=None):
-        record = validate(record or {})
+        record = dict(record or {})
+        # a record stored before presets had their own pairings holds the default one without the mark: not chosen
+        if 'fonts_auto' not in record and record.get('fonts') in (None, brandkit_assets.DEFAULT_PAIRING):
+            record['fonts_auto'] = True
+        record = validate(record)
         self.record = record; self.preset = record['preset']; self.tokens = PRESETS[self.preset]
         self.name = record['name']; self.badges = record['badges']; self.legal = record['legal']; self.unit = record['unit']
         self.logo = record['logo']
@@ -358,7 +370,9 @@ class Brand:
         return {**self.tokens['headline'], 'size': size, 'color': self.accent_for(ground), 'leading': 1.0, **more}
 
     def public(self):
-        return {**self.record, 'accent_used': self.accent, 'accent_source': self.accent_source, 'dark_used': self.dark, 'ground': self.ground}
+        # fonts None while not chosen, so the workspace sends it back unchosen; fonts_used is what the pages are set in
+        return {**self.record, 'fonts': None if self.record.get('fonts_auto') else self.record['fonts'], 'fonts_used': fonts_of(self),
+                'accent_used': self.accent, 'accent_source': self.accent_source, 'dark_used': self.dark, 'ground': self.ground}
 
 
 def page_style(brand):
@@ -395,7 +409,7 @@ def fonts_of(brand, language='en'):
         return None
     chosen = brand.record.get('fonts')
     own = brand.tokens.get('fonts')
-    if not own or chosen not in (None, brandkit_assets.DEFAULT_PAIRING) or own not in brandkit_assets.PAIRINGS:
+    if not brand.record.get('fonts_auto') or not own or own not in brandkit_assets.PAIRINGS:
         return chosen
     if language == 'zh' and brandkit_assets.PAIRINGS[own]['cjk'] != brandkit_assets.PAIRINGS[brandkit_assets.DEFAULT_PAIRING]['cjk']:
         return chosen
@@ -404,4 +418,4 @@ def fonts_of(brand, language='en'):
 
 def presets():
     return [{'id': key, 'label': {'zh': value['title'][0], 'en': value['title'][1]}, 'note': {'zh': value['note'][0], 'en': value['note'][1]},
-             'ground': value['ground']} for key, value in PRESETS.items()]
+             'ground': value['ground'], 'fonts': value.get('fonts') or brandkit_assets.DEFAULT_PAIRING} for key, value in PRESETS.items()]

@@ -20,7 +20,6 @@ MAX_BYTES = 80 * 1024
 # checkout's data folder; a preset added without them is expected to fail here until they are made again.
 REGENERATE = ('style thumbnails missing for a preset: regenerate static/listing-thumbs/style-*.jpg with '
               'scripts/make_listing_thumbs.py (see its docstring) from the sample projects')
-MISSING_STYLES = [key for key in brand_kit.PRESETS if not (THUMBS / ('style-%s.jpg' % key)).is_file()]
 
 
 def _script():
@@ -29,12 +28,12 @@ def _script():
     return module
 
 
-def _small_square_jpeg(case, name):
+def _small_square_jpeg(case, name, size=(480, 480)):
     path = THUMBS / name
     case.assertTrue(path.is_file(), '%s: %s' % (name, REGENERATE) if name.startswith('style-') else name)
     case.assertLess(path.stat().st_size, MAX_BYTES, name)
     with Image.open(path) as image:
-        case.assertEqual((image.format, image.size), ('JPEG', (480, 480)), name)
+        case.assertEqual((image.format, image.size), ('JPEG', size), name)
 
 
 class ListingThumbs(unittest.TestCase):
@@ -46,10 +45,9 @@ class ListingThumbs(unittest.TestCase):
         for kind in listing_kinds.AUTO:
             _small_square_jpeg(self, 'page-%s.jpg' % kind)
 
-    @(unittest.expectedFailure if MISSING_STYLES else (lambda test: test))      # REGENERATE: until the lead remakes them
     def test_a_thumbnail_exists_for_every_preset(self):
-        for key in brand_kit.PRESETS:
-            _small_square_jpeg(self, 'style-%s.jpg' % key)
+        for key in brand_kit.PRESETS:                                           # two pages side by side: a wide button
+            _small_square_jpeg(self, 'style-%s.jpg' % key, (952, 480))
 
     def test_the_style_pages_keep_their_words_and_take_the_presets_look(self):
         script = _script()
@@ -78,8 +76,8 @@ class ListingThumbs(unittest.TestCase):
             Image.new('RGB', (300, 300), (200, 20, 20)).save(folder / 'a.png'); Image.new('RGB', (300, 300), (20, 20, 200)).save(folder / 'b.png')
             target = script.side_by_side([folder / 'a.png', folder / 'b.png'], folder / 'out.jpg')
             with Image.open(target) as image:
-                self.assertEqual((image.format, image.size), ('JPEG', (480, 480)))
-                left, right = image.getpixel((120, 240)), image.getpixel((360, 240))
+                self.assertEqual((image.format, image.size), ('JPEG', (952, 480)))           # two squares on a wide button
+                left, right = image.getpixel((240, 240)), image.getpixel((712, 240))
                 self.assertTrue(left[0] > 150 and left[2] < 80 and right[2] > 150 and right[0] < 80, (left, right))
 
     def test_relative_paths_are_read_under_the_data_folder(self):

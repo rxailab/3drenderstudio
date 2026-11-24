@@ -90,6 +90,18 @@ if (job.band_color && /^#[0-9a-f]{6}$/i.test(job.band_color)) T.root.style.setPr
   T.root.style.setProperty('--accent-photo', lift(0.40));    // on a scrimmed photo, whose ground is lighter than the band
 })();
 
+/* A studio poster (solid, split, center) is a light set: the product is multiplied onto it and its centre is white.
+   On a preset whose ground is dark or the brand colour the palette's inks are light, and they vanish on that set, so the
+   studio keeps a light tint of the preset's ground and takes dark inks (the colour block of 'split' keeps its own). */
+function studioInks() {
+  if (!T.onDarkGround()) return;
+  const probe = T.el('div', {'data-exempt': '1'}); probe.style.color = 'var(--bg)';
+  const rgb = (getComputedStyle(probe).color.match(/[\d.]+/g) || [233, 230, 224]).slice(0, 3).map(Number); probe.remove();
+  const tint = rgb.map(v => Math.round(v + (255 - v) * 0.82));
+  const set = (k, v) => T.root.style.setProperty(k, v);
+  set('--bg', `rgb(${tint.join(',')})`); set('--text', '#1C1F22'); set('--muted', '#4F575E'); set('--ink', '#1A1A1A'); set('--ink-2', '#3A3A3A');
+}
+
 /* ---------- optional data (never required; P10: Han text on an en page is dropped) ---------- */
 const han = s => /[㐀-鿿]/.test(String(s ?? ''));
 const okLang = s => zh || !han(s);
@@ -556,7 +568,7 @@ if (mode === 'band') {
               letters' line box only as far as the renderer's words-on-product test allows), the support small at the
               bottom. A longer headline cannot be set huge: the page takes 'below'. ---- */
   if (!job.hero) throw new Error(mode + ' mode needs a hero');
-  T.root.classList.add('studio');
+  T.root.classList.add('studio'); studioInks();
   const a = T.asset(job.hero), cb = a.content_bbox || [0, 0, 1, 1];
   const hull = (Array.isArray(a.hull) && a.hull.length >= 3) ? a.hull : [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];
   const cw0 = a.width * (cb[2] - cb[0]), ch0 = a.height * (cb[3] - cb[1]);
@@ -849,7 +861,7 @@ if (mode === 'band') {
   /* ---- solid: studio light ground with a warm floor. 1:1 and 4:5: a full-width text block on top (designed 2-line
      break), optional chip row, and the whole product below it, centred, ≥6% margin, contact shadow. Landscape: a
      0.34W text column top-left and the product beside it. job.hero_bleed > 0 lets the product run off the bottom. ---- */
-  T.root.classList.add('studio');
+  T.root.classList.add('studio'); studioInks();
   const a = T.asset(job.hero);
   const cb = a.content_bbox || [0, 0, 1, 1];
   const hull = (Array.isArray(a.hull) && a.hull.length >= 3) ? a.hull : [[cb[0], cb[1]], [cb[2], cb[1]], [cb[2], cb[3]], [cb[0], cb[3]]];

@@ -571,7 +571,9 @@ if (job.contact_shadow !== false && !theta) {
 const r = {w: hero.width * pl.s, h: hero.height * pl.s}; r.x = pl.cX - r.w / 2; r.y = pl.cY - r.h / 2; r.scale = pl.s;
 // The hero is a render on white (RGB). On the split / studio grounds a multiply blend would tint the product where it
 // crosses the grey, so the white backdrop is keyed out instead (alpha from luminance; anything below ~93% stays opaque).
-const keyed = frame !== 'band' && job.hero_key !== false && !hero.alpha;
+// The band frame's body is white, where multiply is exact; a preset that turns the page dark (promo) would multiply the
+// product to black, so there the backdrop is keyed out too.
+const keyed = (frame !== 'band' || T.onDarkGround()) && job.hero_key !== false && !hero.alpha;
 if (keyed) {
   const k = job.hero_key_gain ?? 14;
   const ns = 'http://www.w3.org/2000/svg', holder = document.createElementNS(ns, 'svg');

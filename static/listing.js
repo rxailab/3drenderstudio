@@ -228,7 +228,7 @@ function listingCardHTML({type,name='',scope,key='',value,checked,disabled=false
 // ① 选风格: one of the brand kit's presets.
 function listingRenderStyle() {
   const b=listingEdit.brand;
-  $('listingPanel').innerHTML=`<fieldset class="listing-cards" data-arrows><legend class="sr-only">套图风格</legend>
+  $('listingPanel').innerHTML=`<fieldset class="listing-cards listing-cards-wide" data-arrows><legend class="sr-only">套图风格</legend>
     ${(listingState.presets || []).map(preset=>listingCardHTML({type:'radio',name:'listingPreset',scope:'brand',key:'preset',value:preset.id,checked:b.preset===preset.id,
       thumb:`style-${preset.id}`,title:preset.label.zh,note:preset.note.zh})).join('')}</fieldset>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>`;
@@ -527,7 +527,7 @@ function listingUsageLine(what) {
 function listingBrandSums() {
   const b=listingEdit.brand,used=listingState.brand,p=listingEdit.product,u=p.usecase,m=listingState.mounting;
   const sc=p.scenes || {enabled:true,count:3},pairs=listingState.font_pairings || [];
-  const font=pairs.find(pair=>pair.id===(b.fonts || pairs[0]?.id));
+  const font=pairs.find(pair=>pair.id===listingFontsUsed(b,pairs));
   return {identity:[b.name || '未填品牌名称',used.logo?'有标志':'无标志'].join(' · '),
     colors:[b.accent?`品牌色 ${b.accent}`:'品牌色跟随产品',font?font.label.zh:''].filter(Boolean).join(' · '),
     marks:[(b.badges || []).length?`徽标 ${(b.badges || []).join('、')}`:'无徽标',b.legal?'有页脚说明':'',b.unit==='in'?'英寸':'毫米'].filter(Boolean).join(' · '),
@@ -599,12 +599,15 @@ async function listingLoadShare() {
   catch(error){if(id===listingOpenFor() && $('listingShare'))$('listingShare').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;return;}
   listingRenderShare();
 }
+// The pairing the pages are set in: the seller's own, else the chosen style's (brand_kit.fonts_of; the server's word
+// for Chinese pages, which keep their default face).
+function listingFontsUsed(b,pairs) { return b.fonts || (listingState.presets || []).find(row=>row.id===b.preset)?.fonts || listingState.brand?.fonts_used || pairs[0]?.id; }
 // The font library's pairings, each previewed in its own faces (served by /brandkit/fonts.css).
 function listingFontPicker(b) {
   const pairs=listingState.font_pairings||[];
   if(!pairs.length)return '';
   if(!document.getElementById('brandkitFontsCss')){const link=document.createElement('link');link.id='brandkitFontsCss';link.rel='stylesheet';link.href='/brandkit/fonts.css';document.head.appendChild(link);}
-  const current=b.fonts||pairs[0].id;
+  const current=listingFontsUsed(b,pairs);
   return `<fieldset class="listing-presets listing-fonts"><legend class="field-label">字体搭配</legend>${pairs.map(pair=>`<label class="listing-preset listing-font">
       <input type="radio" name="listingFonts" data-scope="brand" data-key="fonts" value="${esc(pair.id)}" ${current===pair.id?'checked':''}>
       <span class="listing-font-display" style="font-family:'${esc(pair.display)}',sans-serif">POWER 12V</span>

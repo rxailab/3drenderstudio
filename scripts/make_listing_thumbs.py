@@ -96,12 +96,12 @@ def save_thumb(source, target):
 
 
 def side_by_side(sources, target):
-    """Pages side by side on one SIZE x SIZE thumbnail, each a square as wide as its share, centred on a neutral grey."""
-    side = (SIZE - GAP * (len(sources) + 1)) // len(sources)
-    sheet = Image.new('RGB', (SIZE, SIZE), STAGE)
+    """Pages side by side on one wide thumbnail SIZE tall (the style buttons are 2 : 1), each a square on a neutral grey."""
+    side = SIZE - 2 * GAP
+    sheet = Image.new('RGB', (len(sources) * side + (len(sources) + 1) * GAP, SIZE), STAGE)
     for number, source in enumerate(sources):
         page = _square(source).resize((side, side), Image.LANCZOS)
-        sheet.paste(page, (GAP + number * (side + GAP), (SIZE - side) // 2))
+        sheet.paste(page, (GAP + number * (side + GAP), GAP))
     target.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(target, 'JPEG', quality=QUALITY, optimize=True, progressive=True)
     return target
@@ -171,7 +171,8 @@ def style_thumbs(build, out, work, accent=None, pages=STYLE_PAGES):
                                          ('  problems: ' + json.dumps(problems, ensure_ascii=False)[:300]) if problems else ''))
             drawn.append(png)
         made.append(side_by_side(drawn, out / ('style-%s.jpg' % preset)))
-    return made, saved[pages[-1]][0]
+    # the box page takes its fonts and accent from the callout page whatever order the pages were given in
+    return made, saved['T01' if 'T01' in saved else pages[-1]][0]
 
 
 def _cutout(path, folder, key):
