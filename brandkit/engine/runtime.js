@@ -26,7 +26,10 @@
     // map palette tokens to CSS vars
     const pal = TPL.job.palette || {};
     for (const k of Object.keys(pal)) r.style.setProperty('--' + k, pal[k]);
-    if (TPL.job.texture) TPL.texture(TPL.job.texture);     // the brand's ground texture, under everything
+    // the brand's ground texture, under everything; else the preset's own (job.style.texture: the blueprint's drafting grid)
+    const own = TPL.job.style && TPL.job.style.texture;
+    if (TPL.job.texture) TPL.texture(TPL.job.texture);
+    else if (own && own.kind) TPL.texture(own.kind, { opacity: own.opacity, ink: own.ink });
     TPL.applyStyle(r);                                      // the brand preset: type, corners, leader lines, frame marks
     return r;
   };
@@ -65,7 +68,7 @@
       set('--leader', st.leader.ink === 'ink' ? 'var(--text)' : st.leader.ink === 'soft' ? 'var(--muted)' : 'var(--accent)');
     }
     // a white panel on a page turned dark keeps its own dark inks
-    rules.push('#canvas.ground-dark .tbl,#canvas.ground-accent .tbl{--text:#1E2226;--muted:#5E666D;--ink:#1A1A1A;--ink-2:#3A3A3A;--line:#8E969D}');
+    rules.push('#canvas.ground-dark .tbl,#canvas.ground-accent .tbl,#canvas.ground-blueprint .tbl{--text:#1E2226;--muted:#5E666D;--ink:#1A1A1A;--ink-2:#3A3A3A;--line:#8E969D}');
     if (rules.length) { const css = document.createElement('style'); css.id = 'preset-style'; css.textContent = rules.join('\n'); document.head.appendChild(css); }
     TPL.frameMarks(st.frame || {});
   };
@@ -486,21 +489,24 @@
     });
     return placed;
   };
-  /* A faint repeating texture over the ground (job.texture: dots, grid, diagonal or carbon), under everything else. */
+  /* A faint repeating texture over the ground (job.texture: dots, grid, diagonal, carbon or drafting), under everything
+     else. 'drafting' is a draughtsman's sheet: a fine 24px grid with a heavier line every fifth cell. */
   TPL.texture = function (kind, opts = {}) {
-    if (!['dots', 'grid', 'diagonal', 'carbon'].includes(kind)) return null;
+    if (!['dots', 'grid', 'diagonal', 'carbon', 'drafting'].includes(kind)) return null;
     const ns = 'http://www.w3.org/2000/svg', s = document.createElementNS(ns, 'svg');
     const x = opts.x || 0, y = opts.y || 0, w = opts.w || TPL.W, h = opts.h || TPL.H, id = 'tx_' + kind;
     s.setAttribute('width', w); s.setAttribute('height', h); s.setAttribute('viewBox', `0 0 ${w} ${h}`);
     s.setAttribute('data-qa', 'texture'); s.setAttribute('data-exempt', '1'); s.setAttribute('data-kind', 'shape');
     Object.assign(s.style, { position: 'absolute', left: x + 'px', top: y + 'px', pointerEvents: 'none' });
     const ink = opts.ink || 'var(--text,#141414)', op = opts.opacity ?? 0.07;
-    const cell = { dots: 28, grid: 48, diagonal: 22, carbon: 16 }[kind];
+    const cell = { dots: 28, grid: 48, diagonal: 22, carbon: 16, drafting: 120 }[kind];
+    const fine = [24, 48, 72, 96].map(v => `M${v} 0V${cell}M0 ${v}H${cell}`).join('');
     const shapes = {
       dots: `<circle cx="${cell / 2}" cy="${cell / 2}" r="2.2" fill="${ink}"/>`,
       grid: `<path d="M${cell} 0V${cell}M0 ${cell}H${cell}" stroke="${ink}" stroke-width="1.5" fill="none"/>`,
       diagonal: `<path d="M0 ${cell}L${cell} 0" stroke="${ink}" stroke-width="2" fill="none"/>`,
-      carbon: `<rect width="${cell / 2}" height="${cell / 2}" fill="${ink}"/><rect x="${cell / 2}" y="${cell / 2}" width="${cell / 2}" height="${cell / 2}" fill="${ink}"/>`
+      carbon: `<rect width="${cell / 2}" height="${cell / 2}" fill="${ink}"/><rect x="${cell / 2}" y="${cell / 2}" width="${cell / 2}" height="${cell / 2}" fill="${ink}"/>`,
+      drafting: `<path d="${fine}" stroke="${ink}" stroke-width="1" fill="none" opacity=".55"/><path d="M${cell} 0V${cell}M0 ${cell}H${cell}" stroke="${ink}" stroke-width="2" fill="none"/>`
     }[kind];
     s.innerHTML = `<defs><pattern id="${id}" width="${cell}" height="${cell}" patternUnits="userSpaceOnUse">${shapes}</pattern></defs><rect width="${w}" height="${h}" fill="url(#${id})" opacity="${op}"/>`;
     TPL.root.insertBefore(s, opts.before || TPL.root.firstChild);

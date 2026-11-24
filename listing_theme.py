@@ -92,8 +92,8 @@ ON_DARK = {'text': '#F4EFE3', 'muted': '#C3C9CE', 'ink': '#F4EFE3', 'ink-2': '#D
 
 def _palette(template_id, brand):
     """The template's colours with the brand's: its accent (kept readable on the ground), its dark, and the ground its
-    preset asks for. A light page turns dark for a dark preset and brand-coloured for the flat one, its inks with it;
-    the pages designed dark stay dark (their type is drawn for it) and take the brand's dark or deepened colour."""
+    preset asks for. A light page turns dark for a dark preset, brand-coloured for the flat one, blue for the blueprint and
+    warm paper for the editorial, its inks with it; the pages designed dark stay dark (their type is drawn for it) and take the brand's dark or deepened colour."""
     tokens = brandkit_render.template_info(template_id)['tokens']
     palette = dict(tokens['palette'])
     if brand is not None:
@@ -103,17 +103,24 @@ def _palette(template_id, brand):
         if dark:
             if ground == 'accent':
                 palette['bg'] = draw.mix(brand.ground, '#000000', .45)
+            elif ground == 'blueprint':
+                palette['bg'] = draw.mix(brand.ground, '#000000', .35)      # the blue, deepened: close-ups stay the darker pages
             elif brand.record.get('dark') or ground == 'dark':
                 palette['bg'] = brand.dark
         elif ground == 'dark':
             palette.update(ON_DARK, bg=brand.dark, paper=brand.dark)
+        elif ground == 'blueprint':
+            palette.update(ON_DARK, bg=brand.ground, paper=brand.ground, split='rgba(255,255,255,.10)')
+        elif ground == 'paper':
+            # warm paper: the template's own dark inks read on it; its grey floor turns a deeper tone of the paper
+            palette.update(bg=brand.ground, paper=brand.ground, split=draw.mix(brand.ground, '#000000', .08))
         elif ground == 'accent':
             palette.update(ON_DARK, bg=brand.ground, paper=brand.ground, muted='rgba(255,255,255,.82)')
             if draw.contrast('#FFFFFF', brand.ground) < 3:          # a pale brand colour: dark type on it instead
                 palette.update(text='#151515', ink='#151515', muted='rgba(0,0,0,.7)', line='rgba(0,0,0,.45)', hair='rgba(0,0,0,.2)',
                                grid='rgba(0,0,0,.3)', split='rgba(0,0,0,.16)', wm='rgba(0,0,0,.05)')
                 palette['ink-2'] = '#2A2A2A'
-        elif brand.preset == 'clean':
+        elif brand.tokens.get('white'):                  # the white-page presets (clean, catalogue)
             palette.update(bg='#FFFFFF', paper='#FFFFFF')
         palette['accent'] = brand.readable(brand.accent, palette['bg'])
     # Text on an accent fill (chips, pills, number badges, small captions): whichever ink reads better on the accent as
