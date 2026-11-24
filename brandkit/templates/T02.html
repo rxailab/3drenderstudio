@@ -14,9 +14,12 @@
   /* lit dark ground: a key light high on the copy side, falling off to a darker floor (built from --bg so a
      product render on the same ground still reads as one surface) */
   .ground{background:radial-gradient(circle at 22% 14%,color-mix(in srgb,var(--bg) 68%,#6A7380 32%) 0%,var(--bg) 50%,color-mix(in srgb,var(--bg) 72%,#08090A 28%) 100%)}
+  .ground.mirror{background:radial-gradient(circle at 78% 14%,color-mix(in srgb,var(--bg) 68%,#6A7380 32%) 0%,var(--bg) 50%,color-mix(in srgb,var(--bg) 72%,#08090A 28%) 100%)}
   .carbon{background-image:repeating-linear-gradient(45deg,rgba(26,26,26,.08) 0 10px,rgba(44,44,44,.08) 10px 20px)}
   .light{background:radial-gradient(circle at 70% 40%,rgba(255,250,240,.07) 0%,rgba(255,250,240,0) 44%),
                     radial-gradient(130% 110% at 64% 44%,rgba(0,0,0,0) 52%,rgba(10,10,12,.34) 100%)}
+  .light.mirror{background:radial-gradient(circle at 30% 40%,rgba(255,250,240,.07) 0%,rgba(255,250,240,0) 44%),
+                    radial-gradient(130% 110% at 36% 44%,rgba(0,0,0,0) 52%,rgba(10,10,12,.34) 100%)}
   .grain{opacity:.05;mix-blend-mode:screen}
   .rim{position:absolute;display:block;mix-blend-mode:screen;opacity:.3;pointer-events:none}
   .eyebrow{font:700 28px/1 var(--f-text);letter-spacing:.16em;text-transform:uppercase;color:var(--hi-meta);white-space:nowrap}
@@ -35,6 +38,7 @@
   #canvas .chip-value{font-size:60px}
   #canvas .chip-label{font-size:24px}
   .panel-shadow{position:absolute;box-shadow:-18px -12px 54px rgba(6,6,7,.55),-2px -2px 0 rgba(255,255,255,.04)}
+  .panel-shadow.mirror{box-shadow:18px -12px 54px rgba(6,6,7,.55),2px -2px 0 rgba(255,255,255,.04)}
   #canvas[lang=zh] .eyebrow{text-transform:none;letter-spacing:.14em;font-family:var(--f-cjk);font-weight:700;font-size:30px}
   #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:100px;line-height:1.12;letter-spacing:0;word-spacing:0;text-transform:none;text-wrap:wrap}
   #canvas[lang=zh] .f-title{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:58px;line-height:1.14;letter-spacing:.01em;word-spacing:0;text-transform:none;text-wrap:wrap}
@@ -70,7 +74,9 @@ if (job.mode && job.mode !== 'macro') T.notes.push('mode ' + job.mode + ' is dra
 if (job._lines === 'stock') T.notes.push('stock copy: headline is a fallback line, not product data');
 
 /* ---------- ground: lit dark ground, optional carbon texture ---------- */
-T.el('div', {class: 'layer ground' + (job.ground === 'carbon' ? ' carbon' : '')});
+// panel_side 'right' (rail only) mirrors the page, the key light included: it stays high on the copy side
+const flip = layout === 'rail' && job.panel_side === 'right';
+T.el('div', {class: 'layer ground' + (flip ? ' mirror' : '') + (job.ground === 'carbon' ? ' carbon' : '')});
 /* optional rim light (job.rim: true or an opacity). Off by default: a coloured outer glow reads as an effect, not
    as light. When on it is a neutral warm white (job.rim_color), from a silhouette mask of the pixels that differ
    from the render ground, blurred, shifted toward the key light and kept outside the silhouette. */
@@ -354,11 +360,11 @@ if (layout === 'rail') {
   let ok = false;
   for (const bodyLines of [2, 3]) {
     for (let share = base; ; share = Math.min(maxShare, share + 0.02)) {
-      mx = Math.round(W * share); const tw = mx - m - gut;
-      b1 = featureBlock(0, feats[0], m, f1y, tw, {bodyLines});
+      mx = Math.round(W * share); const tw = mx - m - gut, tx = flip ? W - mx + gut : m;
+      b1 = featureBlock(0, feats[0], tx, f1y, tw, {bodyLines});
       ok = b1.fits;
       if (two) {
-        b2 = featureBlock(1, feats[1], m, 0, tw, {bodyLines});
+        b2 = featureBlock(1, feats[1], tx, 0, tw, {bodyLines});
         // caption centred on the circle, its bar inside the circle's height so the leader meets the ring
         const top = Math.min(floorY - m - b2.h, Math.round(cy - (b2.barY - b2.top) - 3));
         b2.move(top);
@@ -375,34 +381,38 @@ if (layout === 'rail') {
   if ([b1, b2].some(b => b && b.body && Number(b.body.dataset.maxlines) > 2)) T.notes.push('benefit line set on 3 lines');
 
   /* macro: bleeds right and bottom (and top without a header); a hard edge that casts a shadow on the ground */
-  const shadow = T.el('div', {class: 'panel-shadow'});
+  const shadow = T.el('div', {class: 'panel-shadow' + (flip ? ' mirror' : '')});
   // the bottom bleed settles into the floor over 40px (a render's bottom edge is where the camera slices geometry)
-  const fade = (job.edge || 'panel') === 'fade' ? {left: 40, top: hasHeader ? 40 : 0, bottom: 40} : {bottom: 40};
-  mac = coverFrame('detail1', feats[0], mx, py, W - mx, floorY - py, {bleed: true, zoom: true, anchorRight: true, fade});
+  const inner = flip ? 'right' : 'left';     // the macro's edge toward the copy
+  const fade = (job.edge || 'panel') === 'fade' ? {[inner]: 40, top: hasHeader ? 40 : 0, bottom: 40} : {bottom: 40};
+  // anchorRight keeps a shrunk frame on its bleed edge; mirrored, that edge is x = 0 and stays put on its own
+  mac = coverFrame('detail1', feats[0], flip ? 0 : mx, py, W - mx, floorY - py, {bleed: true, zoom: true, anchorRight: !flip, fade});
   T.box(shadow, mac.x, mac.y, mac.w, mac.h);
-  if (fade.left) shadow.remove();
+  if (fade[inner]) shadow.remove();
   feather(mac.frame, fade);
   rimGlow(mac);
   // the copy sits above the picture layers
   for (const b of [b1, b2]) if (b) for (const e of b.els) T.root.appendChild(e);
 
-  placeSpecs(m, b1.bottom + Math.round(44 * sc), mx - gut, b2 ? b2.top - Math.round(56 * sc) : floorY - m);
+  const panelX = flip ? W - mx + gut : m;
+  placeSpecs(panelX, b1.bottom + Math.round(44 * sc), flip ? W - m : mx - gut, b2 ? b2.top - Math.round(56 * sc) : floorY - m);
   if (two) {
     /* second close-up: a ringed circle fully inside the picture, its caption on the panel beside it */
-    const cx = Math.round(mac.x + Math.round(48 * sc) + R);
+    const cx = flip ? Math.round(mac.x + mac.w - Math.round(48 * sc) - R) : Math.round(mac.x + Math.round(48 * sc) + R);
     circ = coverFrame('detail2', feats[1], cx - R, cy - R, 2 * R, 2 * R, {class: 'circle-inset', allow: ['detail1_frame']});
     // leader: the caption's accent bar runs on as a thin rule to the ring
     const ly = b2.barY + 3, dy = Math.abs(ly - cy);
     if (dy < R * 0.85) {
-      const ex = cx - Math.sqrt(R * R - dy * dy);
+      const ex = flip ? cx + Math.sqrt(R * R - dy * dy) : cx - Math.sqrt(R * R - dy * dy);
       // it joins the whole inset, not one part: a plain rule ending in a dot on the ring (a square node reads as pointing at a part)
-      T.leader('f2_leader', [[m + 120 + 14, ly], [ex, ly]], 'f2_title', 'detail2_frame');
+      // mirrored, the rule leaves the bar's start (the bar sits at the copy's left edge, nearest the macro)
+      T.leader('f2_leader', [[flip ? panelX - 14 : m + 120 + 14, ly], [ex, ly]], 'f2_title', 'detail2_frame');
       T.svgEl('circle', {cx: ex, cy: ly, r: 6, class: 'anchor-dot'});
     } else T.notes.push('f2 leader skipped: the caption bar is outside the circle height');
     const src = feats[1].source;   // [nx, ny] in the macro picture: the spot the circle magnifies
     if (Array.isArray(src)) {
       const p = [mac.x + mac.ix + src[0] * mac.iw, mac.y + mac.iy + src[1] * mac.ih];
-      const inFrame = p[0] > mac.x + 40 && p[0] < W - 30 && p[1] > mac.y + 30 && p[1] < floorY - 30;
+      const inFrame = (flip ? p[0] > 30 && p[0] < mac.x + mac.w - 40 : p[0] > mac.x + 40 && p[0] < W - 30) && p[1] > mac.y + 30 && p[1] < floorY - 30;
       if (inFrame && !cone(p, cx, cy, R)) T.notes.push('cone source too close to the inset');
       if (!inFrame) T.notes.push('cone source outside the visible macro: no cone drawn');
     }
@@ -422,7 +432,7 @@ if (layout === 'rail') {
   rimGlow(mac);
   for (const e of b1.els) T.root.appendChild(e);
 }
-T.el('div', {class: 'layer light'});
+T.el('div', {class: 'layer light' + (flip ? ' mirror' : '')});
 grainLayer();
 // header and copy above the light and grain layers
 for (const e of [eb, hl]) if (e) T.root.appendChild(e);
@@ -432,6 +442,7 @@ if (T._svg) T.root.appendChild(T._svg);   // leaders on top
 
 T.layoutInfo.detail1 = {x: mac.x, y: mac.y, w: mac.w, h: mac.h, scale: +mac.scale.toFixed(3)};
 T.layoutInfo.panel = layout === 'rail' ? +(mx / W).toFixed(3) : 0;
+if (layout === 'rail') T.layoutInfo.panel_side = flip ? 'right' : 'left';
 T.watermark();
 T.finish();
 })();
