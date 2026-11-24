@@ -728,17 +728,51 @@
     return `<g clip-path="${clipDef(clipShape)}"><image${attrs({ x: n(x), y: n(y), width: n(w), height: n(h), preserveAspectRatio: 'none', 'xlink:href': dataURI(url) })}/></g>`;
   }
 
-  /* CSS mask-image (gradients) -> SVG masks; returns the list of mask urls (intersected when more than one) */
+  /* where a CSS mask picture lands in the box (mask-size / mask-position; mask-repeat is not drawn) */
+  function maskImageBox(url, cs, i, w, h) {
+    const pick = v => { const l = splitTop(String(v || ''), ','); return (l[i] || l[0] || '').trim(); };
+    const size = pick(cs.maskSize || cs.webkitMaskSize) || 'auto';
+    const img = new Image(); img.src = url;
+    const iw = img.naturalWidth || 0, ih = img.naturalHeight || 0;
+    let mw = w, mh = h;          // a picture whose size cannot be read here is stretched over the box
+    if (size === 'cover' || size === 'contain') {
+      if (iw && ih) { const s = size === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih); mw = iw * s; mh = ih * s; }
+    } else {
+      const p = size.split(/\s+/), auto0 = p[0] === 'auto', auto1 = !p[1] || p[1] === 'auto';
+      if (auto0 && auto1) { if (iw && ih) { mw = iw; mh = ih; } }
+      else {
+        mw = auto0 ? null : evalLen(p[0], w); mh = auto1 ? null : evalLen(p[1], h);
+        if (mw == null) mw = iw && ih ? mh * iw / ih : w;
+        if (mh == null) mh = iw && ih ? mw * ih / iw : h;
+      }
+    }
+    const pos = (pick(cs.maskPosition || cs.webkitMaskPosition) || '0% 0%').split(/\s+/);
+    const at = (tok, room, L) => !tok ? 0 : tok.endsWith('%') ? room * parseFloat(tok) / 100 : evalLen(tok, L);
+    return [at(pos[0], w - mw, w), at(pos[1] || pos[0], h - mh, h), mw, mh];
+  }
+  /* CSS mask-image (gradients and pictures) -> SVG masks; returns the list of mask urls (intersected when more than one).
+     A picture masks by its alpha (CSS mask-mode match-source), so its mask is mask-type alpha. */
   function masks(cs, w, h) {
     const img = cs.maskImage && cs.maskImage !== 'none' ? cs.maskImage : cs.webkitMaskImage;
     if (!img || img === 'none') return [];
-    const layers = splitTop(img, ',').filter(l => /gradient\(/i.test(l));
+    const layers = splitTop(img, ',').map((l, i) => ({ l, i })).filter(({ l }) => /gradient\(/i.test(l) || /^url\(/i.test(l));
     if (!layers.length) return [];
     const comp = String(cs.maskComposite || cs.webkitMaskComposite || 'add').split(',')[0].trim();
+    const layer = ({ l, i }) => {
+      const u = /^url\(\s*["']?([^"')]+)["']?\s*\)$/i.exec(l);
+      if (u) {
+        const [x, y, mw, mh] = maskImageBox(u[1], cs, i, w, h);
+        // the picture drawn white with its own alpha: a renderer that only knows luminance masks reads the same mask
+        if (!defIds.has('svgxMaskWhite')) { defIds.add('svgxMaskWhite');
+          defs.push('<filter id="svgxMaskWhite" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/></filter>'); }
+        return `<image${attrs({ x: n(x), y: n(y), width: n(mw), height: n(mh), preserveAspectRatio: 'none', filter: 'url(#svgxMaskWhite)', 'xlink:href': dataURI(u[1]) })}/>`;
+      }
+      const g = gradient(l, 0, 0, w, h, true); return g ? `<rect width="${n(w)}" height="${n(h)}" fill="${g}"/>` : '';
+    };
     const make = list => {
-      const id = newId('mask');
-      defs.push(`<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${n(w)}" height="${n(h)}">` +
-        list.map(l => { const g = gradient(l, 0, 0, w, h, true); return g ? `<rect width="${n(w)}" height="${n(h)}" fill="${g}"/>` : ''; }).join('') + '</mask>');
+      const id = newId('mask'), alpha = list.some(({ l }) => /^url\(/i.test(l));
+      defs.push(`<mask${attrs({ id, maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: n(w), height: n(h), 'mask-type': alpha ? 'alpha' : null, style: alpha ? 'mask-type:alpha' : null })}>` +
+        list.map(layer).join('') + '</mask>');
       return `url(#${id})`;
     };
     if (layers.length > 1 && /intersect|source-in|destination-in/.test(comp)) return layers.map(l => make([l]));

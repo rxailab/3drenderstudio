@@ -15,6 +15,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / 'tests')); sys.path.insert(0, str(ROOT / 'scripts'))
 
@@ -119,6 +121,41 @@ class SvgExportTests(unittest.TestCase):
 
     def test_a_chinese_set_exports_like_its_pages(self):
         self.check_set('zh', '4:5')
+
+
+
+@unittest.skipUnless(brandkit_render.available(), 'No Chrome/Chromium/Edge: SVG export not run')
+class KeyedHeroExportTests(unittest.TestCase):
+    """T12 'split' keys the product picture's white backdrop out over the colour block (a CSS mask from a picture): the
+    SVG must carry that mask, or the backdrop comes back as a white rectangle over the block."""
+
+    def test_a_split_poster_exports_its_keyed_product_without_the_white_backdrop(self):
+        import listing_assets
+        import svg_fidelity
+        from test_template_t12_modes import bottle
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        hero = listing_assets.flatten(bottle(folder / 'bottle-src.png'), folder / 'bottle.png')[0]
+        job = {'template_id': 'T12', 'variant': 'studio', 'canvas': {'width': 1500, 'height': 1500}, 'lang': 'en',
+               'safe_margin': 72, 'min_margin': 60, 'palette': {**brandkit_render.template_info('T12')['tokens']['palette'], 'accent': '#d0612a'},
+               'hero': 'hero', 'assets': {'hero': hero}, 'headline': 'Insulated steel bottle', 'support': 'Keeps drinks cold',
+               'mode': 'split', 'split_side': 'left'}
+        row = svg_fidelity.check('T12', job, folder, 'split')
+        qa = row['qa']; rows = {element['id']: element for element in qa['elements']}
+        block = tuple(int(v) for v in re.findall(r'\d+', qa['layout']['block_color']))
+        seam = qa['layout']['split']['seam']; image = rows['hero']; cx, cy, cw, ch = qa['layout']['hero_bbox']
+        # the picture's backdrop on the block side: inside the picture's box, left of the seam, clear of the product
+        spots = [(x, y) for x in range(int(image['x']) + 6, seam - 4, 8) for y in range(int(image['y']) + 6, int(image['y'] + image['h']) - 6, 24)
+                 if not (cx - 12 <= x <= cx + cw + 12 and cy - 12 <= y <= cy + ch + 40)]
+        self.assertGreater(len(spots), 20)
+        source = (folder / 'split.svg').read_text(encoding='utf-8')
+        self.assertIn('mask-type="alpha"', source)
+        with Image.open(folder / 'split.png') as page, Image.open(folder / 'split.svg.png') as drawn:
+            page, drawn = page.convert('RGB'), drawn.convert('RGB')
+            for name, picture in (('page', page), ('svg', drawn)):
+                off = [(spot, picture.getpixel(spot)) for spot in spots
+                       if max(abs(a - b) for a, b in zip(picture.getpixel(spot), block)) > 12]
+                self.assertFalse(off, (name, block, off[:5]))
+        self.assertLess(row['mean'], MEAN_LIMIT, row); self.assertLess(row['off40'], OFF_LIMIT, row)
 
 
 if __name__ == '__main__':

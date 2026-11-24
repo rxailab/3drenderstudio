@@ -597,8 +597,10 @@ if (mode === 'band') {
       im.style.filter = 'url(#t12Key)';
       /* a luminance key also clears the product's own white highlights (holes onto the block): where the picture can be
          read, the backdrop is the near-white flooded in from the border, and only it (and the product's rim) is keyed */
-      const src = new Image();
-      src.onload = () => { try {
+      /* keyed from the placed picture itself, before the page is measured (and exported): synchronously when it has
+         loaded already, else from its load event, whose listener is registered here ahead of the runtime's own */
+      const src = im;
+      const key = () => { try {
         const w = src.naturalWidth, h = src.naturalHeight, c = document.createElement('canvas'); c.width = w; c.height = h;
         const ctx = c.getContext('2d'); ctx.drawImage(src, 0, 0); const d = ctx.getImageData(0, 0, w, h), px = d.data;
         // near-white, opened by r px first so a highlight that meets the backdrop through a thin neck is not flooded
@@ -629,7 +631,7 @@ if (mode === 'band') {
         const url = `url(${c.toDataURL('image/png')})`;
         im.style.filter = ''; im.style.webkitMaskImage = im.style.maskImage = url; im.style.webkitMaskSize = im.style.maskSize = '100% 100%';
       } catch (e) { /* the picture cannot be read here (a tainted canvas): the luminance key stays */ } };
-      src.src = a.file;
+      if (im.complete && im.naturalWidth) key(); else im.addEventListener('load', key, {once: true});
     }
     T.layoutInfo.hero_scale = +p.sc.toFixed(3);
     T.layoutInfo.hero_cover = +((p.cw * p.ch) / (W * H)).toFixed(3);
@@ -637,6 +639,7 @@ if (mode === 'band') {
     return im;
   };
   const lift = id => { const e = document.querySelector(`[data-qa="${id}"]`); if (e && e.parentNode === T.root) T.root.appendChild(e); };
+  let blockArea = null;            // split: where the brand's badges may go (the colour block, less its margins)
 
   if (mode === 'split') {
     const side = job.split_side === 'right' ? 'right' : 'left';
@@ -711,6 +714,7 @@ if (mode === 'band') {
     }
     putHero(pick, true);
     T.layoutInfo.split = {side, ratio: +ratio.toFixed(3), seam, share: pick.share};
+    blockArea = {el: block, x: bx + m, y: m, w: bw - 2 * m, h: floorY - 2 * m};
   } else {
     let ctype = job.center_type === 'behind' ? 'behind' : 'below';
     const bd = badge(m, m - 12, null);
@@ -735,7 +739,16 @@ if (mode === 'band') {
           const sw = Math.min(W - 2 * m, Math.round(W * 0.72));
           const sp = T.text('support', supportText, (W - sw) / 2, 0, sw, 'sub', {tier: 'secondary', maxLines: 2}); sp.style.textAlign = 'center';
           let ok = false;
-          for (const lv of zh ? ['phrase', 'word', 'none'] : ['none']) { zhWrap(sp, lv); for (const fz of zh ? [44, 42] : [46, 44, 42]) { sp.style.fontSize = fz + 'px'; if (fitsIn(sp, 2)) { ok = true; break; } } if (ok) break; }
+          // small, but never under the secondary floor at the 360px thumbnail (10px there): on a wide canvas that floor
+          // is above 44px, so the steps run from the floor up; on a narrow one they go down to it in 2px steps
+          const fFloor = Math.ceil(10 * W / 360), fTop = Math.max(zh ? 44 : 46, fFloor), fSteps = [];
+          for (let f = fTop; f >= fFloor; f -= 2) fSteps.push(f);
+          if (fSteps[fSteps.length - 1] !== fFloor) fSteps.push(fFloor);
+          // the two largest steps at every wrap level first (a phrase break before a smaller size), then the rest
+          for (const group of [fSteps.slice(0, 2), fSteps.slice(2)]) {
+            for (const lv of zh ? ['phrase', 'word', 'none'] : ['none']) { zhWrap(sp, lv); for (const fz of group) { sp.style.fontSize = fz + 'px'; if (fitsIn(sp, 2)) { ok = true; break; } } if (ok) break; }
+            if (ok) break;
+          }
           sp.style.top = Math.round(bottom - T.rect(sp).h) + 'px'; bottom = T.rect(sp).y - 4 * G;
           words.push(textRect(sp));
         }
@@ -818,7 +831,20 @@ if (mode === 'band') {
   // keep the words above the product picture in paint order (the huge headline stays behind it)
   for (const id of ['support', 'chip1', 'chip2', 'chip3', 'brand_slot', 'brand_slot_t', 'badge']) lift(id);
   if (mode === 'center' && T.layoutInfo.center_type === 'below') lift('headline');
-  T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 2, style: 'burst'});
+  if (blockArea) {
+    /* split: the badges go on the colour block only (on the light field a sticker reads as part of the product's ground);
+       the block itself is no obstacle for them, the words and the product on it are. A badge with no room there is left
+       out (the runtime's note says so). On the block they take the lifted accent, the block colour for their ink. */
+    const blk = blockArea.el; blk.dataset.exempt = '1';
+    try { T.placeBadges(blockArea, {max: 2, style: 'burst'}); } finally { delete blk.dataset.exempt; }
+    const ids = [];
+    for (const e of T.root.querySelectorAll('[data-qa^="brand_badge"]')) {
+      if (/_t$/.test(e.dataset.qa)) continue;
+      ids.push(e.dataset.qa, e.dataset.qa + '_t');
+      e.style.setProperty('--accent', 'var(--block-hi)'); e.style.setProperty('--accent-ink', 'var(--block)');
+    }
+    if (ids.length) blk.dataset.allow = blk.dataset.allow.split(',').filter(Boolean).concat(ids).join(',');
+  } else T.placeBadges({x: m, y: m, w: W - 2 * m, h: floorY - 2 * m}, {max: 2, style: 'burst'});
 } else if (mode !== 'overlay') {
   /* ---- solid: studio light ground with a warm floor. 1:1 and 4:5: a full-width text block on top (designed 2-line
      break), optional chip row, and the whole product below it, centred, ≥6% margin, contact shadow. Landscape: a
