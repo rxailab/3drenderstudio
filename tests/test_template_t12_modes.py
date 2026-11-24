@@ -93,6 +93,32 @@ class T12ModeTests(unittest.TestCase):
                         self.assertTrue(x + .1 * w < seam < x + .9 * w, (x, w, seam))
                         self.assertNotEqual(rows['hero']['blend'], 'multiply')        # keyed, not dyed by the block
 
+    def test_a_split_poster_sets_the_brand_badges_on_the_colour_block_only(self):
+        badges = [{'text': 'BPA free', 'style': 'burst'}, {'text': '24h cold', 'style': 'burst'}]
+        for side, hero in (('left', 'bottle'), ('right', 'drill')):
+            with self.subTest(side=side):
+                qa = self.render(self.job('en', '1:1', hero, mode='split', split_side=side, badges=badges), 'split-badges-%s' % side)
+                rows = self.rows(qa); block = rows['block']
+                placed = [rows[name] for name in ('brand_badge1', 'brand_badge2') if name in rows]
+                self.assertTrue(placed or any('badge' in note for note in qa['notes']), qa['notes'])
+                for badge in placed:
+                    self.assertTrue(block['x'] <= badge['x'] and badge['x'] + badge['w'] <= block['x'] + block['w'], badge)
+                    self.assertIn(badge['id'], block['allow'])
+                # every badge in the job is either on the block or named in a note
+                missing = len(badges) - len(placed)
+                self.assertGreaterEqual(sum('no free spot for badge' in note for note in qa['notes']), missing, qa['notes'])
+
+    def test_a_huge_headline_keeps_its_support_line_over_the_floor_on_a_wide_canvas(self):
+        for language in ('en', 'zh'):
+            with self.subTest(language=language):
+                job = self.job(language, '1:1', mode='center', center_type='behind', headline=WORDS[language]['short'])
+                job['canvas'] = {'width': 2000, 'height': 2000}
+                qa = self.render(job, 'behind-wide-%s' % language)
+                self.assertEqual(qa['layout']['center_type'], 'behind')
+                support = self.rows(qa)['support']
+                self.assertGreaterEqual(support['equiv_px_at_360'], 10, support)
+                self.assertLessEqual(support['lines'], 2, support)
+
     def test_the_split_ratio_is_kept_within_its_range(self):
         qa = self.render(self.job('en', '1:1', mode='split', split_ratio=.9), 'split-ratio')
         self.assertEqual(qa['layout']['split']['ratio'], .55)
