@@ -82,7 +82,8 @@
    "hairline": "2px #BDBDBD",
    "cell_side_pad": "clamp(10% of cell, 32, 60)",
    "picture_fill": "content <= 46% of its zone area (42% in a full-width cell), centred",
-   "disclaimer_color": "#E8E3DA"
+   "disclaimer_color": "#E8E3DA",
+   "light_header": "job.header 'light': no band; title in --text at the hard text margin (60), 120x10 accent rule 16px under it, rows start 16px under the rule (or the value badge); footer a 2px --grid hairline, note in --muted"
   }
  },
  "elements": [],
@@ -94,7 +95,8 @@
   "items without a picture are left out (noted); items with the same picture and name merge into one cell with a summed qty; reused pictures and pictures touching their frame edge are noted as likely crops",
   "role_label is ignored; item.code + item.desc give the DeWalt two-line caption, else item.name alone",
   "mode knolling: same frame, packed rows at one visual mass (main item 1.8x area, or items[].rel_size), captions 42px; on portrait canvases with more than 6 items it falls back to the grid",
-  "value_claim {text, sub?, approved:true} -> accent badge inside the header band, right-aligned to the margin, centred on the title line"
+  "value_claim {text, sub?, approved:true} -> accent badge inside the header band, right-aligned to the margin, centred on the title line",
+  "header (optional, default 'band'): 'light' drops the dark header and footer bands; the title sits on the page ground over a short accent rule, the value badge (if any) is centred on title + rule, and the grid or knolling rows grow up into the freed height"
  ],
  "render_outputs": [
   {
