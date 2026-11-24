@@ -96,6 +96,17 @@ class MirrorTests(StoreCase):
                 self.assertLessEqual(max(xs), el['f2_title']['x'])                 # from the caption bar leftward to the ring
                 self.assertGreaterEqual(min(xs), ring['cx'])
 
+    def test_the_rim_light_follows_the_key_light_when_the_copy_panel_is_mirrored(self):
+        job = self.jobs('en', '1:1')['T02']
+        qa, _, _ = self.lay_out('T02', job, 'rim-left', rim=True)
+        self.assertEqual(qa['layout']['rim'], {'dx': -8, 'dy': -8})        # up-left, toward the key light
+        qa, _, png = self.lay_out('T02', job, 'rim-right', rim=True, panel_side='right')
+        self.assertEqual(qa['layout']['panel_side'], 'right')
+        self.assertEqual(qa['layout']['rim'], {'dx': 8, 'dy': -8})         # mirrored: up-right, the light moved right
+        _, _, plain = self.lay_out('T02', job, 'rim-off', panel_side='right')
+        self.assertNotEqual(png, plain)                                      # the glow is drawn
+        self.assertNotIn('rim', self.lay_out('T02', job, 'rim-none', panel_side='right')[0]['layout'])
+
 
 if __name__ == '__main__':
     unittest.main()

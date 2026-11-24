@@ -184,17 +184,22 @@ if (vc && typeof vc === 'object' && vc.approved === true && (vc.text || vc.value
 /* light header: a short accent rule under the title; a value badge is centred on title + rule; the rows start under both */
 let top = headH + ruleH;
 if (light) {
-  const q = sel => T.root.querySelector(`[data-qa="${sel}"]`), tr = T.rect(q('title'));
-  const ry = Math.round(tr.y + tr.h + 2 * G);
-  T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), m, ry, 120, 10);
-  let low = ry + 10;
-  if (q('vb')) {
-    const vr = T.rect(q('vb')), dy = Math.round(Math.max(m - 20, (titleTop + ry + 10) / 2 - vr.h / 2) - vr.y);
-    for (const id of ['vb', 'vb_value', 'vb_sub']) if (q(id)) q(id).style.top = (parseFloat(q(id).style.top) + dy) + 'px';
-    low = Math.max(low, vr.y + dy + vr.h);
+  const q = sel => T.root.querySelector(`[data-qa="${sel}"]`);
+  let low = titleTop;
+  if (String(job.headline || '').trim()) {
+    const tr = T.rect(q('title')), ry = Math.round(tr.y + tr.h + 2 * G);
+    T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), m, ry, 120, 10);
+    low = ry + 10;
+    if (q('vb')) {
+      const vr = T.rect(q('vb')), dy = Math.round(Math.max(m - 20, (titleTop + ry + 10) / 2 - vr.h / 2) - vr.y);
+      for (const id of ['vb', 'vb_value', 'vb_sub']) if (q(id)) q(id).style.top = (parseFloat(q(id).style.top) + dy) + 'px';
+      low = Math.max(low, vr.y + dy + vr.h);
+    }
+  } else if (q('vb')) {     // no title: no orphan rule; a value badge alone keeps its place at the top
+    const vr = T.rect(q('vb')); low = Math.max(low, vr.y + vr.h);
   }
   top = low + 2 * G;      // the cells carry their own inner padding
-  T.layoutInfo.header = 'light';
+  T.layoutInfo.header = 'light'; T.layoutInfo.rows_top = top;
 }
 /* footer disclaimer (job.note), centred in the band */
 if (job.note) {
