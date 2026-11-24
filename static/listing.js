@@ -125,6 +125,9 @@ function listingSyncStepper() {
 async function listingGoStep(id,focus=true) {
   if(!listingEdit || listingStepMoving || !listingSteps.some(step=>step.id===id))return;
   if(listingLocked() && id!=='build')return;
+  // past 选图片 only with at least one page that can be made: the dots, 跳过 and 修改 go through here as well as 下一步
+  const target=listingSteps.findIndex(step=>step.id===id),pages=listingSteps.findIndex(step=>step.id==='pages');
+  if(pages>=0 && target>pages && !listingMakeable().length){toast('请至少选一张能生成的图片',true);if(listingStep!=='pages')listingGoStep('pages');return;}
   const project=listingProject;
   listingStepMoving=true;listingSyncStepper();
   try{await listingSavePending();}
@@ -204,7 +207,8 @@ function listingKindList() {
   return [...base,...explicit.filter(kind=>!base.includes(kind))];
 }
 function listingChosen() { const p=listingEdit.product;return new Set(Array.isArray(p.pages)?p.pages:(listingState.plan || []).map(row=>row.kind)); }
-function listingSkipped() { return new Map((listingState.plan || []).filter(row=>row.skipped).map(row=>[row.kind,row.skipped])); }
+// why a kind cannot be made now: for every kind (state.blocked), so a kind off the seller's own list is greyed out before it is picked
+function listingSkipped() { return new Map([...Object.entries(listingState.blocked || {}),...(listingState.plan || []).filter(row=>row.skipped).map(row=>[row.kind,row.skipped])]); }
 function listingMakeable() { const chosen=listingChosen(),skipped=listingSkipped();return listingKindList().filter(kind=>chosen.has(kind) && !skipped.has(kind)); }
 function listingKindsHTML() {
   const chosen=listingChosen(),skipped=listingSkipped(),kinds=listingState.kinds || {},active=listingTaskActive(),explicit=Array.isArray(listingEdit.product.pages);
@@ -682,7 +686,8 @@ function listingRenderMain() {
   listingSyncStepper();
   if(listingEdit)listingSetHTML($('listingPlan'),listingSummaryHTML(active));
   const ready=pages.filter(listingPageReady).length,ran=listingReviewRan(pages),unready=pages.length-ready;
-  const build=$('listingBuild');build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false;
+  const build=$('listingBuild'),none=!listingMakeable().length;build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false || none;
+  build.title=none?'图片清单里没有现在能生成的图片：请在「选图片」里至少选一张':'';
   build.textContent=pages.length?'重新生成套图':'生成套图';
   // Once a reviewed set can be downloaded, that download is the one primary action of the bar.
   build.className='button '+(pages.length && ran && ready?'secondary':'primary');
@@ -760,6 +765,8 @@ async function listingResultsAction(button) {
 function listingOnStageKey(event) {
   if(!listingDetail || event.defaultPrevented)return;
   if(event.target.closest?.('input, textarea, select'))return;
+  // only while the seller is in the open page itself: on the steps these keys belong to the steps, not to a page left open
+  if(!event.target.closest?.('.listing-detail'))return;
   if(event.key==='Escape'){event.preventDefault();listingResultsAction({dataset:{action:'page-close'}});}
   else if(event.key==='ArrowLeft' || event.key==='ArrowRight'){event.preventDefault();listingResultsAction({dataset:{action:'page-step',step:event.key==='ArrowLeft'?'-1':'1'}});}
 }
@@ -807,7 +814,7 @@ async function listingOnChange(event) {
     catch(error){toast(error.message,true);listingLoad(false).catch(()=>{});}
   }else if(node.id==='listingLogoFile' && node.files.length){
     const form=new FormData();form.append('file',node.files[0]);
-    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingShare=null;if(listingStep==='brand')listingRenderBrand();toast('标志已上传');}catch(error){toast(error.message,true);}
+    try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingShare=null;if(listingStep==='brand')listingKeepFocus(listingRenderBrand);toast('标志已上传');}catch(error){toast(error.message,true);}
   }else listingOnInput(event);
 }
 async function listingSaveProduct(quiet) {
@@ -893,7 +900,7 @@ async function listingOnClick(event) {
     }
     else if(action==='logo-remove'){
       if(!await listingConfirm('logoRemoveDialog','移除品牌标志？','移除后，下次生成的套图不再印标志，页眉改为显示品牌名称文字。需要时可以重新上传。','移除标志'))return;
-      listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingShare=null;if(listingStep==='brand')listingRenderBrand();}
+      listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'DELETE'}),false);listingShare=null;if(listingStep==='brand')listingKeepFocus(listingRenderBrand);}
     else if(action==='brand-copy'){
       const source=$('listingBrandSource')?.value || '',share=listingShare?.data;
       if(!source){toast('请先选择要复制的项目',true);$('listingBrandSource')?.focus();return;}
@@ -903,7 +910,7 @@ async function listingOnClick(event) {
       const id=listingProject;
       const state=await api(`/api/projects/${id}/listing/brand/copy`,{method:'POST',body:{source}});
       if(listingOpenFor()!==id)return;
-      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);if(listingStep==='brand')listingRenderBrand();toast('品牌已复制到这个项目');
+      listingDirty.brand=false;listingShare=null;listingAdopt(state,false);if(listingStep==='brand')listingKeepFocus(listingRenderBrand);toast('品牌已复制到这个项目');
     }
     else if(action==='brand-default' || action==='brand-default-clear'){
       const id=listingProject,clear=action==='brand-default-clear';

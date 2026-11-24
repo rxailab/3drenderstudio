@@ -302,11 +302,22 @@ def ready_components(project):
     return rows
 
 
+def blocked(project, product, parts):
+    """Why each page the app can make cannot be made now: {kind: reason}, for every kind, chosen or not (the page list
+    shows a kind off the seller's own list greyed out too, before it is picked)."""
+    has, why = _requirements(project, product, parts)
+    return {kind: why.get(kind, '缺少内容') for kind in AUTO_ORDER if not has.get(kind)}
+
+
+def _requirements(project, product, parts):
+    product, _ = brandkit_set.printable(product)         # a selling point titled with a mesh name is never printed, so plans nothing
+    return brandkit_set.requirements(product, parts, product_size(project, product)[1],
+                                     brandkit_set.scene_supply(product, 1 if _photo(project) else 0), len(articulation.states(project)))
+
+
 def planned(project, product, parts):
     """The images this listing gets: [{'kind', 'index', 'reason' or None when skipped}] in order. Kinds are brand-kit templates."""
-    product, _ = brandkit_set.printable(product)         # a selling point titled with a mesh name is never printed, so plans nothing
-    has, why = brandkit_set.requirements(product, parts, product_size(project, product)[1],
-                                         brandkit_set.scene_supply(product, 1 if _photo(project) else 0), len(articulation.states(project)))
+    has, why = _requirements(project, product, parts)
     # Left to itself the set has every page there is something for; the ones it cannot make yet are listed with the reason.
     wanted = product['pages'] if product['pages'] is not None else list(AUTO_ORDER)
     rows = []
@@ -1206,7 +1217,7 @@ def state(project_id):
     parts = ready_components(project)
     size_mm, known = product_size(project, product)
     plan = planned(project, product, parts)
-    return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
+    return {'product': product, 'blocked': blocked(project, product, parts), 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
             'pages': [page_public(page) for page in listing.get('pages') or []], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
@@ -1246,6 +1257,10 @@ def submit(project_id, body=None):
         running = [task for task in all_records(KIND) if task.get('project_id') == project_id and task.get('status') in ('queued', 'running')]
         if running:
             raise engine.JobConflictError('这个项目的套图正在生成，请等待完成或先取消。')
+        product, _, _ = stored(project)
+        if not [row for row in planned(project, product, ready_components(project)) if not row.get('skipped')]:
+            # refused here, not after the build has started (and perhaps asked a vision model about the moving parts)
+            raise ValueError('图片清单里没有现在能生成的图片：请在「选图片」里至少选一张。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
                 'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)

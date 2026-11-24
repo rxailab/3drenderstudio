@@ -166,6 +166,11 @@ test('the page cards: a thumbnail each, the kinds that cannot be made now disabl
   // nothing chosen: 下一步 says so instead of moving on
   for(const kind of ['T12','T01','T08'])h.change(h.card(kind).querySelector('input'),false);
   await h.next();assert.equal(h.step(),'pages');assert.deepEqual(h.toasts.at(-1),['请至少选一张能生成的图片',true]);
+  // nor do the dots or a jump to the summary get past it, and the build button is off while nothing can be made
+  const writes=h.writes().length;
+  h.node('listingSteps').querySelector('[data-step="build"]').click();await settle();
+  assert.equal(h.step(),'pages');assert.equal(h.writes().length,writes,'nothing saved on a refused jump');
+  assert.equal(h.node('listingBuild').disabled,true);assert.match(h.node('listingBuild').title,/至少选一张/);
 });
 
 test('arrow keys move within a card group; on the style cards they also pick',async t=>{
