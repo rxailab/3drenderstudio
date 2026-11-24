@@ -27,6 +27,9 @@
     text-transform:uppercase;letter-spacing:-.005em}
   .vb-sub{font-family:var(--f-text);font-weight:700;font-size:19px;line-height:1;letter-spacing:.09em;color:var(--accent-ink,#111);white-space:nowrap;
     text-transform:uppercase}
+  /* job.header 'light': no dark band; the title in ink on the page ground over a short accent rule, the footer note on a hairline */
+  #canvas.hd-light .kit-title{color:var(--text)}
+  #canvas.hd-light .disclaimer{color:var(--muted)}
   #canvas[lang=zh] .kit-title{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:76px;line-height:1.12;text-transform:none;letter-spacing:.02em}
   #canvas[lang=zh] .kit-code{font-family:var(--f-cjk);font-weight:700;font-size:42px;line-height:1.24;text-transform:none;letter-spacing:.01em;text-wrap:wrap}
   #canvas[lang=zh] .kit-desc{font-family:var(--f-cjk);font-weight:400;font-size:28px;line-height:1.3;text-transform:none;letter-spacing:.02em;text-wrap:wrap}
@@ -136,10 +139,19 @@ function caption(id, it, capW) {
 }
 
 /* ---------------- frame: header band, accent rule, footer ---------------- */
+/* job.header: 'band' (default, the dark band) or 'light' (the title on the page ground; the header shrinks to the title
+   and the rows grow into the room it frees) */
+const light = job.header === 'light';
 const headH = 200, ruleH = 14, footH = 80;
-T.box(T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'title,vb,vb_value,vb_sub'}), 0, 0, W, headH);
-T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), 0, headH, W, ruleH);
-T.box(T.el('div', {class:'foot', 'data-qa':'footer', 'data-kind':'shape', 'data-allow':'note'}), 0, H - footH - bandH, W, footH);
+if (light) {
+  T.root.classList.add('hd-light');
+  T.box(T.el('div', {class:'hair', 'data-qa':'footer', 'data-kind':'shape'}), 0, H - footH - bandH, W, 2);
+} else {
+  T.box(T.el('div', {class:'band', 'data-qa':'band', 'data-kind':'shape', 'data-allow':'title,vb,vb_value,vb_sub'}), 0, 0, W, headH);
+  T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), 0, headH, W, ruleH);
+  T.box(T.el('div', {class:'foot', 'data-qa':'footer', 'data-kind':'shape', 'data-allow':'note'}), 0, H - footH - bandH, W, footH);
+}
+const titleTop = Math.max(job.min_margin ?? 60, m - 12);      // light: the title's top, at the hard text margin; the rule follows its measured height
 /* optional value badge: inside the band, right-aligned to the margin, centred on the title's line */
 const vc = job.value_claim;
 let titleW = W - 2 * m;
@@ -153,7 +165,7 @@ if (vc && typeof vc === 'object' && vc.approved === true && (vc.text || vc.value
   /* keep the badge within ~36% of the width */
   for (const s of [58, 54, 50, 46]) { vv.style.fontSize = s + 'px'; if (T.rect(vv).w + 2 * padX <= W * 0.36) break; }
   const tw = Math.ceil(Math.max(T.rect(vv).w, vs ? T.rect(vs).w : 0)), bw = tw + 2 * padX;
-  const bh = Math.ceil(T.rect(vv).h + (vs ? gapV + T.rect(vs).h : 0) + 2 * padY), x0 = W - m - bw, y0 = Math.round((headH - bh) / 2);
+  const bh = Math.ceil(T.rect(vv).h + (vs ? gapV + T.rect(vs).h : 0) + 2 * padY), x0 = W - m - bw, y0 = light ? titleTop : Math.round((headH - bh) / 2);
   const vbox = T.box(T.el('div', {class:'vb', 'data-qa':'vb', 'data-kind':'shape', 'data-allow':'band,vb_value,vb_sub'}), x0, y0, bw, bh);
   T.root.insertBefore(vbox, vv);
   vv.style.left = (x0 + padX) + 'px'; vv.style.top = (y0 + padY) + 'px';
@@ -167,7 +179,22 @@ if (vc && typeof vc === 'object' && vc.approved === true && (vc.text || vc.value
   let ok = false;
   for (const s of zh ? [76, 72, 68, 64] : [78, 74, 70, 66, 64]) { t.style.fontSize = s + 'px'; if (t.scrollWidth <= t.clientWidth + 1) { ok = true; break; } }
   if (!ok) { t.classList.add('wrap'); fitText(t, zh ? [66, 62, 58, 54] : [66, 62, 58, 54], 2); }
-  t.style.top = Math.round((headH - T.rect(t).h) / 2) + 'px';
+  t.style.top = (light ? titleTop : Math.round((headH - T.rect(t).h) / 2)) + 'px';
+}
+/* light header: a short accent rule under the title; a value badge is centred on title + rule; the rows start under both */
+let top = headH + ruleH;
+if (light) {
+  const q = sel => T.root.querySelector(`[data-qa="${sel}"]`), tr = T.rect(q('title'));
+  const ry = Math.round(tr.y + tr.h + 2 * G);
+  T.box(T.el('div', {class:'rule', 'data-qa':'rule', 'data-kind':'shape'}), m, ry, 120, 10);
+  let low = ry + 10;
+  if (q('vb')) {
+    const vr = T.rect(q('vb')), dy = Math.round(Math.max(m - 20, (titleTop + ry + 10) / 2 - vr.h / 2) - vr.y);
+    for (const id of ['vb', 'vb_value', 'vb_sub']) if (q(id)) q(id).style.top = (parseFloat(q(id).style.top) + dy) + 'px';
+    low = Math.max(low, vr.y + dy + vr.h);
+  }
+  top = low + 2 * G;      // the cells carry their own inner padding
+  T.layoutInfo.header = 'light';
 }
 /* footer disclaimer (job.note), centred in the band */
 if (job.note) {
@@ -175,7 +202,7 @@ if (job.note) {
   for (const s of [26, 25, 24, 23, 22]) { n.style.fontSize = s + 'px'; if (n.scrollWidth <= n.clientWidth + 1) break; }
   n.style.top = Math.round(H - bandH - footH + (footH - T.rect(n).h) / 2) + 'px';
 }
-const top = headH + ruleH, bottom = H - bandH - footH;
+const bottom = H - bandH - footH;
 
 if (mode === 'grid') {
   /* ---------------- kit chart: rows of cells, the main item first ---------------- */
