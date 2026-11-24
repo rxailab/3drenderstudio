@@ -27,13 +27,15 @@ import brandkit_assets
 import listing_draw as draw
 
 PRESETS = {
-    'frame': {'title': ('品牌边框', 'Band frame'), 'ground': 'light', 'header': 'band', 'footer': 'band',
+    # The default preset draws the templates as they were designed (page_style sets no bands, type or corners of its own):
+    # its name and note say that, not the band frame its tokens describe for other uses.
+    'frame': {'title': ('经典版式', 'Classic'), 'ground': 'light', 'header': 'band', 'footer': 'band',
               'headline': {'font': 'archivo', 'weight': 900, 'width': 125, 'case': 'upper', 'leading': .98},
               'label': {'font': 'archivo', 'weight': 800, 'width': 112, 'case': 'upper', 'leading': 1.08},
               'body': {'font': 'archivo', 'weight': 500, 'width': 108, 'case': 'upper', 'leading': 1.25},
               'leader': {'route': 'elbow', 'end': 'square', 'width': 3.4, 'ink': 'accent'},
               'card': {'radius': 0, 'style': 'rules'}, 'chip': {'radius': 0, 'style': 'solid'}, 'badge': 'box', 'icons': False,
-              'note': ('深色页眉页脚 + 白色主体，宽体粗大写标题，直角引线', 'Dark bands around a white body, wide heavy capitals, right-angle leader lines')},
+              'note': ('模板原本的设计：白底主体，粗体大标题，直角引线', 'The templates as designed: a white body, bold headlines, right-angle leader lines')},
     'flat': {'title': ('品牌色铺底', 'Flat colour'), 'ground': 'accent', 'header': 'none', 'footer': 'none',
              'headline': {'font': 'archivo', 'weight': 800, 'width': 100, 'case': 'none', 'leading': 1.04},
              'label': {'font': 'archivo', 'weight': 700, 'width': 100, 'case': 'none', 'leading': 1.14},

@@ -887,6 +887,17 @@ class BuildTests(StoreCase):
         self.assertEqual(self.scenes[-1]['scene'], first_brief['scene'])                 # the first scene's own brief, not another
         self.assertEqual([row['url'] for row in listing.state('fixture')['scenes']][1:], kept[1:])
 
+    def test_every_kind_says_why_it_cannot_be_made_and_a_list_with_none_that_can_is_refused(self):
+        listing.save_product('fixture', {'pages': ['T12']})
+        state = listing.state('fixture')
+        self.assertIn('T13', state['blocked'])                                 # off the list, and still said why (no moving parts)
+        self.assertEqual([row['kind'] for row in state['plan']], ['T12'])
+        listing.save_product('fixture', {'pages': ['T13']})
+        with patch.object(listing.threading, 'Thread') as started:
+            with self.assertRaisesRegex(ValueError, '没有现在能生成的图片'):
+                listing.submit('fixture', {})
+        started.assert_not_called()
+
     def test_the_state_says_what_a_refused_ai_service_left_undone(self):
         def refused(project, record):
             record['notes'] = ['翻译产品文字时文本模型没有回应（AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402））。',

@@ -93,7 +93,7 @@ def printable(product):
     for row in product.get('features') or []:
         why = mesh_named(row.get('title'), product) if machine else mesh_named(row.get('title'), {}, strict=False)
         if why:
-            notes.append('卖点「%s」%s，不是你写的卖点，没有印到图上；请在「产品信息」里改成产品真正的卖点。' % (row.get('title'), why))
+            notes.append('卖点「%s」%s，不是你写的卖点，没有印到图上；请在「填产品」步骤里改成产品真正的卖点。' % (row.get('title'), why))
         else:
             kept.append(row)
     if len(kept) == len(product.get('features') or []):
