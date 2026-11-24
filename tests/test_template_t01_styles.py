@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -18,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 import brandkit_render
 import listing_assets
+import listing_layout
 
 CANVAS = {'1:1': (1500, 1500), '4:5': (1200, 1500)}
 # a cordless drill drawn on a transparent ground: its parts in source pixels, where the callouts point
@@ -145,6 +147,61 @@ class CalloutStyleTests(unittest.TestCase):
         qa = self.render('crowded', job)
         self.assertTrue(any('crowded' in note for note in qa['notes']), qa['notes'])
         self.assertIn('overlap', [row['check'] for row in brandkit_render.layout_issues(qa)])
+
+    def crowded_column(self):
+        # parts bunched at the top-left with one far right and one low: every column arrangement collides
+        job = job_for(self.folder, 'zh', '4:5', frame='band', callout_style='column', label_side='left')
+        for feature, anchor in zip(job['features'], [[0.91, 0.378], [0.248, 0.254], [0.227, 0.234], [0.612, 0.86]]):
+            feature['anchor'] = anchor
+        return job
+
+    def test_a_crowded_column_gives_up_within_its_budget_instead_of_timing_the_browser_out(self):
+        started = time.monotonic()
+        qa = self.render('column-crowded', self.crowded_column())
+        self.assertLess(time.monotonic() - started, 30)        # was past brandkit_render's 90s timeout
+        self.assertTrue(any('crowded' in note for note in qa['notes']), qa['notes'])
+        self.assertIn('crowded', [row['id'] for row in brandkit_render.layout_issues(qa)])
+
+    def test_the_crowded_fallback_fails_the_checks_explicitly_so_lay_out_moves_on(self):
+        # every part on one spot: no column can reach them apart, whatever the measured checks say about the fallback
+        job = job_for(self.folder, callout_style='column', count=3)
+        for feature in job['features']:
+            feature['anchor'] = list(job['features'][0]['anchor'])
+        qa = self.render('column-one-spot', job)
+        self.assertTrue(any('crowded' in note for note in qa['notes']), qa['notes'])
+        crowded = [row for row in listing_layout.hard_issues(qa) if row['id'] == 'crowded']
+        self.assertEqual([row['check'] for row in crowded], ['overlap'], qa['issues'])
+
+    def test_column_leaders_stay_level_or_one_elbow_whatever_the_preset_route(self):
+        for route in ('straight', 'angled'):
+            for side in ('right', 'left'):
+                with self.subTest(route=route, side=side):
+                    qa = self.render('column-%s-%s' % (route, side), job_for(self.folder, callout_style='column', label_side=side,
+                                                                              style={'leader': {'route': route}}))
+                    self.assertEqual(brandkit_render.layout_issues(qa), [], (qa['issues'], qa['notes']))
+                    self.assertEqual(len(qa['leaders']), 4)
+                    for row in qa['leaders']:
+                        pts = row['pts']
+                        self.assertLessEqual(len(pts), 3, row)
+                        self.assertLess(abs(pts[1][1] - pts[0][1]), 0.5, row)           # leaves the label level
+                        for p, q in zip(pts, pts[1:]):
+                            self.assertTrue(abs(p[0] - q[0]) < 0.5 or abs(p[1] - q[1]) < 0.5, row)   # no diagonal run
+        # numbered markers have no leaders, whatever the route
+        qa = self.render('numbered-straight', job_for(self.folder, callout_style='numbered', style={'leader': {'route': 'straight'}}))
+        self.assertEqual(qa['leaders'], [])
+        self.assertEqual(len(self.boxes(qa, 'mk')), 4)
+
+    def test_detail_close_ups_dropped_by_a_stacked_style_are_noted(self):
+        for style in ('numbered', 'column'):
+            with self.subTest(style):
+                job = job_for(self.folder, callout_style=style)
+                job['assets']['detail'] = dict(job['assets']['hero'])
+                job['features'][0]['detail_asset'] = 'detail'
+                qa = self.render('detail-%s' % style, job)
+                self.assertTrue(any('close-up' in note and style in note for note in qa['notes']), qa['notes'])
+                self.assertFalse([row for row in qa['elements'] if row['id'].startswith('inset')])
+        qa = self.render('detail-none', job_for(self.folder, callout_style='column'))
+        self.assertFalse([note for note in qa['notes'] if 'close-up' in note], qa['notes'])
 
 
 if __name__ == '__main__':

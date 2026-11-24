@@ -179,6 +179,19 @@ const lwMax = Math.round(Math.min(500, W * 0.38));
 const insetR = Math.round(job.inset_r ?? (W >= 1400 ? 140 : 124));
 const ringPad = 12;
 let insetsLeft = cstyle === 'leaders' ? 2 : 0;          // a stacked column has no room for close-up circles
+if (cstyle !== 'leaders') {
+  const lost = feats.filter(f => f.detail_asset && (job.assets || {})[f.detail_asset]).length;
+  if (lost) T.notes.push(lost + ' detail close-up' + (lost > 1 ? 's' : '') + ' not shown: ' + cstyle + ' callouts have no room for inset circles (use leaders or a details page)');
+}
+// A layout problem the measurement cannot see (the crowded fallback): added to the QA issues once the page is measured.
+function failQA(row) {
+  const measure = T._measure;
+  T._measure = function () {
+    measure.apply(this, arguments);
+    const s = document.getElementById('qa-result'); if (!s) return;
+    const out = JSON.parse(s.textContent); (out.issues = out.issues || []).push(row); s.textContent = JSON.stringify(out);
+  };
+}
 const buildLabel = (f, i, lw) => {
   const id = 'lbl' + (i + 1);
   const inset = !!(f.detail_asset && (job.assets || {})[f.detail_asset] && insetsLeft-- > 0);
@@ -340,13 +353,26 @@ function solve(pl) {
   return best;
 }
 /* ---------------- numbered / column callouts ---------------- */
-// The leader as T.elbowLeader will draw it for the preset's route, so the checks below judge the drawn line.
-const look = (job.style || {}).leader || {};
-const routeOf = (port, a) => {
-  if (Math.abs(port[1] - a[1]) < 2 || Math.abs(port[0] - a[0]) < 2 || look.route === 'straight') return [port, a];
-  if (look.route === 'angled') return [port, [port[0] + (a[0] - port[0]) * 0.34, port[1]], a];
-  return [port, [a[0], port[1]], a];
+// A column's leaders are always level or one elbow (level from the label, then vertical into the part), whatever the
+// preset's route: a stack of diagonal or slanted lines out of one column reads as a fan, not a legend. The leader is drawn
+// with the 'elbow' route (columnLeader below), so the checks here judge the drawn line.
+const routeOf = (port, a) => (Math.abs(port[1] - a[1]) < 2 || Math.abs(port[0] - a[0]) < 2) ? [port, a] : [port, [a[0], port[1]], a];
+const columnLeader = (id, port, a, labelId, anchorId) => {
+  const st = job.style, lk = (st || {}).leader;
+  if (lk && lk.route && lk.route !== 'elbow') job.style = {...st, leader: {...lk, route: 'elbow'}};
+  try { return T.elbowLeader(id, port, a, labelId, anchorId, 'hv'); } finally { job.style = st; }
 };
+// The column search is bounded: a crowded page (every arrangement collides) must give up well inside the renderer's
+// timeout. job.layout_budget caps the stacks tried over the whole page, job.layout_ms the time spent.
+const budget = {left: job.layout_budget ?? 120000, until: performance.now() + (job.layout_ms ?? 15000), out: false};
+const spend = () => {
+  if (budget.out) return false;
+  if (--budget.left <= 0 || ((budget.left & 127) === 0 && performance.now() > budget.until)) { budget.out = true; return false; }
+  return true;
+};
+// evenly spaced values from a to b about step apart, at most cap of them (both ends kept)
+const sampled = (a, b, step, cap) => { if (!(b > a)) return [a]; const k = Math.min(cap, Math.floor((b - a) / step) + 2);
+  const out = []; for (let i = 0; i < k; i++) out.push(a + (b - a) * i / (k - 1)); return out; };
 // length of a run that skims the product's outline from outside (within 28px): a line grazing an edge reads as a stray seam
 const nearPoly = (poly, a, b) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 8)); let k = 0;
   for (let s = 0; s < n; s++) { const t = (s + 0.5) / n, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
@@ -398,17 +424,27 @@ function solveStyled(pl, force) {
     const c = {pts, end: a, len, over, bends: pts.length - 2, bad, cost: len + (pts.length - 2) * 70 + over * 1.6 + near * 3 + (jog ? 320 : 0)};
     cache.set(key, c); return c;
   };
-  const gs = []; for (let g = gMin; g <= gMax + 0.01; g += 8) gs.push(g);
-  if (n < 2) gs.splice(0, gs.length, 0); else if (!gs.length) gs.push(gMin);
+  const gs = n < 2 ? [0] : gMax >= gMin ? sampled(gMin, gMax, 8, 12) : [gMin];
   const clear = Math.round(job.marker_r ?? 19) + 12;      // a line passes another part's square with room to spare
-  const orders = force ? [order] : [order].concat(T.permutations(order).filter(o => o.some((v, k) => v !== order[k])));
+  // The labels keep the parts' top-to-bottom order; only a few moves are tried beside it (two neighbours swapped, one
+  // label lifted to the top or dropped to the bottom), cheapest first, never all n! orders.
+  const orders = [order];
+  if (!force) {
+    const seen = new Set([order.join()]), add = o => { if (!seen.has(o.join())) { seen.add(o.join()); orders.push(o); } };
+    for (let k = 0; k + 1 < n; k++) { const o = order.slice(); [o[k], o[k + 1]] = [o[k + 1], o[k]]; add(o); }
+    for (let k = 1; k < n; k++) { const o = order.slice(); o.unshift(o.splice(k, 1)[0]); add(o); }
+    for (let k = 0; k + 1 < n; k++) { const o = order.slice(); o.push(o.splice(k, 1)[0]); add(o); }
+  }
+  const swapsOf = o => o.reduce((s, v, k) => s + o.slice(k + 1).filter(w => order.indexOf(w) < order.indexOf(v)).length, 0);
+  orders.sort((p, q) => swapsOf(p) - swapsOf(q));
   let best = null;
   for (const o of orders) {
-   const swaps = o.reduce((s, v, k) => s + o.slice(k + 1).filter(w => order.indexOf(w) < order.indexOf(v)).length, 0);
+   const swaps = swapsOf(o);
+   if (best && swaps * 260 >= best.total) break;           // every order after this one costs at least as much
    for (const g of gs) {
     const total = sum + g * (n - 1), tMax = Math.max(colTop, colBot - total);
-    const ts = []; for (let t = colTop; t < tMax; t += 8) ts.push(t); ts.push(tMax);
-    for (const t of ts) {
+    for (const t of sampled(colTop, tMax, 8, 24)) {
+      if (!force && !spend()) return best;
       const rs = stack(t, g, o);
       const legs = o.map((i, k) => leg(i, rs[k].y + labels[i].tOff));
       let cost = legs.reduce((s, c) => s + c.cost, 0) + swaps * 260, bad = false;
@@ -467,6 +503,7 @@ function search() {
     let best = null;
     const ays = aysFor(sf), aPref = ays[0];
     for (const ax of axs) for (const ay of ays) {
+      if (budget.out) break;
       const pl = placement(sf, ax, ay);
       { const iw = hero.width * pl.s, ih = hero.height * pl.s; if (!theta && (pl.cX - iw / 2 < -0.5 || pl.cX + iw / 2 > W + 0.5 || pl.cY - ih / 2 < -0.5 || pl.cY + ih / 2 > H + 0.5)) continue; }
       const pen = Math.abs(ax - 0.5) * 500 + Math.abs(ay - aPref) * (cstyle === 'leaders' ? 260 : 1200) + (1 - sf) * 3000;
@@ -479,6 +516,7 @@ function search() {
       if (!best || score < best.score) best = {pl, sol, score};
     }
     if (best) return {chosen: best};      // largest product size whose labels all fit with clean leaders wins
+    if (budget.out) break;
   }
   return {chosen: fallback, messy: !!fallback};
 }
@@ -498,11 +536,15 @@ if (bodyMode === 'auto' && labels.some(L => L.body) && (!res.chosen || res.messy
 if (bodiesOff) for (const L of labels) if (L.body) { L.body.remove(); L.body = null; }
 let chosen = res.chosen;
 if (res.messy) T.notes.push('no layout with short leaders; kept the largest product that fits every label');
+if (budget.out) T.notes.push('label layout search stopped at its budget (' + (budget.left <= 0 ? 'stack limit' : 'time limit') + ')');
 if (!chosen && cstyle !== 'leaders') {
-  // too crowded for one column: laid out anyway at a small size, so the page's QA shows what collides and lay_out moves on
+  // too crowded for one column: laid out anyway at a small size so the page shows what collides. Some refusals above
+  // (spacing, a line through another part's square) are not QA checks, so the page fails QA explicitly: lay_out counts
+  // an 'overlap' issue as hard and moves on to its next version.
   T.notes.push('parts too crowded for ' + cstyle + ' callouts; split features across images or use leaders');
   const pl = placement(0.6, 0.5, 1);
-  chosen = {pl, sol: solveStyled(pl, true), score: 0};
+  chosen = {pl, sol: solveStyled(pl, true), score: 0, forced: true};
+  failQA({check: 'overlap', id: 'crowded', detail: 'parts too crowded for ' + cstyle + ' callouts (forced fallback layout)'});
 }
 if (!chosen) {
   T.notes.push('no collision-free label arrangement; split features across images');
@@ -567,7 +609,7 @@ if (cstyle !== 'leaders') {
     } else {
       const bar = T.el('div', {class: 'col-bar', 'data-qa': L.id + '_bar', 'data-kind': 'shape'});
       T.box(bar, colX, ty - 21, barW, 42);
-      const drawn = T.elbowLeader('ldr' + (i + 1), p.pts[0], a, L.id, 'a' + (i + 1), 'hv');
+      const drawn = columnLeader('ldr' + (i + 1), p.pts[0], a, L.id, 'a' + (i + 1));
       marker('ldr' + (i + 1), drawn, a);
     }
   });
