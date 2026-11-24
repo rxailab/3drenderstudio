@@ -106,11 +106,13 @@ def _scene_words(need, scenes):
     return '需要 %d 张场景图，AI 场景图只设了 %d 张：在%s的「AI 场景图」里调高「场景图数量」%s' % (need, scenes.get('count', 0), BRAND, more), False
 
 
-def requirements(product, parts, size_known, scene_supply, poses=0, scenes=None, waiting=0):
+def requirements(product, parts, size_known, scene_supply, poses=0, scenes=None, waiting=0, vision=False):
     """(has, why): whether each page has what it needs, and the reason (a ``Reason``) when it does not. ``poses``: how
     many states of its moving parts the product can be shown in (the pose agent's, ``articulation.states``) or pose
     pictures there are. ``scenes``: the scene settings behind ``scene_supply`` (``_scene_words``), so the reason says
-    what really blocks; ``waiting``: how many components are still being processed."""
+    what really blocks; ``waiting``: how many components are still being processed. ``vision``: the vision model is
+    set, so a build finds the selling points of a model without parts to pick on the main picture (``locate``); the
+    plan counts the callout page as makeable then, and the build says so when nothing was found."""
     points = len(anchored(product))
     callouts = len([index for index in anchored(product) if not product['features'][index].get('no_leader')]) + len(pointed(product))
     figures = bool(product['figures'] or product['specs'] or size_known)
@@ -118,21 +120,30 @@ def requirements(product, parts, size_known, scene_supply, poses=0, scenes=None,
            'T08': scene_supply >= 2, 'T06': size_known, 'T05': bool(parts), 'T07': False, 'T09': False, 'T10': False, 'T11': False}
     named = set(product.get('_model_parts') or ())
     single = len(named) == 1
-    titled = any(str(row.get('title') or '').strip() for row in product['features'])
+    written = sum(1 for row in product['features'] if str(row.get('title') or '').strip())
+    titled = bool(written)
     feat, pick = ('product', 'features'), ('product', 'feature_parts')
     if not titled:
         # Nothing the seller wrote to print: the pages that print selling points wait for them; none is made up.
         t01 = Reason(NO_FEATURES, feat)
+    elif len(named) <= 1 and not vision:
+        # no part to pick, and no vision model to find the selling points on the main picture: nothing in the workspace places them
+        t01 = Reason('模型没有可选的部件，卖点的位置只能由视觉模型在主图上找出，但没有配置视觉模型（在「AI 设置」的「预览图像分析」里配置）', hard=True)
+    elif len(named) <= 1 and written < 2:
+        t01 = Reason('至少需要 2 条卖点，生成时由视觉模型在主图上找出它们的位置：在%s的「卖点」里再添加' % PRODUCT, feat)
     elif len(named) <= 1:
-        # no part to pick: only the vision model can find the selling points on the main picture
-        t01 = Reason('模型没有可选的部件，卖点的位置只能由视觉模型在主图上找出：在「AI 设置」的「预览图像分析」里配置视觉模型，'
-                     '并在%s写至少 2 条卖点' % PRODUCT, feat)
+        # the build asks the vision model where the selling points are on the main picture (``locate``)
+        has['T01'] = True
+        t01 = Reason('视觉模型没有在主图上找出至少 2 处卖点的位置', hard=True)
     else:
         t01 = Reason(NEED_PARTS % (2, PRODUCT), pick)
 
     def close(count):
         if single:
             return Reason(ONE_PIECE, hard=True)
+        if len(named) < 2:
+            # the 对应部件 picker is shown only for a model with 2 or more named parts: nothing to pick
+            return Reason('模型没有命名的部件，选不了「对应部件」，做不了部件特写', hard=True)
         return Reason(NO_FEATURES, feat) if not titled else Reason(NEED_PARTS % (count, PRODUCT), pick)
     scene1, hard1 = _scene_words(1, scenes)
     scene2, hard2 = _scene_words(2, scenes)

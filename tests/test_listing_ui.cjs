@@ -478,7 +478,8 @@ test('extracting saves brand edits first, and an answer that arrives after anoth
 
 test('the moving parts sit in the product step while 多姿态展示 is chosen, show what the pose agent found and ask it again',async t=>{
   const plan=[...state().plan,{kind:'T13',skipped:'没有识别出可以展示的活动部件'}];
-  const h=await setup(t,state({plan}));await h.open();
+  const blocked={...BLOCKED,T13:{why:'没有识别出可以展示的活动部件',fix:{step:'product',field:'articulation'},needs:[{step:'product',field:'articulation'}],hard:false}};
+  const h=await setup(t,state({plan,blocked}));await h.open();
   let found={status:'ready',running:false,product_kind:'digital caliper',reasoning:'The slider runs along the beam.',at:5,
     states:[{id:'closed',label_zh:'闭合',label_en:'Closed',role:'rest'},{id:'open',label_zh:'全开',label_en:'Fully open',role:'open'}],
     usage:{zh:['卡爪垂直夹住工件两面'],en:['Jaws square on the work']},notes:['姿态检查未通过：滑块方向反了'],
@@ -506,4 +507,13 @@ test('the moving parts sit in the product step while 多姿态展示 is chosen, 
     found={...found,status};h.w.setInspectorTab('listing');await settle();
     assert.match(h.node('listingArticulation').textContent,new RegExp(label));await h.leave();
   }
+});
+
+test('a plain reason on a plan row is read as the server reads it: nothing to fill in, so not 需补充',async t=>{
+  // T07 left on an explicit list from before: the plan row has only the words, state.blocked does not list it
+  const plan=[...state().plan,{kind:'T07',skipped:'模块系统页需要模块数据，这个版本还不能生成'}];
+  const h=await setup(t,state({plan,product:{...state().product,pages:['T12','T07']}}));await h.open();await h.goto('pages');
+  assert.equal(h.w.listingFillable().includes('T07'),false,'not counted as 需补充');
+  assert.equal(h.w.listingPicked().includes('T07'),false);
+  assert.doesNotMatch(h.card('T07').textContent,/需补充/);assert.match(h.card('T07').textContent,/暂时无法生成：模块系统页/);
 });

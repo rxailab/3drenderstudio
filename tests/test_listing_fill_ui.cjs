@@ -208,3 +208,36 @@ test('the summary lists every chosen page that will not be made, with 去填写 
   held[1].querySelector('[data-action="fill"]').click();await settle();
   assert.equal(h.step(),'brand');assert.equal(h.w.document.activeElement,h.field('scenes','enabled'));
 });
+
+test('an empty 卖点 row added before a background save stays typeable after the next state from the server',async t=>{
+  const h=await setup(t);await h.open();await h.goto('product');
+  const errors=[];h.w.addEventListener('error',event=>errors.push(String(event.error || event.message)));
+  h.node('listingPanel').querySelector('[data-action="add-feature"]').click();await settle();
+  h.type(h.field('product','title'),'Ratchet Pipe Cutter Pro');           // the background save leaves the empty row out
+  await wait(20);await settle();
+  const saved=h.calls.filter(call=>call.method==='PUT' && call.path.endsWith('/listing/product')).at(-1);
+  assert.deepEqual(plain(saved.body.features).map(row=>row.title),['Hardened wheel','Quick release']);
+  assert.equal(h.w.listingUnsaved(),false);
+  await h.w.listingLoad(false);await settle();                            // a component poll, 添加组件 or a component edit
+  const titles=[...h.node('listingPanel').querySelectorAll('[data-scope="feature"][data-key="title"]')];
+  assert.equal(titles.length,3);
+  h.type(titles[2],'One-hand ratchet');await wait(20);await settle();
+  assert.deepEqual(errors,[]);
+  const last=h.calls.filter(call=>call.method==='PUT' && call.path.endsWith('/listing/product')).at(-1);
+  assert.deepEqual(plain(last.body.features).map(row=>row.title),['Hardened wheel','Quick release','One-hand ratchet'],'what was typed is saved');
+});
+
+test('when the saved rows no longer match the form, the form is drawn again so no field points past the rows',async t=>{
+  const h=await setup(t);await h.open();await h.goto('product');
+  h.node('listingPanel').querySelector('[data-action="add-feature"]').click();await settle();
+  h.type(h.field('product','title'),'Ratchet Pipe Cutter Pro');await wait(20);await settle();
+  h.state={...h.state,product:{...h.state.product,features:[{title:'Hardened wheel',detail:'',parts:[],icon:''}]}};   // a row dropped elsewhere
+  const errors=[];h.w.addEventListener('error',event=>errors.push(String(event.error || event.message)));
+  await h.w.listingLoad(false);await settle();
+  const titles=[...h.node('listingPanel').querySelectorAll('[data-scope="feature"][data-key="title"]')];
+  assert.deepEqual(titles.map(node=>node.value),['Hardened wheel',''],'the form shows the saved row and the empty one');
+  h.type(titles.at(-1),'Quick release');await wait(20);await settle();
+  assert.deepEqual(errors,[]);
+  const last=h.calls.filter(call=>call.method==='PUT' && call.path.endsWith('/listing/product')).at(-1);
+  assert.deepEqual(plain(last.body.features).map(row=>row.title),['Hardened wheel','Quick release']);
+});

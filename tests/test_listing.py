@@ -206,7 +206,8 @@ class BrandTests(unittest.TestCase):
         for bad in ({'fonts': 'comic-sans'}, {'badge_style': 'heart'}, {'texture': 'leopard'}, {'preset': 'dewalt'}, {'accent': 'red'}, {'badges': ['a', 'b', 'c', 'd']}, {'unit': 'cm'}, {'logo': 'https://example.com/x.png'}, {'name': 'x' * 41}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 brand_kit.validate(bad)
-        self.assertEqual([row['id'] for row in brand_kit.presets()], ['frame', 'flat', 'tech', 'clean', 'promo'])
+        self.assertEqual([row['id'] for row in brand_kit.presets()], list(brand_kit.PRESETS))
+        self.assertTrue({'frame', 'flat', 'tech', 'clean', 'promo', 'split', 'blueprint', 'workshop', 'editorial', 'catalogue'} <= set(brand_kit.PRESETS))
         for row in brand_kit.presets():
             self.assertTrue(row['label']['zh'] and row['label']['en'] and row['note']['zh'])
 
@@ -745,9 +746,42 @@ class FillTests(StoreCase):
             with self.subTest(kind=kind):
                 self.assertEqual(why[kind].public()['hard'], True); self.assertIsNone(why[kind].fix)
         self.assertIn('整体', why['T03'])
-        self.assertFalse(why['T01'].hard); self.assertIn('视觉模型', why['T01'])        # found on the picture, by the vision model of AI 设置
+        self.assertTrue(why['T01'].hard); self.assertIn('视觉模型', why['T01'])         # no part to pick and no vision model to find them
         self.assertEqual(listing.listing_kinds.reason_public('缺少内容'), {'why': '缺少内容', 'fix': None, 'needs': [], 'hard': True})
         self.assertEqual(json.loads(json.dumps({'skipped': why['T06']}, ensure_ascii=False))['skipped'], str(why['T06']))   # stored as its words
+
+    def test_close_ups_are_ruled_out_whenever_the_parts_picker_is_not_shown(self):
+        # the workspace shows the 对应部件 picker only for 2 or more named parts: with none there is nothing to pick
+        for names in ([], ['Body']):
+            product = {'features': [{'title': 'Steel'}, {'title': 'Grip'}], 'figures': [], 'specs': [], '_model_parts': names}
+            has, why = brandkit_set.requirements(product, [], True, 0)
+            for kind in ('T02', 'T03'):
+                with self.subTest(names=names, kind=kind):
+                    self.assertFalse(has[kind]); self.assertTrue(why[kind].hard); self.assertIsNone(why[kind].fix)
+                    self.assertNotIn('feature_parts', json.dumps(why[kind].public()))
+        _, why = brandkit_set.requirements({'features': [{'title': 'Steel'}], 'figures': [], 'specs': [], '_model_parts': []}, [], True, 0)
+        self.assertIn('没有命名的部件', why['T02'])
+        _, why = brandkit_set.requirements({'features': [{'title': 'Steel'}], 'figures': [], 'specs': [], '_model_parts': PARTS}, [], True, 0)
+        self.assertFalse(why['T02'].hard); self.assertEqual(why['T02'].fix, {'step': 'product', 'field': 'feature_parts'})
+
+    def test_callouts_of_a_model_without_parts_rest_on_the_vision_model(self):
+        two = {'features': [{'title': 'Steel'}, {'title': 'Grip'}], 'figures': [], 'specs': [], '_model_parts': []}
+        one = {**two, 'features': [{'title': 'Steel'}]}
+        # vision ready and 2 points written: the build finds them on the main picture, so the page is planned, not 需补充
+        has, why = brandkit_set.requirements(two, [], True, 0, vision=True)
+        self.assertTrue(has['T01'])
+        has, why = brandkit_set.requirements(one, [], True, 0, vision=True)
+        self.assertFalse(has['T01']); self.assertFalse(why['T01'].hard); self.assertEqual(why['T01'].fix, {'step': 'product', 'field': 'features'})
+        self.assertIn('2 条卖点', why['T01']); self.assertNotIn('配置', why['T01'])
+        # no vision model: nothing to pick and nothing to find them, whatever is written
+        for product in (one, two, {**two, '_model_parts': ['Body']}):
+            has, why = brandkit_set.requirements(product, [], True, 0)
+            self.assertFalse(has['T01']); self.assertTrue(why['T01'].hard); self.assertIn('没有配置视觉模型', why['T01'])
+        listing.save_product('fixture', {'features': [{'title': 'Steel'}, {'title': 'Grip'}]})
+        with patch.object(listing, 'part_names', return_value=[]), patch.object(listing, '_vision_ready', return_value=True):
+            state = listing.state('fixture')
+        self.assertNotIn('T01', state['blocked'])
+        self.assertIn(('T01', False), [(row['kind'], bool(row.get('skipped'))) for row in state['plan']])
 
     def test_a_chosen_page_that_waits_stays_on_the_list_through_saves_and_is_made_once_it_is_filled_in(self):
         listing.save_product('fixture', {'pages': ['T12', 'T06']})
@@ -1263,7 +1297,7 @@ class BuildTests(StoreCase):
         client = application.app.test_client()
         state = client.get('/api/projects/fixture/listing').get_json()
         self.assertEqual((state['product']['model'], state['brand']['name'], state['pages'], state['task']), ('PC-22', 'NORTHFORGE', [], None))
-        self.assertEqual(len(state['presets']), 5); self.assertIn('pipe', state['options']['workpieces']); self.assertEqual(state['order'], list(brandkit_set.ORDER))
+        self.assertEqual([row['id'] for row in state['presets']], list(brand_kit.PRESETS)); self.assertIn('pipe', state['options']['workpieces']); self.assertEqual(state['order'], list(brandkit_set.ORDER))
         self.assertEqual((state['scene_options']['max'], state['product']['scenes']['count'], state['product']['aspect']), (3, 3, '1:1'))
         self.assertEqual(client.put('/api/projects/fixture/listing/product', json={'model': 'PC-25'}).get_json()['product']['model'], 'PC-25')
         self.assertEqual(client.put('/api/projects/fixture/listing/product', json={'language': 'fr'}).status_code, 400)

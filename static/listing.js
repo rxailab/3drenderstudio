@@ -84,9 +84,29 @@ async function listingLoad(reset) {
 }
 // Take the server's state. Words the user is still typing are kept unless `reset` says to drop them; `keep` keeps the
 // product as typed (the background save of 填产品: its rows may still hold an empty line the server drops).
+// Rows the seller added but has not filled in yet (an empty 卖点 just added) are left out of the saved product, so the
+// server's copy lacks them. Adopting that copy while the form is not redrawn keeps them where the form shows them: the
+// saved rows take the places of the filled ones. When the filled rows no longer match, the empty rows follow the saved
+// ones and the form is drawn again.
+const listingBlank={features:row=>!String(row?.title || '').trim(),specs:row=>!(String(row?.label || '').trim() && String(row?.value || '').trim()),
+  figures:row=>!(String(row?.value || '').trim() && String(row?.label || '').trim())};
+function listingKeepBlankRows(local,server) {
+  let aligned=true;
+  for(const [key,blank] of Object.entries(listingBlank)){
+    const mine=Array.isArray(local?.[key])?local[key]:[],theirs=Array.isArray(server[key])?server[key]:[];
+    if(!mine.some(blank))continue;
+    if(mine.filter(row=>!blank(row)).length!==theirs.length){aligned=false;server[key]=[...theirs,...mine.filter(blank)];continue;}
+    let next=0;server[key]=mine.map(row=>blank(row)?row:theirs[next++]);
+  }
+  return aligned;
+}
 function listingAdopt(state,reset,keep=false) {
-  const first=!listingEdit || reset;listingState=state;
-  if(!keep && (first || !listingDirty.product))listingEdit={...(listingEdit || {}),product:listingClone(state.product)};
+  const first=!listingEdit || reset;listingState=state;let redraw=false;
+  if(!keep && (first || !listingDirty.product)){
+    const product=listingClone(state.product);
+    if(!first && listingEdit?.product)redraw=!listingKeepBlankRows(listingEdit.product,product);
+    listingEdit={...(listingEdit || {}),product};
+  }
   if(first || !listingDirty.brand)listingEdit={...listingEdit,brand:{preset:state.brand.preset,name:state.brand.name,accent:state.brand.accent,dark:state.brand.dark,
     badges:[...state.brand.badges],legal:state.brand.legal,unit:state.brand.unit,fonts:state.brand.fonts,badge_style:state.brand.badge_style,texture:state.brand.texture}};
   if(listingStepFor!==listingProject){
@@ -96,7 +116,9 @@ function listingAdopt(state,reset,keep=false) {
     listingStep=built?'build':'style';listingVisited=new Set(built?listingSteps.map(step=>step.id):['style']);
   }
   if(listingTaskActive() && listingStep!=='build'){listingStep='build';listingVisited.add('build');listingRenderPanel();}   // a build runs: the steps wait
-  else if(first)listingRenderPanel();else listingRefreshStep();
+  else if(first)listingRenderPanel();
+  else if(redraw && listingStep==='product')listingKeepFocus(listingRenderProduct);   // the form's rows no longer match: drawn again
+  else listingRefreshStep();
   listingRenderMain();listingSchedule();
 }
 function listingSchedule() {
@@ -223,7 +245,7 @@ function listingChosen() { const p=listingEdit.product;return new Set(Array.isAr
 // state.blocked holds {why, fix:{step, field}, needs, hard}; a plain reason (a plan row, an older server) has no fix to offer
 function listingReason(value) {
   if(value && typeof value==='object')return {why:String(value.why || ''),fix:value.fix || null,needs:Array.isArray(value.needs)?value.needs:value.fix?[value.fix]:[],hard:!!value.hard};
-  return {why:String(value || ''),fix:null,needs:[],hard:false};
+  return {why:String(value || ''),fix:null,needs:[],hard:true};     // as the server reads it (reason_public): nothing to fill in
 }
 // why a kind cannot be made now: for every kind (state.blocked), so a kind off the seller's own list says so before it is picked
 function listingSkipped() {
@@ -959,6 +981,7 @@ function listingOnInputOnce(event) {
   const node=event.target,scope=node.dataset.scope,key=node.dataset.key;if(!scope || !listingEdit)return;
   const p=listingEdit.product,index=Number(node.dataset.index);
   if(scope==='product'){p[key]=key==='size_mm'?listingNumber(node.value):node.value;listingTouch();}
+  else if(['feature','feature-part','spec','figure'].includes(scope) && !p[{feature:'features','feature-part':'features',spec:'specs',figure:'figures'}[scope]]?.[index])return;   // a row the form still shows but the product lost
   else if(scope==='feature'){p.features[index][key]=node.value;listingTouch();}
   else if(scope==='feature-part'){const parts=new Set(p.features[index].parts || []);if(node.checked)parts.add(node.value);else parts.delete(node.value);p.features[index].parts=[...parts];
     node.closest('details').querySelector('summary').textContent=`对应部件（${parts.size}）`;listingTouch();}

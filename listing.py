@@ -323,7 +323,7 @@ def _requirements(project, product, parts):
     scenes = scene_state(project, product)
     waiting = sum(1 for row in components.components(project) if row.get('status') in ('queued', 'processing'))
     return brandkit_set.requirements(product, parts, product_size(project, product)[1], brandkit_set.scene_supply(product, scenes['legacy']),
-                                     len(articulation.states(project)), scenes=scenes, waiting=waiting)
+                                     len(articulation.states(project)), scenes=scenes, waiting=waiting, vision=_vision_ready())
 
 
 def planned(project, product, parts):
@@ -1774,6 +1774,10 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         ctx['light_product'] = _light_share(shots['hero']['path']) > .35
         ctx['facts'] = brandkit_review.facts_of(product, {row['key']: row['mm'] for row in ctx['stated']} or None, brand)
         has, why = brandkit_set.requirements(product, parts, known, len(scenes), len(poses))
+        if not has['T01'] and len(set(product.get('_model_parts') or ())) <= 1 and _vision_ready() \
+                and sum(1 for row in product['features'] if str(row.get('title') or '').strip()) >= 2:
+            # the plan counted on the vision model finding the selling points on the main picture: say that it did not
+            why['T01'] = '视觉模型没有在主图上找出至少 2 处卖点的位置'
         has['T06'] = has['T06'] and bool(ctx['stated'])
         if known and not ctx['stated']:
             why['T06'] = '填写的尺寸都没有通过和模型比例的核对'
