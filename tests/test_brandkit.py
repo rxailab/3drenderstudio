@@ -819,12 +819,20 @@ class BrandOnThePageTests(unittest.TestCase):
 
     def test_changing_only_the_preset_changes_the_job(self):
         jobs = {preset: self.job('T01', preset=preset) for preset in brand_kit.PRESETS}
-        self.assertEqual(len({json.dumps(job, sort_keys=True) for job in jobs.values()}), len(jobs))          # five presets, five different pages
+        self.assertEqual(len({json.dumps(job, sort_keys=True) for job in jobs.values()}), len(jobs))          # every preset, its own page
         changed = {key for key in jobs['frame'] if jobs['frame'][key] != jobs['tech'][key]}
-        self.assertEqual(changed, {'style', 'palette'})
+        self.assertEqual(changed, {'style', 'palette', 'fonts'})                       # tech reads in its own pairing
+        self.assertEqual(jobs['tech']['fonts']['pairing'], 'tech')
+        self.assertEqual({key for key in jobs['frame'] if jobs['frame'][key] != jobs['flat'][key]}, {'style', 'palette'})
+        self.assertEqual({key for key in jobs['frame'] if jobs['frame'][key] != jobs['split'][key]}, {'style'})     # a light page: its composition is the recipe's
         self.assertEqual(jobs['tech']['palette']['bg'], brand_kit.DARK); self.assertEqual(jobs['tech']['palette']['text'], '#F4EFE3')
-        self.assertEqual(jobs['clean']['palette']['bg'], '#FFFFFF')
+        self.assertEqual(jobs['clean']['palette']['bg'], '#FFFFFF'); self.assertEqual(jobs['catalogue']['palette']['bg'], '#FFFFFF')
         self.assertEqual(jobs['flat']['palette']['bg'], '#d0612a')                                              # the brand colour as the ground
+        self.assertEqual(jobs['blueprint']['palette']['bg'], brand_kit.GROUNDS['blueprint'])
+        self.assertEqual(jobs['editorial']['palette']['bg'], brand_kit.GROUNDS['paper'])
+        self.assertEqual(jobs['blueprint']['style']['texture']['kind'], 'drafting'); self.assertNotIn('texture', jobs['frame']['style'])
+        # a pairing the seller chose stands over the preset's
+        self.assertEqual(self.job('T01', preset='editorial', fonts='poster')['fonts']['pairing'], 'poster')
         dark_page = {preset: self.job('T02', preset=preset)['palette'] for preset in ('frame', 'clean', 'tech')}
         self.assertNotEqual(dark_page['clean']['bg'].lower(), '#ffffff')           # a page drawn for a dark ground stays dark
         self.assertEqual(dark_page['tech']['bg'], brand_kit.DARK)

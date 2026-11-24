@@ -2,6 +2,7 @@
 record, its pictures and its scenes, with re-cropped variants. Split out of ``brandkit_set``, which still re-exports every name.
 """
 
+import json
 import re
 
 import brand_kit
@@ -46,7 +47,39 @@ def _job(template_id, ctx, **fields):
     return {'template_id': template_id, 'variant': 'studio', 'canvas': {'width': width, 'height': height}, 'lang': ctx['language'],
             'safe_margin': tokens.get('safe_margin', 84), 'min_margin': tokens.get('min_margin', 60),
             'palette': palette, 'publishability': 'user_product',
-            'fonts': brandkit_assets.job_fonts(record.get('fonts'), ctx['language']), **extra, **fields}
+            'fonts': brandkit_assets.job_fonts(brand_kit.fonts_of(brand, ctx['language']), ctx['language']), **extra, **fields}
+
+
+# The mode a template draws when a job names none (T04 overlay on the square and 4:5 canvases, T05 the grid...), so a
+# recipe can say 'from' the mode a builder's version really has.
+DEFAULT_MODES = {'T03': 'split', 'T04': 'overlay', 'T05': 'grid', 'T06': 'onproduct', 'T12': 'solid', 'T13': 'auto'}
+
+
+def preset_jobs(kind, jobs, recipe):
+    """A page's versions in the preset's composition (brand_kit.PRESETS[id]['layout'], or the recipe itself): for each
+    'prefer' entry in order, copies of the versions whose mode is its 'from' ('*': any) with its 'set' knobs, first; then
+    the builder's own versions as the fallback (lay_out keeps the first clean one). 'all' knobs go on every version, an
+    entry's 'set' winning over them. A version made twice is kept once. Without a recipe for the kind: the list as given."""
+    recipe = (recipe or {}).get(kind) if isinstance(recipe, dict) else None
+    if not recipe or not jobs:
+        return jobs
+    every = recipe.get('all') or {}
+    out = []
+    for entry in recipe.get('prefer') or []:
+        out += [{**job, **every, **(entry.get('set') or {})} for job in jobs
+                if entry.get('from') == '*' or entry.get('from') == (job.get('mode') or DEFAULT_MODES.get(kind))]
+    out += [{**job, **every} for job in jobs]
+    seen, kept = set(), []
+    for job in out:
+        key = json.dumps(job, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key); kept.append(job)
+    return kept
+
+
+def _layout_of(ctx):
+    brand = ctx.get('brand')
+    return getattr(brand, 'tokens', {}).get('layout') if brand is not None else None
 
 
 ICON_WORDS = ((('battery', '电池', 'mah'), 'battery-4'), (('volt', '电压'), 'bolt'), (('weight', '重量', '净重', 'kg', ' lb'), 'weight'),
@@ -107,11 +140,14 @@ def jobs_for(kind, ctx):
     """Versions of one page, best first: when one fails the layout checks the next, lighter one is tried. The lines are
     the copywriter's (when it wrote this page's), then the product's name as headline, then the template's own short line."""
     lists = []
+    # the preset's composition first, before the crop variants, so each preferred version keeps its own crop group
+    recipe = _layout_of(ctx)
+    versions = lambda context: _recropped(preset_jobs(kind, _jobs_for(kind, context), recipe))
     if (ctx.get('copy') or {}).get(kind):
-        lists.append([{**job, '_lines': 'model'} for job in _recropped(_jobs_for(kind, ctx))])
+        lists.append([{**job, '_lines': 'model'} for job in versions(ctx)])
     plain = {**ctx, 'copy': {}}
-    lists.append([{**job, '_lines': 'name'} for job in _recropped(_jobs_for(kind, plain))])
-    lists.append([{**job, '_lines': 'stock'} for job in _recropped(_jobs_for(kind, {**plain, 'stock_lines': True}))])
+    lists.append([{**job, '_lines': 'name'} for job in versions(plain)])
+    lists.append([{**job, '_lines': 'stock'} for job in versions({**plain, 'stock_lines': True})])
     out = []; seen = set(); offset = 0
     for jobs in lists:
         if not jobs:
