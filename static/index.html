@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=35">
+<link rel="stylesheet" href="/static/styles.css?v=36">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -630,24 +630,26 @@
 </section>
 <section id="inspectorListing" class="listing-inspector" role="tabpanel" aria-labelledby="inspectorListingTab">
 <h2 class="sr-only">套图</h2>
-<p class="field-help listing-intro">用品牌模板把产品、套装组件和品牌风格排成一组电商宣传图。先在「产品信息」里粘贴产品介绍并提取，再生成套图。</p>
+<p class="field-help listing-intro">按步骤选风格、选图片、填产品信息，再一键生成整套电商图片。</p>
+<nav class="listing-stepper" aria-label="套图步骤">
+<p id="listingStepCount" class="listing-step-count">1 / 5 · 选风格</p>
+<ol id="listingSteps" class="listing-steps"></ol>
+</nav>
 <div class="listing-body">
-<section class="listing-side" aria-label="套图设置">
-<div class="listing-tabs" role="tablist" aria-label="套图设置">
-<button id="listingTabProduct" type="button" role="tab" data-listing-tab="product" aria-selected="true" aria-controls="listingPanel">产品信息</button>
-<button id="listingTabComponents" type="button" role="tab" data-listing-tab="components" aria-selected="false" aria-controls="listingPanel" tabindex="-1">套装组件</button>
-<button id="listingTabBrand" type="button" role="tab" data-listing-tab="brand" aria-selected="false" aria-controls="listingPanel" tabindex="-1">品牌风格</button>
-<button id="listingTabUsecase" type="button" role="tab" data-listing-tab="usecase" aria-selected="false" aria-controls="listingPanel" tabindex="-1">场景</button>
-<button id="listingTabArticulation" type="button" role="tab" data-listing-tab="articulation" aria-selected="false" aria-controls="listingPanel" tabindex="-1">活动部件</button>
-</div>
-<div id="listingPanel" class="listing-panel" role="tabpanel" aria-labelledby="listingTabProduct"></div>
+<header class="listing-step-head">
+<h3 id="listingStepTitle" tabindex="-1">选风格</h3>
+<p id="listingStepLead" class="field-help"></p>
+</header>
+<section class="listing-side" aria-labelledby="listingStepTitle">
+<div id="listingPanel" class="listing-panel"></div>
 <details id="sceneHistory" class="scene-history listing-scene-history" hidden>
 <summary id="sceneHistoryTitle">历史使用场景图</summary>
 <p class="field-help">以前单独生成的使用场景图，点图片查看大图。</p>
 <div id="sceneHistoryList" class="scene-history-list"></div>
 </details>
 </section>
-<section class="listing-main" aria-label="套图图片">
+<section id="listingMain" class="listing-main" aria-label="生成套图" hidden>
+<ul id="listingPlan" class="listing-summary" aria-label="当前设置"></ul>
 <div class="listing-bar">
 <button id="listingBuild" class="button primary" type="button" aria-describedby="listingCost">生成套图</button>
 <span id="listingCost" class="listing-cost" hidden></span>
@@ -660,10 +662,16 @@
 <p id="listingSpend" class="field-help listing-spend" hidden></p>
 <div id="listingDegraded" class="listing-degraded-slot"></div>
 <div id="listingProgress" class="listing-progress" role="progressbar" aria-label="套图生成进度" aria-valuemin="0" aria-valuemax="100" hidden><div id="listingProgressBar"></div></div>
-<div id="listingPlan" class="listing-plan" role="group" aria-label="要生成的图片"></div>
 <ul id="listingNotes" class="listing-notes" aria-label="生成提示"></ul>
 <div id="listingPages" class="listing-pages"></div>
 </section>
+<div class="listing-step-nav">
+<button id="listingBack" class="button subtle" type="button" hidden>上一步</button>
+<button id="listingEditSteps" class="button secondary" type="button" hidden>修改设置</button>
+<span class="listing-step-spacer"></span>
+<button id="listingSkip" class="button subtle" type="button" hidden>跳过</button>
+<button id="listingNext" class="button primary" type="button">下一步</button>
+</div>
 </div>
 </section>
 <section id="inspectorEcommerce" class="ecommerce-panel" role="tabpanel" aria-labelledby="inspectorEcommerceTab" hidden>
@@ -901,8 +909,8 @@
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
 <script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=34" defer>
+<script src="/static/app.js?v=35" defer>
 </script>
-<script src="/static/listing.js?v=39" defer></script>
+<script src="/static/listing.js?v=40" defer></script>
 </body>
 </html>

@@ -2691,16 +2691,12 @@ test('the 套图 tab is first, open when a project opens, and holds the whole wo
   assert.equal(h.node('inspectorListing').hidden,true);assert.equal(h.w.document.body.classList.contains('listing-wide'),false);
 });
 
-test('the listing sub-tabs move with the arrow keys like the inspector tabs',async t=>{
+test('the 套图 tab walks its settings as steps: no sub-tab strip, a step indicator and Back / Next',async t=>{
   const h=await setup(t);await h.run("openProject('a')");await tick();
-  const clicked=[];for(const tab of h.w.document.querySelectorAll('[data-listing-tab]'))tab.addEventListener('click',()=>clicked.push(tab.dataset.listingTab));
-  const first=h.node('listingTabProduct');first.focus();
-  first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-  assert.equal(h.w.document.activeElement.id,'listingTabComponents');assert.deepEqual(clicked,['components']);
-  h.w.document.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'End',bubbles:true}));
-  assert.equal(h.w.document.activeElement.id,'listingTabArticulation');
-  h.w.document.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-  assert.equal(h.w.document.activeElement.id,'listingTabProduct','wraps round');
+  const listing=h.node('inspectorListing');
+  assert.equal(listing.querySelector('[data-listing-tab]'),null);assert.equal(listing.querySelector('.listing-tabs'),null);
+  for(const id of ['listingSteps','listingStepCount','listingStepTitle','listingBack','listingNext','listingSkip','listingEditSteps','listingMain'])assert.ok(listing.querySelector('#'+id),id);
+  assert.equal(listing.querySelector('nav.listing-stepper').getAttribute('aria-label'),'套图步骤');
 });
 
 test('once the model is analysed the topbar leads to the listing set, and the export tab names its own white-background pictures',async t=>{

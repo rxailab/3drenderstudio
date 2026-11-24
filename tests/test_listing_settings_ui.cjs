@@ -1,5 +1,5 @@
 // The listing workspace's settings (static/listing.js) against a stand-in server: the mounting control, brands shared
-// between projects, confirmations before removing, the AI cost line, the sub-tabs and what screen readers hear.
+// between projects, confirmations before removing, the AI cost line, the step indicator and what screen readers hear.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -51,14 +51,18 @@ async function setup(t,initial=state()) {
   w.eval(script);
   h.node=id=>w.document.getElementById(id);
   h.open=async()=>{h.node('listingOpen').click();await settle();};
-  h.tab=async name=>{w.document.querySelector(`[data-listing-tab="${name}"]`).click();await settle();};
+  h.step=()=>w.document.querySelector('#listingSteps [aria-current="step"]')?.dataset.step;
+  h.goto=async id=>{const order=['style','pages','product','brand','build'];
+    for(let i=0;i<8 && h.step()!==id;i++){h.node(order.indexOf(id)<order.indexOf(h.step())?'listingBack':'listingNext').click();await settle();}
+    assert.equal(h.step(),id);};
   h.change=(node,value)=>{if(value!==undefined){if(node.type==='checkbox' || node.type==='radio')node.checked=value;else node.value=value;}node.dispatchEvent(new w.Event('change',{bubbles:true}));};
   h.click=async selector=>{h.node('listingPanel').querySelector(selector).click();await settle();};
   return h;
 }
 
 test('the scene settings show how the product is installed, why, and the three-way override that remakes the scenes',async t=>{
-  const h=await setup(t);await h.open();await h.tab('usecase');
+  const h=await setup(t);await h.open();await h.goto('brand');
+  assert.equal(h.node('listingPanel').querySelector('[data-sum="mounting"]').textContent,'自动（壁挂）');
   const box=h.node('listingPanel').querySelector('.listing-mounting');
   assert.equal(box.querySelector('legend').textContent,'安装方式');
   assert.equal(h.node('listingMountingReason').textContent,'判断为壁挂：名称含 Wall-Mounted');
@@ -74,27 +78,34 @@ test('the scene settings show how the product is installed, why, and the three-w
   assert.match(h.toasts.at(-1)[0],/重新生成场景图/);
 });
 
-test('the earlier scene pictures are shown only on the scene sub-tab',async t=>{
+test('the earlier scene pictures are shown only on the 品牌与场景 step',async t=>{
   const h=await setup(t);await h.open();
   const history=h.node('sceneHistory');history.dataset.count='2';h.w.listingSyncSceneHistory();
-  assert.equal(history.hidden,true,'not on the product tab');
-  await h.tab('usecase');assert.equal(history.hidden,false);
-  await h.tab('brand');assert.equal(history.hidden,true);
-  history.dataset.count='0';await h.tab('usecase');assert.equal(history.hidden,true,'nothing to show');
+  assert.equal(history.hidden,true,'not on the first step');
+  await h.goto('brand');assert.equal(history.hidden,false);
+  await h.goto('build');assert.equal(history.hidden,true);
+  history.dataset.count='0';await h.goto('brand');assert.equal(history.hidden,true,'nothing to show');
 });
 
-test('the sub-tabs control the one panel, which is labelled by the selected tab, and only it is in the tab order',async t=>{
+test('the step indicator replaces the old sub-tab strip: a progress line, step dots and one step on screen',async t=>{
   const h=await setup(t);await h.open();
-  const tabs=[...h.w.document.querySelectorAll('[data-listing-tab]')];
-  for(const tab of tabs){assert.equal(tab.getAttribute('aria-controls'),'listingPanel');assert.ok(tab.id);}
-  assert.equal(h.node('listingPanel').getAttribute('aria-labelledby'),'listingTabProduct');
-  await h.tab('brand');
-  assert.equal(h.node('listingPanel').getAttribute('aria-labelledby'),'listingTabBrand');
-  assert.deepEqual(tabs.map(tab=>tab.tabIndex),[-1,-1,0,-1,-1]);
+  const listing=h.node('inspectorListing');
+  assert.equal(listing.querySelector('[data-listing-tab]'),null);assert.equal(listing.querySelector('[role="tablist"]'),null,'no tabs inside the tab');
+  assert.equal(h.node('listingPanel').getAttribute('role'),null);
+  assert.equal(listing.querySelector('nav.listing-stepper').getAttribute('aria-label'),'套图步骤');
+  const dots=()=>[...h.node('listingSteps').querySelectorAll('button')];
+  assert.deepEqual(dots().map(node=>node.getAttribute('aria-label')),['第 1 步：选风格（当前）','第 2 步：选图片（还没到）','第 3 步：填产品（还没到）','第 4 步：品牌与场景（还没到）','第 5 步：生成（还没到）']);
+  await h.goto('product');
+  assert.equal(h.node('listingStepCount').textContent,'3 / 5 · 填产品');
+  assert.deepEqual(dots().map(node=>node.getAttribute('aria-current')),[null,null,'step',null,null]);
+  assert.deepEqual(dots().map(node=>node.disabled),[false,false,false,true,true]);
+  assert.equal(h.node('listingNext').textContent,'下一步');
+  await h.goto('brand');assert.equal(h.node('listingNext').textContent,'下一步：核对并生成');
+  assert.equal(h.node('listingPanel').querySelector('.listing-cards'),null,'only the step on screen is drawn');
 });
 
 test('the brand can be copied from another project after a confirmation, and set as the default for new projects',async t=>{
-  const h=await setup(t);await h.open();await h.tab('brand');
+  const h=await setup(t);await h.open();await h.goto('brand');
   const share=h.node('listingShare');
   assert.match(share.textContent,/新项目沿用最近保存的品牌「NORTHFORGE」（来自「Tool Chest」）/);
   const select=h.node('listingBrandSource');
@@ -119,7 +130,7 @@ test('the brand can be copied from another project after a confirmation, and set
 });
 
 test('removing the logo asks first',async t=>{
-  const h=await setup(t);await h.open();await h.tab('brand');
+  const h=await setup(t);await h.open();await h.goto('brand');
   h.answer='cancel';await h.click('[data-action="logo-remove"]');
   assert.equal(h.calls.some(call=>call.method==='DELETE'),false);
   assert.equal(h.asked.at(-1).title,'移除品牌标志？');assert.deepEqual(plain(h.asked.at(-1).actions),['取消','移除标志']);

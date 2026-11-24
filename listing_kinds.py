@@ -58,7 +58,7 @@ def pointed(product):
     return [index for index, feature in enumerate(product['features']) if index not in have and feature.get('point')]
 
 
-NO_FEATURES = '没有填写卖点。请在「产品信息」里写下卖点（或粘贴产品介绍后点「提取到各栏」），这一页才会生成'
+NO_FEATURES = '没有填写卖点。请在「填产品」步骤里写下卖点（或粘贴产品介绍后点「提取到各栏」），这一页才会生成'
 
 
 def requirements(product, parts, size_known, scene_supply, poses=0):
@@ -75,7 +75,7 @@ def requirements(product, parts, size_known, scene_supply, poses=0):
            'T02': '模型是一个整体，没有可单独特写的部件' if single else '卖点没有选择对应的部件',
            'T04': '需要场景图（开启 AI 场景或工件图），以及规格、大数字指标或真实尺寸' if not figures else '需要场景图：请开启 AI 场景图或工件使用图',
            'T08': '需要至少 2 张场景图：请开启 AI 场景图（2 张以上）或工件使用图', 'T06': '没有填写真实尺寸', 'T05': '还没有处理完成的组件',
-           'T13': '没有识别出可以展示的活动部件（需要至少 2 个姿态；可在「活动部件」里查看或重新识别）', **BLOCKED}
+           'T13': '没有识别出可以展示的活动部件（需要至少 2 个姿态；可在「填产品」步骤的「活动部件」里查看或重新识别）', **BLOCKED}
     if not any(str(row.get('title') or '').strip() for row in product['features']):
         # Nothing the seller wrote to print: the pages that print selling points wait for them; none is made up.
         why.update(T01=NO_FEATURES, T02=NO_FEATURES, T03=NO_FEATURES)
