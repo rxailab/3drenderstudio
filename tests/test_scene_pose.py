@@ -1,5 +1,6 @@
 """The product's pose in a generated scene: candidates, the vision model's choice and every way back to the plan's own pose."""
 import math
+import shutil
 import sys
 import tempfile
 import unittest
@@ -191,7 +192,7 @@ class DecideTests(unittest.TestCase):
         self.assertIn('poses that would balance it on a tip, an edge, its jaws or a handle end are not shown', facts['cells_are'])
         self.assertEqual(pose['candidate'], 'upside_down@0')
         self.assertEqual(pose['refused'], [ident for ident, _, _, _ in PLIERS[4:]])
-        with Image.open(self.data / 'p1' / 'scene_ai' / 'poses' / next((self.data / 'p1' / 'scene_ai' / 'poses').iterdir()).name / 'sheet.png') as sheet:
+        with Image.open(next(next((self.data / 'p1' / 'scene_ai' / 'poses').iterdir()).glob('sheet-*.png'))) as sheet:
             self.assertEqual(sheet.size[1], scene_pose.SIZE + 20)               # one row of four cells
         # Held, every way up is still offered: a hand holds it in the air.
         self.answers = ['K', 'A']; self.asked = []
@@ -256,3 +257,27 @@ class AnchorRoomTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SharedCacheTests(unittest.TestCase):
+    def test_two_scenes_asking_for_the_same_poses_at_once_render_them_once(self):
+        # A listing's scenes are made at once and often ask for the same pose renders: one renders, the other reuses.
+        import threading, time
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        calls = []
+        def picture(project, plan, poses, target, stop, **kwargs):
+            calls.append(target); time.sleep(.2); target.mkdir(parents=True, exist_ok=True)
+            rows = []
+            for ident, label, rotation in poses:
+                path = target / (ident + '.png'); Image.new('RGB', (4, 4)).save(path)
+                rows.append({'id': ident, 'label': label, 'rotation': rotation, 'path': path})
+            return rows
+        poses = [('as_is@0', 'a', [0, 0, 0]), ('as_is@90', 'b', [0, 0, 90])]
+        results = []
+        with patch.object(scene_pose.orientation, 'picture', side_effect=picture):
+            threads = [threading.Thread(target=lambda: results.append(scene_pose._pictured({'model_path': 'm.glb'}, {}, poses, (35, 20), False,
+                                                                                           folder, lambda: False))) for _ in range(2)]
+            for thread in threads: thread.start()
+            for thread in threads: thread.join()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([[row['id'] for row in rows] for rows in results], [['as_is@0', 'as_is@90']] * 2)

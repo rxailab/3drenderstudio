@@ -111,6 +111,8 @@ def tree(top):
 source_files=[f for f in sorted(ROOT.glob('*.py')) if f.name not in EXCLUDED_ROOT_SCRIPTS]
 # Markdown docs, and the verification records the update notes refer to.
 source_files += sorted(ROOT.glob('*.md'))+sorted(ROOT.glob('*_VERIFICATION*.json'))
+# The change reports and their verification records moved to docs/history/.
+source_files += sorted((ROOT/'docs'/'history').glob('*.md'))+sorted((ROOT/'docs'/'history').glob('*.json'))
 source_files += [ROOT/name for name in ['requirements.txt','.env.example','start.ps1','启动应用.cmd','acceptance_results.json']]
 for folder in ['blender','c4d','static','tests','samples','references']:source_files += tree(folder)
 source_files += sorted((ROOT/'scripts').glob('*.py'))

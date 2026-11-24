@@ -10,6 +10,7 @@ import threading
 import time
 from pathlib import Path
 
+import blender_runner
 import engine
 import planner
 import project_lifecycle
@@ -267,9 +268,9 @@ def _execute(ident):
         atomic_json(folder/'request.json',request)
         command=[engine.blender_path(),'-b','--factory-startup','--disable-autoexec','-t','2','--python-exit-code','1',
                  '--python',str(ROOT/'blender/export_viewport.py'),'--',str(folder/'request.json')]
-        with (folder/'export.log').open('w',encoding='utf-8') as log:
-            process=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,cwd=str(ROOT),
-                                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        # A viewport export only writes a GLB: the light lane, so the live preview never waits behind a render.
+        with (folder/'export.log').open('w',encoding='utf-8') as log,blender_runner.launched(
+                command,ident=ident,lane=blender_runner.LIGHT,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT) as process:
             PROCESSES[ident]=process
             try:code=process.wait(timeout=TIMEOUT)
             except subprocess.TimeoutExpired:

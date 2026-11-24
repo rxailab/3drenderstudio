@@ -18,8 +18,11 @@ import engine
 from material_edit import ensure_idle
 from planner import validate
 from studio_store import DATA, LOCK, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 KIND = 'material_task'
+log = app_log.get('material_agent')
 ACTIVE = {'queued', 'running', 'rendering'}
 RUNNING_TASKS = set()
 LICENSE_URL = 'https://polyhaven.com/license'
@@ -308,6 +311,7 @@ def _run_task(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('material task %s failed',task_id)
         with LOCK:
             task=get(KIND,task_id)
             if task['status']!='cancelled':
@@ -360,7 +364,9 @@ def submit(project_id, body):
         _snapshot(project,source)
         task={'id':uuid.uuid4().hex,'project_id':project_id,'status':'queued','stage':'等待材质代理执行','error':None,'source':source,'points':copy.deepcopy(points),'prompt':prompt.strip(),'use_base_color':body.get('use_base_color',False),'request_hash':request_hash,'base_plan_hash':_hash(project['plan']),'created_at':time.time(),'downloaded_files':{}}
         put(KIND,task)
-        threading.Thread(target=_run,args=(task['id'],),daemon=True,name='material-'+task['id'][:8]).start()
+        import ai_client
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'],_run,'material-'+task['id'][:8],kind=KIND,fields={'stage':'材质任务未完成'}, wrap=lambda: ai_client.for_project(project_id))
         return task
 
 
@@ -517,12 +523,17 @@ def _restore_baseline(task, project, job, reason):
             if (DATA/project['id']).resolve() not in path.parents: return False
             try: engine.verify_image(path,fmt)
             except Exception: return False
-        blend=(DATA/output.get('blend_url','')[7:]).resolve()
-        if (DATA/project['id']).resolve() not in blend.parents or not blend.is_file(): return False
+        # The scene is optional: the pictures and the plan are what is restored. A scene that escapes the project still
+        # refuses the restore; one that is gone (never saved for this render) restores the output without a scene.
+        url=output.get('blend_url')
+        if url is not None:
+            blend=(DATA/url[7:]).resolve() if isinstance(url,str) and url.startswith('/files/') else None
+            if blend is None or (DATA/project['id']).resolve() not in blend.parents: return False
     project.setdefault('history',[]).append({'version':project['version'],'plan':copy.deepcopy(project['plan']),'at':time.time(),'reason':reason})
     project['plan']=copy.deepcopy(task['baseline_plan']);project['version']+=1
     for output in baseline:
         restored=copy.deepcopy(output);restored['version']=project['version'];restored['adopted_from_version']=output['version']
+        if restored.get('blend_url') and not (DATA/restored['blend_url'][7:]).is_file():restored.update(blend_url=None,blend_sha256=None)
         restored['automatic_material_restored_from']=task['id'];project['outputs'].append(restored)
     put('project',project)
     task.update(decision='reverted',restored_version=project['version'],stage=reason);put(KIND,task)
@@ -591,7 +602,9 @@ def schedule_after_preview(project_id, completed_job_id):
             'chain':chain,'render_shot_ids':chain['shot_ids'],'baseline_plan':copy.deepcopy(project['plan']),'baseline_outputs':records}
         put(KIND,task)
         _set_auto_state(project,chain,'queued',task['stage'],task_id=task['id'])
-        threading.Thread(target=_run,args=(task['id'],),daemon=True,name='automatic-material-'+task['id'][:8]).start()
+        import ai_client
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'],_run,'automatic-material-'+task['id'][:8],kind=KIND,fields={'stage':'自动材质优化未应用，已保留现有材质'},after=_publish_auto, wrap=lambda: ai_client.for_project(task['project_id']))
 
 
 def finish_failed_preview(project_id, job_id):

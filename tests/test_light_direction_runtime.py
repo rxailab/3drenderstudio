@@ -113,7 +113,7 @@ class LightDirectionBlenderTests(unittest.TestCase):
             mocked=patch.object(module,'DATA',self.data);mocked.start();self.addCleanup(mocked.stop)
         mocked=patch.object(engine,'ROOT',self.runtime);mocked.start();self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.plan=planner.default_plan()
         self.plan['shots'][0].update(azimuth=0,elevation=math.degrees(math.atan2(2,6)))
         store.put('project',{'id':'p','version':1,'name':'Fixture','model_path':'synthetic fixture','plan':self.plan,'outputs':[],
@@ -241,12 +241,12 @@ class LightDirectionBlenderTests(unittest.TestCase):
 
     def test_inspection_source_change_is_a_hard_stale_error(self):
         result,request,out=self.execute();record=engine.output_record(self.job,request['shot'],out,result)
-        original=engine.subprocess.run
+        original=engine.blender_runner.run
         def changed(*args,**kwargs):
             value=original(*args,**kwargs)
             with (out/'product.blend').open('ab') as stream:stream.write(b'changed-after-inspection')
             return value
-        with patch.object(engine.subprocess,'run',side_effect=changed),self.assertRaises(engine.LightingInspectionStale):
+        with patch.object(engine.blender_runner,'run',side_effect=changed),self.assertRaises(engine.LightingInspectionStale):
             engine.inspect_lighting(store.get('project','p'),record)
 
 

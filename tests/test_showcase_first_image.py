@@ -170,7 +170,7 @@ class PassFixture(unittest.TestCase):
             mocked = patch.object(engine, name, value); mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.object(engine, 'require_runtime'); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         plan = planner.default_plan(); plan.update(visual_review=False, look='showcase', auto_polish=True)
         store.put('project', {'id': 'fixture', 'slug': 'fixture', 'name': 'Fixture', 'model_path': str(self.data / 'fixture/cabinet.obj'),
                               'version': 1, 'history': [], 'status': 'analyzing', 'analysis': None, 'plan': plan, 'outputs': [],
@@ -376,7 +376,7 @@ class ShowcaseSceneRuntimeTests(unittest.TestCase):
         patches = [patch.object(module, 'DATA', data) for module in (store, engine)]
         for item in patches: item.start(); cls.addClassCleanup(item.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         plan = planner.default_plan(); plan.update(visual_review=False, look='showcase')
         job = {'id': 'job', 'project_id': 'p', 'status': 'running', 'plan': plan, 'version': 1, 'quality': 'preview'}
         store.put('job', job); store.put('project', {'id': 'p', 'version': 1, 'plan': plan, 'outputs': [], 'analysis': None, 'model_path': str(obj)})

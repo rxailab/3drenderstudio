@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import blender_runner
 import engine
 import target_evidence
 from studio_store import ROOT, atomic_json
@@ -267,9 +268,8 @@ def _prepare(data_root, project, output, seeds=None):
                '--python-exit-code', '1', '--python', str(script), '--', str(request_path)]
     try:
         with (folder / 'inspect.log').open('w', encoding='utf-8') as log:
-            result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=INSPECTION_TIMEOUT, cwd=str(ROOT),
-                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            result = blender_runner.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                        timeout=INSPECTION_TIMEOUT)
     except (subprocess.TimeoutExpired, OSError) as exc:
         raise InspectionUnavailable('部件检查未完成，请保留当前要求并重试；也可以点选示例部位帮助识别。') from exc
     if result.returncode or not result_path.is_file() or result_path.stat().st_size > MAX_RESULT_BYTES:

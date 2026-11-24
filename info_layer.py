@@ -473,7 +473,7 @@ def _valid_probe(result):
 
 def probe(project_id, output):
     """The saved scene of this image, cell by cell. Cached per scene file. None when it cannot be read."""
-    import engine
+    import blender_runner, engine
     blend = _project_file(project_id, output.get('blend_url'), ('.blend',))
     executable = engine.blender_path()
     if blend is None or not executable or not PROBE_SCRIPT.is_file():
@@ -494,8 +494,7 @@ def probe(project_id, output):
                    '--python', str(PROBE_SCRIPT), '--', str(folder / 'request.json')]
         try:
             with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-                ran = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=PROBE_TIMEOUT,
-                                     cwd=str(ROOT), creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                ran = blender_runner.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=PROBE_TIMEOUT)
         except (subprocess.TimeoutExpired, OSError):
             return None
         try:

@@ -13,7 +13,7 @@ class PreviewReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.old_data=store.DATA;self.old_engine=engine.DATA;store.DATA=self.root;engine.DATA=self.root
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
 
     def tearDown(self):
         store.DATA=self.old_data;engine.DATA=self.old_engine;self.tmp.cleanup()
@@ -68,7 +68,7 @@ class PreviewReviewTests(unittest.TestCase):
     def test_pick_rejects_out_of_bounds_before_running_blender(self):
         job,original=self.fixtures()
         body={'output_id':'j','shot_id':'hero','quality':'preview','version':1,'points':[{'id':'a','x':float('nan'),'y':.5}]}
-        with patch('engine.subprocess.run') as process:
+        with patch('blender_runner.run') as process:
             with self.assertRaises(ValueError):engine.pick_output('p',body)
             process.assert_not_called()
 

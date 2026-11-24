@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from flask import Flask,request,jsonify,send_from_directory,send_file,abort,g
 from werkzeug.exceptions import HTTPException
 from studio_store import ROOT,DATA,LOCK,get,put,all_records,atomic_json
+import app_log
 
 env=ROOT/'.env'
 if env.exists():
@@ -37,7 +38,8 @@ def error(exc):
     if isinstance(exc,HTTPException): return jsonify(error=exc.description),exc.code
     if isinstance(exc,KeyError): return jsonify(error='记录不存在'),404
     if isinstance(exc,(ValueError,TypeError)): return jsonify(error=str(exc)),400
-    app.logger.exception('request failed')
+    # Only the method and path: the headers (Authorization) and the body are never logged; app_log scrubs key-like text.
+    app_log.get('http').exception('%s %s failed',request.method,request.path)
     return jsonify(error=str(exc)),500
 
 @app.before_request
@@ -155,10 +157,29 @@ def projects():
         known=active.get(job.get('project_id'))
         if known is None or (known['status']=='queued' and job['status']=='running'):
             active[job.get('project_id')]={key:job.get(key) for key in ('id','kind','quality','status','progress','origin')}
+    if request.args.get('fields')=='summary':
+        # The home poll needs only what the cards and the sidebar draw; full records ran to megabytes.
+        return conditional(jsonify([{**project_summary(item),'active_job':active.get(item.get('id'))} for item in all_records('project')]))
     return jsonify([{**public_project(item),'active_job':active.get(item.get('id'))} for item in all_records('project')])
 
+def project_summary(project):
+    """A library card: the image to show, the status line and the counts, nothing the card does not read."""
+    initial=project.get('initial_preview')
+    return {'id':project.get('id'),'name':project.get('name'),'status':project.get('status'),'version':project.get('version'),
+            'created_at':project.get('created_at'),'analyzed':bool(project.get('analysis')),
+            'initial_preview':{'status':initial.get('status')} if isinstance(initial,dict) else None,
+            'shot_count':len(((project.get('plan') or {}).get('shots')) or []),
+            # Every output stays (the sidebar counts thumbnails too), each cut to what picks and draws the card image.
+            'outputs':[{key:output.get(key) for key in ('shot_id','quality','jpg_url','png_url')} for output in project.get('outputs') or []]}
+
+def conditional(response):
+    """An ETag over the exact body: a poll that sends it back gets an empty 304 while nothing changed."""
+    response.headers['Cache-Control']='no-cache'
+    response.add_etag()
+    return response.make_conditional(request)
+
 @app.get('/api/projects/<ident>')
-def project(ident): return jsonify(engine.project_view(ident))
+def project(ident): return conditional(jsonify(engine.project_view(ident)))
 
 @app.delete('/api/projects/<ident>')
 def project_delete(ident):
@@ -246,7 +267,13 @@ def create_project(base,name='',metadata=None,platform=None):
         plan.update(ecommerce_platforms.plan_recommendation(preset,plan,new_project=True));validate(plan)
         p['ecommerce']={'platform':preset['id']}
     with LOCK:
-        put('project',p);engine.submit(ident,'analyze');return engine.project_view(ident)
+        put('project',p)
+        try:
+            import listing
+            listing.adopt_shared_brand(ident)          # a new project starts with the account's default (else last saved) brand
+        except Exception:
+            pass                                       # a brand that cannot be copied never stops an upload
+        engine.submit(ident,'analyze');return engine.project_view(ident)
 
 def _component_uploads():
     """The components sent with a new project: [(file, fields)], checked before anything is saved."""
@@ -626,6 +653,35 @@ def listing_brand(ident):
     import listing
     return jsonify(listing.save_brand(ident,request.get_json(force=True)))
 
+@app.get('/api/projects/<ident>/listing/brands')
+def listing_brand_sources(ident):
+    """The brands this project can take: other projects' saved brands, the account's default and last one."""
+    import listing
+    get('project',ident)
+    return jsonify(listing.brand_sources(ident))
+
+@app.post('/api/projects/<ident>/listing/brand/copy')
+def listing_brand_copy(ident):
+    import listing
+    body=request.get_json(force=True)
+    if not isinstance(body,dict): raise ValueError('请选择要复制的品牌')
+    return jsonify(listing.copy_brand(ident,body.get('source')))
+
+@app.post('/api/projects/<ident>/listing/brand/default')
+def listing_brand_default(ident):
+    """This project's saved brand becomes the one new projects start with ({clear:true}: they take the last one saved again)."""
+    import listing
+    body=request.get_json(silent=True) or {}
+    return jsonify(listing.set_default_brand(ident,clear=isinstance(body,dict) and body.get('clear') is True))
+
+@app.put('/api/projects/<ident>/listing/mounting')
+def listing_mounting(ident):
+    """How the product is installed: '' (decided from its name and parts), 'wall' or 'free'. A change remakes the scenes."""
+    import listing
+    body=request.get_json(force=True)
+    if not isinstance(body,dict): raise ValueError('安装方式格式无效')
+    return jsonify(listing.save_mounting(ident,body.get('mounting')))
+
 @app.route('/api/projects/<ident>/listing/logo',methods=['POST','DELETE'])
 def listing_logo(ident):
     import listing
@@ -650,6 +706,15 @@ def listing_extract(ident):
 def listing_build(ident):
     import listing
     try:return jsonify(listing.submit(ident,request.get_json(silent=True) or {})),202
+    except engine.JobConflictError as exc:abort(409,description=str(exc))
+
+@app.post('/api/projects/<ident>/listing/scenes/<int:index>/redraw')
+def listing_scene_redraw(ident,index):
+    """Make one scene picture again: it leaves the kept set and a build starts, which makes only that one (the others are kept)."""
+    import listing
+    body=request.get_json(silent=True) or {}
+    if not isinstance(body,dict):raise ValueError('请求内容无效')
+    try:return jsonify(listing.redraw_scene(ident,index,body.get('url') if isinstance(body.get('url'),str) else None)),202
     except engine.JobConflictError as exc:abort(409,description=str(exc))
 
 @app.post('/api/projects/<ident>/listing/<task_id>/cancel')
@@ -1035,6 +1100,7 @@ def example_import(ident):
     return jsonify(create_project(base,entry['name'],{'license':entry.get('license'),'example_id':ident})),201
 
 if __name__=='__main__':
+    app_log.configure()     # first: it also creates the data folder the instance lock below lives in
     # A second launch must not mark a currently running renderer as interrupted.
     instance_lock=(DATA/'studio.lock').open('a+b')
     instance_lock.seek(0,2)

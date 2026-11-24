@@ -11,6 +11,7 @@ A page prints only numbers the user entered or that were measured on the model.
 """
 import concurrent.futures
 import copy
+import functools
 import hashlib
 import io
 import math
@@ -26,6 +27,9 @@ from pathlib import Path
 
 from studio_store import DATA, LOCK, get, put, all_records
 
+import app_log
+import tasks
+
 import articulation
 import brand_kit
 import brandkit_assets
@@ -35,6 +39,7 @@ import brandkit_set
 import components
 
 KIND = 'listing_task'
+log = app_log.get('listing')
 MAX_FEATURES = 8
 MAX_SPECS = 10
 MAX_FIGURES = 3
@@ -322,10 +327,10 @@ def _scene_record(row):
                    'captions': row.get('captions') or {}, 'usage': row.get('usage'), 'attempts': row.get('attempts'),
                    # what the next build needs to know before it makes a failed scene again: whether it already had its
                    # extra try and how it was made (without these every rebuild paid for the failed scenes once more)
-                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'people': row.get('people'),
+                   'usage_retry': row.get('usage_retry'), 'placed': row.get('placed'), 'restored': row.get('restored'), 'people': row.get('people'),
                    'check_issues': row.get('check_issues') or [], 'check_flags': row.get('check_flags') or [],
             # a check that could not run (quota, timeout) is run again on this picture at the next build
-            'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck')}
+            'check_error': bool(row.get('check_error')), 'recheck': row.get('recheck'), 'slot': row.get('slot')}
 
 
 def _update(project_id, change):
@@ -346,11 +351,329 @@ def save_product(project_id, body):
     return state(project_id)
 
 
-def save_brand(project_id, body):
+def save_brand(project_id, body, remember=True):
+    """Save the project's brand. ``remember`` also keeps it as the account's last brand, which new projects start from."""
+    saved = {}
+
     def change(project, listing):
-        listing['brand'] = brand_kit.validate(body, listing.get('brand') if isinstance(listing.get('brand'), dict) else None)
+        listing['brand'] = saved['record'] = brand_kit.validate(body, listing.get('brand') if isinstance(listing.get('brand'), dict) else None)
+        saved['project'] = project
     _update(project_id, change)
+    if remember:
+        _remember_brand('last', saved['project'], saved['record'])
     return state(project_id)
+
+
+# ---- the brand shared between projects ----
+# A brand is kept on each project; the account keeps two more in data/brand_shared.json: the last one saved anywhere,
+# and the one the seller set as default. A new project starts from the default, else from the last one. A logo lives in
+# a project's own folder (components.path_of serves only a project's own files), so the shared copy keeps the file in
+# data/brand_logos/ and every project that takes the brand gets its own copy.
+BRAND_SHARED = 'brand_shared.json'
+BRAND_LOGOS = 'brand_logos'
+LOGO_NAME = re.compile(r'^[0-9a-f]{16}\.png$')
+
+
+def _read_shared():
+    try:
+        data = json.loads((DATA / BRAND_SHARED).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_shared(change):
+    from studio_store import atomic_json
+    with LOCK:
+        data = _read_shared(); change(data)
+        atomic_json(DATA / BRAND_SHARED, data)
+
+
+def shared_brands():
+    """{'last': entry or None, 'default': entry or None}; an entry is {'record', 'logo_file', 'project_id', 'project_name', 'at'}."""
+    data = _read_shared(); out = {}
+    for slot in ('last', 'default'):
+        entry = data.get(slot)
+        try:
+            entry = ({**entry, 'record': brand_kit.validate({**entry['record'], 'logo': None})}
+                     if isinstance(entry, dict) and isinstance(entry.get('record'), dict) else None)
+        except ValueError:
+            entry = None
+        if entry and not (isinstance(entry.get('logo_file'), str) and LOGO_NAME.match(entry['logo_file'])):
+            entry['logo_file'] = None
+        out[slot] = entry
+    return out
+
+
+def _logo_bytes(project_id, logo_url):
+    path = components.path_of(project_id, logo_url)
+    try:
+        return path.read_bytes() if path else None
+    except OSError:
+        return None
+
+
+def _write_once(target, data):
+    if not target.is_file():
+        temp = target.with_name(target.name + '.tmp'); temp.write_bytes(data); temp.replace(target)
+
+
+def _remember_brand(slot, project, record):
+    """Keep ``record`` (a project's validated brand) as the account's ``slot`` brand, its logo copied out of the project."""
+    logo_file = None
+    data = _logo_bytes(project['id'], record.get('logo')) if record.get('logo') else None
+    if data:
+        folder = DATA / BRAND_LOGOS; folder.mkdir(parents=True, exist_ok=True)
+        logo_file = hashlib.sha256(data).hexdigest()[:16] + '.png'
+        _write_once(folder / logo_file, data)
+    entry = {'record': {**record, 'logo': None}, 'logo_file': logo_file, 'project_id': project['id'],
+             'project_name': str(project.get('name') or '')[:100], 'at': time.time()}
+    _write_shared(lambda data: data.__setitem__(slot, entry))
+
+
+def _own_logo(project_id, data):
+    """A logo picture copied into the project's own brand folder: its /files/ address."""
+    folder = DATA / project_id / 'listing' / 'brand'; folder.mkdir(parents=True, exist_ok=True)
+    target = folder / ('logo-%s.png' % hashlib.sha256(data).hexdigest()[:12])
+    _write_once(target, data)
+    return components.url(target)
+
+
+def _entry_brand(project_id, entry):
+    """The brand record of a shared entry for ``project_id``, its logo copied in."""
+    record = dict(entry['record']); record['logo'] = None
+    if entry.get('logo_file'):
+        try:
+            record['logo'] = _own_logo(project_id, (DATA / BRAND_LOGOS / entry['logo_file']).read_bytes())
+        except OSError:
+            pass
+    return brand_kit.validate(record)
+
+
+def adopt_shared_brand(project_id):
+    """A new project starts with the default brand, else the last one saved. Returns True when one was given."""
+    shared = shared_brands(); entry = shared['default'] or shared['last']
+    if not entry:
+        return False
+    record = _entry_brand(project_id, entry)
+
+    def change(project, listing):
+        if not isinstance(listing.get('brand'), dict):
+            listing['brand'] = record
+    _update(project_id, change)
+    return True
+
+
+def _entry_public(entry):
+    if not entry:
+        return None
+    record = entry['record']
+    return {'project_id': entry.get('project_id'), 'project_name': entry.get('project_name', ''), 'at': entry.get('at'),
+            'name': record.get('name', ''), 'preset': record.get('preset'), 'accent': record.get('accent'), 'logo': bool(entry.get('logo_file'))}
+
+
+def brand_sources(project_id):
+    """What the brand panel offers to copy: the other projects with a saved brand, and the account's default and last brand."""
+    rows = []
+    for project in all_records('project'):
+        listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
+        if project.get('id') == project_id or not isinstance(listing.get('brand'), dict):
+            continue
+        try:
+            record = brand_kit.validate(listing['brand'])
+        except ValueError:
+            continue
+        rows.append({'id': project['id'], 'project_name': str(project.get('name') or '')[:100], 'name': record['name'], 'preset': record['preset'],
+                     'accent': record['accent'], 'logo': bool(record['logo']), 'at': project.get('updated_at')})
+    rows.sort(key=lambda row: row.get('at') or 0, reverse=True)
+    shared = shared_brands()
+    return {'projects': rows[:60], 'default': _entry_public(shared['default']), 'last': _entry_public(shared['last'])}
+
+
+def copy_brand(project_id, source):
+    """Take another project's brand (``source``: its id), or the account's 'default' / 'last' one, with its logo copied in."""
+    if source in ('default', 'last'):
+        entry = shared_brands()[source]
+        if not entry:
+            raise ValueError('还没有设置默认品牌' if source == 'default' else '还没有保存过品牌')
+        record = _entry_brand(project_id, entry)
+    else:
+        if not isinstance(source, str) or not re.fullmatch(r'[0-9A-Za-z_-]{1,64}', source) or source == project_id:
+            raise ValueError('请选择另一个项目')
+        try:
+            other = get('project', source)
+        except KeyError:
+            raise ValueError('那个项目已不存在') from None
+        listing = other.get('listing') if isinstance(other.get('listing'), dict) else {}
+        if not isinstance(listing.get('brand'), dict):
+            raise ValueError('那个项目还没有保存品牌')
+        record = brand_kit.validate(listing['brand'])
+        data = _logo_bytes(source, record.get('logo')) if record.get('logo') else None
+        record = {**record, 'logo': _own_logo(project_id, data) if data else None}
+    return save_brand(project_id, record)
+
+
+def set_default_brand(project_id, clear=False):
+    """Make this project's saved brand the one every new project starts with (``clear``: new projects take the last one again)."""
+    if clear:
+        _write_shared(lambda data: data.pop('default', None))
+    else:
+        project = get('project', project_id)
+        listing = project.get('listing') if isinstance(project.get('listing'), dict) else {}
+        if not isinstance(listing.get('brand'), dict):
+            # a project without a saved brand would make the blank factory brand everyone's default
+            raise ValueError('这个项目还没有保存过品牌设置，先保存品牌再设为默认。')
+        _, record, _ = stored(project)
+        _remember_brand('default', project, record)
+    return brand_sources(project_id)
+
+
+# ---- how the product is installed (mounting.py): the seller's word over what was read from its name and parts ----
+MOUNTINGS = {'': '自动', 'wall': '壁挂', 'free': '落地·台面'}
+
+
+def mounting_view(project, product):
+    import mounting
+    metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    told = str(metadata.get('mounting') or '').strip().lower()
+    setting = 'wall' if told in mounting.KINDS else 'free' if told in ('free', 'none', 'floor', 'bench', 'handheld') else ''
+    hint = ((product.get('scenes') or {}).get('hint') or '') if isinstance(product.get('scenes'), dict) else ''
+    detected, why = mounting.reason({**project, 'metadata': {**metadata, 'mounting': ''}}, hint)
+    return {'setting': setting, 'detected': detected or 'free', 'reason': why, 'used': mounting.of(project, hint) or 'free'}
+
+
+def save_mounting(project_id, value):
+    """metadata['mounting'] = '' (decided from the name and parts), 'wall' or 'free'. It is part of the scene key, so a
+    change makes the scene pictures again at the next build."""
+    if not isinstance(value, str) or value not in MOUNTINGS:
+        raise ValueError('安装方式只能是自动、壁挂或落地·台面')
+    with LOCK:
+        project = get('project', project_id)
+        metadata = dict(project.get('metadata')) if isinstance(project.get('metadata'), dict) else {}
+        if value:
+            metadata['mounting'] = value
+        else:
+            metadata.pop('mounting', None)
+        project['metadata'] = metadata
+        put('project', project)
+    return state(project_id)
+
+
+# ---- what the AI costs: the next build's estimate and what this project has spent ----
+# List prices, US$. An image-model call at 1536 px medium is about $0.075 (README v47) and a scene takes about 1.5
+# calls (a retry after a failed check); a page's vision review is $0.04-0.08. Only an estimate: kept scenes, cached
+# copy and cached reviews cost nothing, and the provider's own bill is the real figure.
+IMAGE_CALL_USD = 0.075
+IMAGE_TRIES = 1.5
+REVIEW_PAGE_USD = (0.04, 0.08)
+# US$ per million tokens (input, output) by model family, for the spend line; a model not listed is counted, not priced.
+PRICES = (('gpt-image', 8.0, 30.0), ('opus', 5.0, 25.0), ('sonnet', 3.0, 15.0), ('haiku', 1.0, 5.0),
+          ('gpt-6', 2.0, 10.0), ('gemini', 0.75, 3.75), ('deepseek', 0.15, 0.6))
+
+
+def estimate(project, product, listing, plan):
+    """The approximate AI cost of the next build: {'new_scenes', 'kept_scenes', 'review_pages', 'usd': [low, high]}."""
+    kinds = {row['kind'] for row in plan if not row.get('skipped')}
+    settings = product.get('scenes') or brandkit_set.default_scenes()
+    new = kept = 0
+    if kinds & {'T12', 'T04', 'T08'} and settings.get('enabled') and brandkit_set.image_model_ready():
+        store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else {}
+        keys = {brandkit_set.scene_key(project, product, settings), brandkit_set.legacy_scene_key(project, product, settings)}
+        if store.get('key') in keys:
+            try:
+                import scene_imagegen
+                retry = scene_imagegen.USAGE_RETRY
+            except Exception:
+                retry = 1
+            # what make_scenes keeps: pictures still on disk, except a failed one that has not had its extra try yet
+            kept = sum(1 for row in store.get('items') or [] if isinstance(row, dict) and Path(row.get('path') or '').is_file()
+                       and not (row.get('check') == 'failed' and (row.get('usage_retry') or 0) < retry))
+        kept = min(kept, settings['count']); new = settings['count'] - kept
+    try:
+        vision = brandkit_review.available()[1]
+    except Exception:
+        vision = False
+    pages = len(kinds) if vision else 0
+    scenes = new * IMAGE_CALL_USD * IMAGE_TRIES
+    return {'new_scenes': new, 'kept_scenes': kept, 'review_pages': pages,
+            'usd': [round(scenes + pages * REVIEW_PAGE_USD[0], 2), round(scenes + pages * REVIEW_PAGE_USD[1], 2)],
+            'basis': {'image_call': IMAGE_CALL_USD, 'tries': IMAGE_TRIES, 'review_page': list(REVIEW_PAGE_USD)}}
+
+
+def _row_cost(row):
+    """US$ of one usage-log line at list price, or None for a model without a known price. A cached answer is free."""
+    if row.get('cached'):
+        return 0.0
+    model = str(row.get('model') or '').lower()
+    price = next(((low, high) for name, low, high in PRICES if name in model), None)
+    if not price:
+        return None
+    usage = row.get('usage') if isinstance(row.get('usage'), dict) else {}
+    number = lambda key: usage.get(key) if type(usage.get(key)) in (int, float) else 0
+    tokens_in = number('input_tokens') or number('prompt_tokens'); tokens_out = number('output_tokens') or number('completion_tokens')
+    # a cache read is billed at a tenth of the input price, a cache write at 1.25 times
+    return (tokens_in * price[0] + number('cache_read_input_tokens') * price[0] * 0.1
+            + number('cache_creation_input_tokens') * price[0] * 1.25 + tokens_out * price[1]) / 1e6
+
+
+_SPEND = {}
+_SPEND_LOCK = threading.Lock()
+
+
+def _scan_usage(path):
+    """{project id: {'usd', 'calls', 'unpriced', 'since'}} of one log file, read on from where the last call stopped
+    (the workspace polls during a build: the 20 MB log is not read again each time)."""
+    try:
+        info = path.stat()
+    except OSError:
+        return {}
+    with _SPEND_LOCK:
+        seen = _SPEND.get(str(path))
+        if not seen or seen['file'] != (info.st_dev, info.st_ino) or info.st_size < seen['offset']:
+            seen = _SPEND[str(path)] = {'file': (info.st_dev, info.st_ino), 'offset': 0, 'totals': {}}
+        if info.st_size > seen['offset']:
+            try:
+                with open(path, 'rb') as handle:
+                    handle.seek(seen['offset']); chunk = handle.read(info.st_size - seen['offset'])
+            except OSError:
+                return seen['totals']
+            end = chunk.rfind(b'\n') + 1              # a line still being written is read next time
+            for line in chunk[:end].splitlines():
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                project_id = row.get('project') if isinstance(row, dict) else None
+                if not isinstance(project_id, str) or not project_id:
+                    continue                           # written before lines carried a project: never attributed
+                total = seen['totals'].setdefault(project_id, {'usd': 0.0, 'calls': 0, 'unpriced': 0, 'since': None})
+                cost = _row_cost(row)
+                total['calls'] += 1
+                if cost is None:
+                    total['unpriced'] += 1
+                else:
+                    total['usd'] += cost
+                stamp = row.get('ts') if type(row.get('ts')) in (int, float) else None
+                if stamp and (total['since'] is None or stamp < total['since']):
+                    total['since'] = stamp
+            seen['offset'] += end
+        return seen['totals']
+
+
+def spend(project_id):
+    """What the usage log says this project spent since its lines carry the project: {'usd', 'calls', 'unpriced', 'since'}."""
+    import ai_client
+    import studio_store
+    folder = Path(ai_client.USAGE_DIR or studio_store.DATA)
+    out = {'usd': 0.0, 'calls': 0, 'unpriced': 0, 'since': None}
+    for name in (ai_client.USAGE_LOG + '.1', ai_client.USAGE_LOG):
+        total = _scan_usage(folder / name).get(project_id)
+        if total:
+            out['usd'] += total['usd']; out['calls'] += total['calls']; out['unpriced'] += total['unpriced']
+            if total['since'] and (out['since'] is None or total['since'] < out['since']):
+                out['since'] = total['since']
+    out['usd'] = round(out['usd'], 3)
+    return out
 
 
 def save_logo(project_id, stream, filename):
@@ -410,6 +733,15 @@ def _own_lines(hint):
     return rows[:MAX_FEATURES]
 
 
+def _project_tagged(function):
+    """Run ``function(project_id, ...)`` with its AI requests tagged with the project, so they count toward its spend."""
+    @functools.wraps(function)
+    def wrapper(project_id, *args, **kwargs):
+        import ai_client
+        return ai_client.in_project(project_id, function, project_id, *args, **kwargs)
+    return wrapper
+
+
 def drafted_features(features, hint, language, product):
     """(features, notes): the drafted selling points the user actually gave. Pliers uploaded with no description were
     printed with "Angled cutting edges" and "Cylinder grip": the drafter made points up from the product name and the
@@ -433,6 +765,7 @@ def drafted_features(features, hint, language, product):
     return clean[:MAX_FEATURES], notes
 
 
+@_project_tagged
 def draft(project_id, body):
     """Write the product record's words from the model's names and the user's notes (by the copy model when one is configured)."""
     import info_layer
@@ -518,6 +851,7 @@ UNIT_MM = {'mm': 1, '毫米': 1, 'cm': 10, '厘米': 10, '公分': 10, 'm': 1000
            '″': 25.4, '英寸': 25.4, 'ft': 304.8, 'feet': 304.8, 'foot': 304.8, '英尺': 304.8}
 
 
+@_project_tagged
 def extract(project_id, body):
     """Sort a pasted product description into the product record by the text model, keeping only what the text says:
     a field with a number the text does not contain is left out. Fields the text fills replace what was there; the
@@ -624,6 +958,216 @@ def extract(project_id, body):
     return state(project_id)
 
 
+# ---- what the results view shows ----
+# A build leaves two kinds of notes: what a seller can read and act on (in Chinese), and what the templates log about
+# their own layout decisions (in English, for whoever tunes them). The workspace shows the first and folds the second
+# away. The recurring English notes a seller can do something about are put into Chinese here, where the notes are
+# read, so sets built before this change read the same way.
+CJK = re.compile(r'[㐀-鿿]')
+NOTE_WORDS = (
+    (re.compile(r'headline too long for \d+ line\(s\)'), '主标题太长，这一页排不下：请把主标题改短。'),
+    (re.compile(r'product top reaches the headline zone'), '主标题太长，挤到了产品上方：请把主标题改短。'),
+    (re.compile(r'more than 4 features: only the first 4'), '卖点超过 4 条，这一页只标出前 4 条。'),
+    (re.compile(r'no collision-free label arrangement'), '卖点太多，标注排不开：请减少卖点或缩短卖点文字。'),
+    (re.compile(r'copy is longer than the label budget'), '有卖点的文字太长，标注里放不下：请把卖点标题或说明改短。'),
+    (re.compile(r'copy over budget|copy over the band budget'), '卖点文字太长，排不下：请把卖点标题或说明改短。'),
+    (re.compile(r'headline is a stock line|^stock copy:'), '这一页的标题是通用句，不是产品资料：填写主标题或卖点后会更有说服力。'),
+    (re.compile(r'^headline: stock phrase replaced by the figures'), '主标题是套话，这一页改用尺寸数字作标题：可以写一句更具体的主标题。'),
+    (re.compile(r'^item (\d+) \(.*\): no picture'), lambda m: '第 %s 个组件没有图片，没有放进清单：请上传它的模型或图片。' % m.group(1)),
+    (re.compile(r'^item (\d+) reuses the picture of'), lambda m: '第 %s 个组件和别的组件用了同一张图：每个组件需要自己的图片。' % m.group(1)),
+    (re.compile(r'^item ?(\d+): held at the [\d.]+x upscale cap'), lambda m: '第 %s 个组件的图片太小，放大到上限仍偏小：请换一张更清晰的图片。' % m.group(1)),
+    (re.compile(r'^item (\d+): picture touches its frame edge'), lambda m: '第 %s 个组件的图片贴着边缘，可能只是局部：请换一张完整的图片。' % m.group(1)),
+    (re.compile(r'more than 8 components'), '组件超过 8 个，清单图只放得下 8 个。'),
+    (re.compile(r'more than 4 variants'), '变体超过 4 个，这一页只放得下 4 个。'),
+    (re.compile(r'^components without approved views \(not drawn\): (.+)$'), lambda m: '这些组件没有可用的视图，没有画出：%s。' % m.group(1)),
+)
+# The names the review and the layout checks use, as a seller reads them.
+VETO_WORDS = {'product_distorted': '产品变形', 'product_cropped': '产品被裁切', 'text_unreadable': '文字看不清', 'text_broken': '文字断开或乱码',
+              'claim_not_in_facts': '文案超出产品资料', 'scene_product_mismatch': '场景里的产品与模型不符', 'wrong_pointer': '引线指错位置'}
+CHECK_WORDS = {'text_overflow': '文字超出文本框', 'out_of_canvas': '内容超出画面', 'overlap': '元素重叠', 'safe_margin': '贴近画面边缘',
+               'text_max_lines': '文字行数过多', 'upscale': '图片放大过度', 'product_distortion': '产品变形',
+               'font_missing': '缺少字体', 'image_loaded': '图片没有载入', 'js_error': '模板脚本出错', 'lang_mismatch': '文字语言不一致',
+               'leader_crosses_text': '引线穿过文字', 'leader_crossing': '引线交叉', 'text_over_product': '文字压在产品上',
+               'leader_over_product': '引线压在产品上', 'scene_product_cropped': '场景里的产品被裁切', 'frame_cuts_part': '特写框切到小部件',
+               'phrase_break': '词组被断行', 'empty_area': '画面留白过多', 'render_error': '排版出错'}
+FLAG_WORDS = {'product_present': '画面里没有产品', 'shape_consistent': '产品外形不符', 'parts_consistent': '部件不符', 'colours_consistent': '颜色不符',
+              'no_added_text': '图像模型加了文字', 'nothing_attached': '产品上多了东西', 'held_correctly': '握持方式不对', 'contact_plausible': '接触不合理',
+              'used_correctly': '用法不对', 'rests_stably': '摆放不稳', 'scale_plausible': '大小比例不合理', 'installed_correctly': '没有正确安装',
+              'surroundings_new': '环境显旧'}
+QUOTA = re.compile(r'HTTP 402|额度已用尽|欠费')
+REFUSED = re.compile(r'HTTP 40[13]|被 AI 服务拒绝|额度或密钥被拒绝')
+# What a refused note was about, for the status line of a build cut short (the first match wins).
+AREAS = (('translation', ('翻译',)), ('copy', ('文案模型',)), ('callouts', ('卖点的位置', '引线')), ('scenes', ('场景图',)),
+         ('review', ('审核', '视觉检查')))
+AREA_WORDS = {'translation': '文字翻译', 'copy': '标题文案', 'callouts': '卖点定位', 'scenes': '场景图', 'review': '视觉审核'}
+LEVELS = ('critical', 'error', 'warn', 'info')
+ERROR_WORDS = ('未通过', '没有生成', '无法生成', '排版失败', '失败', '没有完成', '没能')
+INFO_WORDS = ('沿用', '取自产品', '合成进背景图', '以核对为准', '按视觉审核修改', '已按场景图')
+
+
+def plain_note(note):
+    """A note as the seller reads it: the English layout notes they can act on put into Chinese, the review's and the
+    checks' own names replaced by words. Returns (text, technical); technical notes are the ones still without Chinese."""
+    text = ' '.join(str(note or '').split())
+    if not CJK.search(text):
+        for pattern, said in NOTE_WORDS:
+            match = pattern.search(text)
+            if match:
+                return (said(match) if callable(said) else said), False
+        return text, True
+    return worded(text), False
+
+
+def worded(text):
+    """The review's and the checks' own names (scene_product_mismatch, text_overflow, scene2) replaced by words."""
+    text = str(text or '')
+    for words in (VETO_WORDS, CHECK_WORDS):
+        text = re.sub(r'(?<![A-Za-z_])(%s)(?![A-Za-z_])' % '|'.join(sorted(words, key=len, reverse=True)), lambda m, words=words: words[m.group(1)], text)
+    return re.sub(r'(?<![A-Za-z_])scene(\d+)(?![A-Za-z_\d])', lambda m: '第 %s 张场景图' % m.group(1), text)
+
+
+def note_level(text):
+    """How much a note matters: a refused AI service first, then what failed, then what to look at, then what is fine."""
+    if QUOTA.search(text) or REFUSED.search(text):
+        return 'critical'
+    if any(word in text for word in ERROR_WORDS):
+        return 'error'
+    if any(word in text for word in INFO_WORDS):
+        return 'info'
+    return 'warn'
+
+
+def note_view(notes, skipped=()):
+    """{'seller': [{'text', 'level', 'count'}], 'tech': [{'text', 'count'}]}: every note once, with how often it came, the
+    seller's ordered by how much they matter. ``skipped``: [(page name, reason)] for the pages that are not made; one line
+    per reason names every page it holds back (the build says it too: the same line is not repeated)."""
+    seller = {}; tech = {}; held = {}
+    for name, reason in skipped:
+        names = held.setdefault(str(reason).rstrip('。'), [])
+        if name not in names:
+            names.append(name)
+    for note in notes or []:
+        text, technical = plain_note(note)
+        if not text:
+            continue
+        match = re.match(r'^「([^」]+)」(?:没有生成|暂时无法生成)：(.+?)。?$', text)
+        if match and not technical:
+            names = held.setdefault(match.group(2).rstrip('。'), [])
+            if match.group(1) not in names:
+                names.append(match.group(1))
+            continue
+        bucket = tech if technical else seller
+        bucket[text] = bucket.get(text, 0) + 1
+    if brandkit_set.NO_FEATURES.rstrip('。') in held:
+        # the build's "no selling points" note says what the line for those pages says
+        seller = {text: count for text, count in seller.items() if not text.startswith('没有填写卖点')}
+    for reason, names in held.items():
+        seller['%s暂时无法生成：%s。' % ('、'.join('「%s」' % name for name in names), reason)] = 1
+    rows = [{'text': text, 'level': note_level(text), 'count': count} for text, count in seller.items()]
+    rows.sort(key=lambda row: LEVELS.index(row['level']))          # stable: the build's own order within a level
+    return {'seller': rows, 'tech': [{'text': text, 'count': count} for text, count in tech.items()]}
+
+
+def degraded(listing):
+    """What the last build could not finish because the AI service refused it (the quota ran out, HTTP 402, or the key
+    was refused): {'reason': 'quota' | 'refused', 'affected': [areas], 'words': [their names]}, or None. Read from the
+    notes the build kept, so it holds for sets built before it existed too."""
+    notes = [str(note) for note in listing.get('notes') or []]
+    for page in listing.get('pages') or []:
+        notes += [str(note) for note in page.get('notes') or []]
+    hit = [note for note in notes if QUOTA.search(note) or REFUSED.search(note)]
+    if not hit:
+        return None
+    affected = []
+    for note in hit:
+        area = next((name for name, words in AREAS if any(word in note for word in words)), None)
+        if area and area not in affected:
+            affected.append(area)
+    if any(row.get('check_error') for row in (listing.get('scenes') or {}).get('items') or []) and 'scenes' not in affected:
+        affected.append('scenes')            # a scene whose check could not run stays off the pages until it is checked
+    order = [name for name, _ in AREAS]
+    affected.sort(key=order.index)
+    return {'reason': 'quota' if any(QUOTA.search(note) for note in hit) else 'refused', 'affected': affected,
+            'words': [AREA_WORDS[name] for name in affected]}
+
+
+def scene_public(row, index):
+    """One kept scene as the workspace shows it: whether its product check passed, how the product got into the picture,
+    and whether the product in it is the model's own render (only then is it called locked)."""
+    check = row.get('check') if row.get('check') in ('passed', 'failed') else 'unchecked'
+    if row.get('check_error'):
+        check = 'pending'                    # the check could not run (quota, timeout): it runs at the next build
+    placed = row.get('placed') or ('composite' if row.get('model') == 'composite' else None)
+    return {'index': index, 'url': row.get('url'), 'title': row.get('title'), 'body': row.get('body'), 'role': row.get('role'),
+            'check': check, 'placed': placed, 'restored': row.get('restored') is True,
+            # composite: the render set into a photograph; restored: the render put back over the painted product
+            'locked': placed == 'composite' or row.get('restored') is True, 'usable': brandkit_set.usable_scene(row),
+            'issues': [str(item)[:200] for item in row.get('check_issues') or []][:3],
+            'flags': [FLAG_WORDS.get(name, name) for name in row.get('check_flags') or []][:6]}
+
+
+def page_public(page):
+    """One built page with its notes sorted for the seller and the review's and the checks' names in words."""
+    review = page.get('review') if isinstance(page.get('review'), dict) else None
+    checks = page.get('checks') if isinstance(page.get('checks'), dict) else None
+    out = {**page, 'note_view': note_view(page.get('notes') or []), 'ready': page_status(page)['ready']}
+    if review:
+        # the reviewer writes in the seller's language but names its own checks ("构成scene_product_mismatch"): put into words
+        issues = [{key: worded(value) if key in ('region', 'evidence', 'fix') else value for key, value in item.items()} if isinstance(item, dict)
+                  else worded(item) for item in review.get('issues') or []]
+        out['review'] = {**review, 'summary': worded(review.get('summary')), 'issues': issues,
+                         'veto_words': [VETO_WORDS.get(str(kind), str(kind)) for kind in review.get('vetoes') or []]}
+    if checks:
+        out['checks'] = {**checks, 'issue_words': sorted({CHECK_WORDS.get(str(name), str(name)) for name in checks.get('issues') or []})}
+    return out
+
+
+def forget_scene(project_id, index, url=None):
+    """Take one kept scene out of the stored set, with what the set remembers of its failures, so the next build makes
+    that one again and only that one: make_scenes keeps the pictures made with the same settings and makes the missing
+    ones. ``url``, when given, must be the scene's own, so a page showing an older set never removes another picture."""
+    def change(project, listing):
+        store = listing.get('scenes') if isinstance(listing.get('scenes'), dict) else {}
+        items = list(store.get('items') or [])
+        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(items):
+            raise KeyError(index)
+        if url and items[index].get('url') != url:
+            raise ValueError('场景图已经变化，请刷新后再试。')
+        row = items.pop(index); role = row.get('role')
+        # failures are remembered by role and order ("work2"): the slot this picture held, and the one now left empty
+        ordinal = sum(1 for other in store['items'][:index] if other.get('role') == role) + 1
+        names = {'%s%d' % (role, ordinal), '%s%d' % (role, sum(1 for other in items if other.get('role') == role) + 1)}
+        failed = [entry for entry in store.get('failed') or [] if not (isinstance(entry, dict) and entry.get('scene') in names)]
+        listing['scenes'] = {**store, 'items': items, 'failed': failed}
+    with LOCK:
+        if any(task.get('project_id') == project_id and task.get('status') in ('queued', 'running') for task in all_records(KIND)):
+            import engine
+            raise engine.JobConflictError('这个项目的套图正在生成，请等待完成后再重画场景图。')
+        return _update(project_id, change)
+
+
+def redraw_scene(project_id, index, url=None):
+    """Make one scene picture again: it leaves the kept set and a build starts, which makes only that one."""
+    import engine
+    engine.require_runtime('render')
+    project = get('project', project_id)
+    if not project.get('analysis') or project.get('status') != 'ready':
+        raise ValueError('请先等待模型分析完成')
+    # Taken out only when the build that follows can make a new one: otherwise the paid picture would just be gone.
+    import brandkit_set
+    product, _, _ = stored(project)
+    settings = product.get('scenes') or {}
+    if not brandkit_set.image_model_ready():
+        raise ValueError('图像模型未配置或已关闭，现在重画不了这张场景图（原图保留）。')
+    if not settings.get('enabled', True):
+        raise ValueError('场景图已关闭：请先在「场景」里打开 AI 场景图，再重画（原图保留）。')
+    pages = product.get('pages')
+    if isinstance(pages, list) and not set(pages) & {'T12', 'T04', 'T08'}:
+        raise ValueError('图片清单里没有用到场景图的页面（海报、场景+参数、使用场景组图），重画的图不会被使用（原图保留）。')
+    forget_scene(project_id, index, url)
+    return submit(project_id, {})
+
+
 # ---- tasks ----
 
 def _task_update(task_id, **changes):
@@ -661,20 +1205,29 @@ def state(project_id):
     brand = brand_kit.Brand(brand_record, listing.get('product_color'))
     parts = ready_components(project)
     size_mm, known = product_size(project, product)
+    plan = planned(project, product, parts)
     return {'product': product, 'brand': brand.public(), 'presets': brand_kit.presets(), 'font_pairings': brandkit_assets.pairings(), 'elements': brand_kit.ELEMENTS,
             'components': [components.public(row) for row in components.components(project)],
             'roles': {key: {'zh': zh, 'en': en} for key, (zh, en) in components.ROLES.items()},
-            'pages': listing.get('pages') or [], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
-            'plan': planned(project, product, parts), 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
+            'pages': [page_public(page) for page in listing.get('pages') or []], 'built_at': listing.get('built_at'), 'notes': listing.get('notes') or [],
+            # the notes grouped and ordered for the seller, with the pages the plan holds back; the layout log folded away
+            'notes_view': note_view(listing.get('notes') or [], [(brandkit_set.KINDS[row['kind']][0], row['skipped']) for row in plan if row.get('skipped')]),
+            # what the last build could not finish because the AI service refused it (quota): the workspace offers to fill it in
+            'degraded': degraded(listing),
+            'plan': plan, 'kinds': {key: {'zh': zh, 'en': en} for key, (zh, en) in brandkit_set.KINDS.items()},
             # which pages will carry the logo, the legal line and each badge, and what no page will show (before a build)
-            'brand_usage': brandkit_set.brand_usage(brand_record, [row['kind'] for row in planned(project, product, parts) if not row.get('skipped')]),
+            'brand_usage': brandkit_set.brand_usage(brand_record, [row['kind'] for row in plan if not row.get('skipped')]),
             'order': list(brandkit_set.ORDER), 'auto': list(AUTO_ORDER),
-            'scenes': [{key: row.get(key) for key in ('url', 'title', 'body', 'role')} for row in (listing.get('scenes') or {}).get('items', [])],
+            'scenes': [scene_public(row, index) for index, row in enumerate((listing.get('scenes') or {}).get('items', []))],
             'scene_options': _scene_options(),
             'layout_available': brandkit_render.available(),
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
             'options': {'workpieces': list(WORKPIECES), 'materials': list(MATERIALS), 'modes': list(MODES), 'languages': list(LANGUAGES),
                         'workpiece_names': WORKPIECE_NAMES, 'material_names': MATERIAL_NAMES},
+            # how the product is installed, why the workspace thinks so, and the seller's override (a change remakes the scenes)
+            'mounting': mounting_view(project, product),
+            # the next build's AI cost (an estimate at list price) and what this project's logged requests cost so far
+            'estimate': estimate(project, product, listing, plan), 'spend': spend(project_id),
             'task': latest(project_id), 'ready': bool(project.get('analysis')) and project.get('status') == 'ready',
             'available': bool(engine.runtime_status().get('capabilities', {}).get('render', True))}
 
@@ -696,7 +1249,9 @@ def submit(project_id, body=None):
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
                 'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
-    thread = threading.Thread(target=_run, args=(task['id'],), name='listing', daemon=True)
+    import ai_client
+    # the task's AI requests are logged with its project (the project's AI spend)
+    thread = tasks.thread(task['id'], _run, 'listing', kind=KIND, message='套图生成失败，请重试。', wrap=lambda: ai_client.for_project(project_id))
     TASKS[task['id']] = thread; thread.start()
     return public_task(task)
 
@@ -1232,8 +1787,10 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
                 progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
             return kind, result
         progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
+        import ai_client
+        # pool threads start with an empty context: the page reviews made there are tagged with the project here
         with concurrent.futures.ThreadPoolExecutor(3) as pool:
-            for kind, result in pool.map(one, made):
+            for kind, result in pool.map(lambda row: ai_client.in_project(project_id, one, row), made):
                 laid[kind] = result
         for row in made:
             kind = row['kind']; result = laid[kind]
@@ -1325,6 +1882,7 @@ def _run(task_id):
     except KeyError:
         pass
     except Exception as exc:
+        log.exception('listing build %s of project %s failed', task_id, project_id)
         message = str(exc)[:300] if isinstance(exc, ValueError) and str(exc) else '套图生成失败，请重试。'
         try:
             if not cancelled():
@@ -1335,7 +1893,7 @@ def _run(task_id):
         TASKS.pop(task_id, None)
 
 
-REVIEW_WORDS = {'passed': '通过', 'failed': '未通过', 'not_verified': '未审核', 'manual_review': '需人工查看'}
+REVIEW_WORDS = {'passed': '通过', 'revised': '修改后通过', 'failed': '未通过', 'not_verified': '未审核', 'manual_review': '需人工查看'}
 
 
 def page_status(page):
@@ -1349,7 +1907,7 @@ def page_status(page):
     layout = 'passed' if checks.get('passed') else 'failed'
     return {'file': page.get('file'), 'kind': page.get('kind'), 'title': brandkit_set.KINDS.get(page.get('kind'), ('', ''))[0],
             'layout': layout, 'review': state, 'score': review.get('score'), 'vetoes': [v for v in vetoes if v],
-            'summary': str(review.get('summary') or '')[:600], 'issues': issues, 'ready': layout == 'passed' and state == 'passed'}
+            'summary': str(review.get('summary') or '')[:600], 'issues': issues, 'ready': layout == 'passed' and state in ('passed', 'revised')}
 
 
 def review_manifest(project, listing, included):

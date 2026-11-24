@@ -13,7 +13,7 @@ class StrictPreviewJobTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.original=store.DATA;self.old_queue=engine.QUEUE
         store.DATA=Path(self.tmp.name);engine.QUEUE=queue.Queue()
         with store.connection() as conn:
-            conn.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            conn.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project',{'id':'fixture','name':'fixture','version':2,'analysis':{'objects':[]},
                              'plan':default_plan(),'outputs':[]})
 

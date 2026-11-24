@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 
 import ai_client
+import ai_transport
 import brandkit_review
 import scene_lock
 import studio_store
@@ -40,7 +41,7 @@ class Store(unittest.TestCase):
         with contextlib.closing(sqlite3.connect(str(self.data / 'studio.sqlite'))) as c:
             c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))'); c.commit()
         moved = patch.object(studio_store, 'DATA', self.data); moved.start(); self.addCleanup(moved.stop)
-        logged = patch.object(ai_client, 'USAGE_DIR', None); logged.start(); self.addCleanup(logged.stop)     # the log beside it
+        logged = patch.object(ai_transport, 'USAGE_DIR', None); logged.start(); self.addCleanup(logged.stop)     # the log beside it
         knobs = patch('ai_config.read_env', return_value={}); knobs.start(); self.addCleanup(knobs.stop)
 
     def picture(self, colour=(200, 40, 30)):
@@ -92,7 +93,7 @@ class UsageLog(Store):
 
     def test_the_log_goes_where_usage_dir_says_so_test_runs_leave_the_real_one_alone(self):
         other = self.data / 'elsewhere'; other.mkdir()
-        with patch.object(ai_client, 'USAGE_DIR', str(other)):
+        with patch.object(ai_transport, 'USAGE_DIR', str(other)):
             ai_client.log_usage({'caller': 'x', 'usage': {}})
         self.assertTrue((other / ai_client.USAGE_LOG).is_file())
         self.assertFalse((self.data / ai_client.USAGE_LOG).exists())

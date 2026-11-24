@@ -23,7 +23,12 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
+import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, atomic_json
+import app_log
+import tasks
+
+log = app_log.get('components')
 
 STAGE_SCRIPT = ROOT / 'blender' / 'stage.py'
 WORKER_SCRIPT = ROOT / 'blender' / 'worker.py'
@@ -194,11 +199,13 @@ def run_blender(script, request, folder, cancelled=None, on_progress=None, timeo
     (folder / 'result.json').unlink(missing_ok=True)
     command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '0', '--python-exit-code', '1',
                '--python', str(script), '--', str(folder / 'request.json')]
-    started = time.time(); stop = cancelled or (lambda: False)
+    stop = cancelled or (lambda: False)
     try:
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # Cut-outs are Cycles renders: they take the GPU lane in turn with the shot renders.
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, ident=key, lane=blender_runner.HEAVY, cancelled=stop, cancel_error=ComponentCancelled,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.time()
             if key:
                 PROCESSES[key] = process
             try:
@@ -544,6 +551,7 @@ def process(project_id, component_id, token):
     except ComponentCancelled:
         return
     except Exception as exc:
+        log.exception('component %s of project %s failed', component_id, project_id)
         message = str(exc)[:300] if isinstance(exc, ValueError) and str(exc) else '处理失败，请重试或更换文件。'
         if not cancelled():
             _change(project_id, component_id, status='failed', stage='queued', error=message)
@@ -555,7 +563,8 @@ def _work():
         try:
             process(project_id, component_id, token)
         except Exception:
-            pass
+            # process records its own failures; this is one inside that recording (the project deleted meanwhile...).
+            log.exception('component %s of project %s: unexpected error', component_id, project_id)
         finally:
             QUEUE.task_done()
 
@@ -563,7 +572,7 @@ def _work():
 def start():
     global _WORKER
     if _WORKER is None or not _WORKER.is_alive():
-        _WORKER = threading.Thread(target=_work, name='components', daemon=True); _WORKER.start()
+        _WORKER = tasks.daemon(_work, 'components')
 
 
 def recover_interrupted():

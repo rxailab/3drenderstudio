@@ -123,7 +123,12 @@
 
 **修改与生成。**
 
-- `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。
+- `PUT /api/projects/{id}/listing/product`、`PUT /api/projects/{id}/listing/brand`：只改提交的字段，返回套图状态。保存品牌时，它也记为账户里「最近保存的品牌」，新项目默认使用它（设了默认品牌时用默认品牌）。
+- `GET /api/projects/{id}/listing/brands`：可复制的品牌 `{projects:[{id, project_name, name, preset, accent, logo}], default, last}`。
+- `POST /api/projects/{id}/listing/brand/copy`：`{source}`，`source` 为另一个项目的 id、`default` 或 `last`；替换本项目的品牌，标志图片复制进本项目。返回套图状态。
+- `POST /api/projects/{id}/listing/brand/default`：把本项目已保存的品牌设为默认；`{clear:true}` 取消默认。返回同 `…/listing/brands`。
+- `PUT /api/projects/{id}/listing/mounting`：`{mounting}`，`''`（自动识别）、`wall`（壁挂）或 `free`（落地·台面），存到 `metadata.mounting`。它在场景缓存键里，改动后下次生成会重画场景图。套图状态的 `mounting` 为 `{setting, detected, reason, used}`。
+- 套图状态另有 `estimate`（下一次生成的 AI 费用估算：`new_scenes`、`kept_scenes`、`review_pages`、`usd:[低, 高]`，按官方原价）与 `spend`（`data/ai_usage.jsonl` 里带本项目 `project` 标记的记录合计：`usd`、`calls`、`unpriced`、`since`）。
 - `POST /api/projects/{id}/listing/logo`（`multipart/form-data` 的 `file`，PNG / JPG / WebP，不超过 8 MB）与 `DELETE` 同一地址。
 - `POST /api/projects/{id}/listing/extract`：`{text, language?}`。把粘贴的产品介绍（最多 8000 字）由文本模型分到产品信息各栏：`title`、`model`、`size_mm`（介绍写明的最长边，换算成毫米）、`headline`、`subline`、`features`（含对应部件）、`specs`、`figures`。只采用介绍里写到的内容：数字不在介绍里的条目被略去，写进 `drafted.notes`；`drafted.source` 为 `extracted`。提取到的栏目替换原内容，其余保留；`language` 不给时按介绍的文字判断。原文存为产品信息的 `source`（也可经 `PUT …/listing/product` 修改）。没有配置文本模型时返回错误。
 - `POST /api/projects/{id}/listing/draft`：`{hint, language, replace}`。按模型部件名称和 `hint` 起草标题、卖点、规格；配置了 AI 时由文案模型撰写。`replace` 不为 `true` 时只填空着的内容。模型给出而 `hint` 里没有的数字会被去掉。
@@ -298,7 +303,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 **错误提示。** AI 服务返回 `402` 时，各 AI 接口的错误信息为“AI 服务的额度已用尽或账户欠费，请充值或联系管理员后重试。（HTTP 402）”；`/suggest` 不报错，改用名称规则，并把这句原因放进 `report.notes`。
 
-标题字体 `static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2`（Noto Sans SC Black，SIL OFL 1.1）由页面加载；导出的 PNG / JPG / SVG 把它内嵌进去。详见 [TEXT_LAYER_STYLE_UPDATE.md](TEXT_LAYER_STYLE_UPDATE.md)。
+标题字体 `static/vendor/fonts/noto-sans-sc/noto-sans-sc-900.woff2`（Noto Sans SC Black，SIL OFL 1.1）由页面加载；导出的 PNG / JPG / SVG 把它内嵌进去。详见 [TEXT_LAYER_STYLE_UPDATE.md](docs/history/TEXT_LAYER_STYLE_UPDATE.md)。
 
 ## v23 图文图层
 
@@ -329,7 +334,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 探测结果按场景文件缓存于 `data/{id}/layers/probes/`。`GET /api/system` 的 `runtime.capabilities.layer_probe` 表示探测组件（`blender/layer_probe.py`、`blender/pick_surface.py`）与 Blender 是否就绪；不就绪时智能排版仍可用，退回 `probe:"image"`。
 
-**绘制与导出在浏览器中完成**（`static/layer.js`）：同一个函数既画屏幕上的图层，也生成导出的 SVG；PNG / JPG 由浏览器把渲染图与该 SVG 合成。服务端不栅格化文字。详见 [TEXT_LAYER_UPDATE.md](TEXT_LAYER_UPDATE.md)。
+**绘制与导出在浏览器中完成**（`static/layer.js`）：同一个函数既画屏幕上的图层，也生成导出的 SVG；PNG / JPG 由浏览器把渲染图与该 SVG 合成。服务端不栅格化文字。详见 [TEXT_LAYER_UPDATE.md](docs/history/TEXT_LAYER_UPDATE.md)。
 
 ## v25 按人群策划的使用场景图
 
@@ -386,7 +391,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 **图像模型配置。** `GET /api/ai/settings` 的返回增加 `image_config`（与上面的 `image` 相同）。配置项为 `.env` 中的 `AI_IMAGE_BASE_URL`、`AI_IMAGE_MODEL`、`AI_IMAGE_API_KEY`、`AI_IMAGE_QUALITY`、`AI_IMAGE_ENABLED`；使用 HAI 接口时全部可省略。请求发往 `<基础地址>/images/edits`（`multipart/form-data`：`model`、`prompt`、`size`、`quality`、`stream=true`、`partial_images=2` 和若干 `image[]`），以 Server-Sent Events 接收，也接受普通 JSON 响应。Key 只会发往与文字模型相同的地址，或同为 HAI 官方网关的地址。
 
-**运行能力。** `GET /api/system` 的 `runtime.capabilities.scene_image` 表示 AI 生成所需的本地组件（`blender/worker.py`、`scene_imagegen.py`、`scene_audience.py`、`references/eu-tool-ecommerce/references.csv`）是否齐全。详见 [SCENE_AUDIENCE_UPDATE.md](SCENE_AUDIENCE_UPDATE.md)。
+**运行能力。** `GET /api/system` 的 `runtime.capabilities.scene_image` 表示 AI 生成所需的本地组件（`blender/worker.py`、`scene_imagegen.py`、`scene_audience.py`、`references/eu-tool-ecommerce/references.csv`）是否齐全。详见 [SCENE_AUDIENCE_UPDATE.md](docs/history/SCENE_AUDIENCE_UPDATE.md)。
 
 ## v22 使用场景图
 
@@ -427,7 +432,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 **运行能力。** `GET /api/system` 的 `runtime.capabilities.scene_set` 表示布置组件（`blender/scene_dress.py`、`blender/scene_layout.py`、`scene_set.py`、`scene_props.py`）是否齐全；为 `false` 时含场景镜头的渲染请求会被拒绝并说明缺少的文件。
 
-**网络访问。** 只请求 `https://api.polyhaven.com/assets?t=models|textures`、`https://api.polyhaven.com/files/{asset}` 和 `https://dl.polyhaven.org/file/ph-assets/Models|Textures/…`，不跟随重定向。目录在 `data/props_cache/` 中缓存 6 小时，网络不可用时使用已有的旧目录；模型与贴图按清单中的大小和 MD5 校验后缓存，再复制进项目。道具模型取 1K 贴图版本，地面与墙面取 2K。详见 [SCENE_IMAGES_UPDATE.md](SCENE_IMAGES_UPDATE.md)。
+**网络访问。** 只请求 `https://api.polyhaven.com/assets?t=models|textures`、`https://api.polyhaven.com/files/{asset}` 和 `https://dl.polyhaven.org/file/ph-assets/Models|Textures/…`，不跟随重定向。目录在 `data/props_cache/` 中缓存 6 小时，网络不可用时使用已有的旧目录；模型与贴图按清单中的大小和 MD5 校验后缓存，再复制进项目。道具模型取 1K 贴图版本，地面与墙面取 2K。详见 [SCENE_IMAGES_UPDATE.md](docs/history/SCENE_IMAGES_UPDATE.md)。
 
 ## v21 展示级首图、后台高清图与指令智能体
 
@@ -451,7 +456,7 @@ AI 写要点时的返回结构新增 `kicker` 与 `emphasis` 两个字符串；`
 
 `target_bindings[]` 中，用户写明数量时仍为 `expected_instances`（必须与实测的 `instance_count` 相等）；模型自行估计的数量记为 `inferred_instances`，只作记录，不参与校验。
 
-**环境变量。** `AI_AGENT_TEAM=0` 关闭核对与专职智能体（规划器的两轮调用不受影响）；`AI_AGENT_VERIFY=0` 只关闭核对；`AI_AGENT_MAX_CALLS`（默认 6，上限 12）限制每条指令中专职智能体的模型调用次数。详见 [AUTOMATION_UPDATE.md](AUTOMATION_UPDATE.md)。
+**环境变量。** `AI_AGENT_TEAM=0` 关闭核对与专职智能体（规划器的两轮调用不受影响）；`AI_AGENT_VERIFY=0` 只关闭核对；`AI_AGENT_MAX_CALLS`（默认 6，上限 12）限制每条指令中专职智能体的模型调用次数。详见 [AUTOMATION_UPDATE.md](docs/history/AUTOMATION_UPDATE.md)。
 
 ## v19 电商平台检查与套图导出
 
@@ -632,7 +637,7 @@ AI 的 `target_bindings` 需要把本次原文部位对应到这张表中的编�
 
 执行回执可包含 `target_bindings` 与 `target_verification`，后者为 `render_samples` 或 `raycast`。写入前再次检查方案版本与采样摘要。编号和采样不能证明隐藏部件的语义或保证材质的最终视觉效果。
 
-模型费用、候选与验证边界见 [MODEL_AND_PARTS_UPDATE.md](MODEL_AND_PARTS_UPDATE.md)。
+模型费用、候选与验证边界见 [MODEL_AND_PARTS_UPDATE.md](docs/history/MODEL_AND_PARTS_UPDATE.md)。
 
 基础地址：`http://127.0.0.1:8765`。所有 JSON 使用 UTF-8。错误返回 `{ "error": "原因" }` 和非 2xx 状态码。
 

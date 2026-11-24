@@ -25,7 +25,7 @@ class InitialPreviewTests(unittest.TestCase):
             mocked=patch.object(engine,name,value);mocked.start();self.addCleanup(mocked.stop)
         mocked=patch.object(engine,'require_runtime');self.runtime=mocked.start();self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         plan=default_plan();plan['visual_review']=False
         self.project={'id':'fixture','slug':'fixture','name':'Fixture','model_path':str(self.data/'fixture/model.obj'),
                       'version':1,'history':[],'status':'analyzing','analysis':None,'plan':plan,'outputs':[],

@@ -22,6 +22,7 @@ import brand_kit
 import brandkit_render
 import brandkit_review
 import brandkit_set
+import listing_layout
 import info_layer
 import listing
 import studio_store as store
@@ -229,7 +230,7 @@ class CutTextRankingTests(unittest.TestCase):
         def render(kind, job, target, work):
             Image.new('RGB', (10, 10)).save(target)
             return answers[jobs.index(job)]
-        with patch.object(brandkit_set, 'jobs_for', return_value=jobs), patch.object(brandkit_render, 'render', side_effect=render):
+        with patch.object(listing_layout, 'jobs_for', return_value=jobs), patch.object(brandkit_render, 'render', side_effect=render):
             qa, notes, _ = brandkit_set.lay_out('T12', {'product': {}}, folder / 'page.png', folder / '_layout')
         self.assertIs(qa, answers[1]); self.assertTrue((folder / 'page.png').is_file())
         self.assertTrue(any('版式检查仍有 2 处问题' in note for note in notes), notes)

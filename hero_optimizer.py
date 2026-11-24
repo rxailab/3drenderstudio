@@ -15,6 +15,7 @@ import time
 import uuid
 from pathlib import Path
 
+import blender_runner
 from studio_store import ROOT, DATA, LOCK, get, put, all_records, atomic_json
 from hero_state import compare_scene_states, difference_summary, PRODUCT_FIELDS
 
@@ -166,9 +167,11 @@ def _native(job,request,out):
              '--python-exit-code','1','--python',str(ROOT/'blender/hero_scene.py'),'--',str(out/'request.json')]
     timeout=max(30,min(14400,float(job.get('plan',{}).get('time_budget',1200))))
     expired=[]
-    with (out/'blender.log').open('w',encoding='utf-8') as log:
-        proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,
-            text=True,encoding='utf-8',errors='replace',cwd=str(ROOT),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    # A hero render is a full Cycles render: it waits for the GPU lane, and cancelling the job also ends the wait.
+    with (out/'blender.log').open('w',encoding='utf-8') as log, blender_runner.launched(
+            command,ident=job['id'],lane=blender_runner.HEAVY,cancelled=lambda:get('job',job['id']).get('status')=='cancelled',
+            cancel_error=lambda:InterruptedError('主图优化已取消。'),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,text=True,encoding='utf-8',errors='replace') as proc:
         def expire():
             expired.append(True)
             if proc.poll() is None:proc.terminate()
@@ -345,10 +348,16 @@ def _checkpoint(project_id,token):
     if not isinstance(token,str) or not re.fullmatch(r'[a-f0-9]{32}',token):raise ValueError('主图场景标识无效。')
     root=(DATA/project_id).resolve();folder=DATA/project_id/'hero_checkpoints'/token
     if folder.is_symlink() or root not in folder.resolve().parents:raise ValueError('主图场景目录无效。')
-    scene=folder/'scene.blend';record=folder/'checkpoint.json'
-    if scene.is_symlink() or record.is_symlink() or not scene.is_file() or not record.is_file():
+    record=folder/'checkpoint.json'
+    if record.is_symlink() or not record.is_file():
         raise ValueError('已优化的场景快照不存在，请恢复上一版或重新优化。')
     metadata=json.loads(record.read_text(encoding='utf-8'))
+    # where the snapshot's .blend sits: at the depth of the render it came from (its textures are relative paths)
+    inside=str(metadata.get('scene') or 'scene.blend')
+    if '..' in Path(inside).parts or Path(inside).is_absolute():raise ValueError('主图场景目录无效。')
+    scene=folder/inside
+    if scene.is_symlink() or not scene.is_file() or root not in scene.resolve().parents:
+        raise ValueError('已优化的场景快照不存在，请恢复上一版或重新优化。')
     if metadata.get('project_id')!=project_id or metadata.get('token')!=token or metadata.get('blend_sha256')!=digest(scene):
         raise ValueError('已优化的场景快照发生变化，请恢复上一版。')
     return scene,metadata
@@ -401,11 +410,18 @@ def render_checkpoint(job,request,out):
 def _save_checkpoint(project,job,final_result,final_paths,plan):
     token=uuid.uuid4().hex;folder=DATA/project['id']/'hero_checkpoints'/token
     folder.mkdir(parents=True,exist_ok=False)
-    shutil.copy2(final_paths['blend'],folder/'scene.blend')
+    # The .blend refers to the model's textures by relative path (worker.py no longer packs them): it is copied to the
+    # same depth below the project as the render it came from (runs/<job>/... -> hero_checkpoints/<token>/...), so those
+    # paths still lead to originals/.
+    source=Path(final_paths['blend'])
+    try:inside=source.relative_to(DATA/project['id']/'runs'/job['id'])
+    except ValueError:inside=Path('scene.blend')
+    (folder/inside).parent.mkdir(parents=True,exist_ok=True)
+    shutil.copy2(source,folder/inside)
     base=copy.deepcopy(plan);base.pop('scene_checkpoints',None)
     metadata={'version':1,'project_id':project['id'],'token':token,'shot_id':job['shot_ids'][0],
               'baseline_plan':base,'product_object_names':final_result['catalog']['product_object_names'],
-              'blend_sha256':digest(folder/'scene.blend'),'proof':copy.deepcopy(final_result['proof']),
+              'scene':inside.as_posix(),'blend_sha256':digest(folder/inside),'proof':copy.deepcopy(final_result['proof']),
               'catalog':copy.deepcopy(final_result['catalog']),'job_id':job['id'],'created_at':time.time()}
     atomic_json(folder/'checkpoint.json',metadata)
     plan.setdefault('scene_checkpoints',{})[job['shot_ids'][0]]=token

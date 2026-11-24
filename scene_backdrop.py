@@ -30,6 +30,7 @@ from pathlib import Path
 
 from PIL import Image
 
+import blender_runner
 import engine
 from studio_store import DATA, ROOT, atomic_json
 
@@ -302,12 +303,12 @@ def _paint(prompt, stop, say):
     return content
 
 
-def _run(command, folder, log, stop, timeout, env=None):
-    """A helper process to its end: its exit code. Stopped when the job is cancelled or takes too long."""
-    started = time.time()
-    with (folder / log).open('w', encoding='utf-8') as handle:
-        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=handle, stderr=subprocess.STDOUT, cwd=str(ROOT), env=env,
-                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+def _run(command, folder, log, stop, timeout, env=None, lane=None):
+    """A helper process to its end: its exit code. Stopped when the job is cancelled or takes too long.
+    ``lane`` is the Blender gate's lane; the depth model is not Blender and runs ungated, but is still registered."""
+    with (folder / log).open('w', encoding='utf-8') as handle, blender_runner.launched(
+            command, lane=lane, cancelled=stop, stdin=subprocess.DEVNULL, stdout=handle, stderr=subprocess.STDOUT, env=env) as process:
+        started = time.time()
         while process.poll() is None:
             if stop():
                 process.terminate(); raise InterruptedError()
@@ -407,7 +408,7 @@ def render(request, folder, stop=lambda: False):
     command = [engine.blender_path(), '-b', '--factory-startup', '--disable-autoexec', '-t', '8', '--python-exit-code', '1',
                '--python', str(ROOT / 'blender' / 'backdrop.py'), '--', str(folder / 'request.json')]
     try:
-        _run(command, folder, 'blender.log', stop, RENDER_TIMEOUT)
+        _run(command, folder, 'blender.log', stop, RENDER_TIMEOUT, lane=blender_runner.HEAVY)     # a full Cycles render
         result = json.loads((folder / 'result.json').read_text(encoding='utf-8'))
     except InterruptedError:
         raise

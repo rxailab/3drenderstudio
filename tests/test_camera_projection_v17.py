@@ -184,7 +184,7 @@ class GenericCameraAdapterTests(unittest.TestCase):
         for module in (store,engine):
             context=patch.object(module,'DATA',self.data);context.start();self.addCleanup(context.stop)
         context=patch.object(engine,'ROOT',self.runtime);context.start();self.addCleanup(context.stop)
-        with store.connection() as db:db.execute('CREATE TABLE records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as db:db.execute('CREATE TABLE IF NOT EXISTS records(kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.plan=planner.default_plan();self.plan['shots'][0].update(ortho_scale=5,target_offset=[.1,0,.05])
         self.job={'id':'job','project_id':'p','status':'running','plan':self.plan}
         store.put('project',{'id':'p','analysis':{'objects':[{'name':'Body','type':'MESH'}]}});store.put('job',self.job)

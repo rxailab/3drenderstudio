@@ -40,10 +40,14 @@ import time
 import uuid
 from pathlib import Path
 
+import blender_runner
 from studio_store import DATA, LOCK, ROOT, all_records, atomic_json, get, put
+import app_log
+import tasks
 
 VERSION = 2
 KIND = 'orient_task'
+log = app_log.get('orientation')
 ACTIVE = {'queued', 'running'}
 TIMEOUT = 420
 SIZE = 320
@@ -199,11 +203,13 @@ def _blender(request, folder, cancelled=None):
     (folder / 'result.json').unlink(missing_ok=True)
     command = [executable, '-b', '--factory-startup', '--disable-autoexec', '-t', '4', '--python-exit-code', '1',
                '--python', str(script), '--', str(folder / 'request.json')]
-    started = time.time(); stop = cancelled or (lambda: False)
+    stop = cancelled or (lambda: False)
     try:
-        with (folder / 'blender.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT),
-                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        # Candidate pictures are small and few-sample: the light lane, so they do not wait behind a full render.
+        with (folder / 'blender.log').open('w', encoding='utf-8') as log, blender_runner.launched(
+                command, lane=blender_runner.LIGHT, cancelled=stop,
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT) as process:
+            started = time.time()
             while process.poll() is None:
                 if stop():
                     process.terminate(); raise InterruptedError()
@@ -757,7 +763,10 @@ def submit(project_id, body):
                 'base_version': project['version'], 'shot_id': body.get('shot_id') if isinstance(body.get('shot_id'), str) else None,
                 'created_at': time.time()}
         put(KIND, task)
-        threading.Thread(target=_run, args=(task['id'],), daemon=True, name='orient-' + task['id'][:8]).start()
+        import ai_client
+        # the task's AI requests are logged with its project (the project's AI spend)
+        tasks.start(task['id'], _run, 'orient-' + task['id'][:8], kind=KIND, message='朝向检查未完成，模型保持当前朝向。',
+                    fields={'stage': '朝向未检查'}, stamp='finished_at', wrap=lambda: ai_client.for_project(project_id))
         return task_view(task)
 
 
@@ -803,6 +812,7 @@ def _run(task_id):
     except InterruptedError:
         pass
     except Exception as exc:
+        log.exception('orientation task %s failed', task_id)
         with LOCK:
             task = get(KIND, task_id)
             if task['status'] != 'cancelled':

@@ -21,7 +21,7 @@ class AutomaticMaterialTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.old=(store.DATA,agent.DATA,engine.QUEUE)
         store.DATA=agent.DATA=self.root;engine.QUEUE=queue.Queue()
-        with store.connection() as c:c.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        with store.connection() as c:c.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         folder=self.root/'fixture';folder.mkdir()
         Image.new('RGB',(8,8),'white').save(folder/'image.png');Image.new('RGB',(8,8),'white').save(folder/'image.jpg')
         (folder/'scene.blend').write_bytes(b'fixture saved scene')
@@ -213,6 +213,20 @@ class AutomaticMaterialTests(unittest.TestCase):
         self.assertEqual(store.get(agent.KIND,task['id'])['decision'],'reverted')
         agent.recover_interrupted()
         self.assertEqual(store.get('project','fixture')['auto_material']['status'],'reverted')
+
+    def test_restore_without_a_saved_scene_keeps_the_pictures_and_records_no_scene(self):
+        """A render that saved no .blend (or lost it) still restores its verified pictures and plan, without a scene."""
+        task=self.apply();(self.root/'fixture'/'scene.blend').unlink()
+        result=self.complete(task,score=.4)
+        self.assertEqual(result['auto_material']['status'],'reverted')
+        restored=[o for o in result['outputs'] if o['version']==5]
+        self.assertEqual(len(restored),2);self.assertTrue(all(o['blend_url'] is None for o in restored))
+
+    def test_restore_refuses_a_scene_outside_the_project(self):
+        task=self.apply();task['baseline_outputs'][0]['blend_url']='/files/other/scene.blend';store.put(agent.KIND,task)
+        job=store.get('job',task['job_id']);job.update(status='failed',error='device unavailable');store.put('job',job)
+        agent.finish_failed_preview('fixture',job['id'])
+        self.assertFalse(any(o.get('automatic_material_restored_from') for o in store.get('project','fixture')['outputs']))
 
     def test_chain_stops_at_two_rounds(self):
         task=self.apply()

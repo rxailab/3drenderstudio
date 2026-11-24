@@ -40,7 +40,7 @@ class ProjectLifecycleTests(unittest.TestCase):
             self.replace(module, 'PROCESSES', {})
             self.replace(module, 'QUEUE', queue.Queue())
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         self.projects = {ident: self.make_project(ident) for ident in ('alpha', 'beta')}
         self.client = web.app.test_client()
 

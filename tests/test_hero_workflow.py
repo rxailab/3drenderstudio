@@ -24,7 +24,7 @@ class HeroWorkflowTests(unittest.TestCase):
         self.patches.extend([patch.object(engine,'QUEUE',queue.Queue()),patch.object(engine,'require_runtime')])
         for item in self.patches:item.start();self.addCleanup(item.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         folder=self.root/'fixture/runs/original';folder.mkdir(parents=True)
         self.png=folder/'image.png';Image.new('RGB',(48,48),'white').save(self.png)
         self.blend=folder/'scene.blend';self.blend.write_bytes(b'BLENDER-unit-test-original')

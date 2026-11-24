@@ -526,9 +526,11 @@ function orientApply(change,message) {
 let sceneSubmitting=false;
 function sceneTaskActive() { return ['queued','running'].includes(current?.scene_task?.status); }
 function renderSceneSet() {
-  const section=$('sceneHistory')?.closest('.scene-set');if(!section)return;
+  const section=$('sceneOpenListing')?.closest('.scene-set');if(!section)return;
   section.hidden=!current;if(!current)return;
-  const history=sceneHistoryHTML(current);$('sceneHistory').hidden=!history.count;
+  // The list lives in the 套图 tab's scene settings: listing.js shows it while that sub-tab is open.
+  const history=sceneHistoryHTML(current);$('sceneHistory').dataset.count=String(history.count);
+  if(typeof listingSyncSceneHistory==='function')listingSyncSceneHistory();else $('sceneHistory').hidden=!history.count;
   $('sceneHistoryTitle').textContent=`历史使用场景图（${history.count}）`;
   stableHTML($('sceneHistoryList'),history.html);
   const task=current.scene_task;
@@ -610,6 +612,10 @@ function renderActionState() {
   const reason=renderReady() && current?.analysis && !locked && !selectedShots.size?'勾选镜头后可输出 4K。':'';
   setText('renderReason',reason);if($('renderReason'))$('renderReason').hidden=!reason;
   $('renderButton').title=reason || '按勾选的镜头输出 4K 成品';
+  // Once the model is analysed the listing set is the main path: its button leads, 4K output follows.
+  const analysed=!!current?.analysis;
+  $('listingOpen').className='button '+(analysed?'primary':'secondary')+' project-only';
+  $('renderButton').className='button '+(analysed?'secondary':'primary')+' project-only';
   $('savePlan').disabled=!dirty || locked || !current?.analysis;
   $('settingsForm').inert=!current?.analysis || busy || !!planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || automaticMaterialBusy() || !!activeJob();
   $('uploadSubmit').disabled=uploadSubmitting || !uploadFiles.length || !!uploadValidation() || !workerRenderReady();
@@ -636,6 +642,20 @@ async function api(path, options = {}) {
   let data;
   try{data=await res.json();}catch(_){const error=new Error('本机服务返回了无法读取的结果，请重试核对。');error.status=res.status;error.uncertain=true;throw error;}
   if(!res.ok){const error=new Error(data.error || `请求失败 (${res.status})`);error.status=res.status;error.payload=data;throw error;}
+  return data;
+}
+// Polls send back the ETag of what they already hold; an unchanged answer is an empty 304
+// (null here) instead of the whole record again. The tag is kept per received object, so any
+// other code that replaces it (a save, an open, a delete) makes the next poll fetch in full.
+const receivedTags=new WeakMap();
+async function apiIfChanged(path,held) {
+  const tag=held && typeof held==='object'?receivedTags.get(held):null;
+  const res=await fetch(path,tag?{headers:{'If-None-Match':tag}}:{});
+  if(res.status===304 && tag)return null;
+  let data;
+  try{data=await res.json();}catch(_){const error=new Error('本机服务返回了无法读取的结果，请重试核对。');error.status=res.status;error.uncertain=true;throw error;}
+  if(!res.ok){const error=new Error(data.error || `请求失败 (${res.status})`);error.status=res.status;error.payload=data;throw error;}
+  const etag=res.headers?.get?.('ETag');if(etag && data && typeof data==='object')receivedTags.set(data,etag);
   return data;
 }
 function toast(message, error = false) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').className = 'toast' + (error ? ' error' : ''); $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, error ? 8000 : 4500); }
@@ -930,7 +950,8 @@ function projectCardImage(p) {
   return [...outputs].reverse().find(output=>output.shot_id==='hero') || outputs.at(-1) || null;
 }
 function projectCardStatus(p) {
-  const outputs=(p.outputs || []).filter(output=>output.quality!=='thumbnail'),finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,polished=outputs.filter(output=>output.quality==='showcase').length,previews=outputs.length-finals-polished,shotCount=p.plan?.shots?.length || 0;
+  // Library rows are slim summaries (shot_count, analyzed); the open project is the full record.
+  const outputs=(p.outputs || []).filter(output=>output.quality!=='thumbnail'),finals=outputs.filter(output=>['standard','fine'].includes(output.quality)).length,polished=outputs.filter(output=>output.quality==='showcase').length,previews=outputs.length-finals-polished,shotCount=(p.plan?p.plan.shots?.length:p.shot_count) || 0;
   const job=p.active_job || p.jobs?.find(item=>['running','queued'].includes(item.status)),initial=p.initial_preview?.status;
   if(job || ['queued','running'].includes(initial) || p.status==='analyzing'){
     const kind=job?.kind || (p.status==='analyzing'?'analyze':'preview'),queued=job?job.status==='queued':initial==='queued';
@@ -938,7 +959,7 @@ function projectCardStatus(p) {
     const value=Number(job?.progress),progress=!queued && job?.status==='running' && Number.isFinite(value) && value>0?Math.min(100,Math.round(value)):null;
     return {tone:'active',text:queued?label.replace(/^正在/,'')+' · 已排队':label+' · 后台继续',progress};
   }
-  if(['failed','interrupted','cancelled'].includes(p.status) && !p.analysis){
+  if(['failed','interrupted','cancelled'].includes(p.status) && !(p.analysis || p.analyzed)){
     return {tone:'warning',text:p.status==='failed'?'分析失败 · 可重试':p.status==='cancelled'?'分析已取消 · 可继续':'分析已中断 · 可继续'};
   }
   if(['failed','interrupted'].includes(initial) && !outputs.length)return {tone:'warning',text:'白底主图需处理 · 可继续'};
@@ -1711,7 +1732,15 @@ function renderProject() {
   if(!dirty && !planSavePromise && syncSignature!==`${current.id}:${current.version}:${!!current.analysis}`)syncSettings();
   updateAiMode();renderViewer();renderShots();renderJob();renderInspection();renderSceneExports();renderActionState();refreshEcommerce();
 }
-async function refreshList() { const request=++libraryRequest,projects=await api('/api/projects');if(request!==libraryRequest)return;allProjects=projects.filter(project=>!deletedProjectIds.has(project.id));allProjects.sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));renderLibrary(); }
+// The tag belongs to the summary list as received; once a poll swaps in an open project or a
+// delete filters it, allProjects is another array and the next refresh fetches in full.
+let receivedList=null;
+async function refreshList() {
+  const request=++libraryRequest,projects=await apiIfChanged('/api/projects?fields=summary',receivedList===allProjects?allProjects:null);
+  if(request!==libraryRequest || projects===null)return;
+  allProjects=projects.filter(project=>!deletedProjectIds.has(project.id));allProjects.sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));
+  const tag=receivedTags.get(projects);receivedList=tag?allProjects:null;if(tag)receivedTags.set(allProjects,tag);renderLibrary();
+}
 function leaveProjectView() {
   if(current && $('instructionInput').value)instructionDrafts.set(current.id,$('instructionInput').value);
   // Exiting is navigation. Unacknowledged and saved requests keep their keys.
@@ -1811,8 +1840,16 @@ async function poll() {
   try{
     if(current){
       const id=current.id,requestId=projectRequest,oldVersion=current.version,reviewEpoch=reviewRevision;
-      const project=await api('/api/projects/'+encodeURIComponent(id));
-      if(current?.id===id && requestId===projectRequest && !busy && !planSavePromise && !projectLoading && !realismBusy && !materialAgentSubmitting && reviewEpoch===reviewRevision && current.version===oldVersion){
+      // Unchanged (304) leaves current as it is: no re-render, only the material tasks below.
+      const held=current,project=await apiIfChanged('/api/projects/'+encodeURIComponent(id),held);
+      if(project===null){
+        if(current===held && requestId===projectRequest){
+          // A material task's end changes no project field, so the 304 holds: the buttons it locked are redrawn here.
+          const wasBusy=automaticMaterialBusy();await refreshMaterialTasks(id);
+          if(current===held && wasBusy!==automaticMaterialBusy())renderProject();
+        }
+      }
+      else if(current?.id===id && requestId===projectRequest && !busy && !planSavePromise && !projectLoading && !realismBusy && !materialAgentSubmitting && reviewEpoch===reviewRevision && current.version===oldVersion){
         const priorOutputs=current.outputs?.length,priorStyle=current.plan.style;
         current=project;if(!dirty && project.plan.style!==priorStyle)styleFocusNotice='棚拍风格已更新，生成预览后查看变化。';
         allProjects=allProjects.map(item=>item.id===project.id?project:item);renderLibrary();
@@ -2202,7 +2239,7 @@ function ecommerceLatestExport() { return (current?.ecommerce_exports || [])[0] 
 function ecommerceExportRunning() { return (current?.ecommerce_exports || []).some(task=>['queued','running'].includes(task.status)); }
 function renderEcommerceResult() {
   const task=ecommerceLatestExport(),box=$('ecommerceResult');
-  if(task){const before=ecommerceSeen.get(task.id);if(before && before!==task.status && task.status==='completed')toast('平台套图已导出，可以下载。');ecommerceSeen.set(task.id,task.status);}
+  if(task){const before=ecommerceSeen.get(task.id);if(before && before!==task.status && task.status==='completed')toast('平台主图/白底图已导出，可以下载。');ecommerceSeen.set(task.id,task.status);}
   box.hidden=!task || task.status==='cancelled';if(box.hidden)return;
   const running=['queued','running'].includes(task.status),files=Array.isArray(task.files)?task.files:[];
   const own=url=>typeof url==='string' && url.startsWith('/files/'+current.id+'/ecommerce/')?url:'';
@@ -2247,7 +2284,7 @@ function renderEcommerce() {
   $('ecommerceAdapt').title='把平台建议的画幅与留白写入方案并重新预览；不执行也能导出，导出时会自动构图';
   const running=ecommerceExportRunning(),rendering=!!activeJob();
   $('ecommerceExport').disabled=locked || running || rendering || !counts.rendered;
-  setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台套图');
+  setText('ecommerceExport',ecommerceSubmitting || running?'正在导出…':'导出平台主图/白底图');
   // Say something under the button only when the export is blocked or will miss a rule.
   const hint=!counts.rendered?'生成预览后即可导出。':rendering?'渲染完成后可导出。':small?`${small} 个镜头只有预览尺寸，低于平台最低要求。`:'';
   setText('ecommerceExportHint',hint);$('ecommerceExportHint').hidden=!hint;$('ecommerceExportHint').dataset.tone=small && counts.rendered && !rendering?'warn':'';
@@ -2257,7 +2294,7 @@ async function submitEcommerceExport() {
   const id=current.id;ecommerceSubmitting=true;ecommerceError='';renderEcommerce();
   try{
     const task=await api(`/api/projects/${id}/ecommerce/exports`,{method:'POST',body:ecommerceControls()});
-    if(current?.id===id){ecommerceSeen.set(task.id,task.status);current.ecommerce_exports=[task,...(current.ecommerce_exports || []).filter(item=>item.id!==task.id)];toast(task.status==='completed'?'这组设置已经导出过，可直接下载。':'正在导出平台套图。');}
+    if(current?.id===id){ecommerceSeen.set(task.id,task.status);current.ecommerce_exports=[task,...(current.ecommerce_exports || []).filter(item=>item.id!==task.id)];toast(task.status==='completed'?'这组设置已经导出过，可直接下载。':'正在导出平台主图/白底图。');}
   }catch(error){if(current?.id===id)ecommerceError=error.message;}
   finally{ecommerceSubmitting=false;renderEcommerce();}
 }
@@ -2291,6 +2328,7 @@ function installEvents() {
     stashCamera();activeShot='scene';cameraShot='scene';syncCamera();
     const displayed=displayedShotOutput('scene');viewerLatestKey=displayed?current.id+':'+sceneOutputKey(displayed):current.id+':scene';
     sceneHistorySelection=sceneOutputKey(output);comparePrevious=true;realtime.mode='image';feedbackMode=false;instructionTargetSelection=null;
+    if(typeof listingShowModel==='function')listingShowModel();     // the picture opens in the viewer, which the set may be covering
     renderViewer();renderShots();renderInspection();renderActionState();
   };
   $('materialAgentForm').onsubmit=submitMaterialAgent;
@@ -2392,7 +2430,7 @@ function installEvents() {
   $('materialPreset').onchange=()=>{const p=$('materialPreset').value;const defaults={matte_plastic:[.5,0,0],glossy_plastic:[.17,0,0],painted_metal:[.28,.7,0],brushed_metal:[.3,1,0],polished_metal:[.09,1,0],glass:[.04,0,1],rubber:[.8,0,0],fabric:[.85,0,0],leather:[.5,0,0],wood:[.45,0,0],ceramic:[.2,0,0]};if(defaults[p])['roughness','metallic','transmission'].forEach((id,i)=>setValue(id,defaults[p][i]));if(!p){editedMaterialColors.delete(selectedMaterial);stashMaterial();syncMaterial();}$('materialEditing').hidden=!p;markDirty();updateRangeLabels();};
   $('cameraShot').onchange=()=>{stashCamera();cameraShot=$('cameraShot').value;activeShot=cameraShot;comparePrevious=false;styleFocusNotice='';remember('wuying-shot-'+current.id,activeShot);syncCamera();renderViewer();renderShots();renderInspection();renderActionState();};
   document.querySelectorAll('[data-tab]').forEach(b=>{b.tabIndex=b.getAttribute('aria-selected')==='true'?0:-1;b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>{x.setAttribute('aria-selected',x===b);x.tabIndex=x===b?0:-1;});for(const key of ['materials','camera','structure'])$(key+'Tab').hidden=key!==b.dataset.tab;};});
-  for(const selector of ['.settings-tabs']){const list=document.querySelector(selector);if(!list)continue;list.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...list.querySelectorAll('[role=tab]')].filter(tab=>!tab.hidden),index=tabs.indexOf(event.target);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[next].click();tabs[next].focus();});}
+  for(const selector of ['.settings-tabs','.listing-tabs']){const list=document.querySelector(selector);if(!list)continue;list.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...list.querySelectorAll('[role=tab]')].filter(tab=>!tab.hidden),index=tabs.indexOf(event.target);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[next].click();tabs[next].focus();});}
   $('shotList').onclick=e=>{const b=e.target.closest('[data-shot]');if(b){stashCamera();activeShot=b.dataset.shot;comparePrevious=false;styleFocusNotice='';remember('wuying-shot-'+current.id,activeShot);cameraShot=activeShot;$('cameraShot').value=cameraShot;syncCamera();renderViewer();renderShots();renderInspection();renderActionState();}};
   $('shotList').onchange=e=>{if(e.target.dataset.selectShot){if(e.target.checked)selectedShots.add(e.target.dataset.selectShot);else selectedShots.delete(e.target.dataset.selectShot);renderProject();}};
   $('selectAllShots').onchange=()=>{selectedShots=$('selectAllShots').checked?new Set(shots().map(s=>s.id)):new Set();renderProject();};

@@ -931,7 +931,7 @@ class SceneFlowTests(unittest.TestCase):
                                     (scene_stylist, '_config', {'provider': 'anthropic'}), (scene_imagegen, 'config', IMAGE)):
             mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', project())
         self.reply = answer(); self.asked = 0; self.created = []
         mocked = patch.object(scene_stylist, '_ask', side_effect=self.ask); mocked.start(); self.addCleanup(mocked.stop)

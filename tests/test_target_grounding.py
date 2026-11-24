@@ -224,7 +224,7 @@ class GroundedInstructionServiceTests(EvidenceFixture):
         for module in (store, engine, service):
             mocked = patch.object(module, 'DATA', self.root); mocked.start(); self.addCleanup(mocked.stop)
         with store.connection() as connection:
-            connection.execute('CREATE TABLE records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
         store.put('project', copy.deepcopy(self.project))
         service._INFLIGHT.clear(); self.addCleanup(service._INFLIGHT.clear)
         for name in ('get_config', 'get_vision_config'):
