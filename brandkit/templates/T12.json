@@ -60,7 +60,7 @@
       "muted": "#4F575E",
       "accent": "#D0612A"
     },
-    "palette_note": "accent comes from the job (brand_input_required); on the warm-dark band words use --accent-hi (accent lifted toward cream to luminance ≥.30), on the scrimmed photo --accent-photo (≥.40); band colour --band #211915 (warm dark taken from wood/leather scenes), job.band_color overrides",
+    "palette_note": "accent comes from the job (brand_input_required); on the warm-dark band words use --accent-hi (accent lifted toward cream to luminance ≥.30), on the scrimmed photo --accent-photo (≥.40); band colour --band #211915 (warm dark taken from wood/leather scenes), job.band_color overrides; split: the block is --block = the accent deepened toward warm dark #1E1B19 until cream reads on it (≥4.8:1), its accent words --block-hi = the accent lifted toward cream until ≥3.2:1 against the block",
     "spacing_unit": 8,
     "safe_margin": 72,
     "min_margin": 60,
@@ -81,7 +81,9 @@
       "headline_support_gap": "0.34 × headline px (≈ half the cap height) on every layout",
       "stat_value": "128→72, column only as wide as the figure",
       "chip": "h136, equal widths in a row, value 64 cond 800 (uppercase for text values), label 23 Inter 700 caps .14em (meta)",
-      "badge": "value 96 cond 800 + 22px caption"
+      "badge": "value 96 cond 800 + 22px caption",
+      "h1_split": "96→48 en (only steps ≥ the 360px floor, i.e. ≥60 at 1500 wide), zh 128→60 × 0.84, ≤4 lines in the block's column (block − 2m); a written zh line stays one line; support ≤2 lines, 3 when the column needs it",
+      "hero_xxl_behind": "420→120 en / 340→110 zh, lh .84 (zh 1.04), one/two words, line box ≤38% H (4:5 34%), stepped down to 24% until the product covers ≥16% of the page; support 46→42 at the foot"
     }
   },
   "elements": [
@@ -203,6 +205,32 @@
       "anchor_ref": null,
       "crop_policy": "not_applicable",
       "note": "top-left at (m, m-20)"
+    },
+    {
+      "element_id": "block",
+      "kind": "shape",
+      "box_normalized_xywh": [
+        0.0,
+        0.0,
+        0.46,
+        1.0
+      ],
+      "allow_overlap_with": [
+        "headline",
+        "support",
+        "rule",
+        "brand_slot",
+        "brand_slot_t",
+        "badge",
+        "badge_v",
+        "badge_l",
+        "chip1..3 (+_v/_l)",
+        "stat_v",
+        "stat_l"
+      ],
+      "anchor_ref": null,
+      "crop_policy": "not_applicable",
+      "note": "split mode only: full-height brand-colour block on job.split_side, width job.split_ratio × W (0.38..0.55, default 0.46); every word stands on it"
     }
   ],
   "adaptation_rules": [
@@ -217,7 +245,11 @@
     "scene cover scale ≤ 1.25 of source px; the inset obeys the same cap",
     "en pages drop any Han-bearing headline/support/figure/platform/brand text",
     "solid: whole product in frame by default (no accidental crop), centred under the words",
-    "chip and stat captions are meta tier, values important/headline tier; chips in a row share one width"
+    "chip and stat captions are meta tier, values important/headline tier; chips in a row share one width",
+    "split: every word on the colour block (text column = block less m on each side, top-aligned under the rule); the product, keyed off its white backdrop (never multiplied onto the block), is as large as clears the words with a share of its width across the seam (≈⅓ preferred, 15–50% tried, scale × (1 − 0.8·|share − 0.32|) decides); none clears: whole in the light field with a note",
+    "split key: the backdrop is the near-white flooded in from the picture's border after a 3px opening (a white highlight meeting the edge through a thin neck stays opaque), the product's rim keyed softly by luminance; a picture the page cannot read keeps a plain luminance key filter",
+    "center 'below': product centred in the space above the words; headline (designed break, ≤3 lines) + support + chip row centred at the foot",
+    "center 'behind': one/two words (en ≤12 letters each, zh ≤2 phrases of ≤6) set huge across the top and painted under the product; the product stands at their foot, its outline never covering more of the line box than the renderer's text-on-product test allows (≤2 of its 17×17 points), so the words stay whole and are checked like any text; a longer headline, or no size that leaves the product room, falls back to 'below' with a note"
   ],
   "render_outputs": [
     {
@@ -276,7 +308,9 @@
   "modes": {
     "overlay": "default when job.scene: full-bleed scene at scene_zoom (1.3) toward job.focus; text_zone top/bottom (figures → bottom; else the larger free band from job.product_box; else focus_y); a warm-dark scrim (rgba(30,22,17), 80%, 88% where the words cross the product) is flat behind every text line and fades over 200px into the photo (measured cream-on-scrim ≈10:1); with job.product_box the scene is shifted (and the headline stepped down) until the product clears the text block; if it still cannot, the page falls back to band (job.overlay_fallback=false keeps overlay)",
     "band": "DeWalt variant: scene on the top 70% (4:5: 73% with a tighter 1.3 crop so the product keeps its size), hard-edged warm-dark band below with a 56px feather into the photo at the seam; stack optically centred; right side = key-figure stat (only as wide as the figure), else brand slot, else a ringed close-up (job.inset, r = 0.11W, wholly inside the band) — dropped when it would push the headline past 2 lines; with none the headline is scaled to fill ≥68% of the band (zh: both phrases on one line); landscape: dark panel left 46%",
-    "solid": "studio light ground with a warm floor gradient; every canvas: full-width text block on top (designed break), optional equal-width chip row, then the whole product centred below with ≥6% side and 5.5% bottom margin and a contact shadow (landscape: text left 56%, product right); job.hero_bleed>0 lets it run off the bottom; job.solid_layout='column' restores the old 0.42W text column"
+    "solid": "studio light ground with a warm floor gradient; every canvas: full-width text block on top (designed break), optional equal-width chip row, then the whole product centred below with ≥6% side and 5.5% bottom margin and a contact shadow (landscape: text left 56%, product right); job.hero_bleed>0 lets it run off the bottom; job.solid_layout='column' restores the old 0.42W text column",
+    "split": "studio cut-out on a page split into a brand-colour block (job.split_side 'left'|'right', job.split_ratio 0.38..0.55 of the width, default left 0.46) and the light studio field; headline (cream, accent lines in --block-hi), support, chips (dark) or the key stat (foot of the block), badge and brand slot all on the block; the product straddles the seam clear of the words",
+    "center": "studio cut-out centred and large; job.center_type 'below' (default): headline + support (+ chip row) centred under the product; 'behind': a one/two-word headline set huge across the top behind the product, the support small at the bottom (chips above it); badge top-left, brand slot top-right"
   },
   "optional_job_fields": {
     "product_box": "[x0,y0,x1,y1] normalised product box in the scene (the renderer strips the asset's _product, so it must be sent as a job field or asset.product_box); enables product-aware overlay placement, the band fallback and whole-product band crops",
@@ -293,6 +327,11 @@
     "band_color": "#RRGGBB band colour (default #211915 warm dark)",
     "hero_bleed": "fraction of the product height allowed off the bottom in solid mode (default 0: whole product in frame)",
     "hero_fill": "scale over the fit of the product region in solid mode (default 1; 1.15 in the column layout)",
-    "solid_layout": "'column' restores the 0.42W text column with the product beside it (default: text block on top)"
+    "solid_layout": "'column' restores the 0.42W text column with the product beside it (default: text block on top)",
+    "mode": "'overlay' | 'band' | 'solid' (as before) | 'split' | 'center'; absent: overlay with a scene, else solid",
+    "split_side": "split: 'left' (default) | 'right', the side of the colour block",
+    "split_ratio": "split: block width as a share of the page, clamped to 0.38..0.55 (default 0.46)",
+    "center_type": "center: 'below' (default) | 'behind'",
+    "hero_key_gain": "split: gain of the fallback luminance key (default 20)"
   }
 }

@@ -246,30 +246,34 @@ if (mode === 'split') {
           column, clear of the rail (hero_overlap > 0 restores the old break-over). ---- */
   const railW = Math.round(W * (W < H ? 0.37 : 0.38));
   const sK = Math.max(k, 0.9);
-  T.box(T.el('div', {class:'studio'}), railW, 0, W - railW, H);
+  // rail_side 'right' mirrors the page: every x below is laid out for a left rail and flipped by fx (x, width)
+  const flip = job.rail_side === 'right', fx = (x, w) => flip ? W - x - w : x;
+  const railX = fx(0, railW);
+  T.box(T.el('div', {class:'studio'}), fx(railW, W - railW), 0, W - railW, H);
   const capAllow = [];
   dets.forEach((d, i) => capAllow.push('detail' + (i + 1) + '_frame', 'c' + (i + 1) + '_title', 'c' + (i + 1) + '_body'));
   const rb = T.el('div', {class:'rail-bg', 'data-qa':'rail_bg', 'data-kind':'shape', 'data-allow': capAllow.concat(['gap1', 'gap2', 'gap3']).join(',')});
-  T.box(rb, 0, 0, railW, H - bandH);
+  T.box(rb, railX, 0, railW, H - bandH);
   const capStyle = job.caption_style || 'scrim';               // 'scrim' (cream caps on the dark strip) | 'band' (solid accent tab)
   const band = capStyle === 'band';
-  const px = railW + m, pw = W - m - px;
+  const px = flip ? m : railW + m, pw = W - railW - 2 * m;
   const textBottom = headBlock(px, m, pw, {maxLines: 3, subW: zh ? pw : Math.round(680 * Math.max(k, 0.82))});
 
   // hero: centred in the column under the copy, >= 44px clear of the seam, >= 84px off the bottom edge
   const gap = 6, over = Math.round((+job.hero_overlap || 0) * k);
   const top = textBottom + 6 * G, floorY = H - bandH - (over > 0 ? Math.round(40 * k) : Math.round(84 * k));
   const bx = over > 0 ? railW - over : railW + gap + Math.round(44 * k), bw = W - Math.round((over > 0 ? 28 : 44) * k) - bx;
-  const hr = placeHero(bx, top, bw, floorY - top, over > 0 ? 0 : 0.5, over > 0 ? 1 : 0.6, {fill});
+  const hr = placeHero(fx(bx, bw), top, bw, floorY - top, over > 0 ? (flip ? 1 : 0) : 0.5, over > 0 ? 1 : 0.6, {fill});
 
   // ---- captions first: one size for every title (en <= 2 lines, zh 1 line), so the stack reads evenly ----
   const cont = T.el('div', {}); cont.style.cssText = 'position:absolute;inset:0';
-  const n = dets.length, cx = m, cw = railW - m - Math.round(28 * k);
-  const padX = band ? Math.round(22 * sK) : 0, padY = band ? Math.round(14 * sK) : 0;
+  const n = dets.length, cw = railW - m - Math.round(28 * k);
+  const capAlign = flip ? {align: 'right'} : {};             // mirrored captions read from the outer edge, like the left rail's
+  const padX = band ? Math.round(22 * sK) : 0, padY = band ? Math.round(14 * sK) : 0, cx = fx(m, cw - padX);
   const caps = dets.map((d, i) => {
     const id = 'c' + (i + 1), allow = ['detail' + (i + 1) + '_frame', 'rail_bg', id + '_band'];
-    const t = T.text(id + '_title', d.title, cx, 0, cw - padX, 'cap-title' + (band ? ' on-band' : ''), {tier:'secondary', maxLines: 2, allow, parent: cont});
-    const b = (d.body && job.caption_title_only === false) ? T.text(id + '_body', d.body, cx, 0, cw - padX, 'cap-body' + (band ? ' on-band' : ''), {tier:'meta', maxLines: 2, allow, parent: cont}) : null;
+    const t = T.text(id + '_title', d.title, cx, 0, cw - padX, 'cap-title' + (band ? ' on-band' : ''), {tier:'secondary', maxLines: 2, allow, parent: cont, ...capAlign});
+    const b = (d.body && job.caption_title_only === false) ? T.text(id + '_body', d.body, cx, 0, cw - padX, 'cap-body' + (band ? ' on-band' : ''), {tier:'meta', maxLines: 2, allow, parent: cont, ...capAlign}) : null;
     return {id, t, b};
   });
   // en fits by narrowing the extended face first (stretch 112 -> 96), then by size; never below the QA's secondary minimum
@@ -304,13 +308,13 @@ if (mode === 'split') {
   hs = hs.map(Math.floor);
   if (left > 2) T.notes.push('close-ups are too small to fill the rail without upscaling; ' + Math.round(left) + 'px left dark');
 
-  // band tabs share one width (the widest caption), flush to the rail's left edge
-  const textRight = e => { const rg = document.createRange(); rg.selectNodeContents(e); return Math.max(...[...rg.getClientRects()].map(q => q.right)); };
+  // band tabs share one width (the widest caption), flush to the rail's outer edge
+  const textRight = e => { const rg = document.createRange(); rg.selectNodeContents(e); const qs = [...rg.getClientRects()]; return flip ? W - Math.min(...qs.map(q => q.left)) : Math.max(...qs.map(q => q.right)); };
   const bandW = band ? Math.min(railW - Math.round(20 * k), Math.ceil(Math.max(...caps.flatMap(c => [c.t, c.b].filter(Boolean)).map(textRight)) + padX)) : 0;
 
   let y = 0;
   dets.forEach((d, i) => {
-    const th = hs[i], x0 = Math.round((railW - tw[i]) / 2), ih = Math.max(60, th - stripH[i]);
+    const th = hs[i], x0 = railX + Math.round((railW - tw[i]) / 2), ih = Math.max(60, th - stripH[i]);
     const {id, t, b} = caps[i];
     const f = tile(i, d, x0, y, tw[i], ih, {maxAspect: job.tile_max_aspect ?? 1.4, minVisible: job.tile_min_visible ?? 0.85, partY: 0.5,
       allow: ['rail_bg', id + '_fade'].concat(i ? ['gap' + i] : []).concat(i < n - 1 ? ['gap' + (i + 1)] : []), parent: cont});
@@ -325,25 +329,25 @@ if (mode === 'split') {
     let marker = null;
     if (band) {
       marker = T.el('div', {class:'cap-band', 'data-qa': id + '_band', 'data-kind':'shape', 'data-exempt':'1'}, cont);
-      T.box(marker, 0, bot - h0 - padY, bandW, h0 + 2 * padY);
+      T.box(marker, fx(0, bandW), bot - h0 - padY, bandW, h0 + 2 * padY);
     } else if (hasIcon && d.icon && (job.icons || {})[d.icon]) {
       marker = T.el('div', {class:'cap-badge', 'data-exempt':'1'}, cont);
-      T.box(marker, cx, bot - h0 - 18 - badge, badge, badge);
+      T.box(marker, fx(m, badge), bot - h0 - 18 - badge, badge, badge);
       const ic = T.icon(d.icon, Math.round(badge * 0.18), Math.round(badge * 0.18), Math.round(badge * 0.64), 'var(--accent)', marker);
       if (ic) ic.querySelectorAll('[stroke-width]').forEach(e => e.setAttribute('stroke-width', '2'));
     } else {
       marker = T.el('div', {class:'tick', 'data-qa': id + '_tab', 'data-kind':'shape', 'data-exempt':'1'}, cont);
-      T.box(marker, cx, bot - h0 - 22 - 6, 56, 6);
+      T.box(marker, fx(m, 56), bot - h0 - 22 - 6, 56, 6);
     }
     for (const e of [fade, marker, t, b]) if (e) cont.appendChild(e);
     y += th;
-    if (i < n - 1) { const g = T.el('div', {class:'gap', 'data-qa':'gap' + (i + 1), 'data-kind':'shape', 'data-allow':'rail_bg'}, cont); T.box(g, 0, y, railW, gap); y += gap; }
+    if (i < n - 1) { const g = T.el('div', {class:'gap', 'data-qa':'gap' + (i + 1), 'data-kind':'shape', 'data-allow':'rail_bg'}, cont); T.box(g, railX, y, railW, gap); y += gap; }
   });
 
   // accent seam on the rail's edge ties the gaps into one frame
-  if (job.rail_seam !== false) { const se = T.el('div', {class:'gap', 'data-qa':'rail_seam', 'data-kind':'shape', 'data-exempt':'1'}); T.box(se, railW, 0, gap, H - bandH); }
+  if (job.rail_seam !== false) { const se = T.el('div', {class:'gap', 'data-qa':'rail_seam', 'data-kind':'shape', 'data-exempt':'1'}); T.box(se, fx(railW, gap), 0, gap, H - bandH); }
   if (over > 0) for (const e of [document.querySelector('.floor'), document.querySelector('[data-qa=hero]')]) if (e) T.root.appendChild(e);
-  T.layoutInfo.hero_rect = hr.r; T.layoutInfo.rail = {w: railW, tiles: hs, strip: stripH, caption_px: fit && fit[0]};
+  T.layoutInfo.hero_rect = hr.r; T.layoutInfo.rail = {w: railW, x: railX, side: flip ? 'right' : 'left', tiles: hs, strip: stripH, caption_px: fit && fit[0]};
   T.layoutInfo.hero_fill_ratio = +((hr.content.w * hr.content.h) / (W * H)).toFixed(3);
 } else if (mode === 'ring') {
   /* ---- airaj H0082: circular close-ups around the product, short centred captions under each circle.

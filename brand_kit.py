@@ -2,17 +2,20 @@
 
 A listing keeps one accent colour, one headline treatment, one way of drawing leader lines and
 one frame from its first image to its last. That is stored once per project as the brand and
-read by every page template. The five presets are the families found in the example listings:
+read by every page template. A preset is a whole look: its type, ground and marks, and (``layout``)
+the composition each page is tried in first. The ten presets are the composition families found
+in Amazon listing galleries and agency practice:
 
-* ``frame``  dark header and footer bands around a white body, wide heavy capitals, right-angle
-             accent leader lines with square ends, no icons; the big tool brands.
-* ``flat``   a flat brand-colour ground, white type of normal width, rounded cards and pills.
-* ``tech``   a charcoal ground with a glow and a fine grid, a square display face, thin accent
-             lines with ring ends, outlined panels and icons.
-* ``clean``  white, a heavy black headline with one phrase in the accent colour, thin grey
-             lines with dots, soft grey cards.
-* ``promo``  heavy condensed italic capitals, slanted accent bands, outlined and shadowed
-             headlines, burst badges and chevrons.
+* ``frame``      the templates as designed (no layout recipe): the default.
+* ``clean``      white space, the product centred and large, thin grey leaders, circular close-ups.
+* ``flat``       the page in the brand colour, one oversized word set behind the product.
+* ``tech``       dark premium: charcoal, the product big off one side, numbered markers, ring close-ups.
+* ``promo``      the words on a heavy band under the scene, the product running off the page, italic caps.
+* ``split``      a brand-colour block holding every word and a light field, the product across the seam.
+* ``blueprint``  a drafting grid on blueprint blue, tick-ended dimension lines, a title block.
+* ``workshop``   the headline over the top of the scene, callouts stacked in one column on the open side.
+* ``editorial``  warm paper, a serif headline, a one-third colour column, numbered features.
+* ``catalogue``  white, the words beside the product, numbered markers and a legend, kit laid flat.
 
 The presets describe treatments, not anyone's trade dress: no logos, names or marks are built
 in. A brand name, badge texts, a legal line and a logo are the user's own.
@@ -26,9 +29,13 @@ from PIL import Image
 import brandkit_assets
 import listing_draw as draw
 
+# A preset's ``layout`` is its composition, page by page (listing_jobs.preset_jobs): for each kind, 'prefer' lists copies
+# of the builder's versions to try first ({'from': the builder's mode or '*', 'set': knobs}), and 'all' knobs go on every
+# version of that kind. The builder's own versions always follow, so a page the preferred composition cannot hold still
+# comes out. ``fonts``: the font pairing the preset reads in, used while the brand's own is left at the default.
 PRESETS = {
     # The default preset draws the templates as they were designed (page_style sets no bands, type or corners of its own):
-    # its name and note say that, not the band frame its tokens describe for other uses.
+    # its name and note say that, not the band frame its tokens describe for other uses. It has no layout recipe.
     'frame': {'title': ('经典版式', 'Classic'), 'ground': 'light', 'header': 'band', 'footer': 'band',
               'headline': {'font': 'archivo', 'weight': 900, 'width': 125, 'case': 'upper', 'leading': .98},
               'label': {'font': 'archivo', 'weight': 800, 'width': 112, 'case': 'upper', 'leading': 1.08},
@@ -42,33 +49,151 @@ PRESETS = {
              'body': {'font': 'inter', 'weight': 500, 'case': 'none', 'leading': 1.32},
              'leader': {'route': 'straight', 'end': 'ring', 'width': 2.6, 'ink': 'ink'},
              'card': {'radius': 26, 'style': 'solid'}, 'chip': {'radius': 999, 'style': 'solid'}, 'badge': 'pill', 'icons': True,
-             'note': ('整页品牌色，白色文字，圆角卡片与胶囊标签', 'A flat brand-colour page, white type, rounded cards and pills')},
-    'tech': {'title': ('深色科技', 'Dark tech'), 'ground': 'dark', 'header': 'none', 'footer': 'line',
+             'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'mode': 'center', 'center_type': 'behind'}}]},
+                        'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'numbered', 'label_side': 'left'}}]},
+                        'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'strip'}}]},
+                        'T02': {'prefer': [{'from': 'macro', 'set': {'layout': 'band'}}]},
+                        'T04': {'all': {'chip_style': 'dark'}},
+                        'T08': {'prefer': [{'from': 'stagger', 'set': {'mode': 'bento'}}]},
+                        'T05': {'all': {'qty_style': 'badge'}}},
+             'note': ('整页品牌色：一个超大的词垫在产品背后，部件上是编号圆点、图例排在左侧，场景是一大两小的拼格',
+                      'The page in the brand colour: one oversized word behind the product, numbered dots on the parts with the legend on the left, one big scene tile and two small')},
+    'tech': {'title': ('深色科技', 'Dark tech'), 'ground': 'dark', 'header': 'none', 'footer': 'line', 'fonts': 'tech',
              'headline': {'font': 'orbitron', 'weight': 800, 'case': 'upper', 'leading': 1.08, 'tracking': .01},
              'label': {'font': 'archivo', 'weight': 700, 'width': 104, 'case': 'upper', 'leading': 1.14, 'tracking': .02},
              'body': {'font': 'inter', 'weight': 400, 'case': 'none', 'leading': 1.34},
              'leader': {'route': 'angled', 'end': 'ring', 'width': 2, 'ink': 'accent'},
              'card': {'radius': 14, 'style': 'outline'}, 'chip': {'radius': 8, 'style': 'outline'}, 'badge': 'hex', 'icons': True,
-             'note': ('深灰底 + 光晕与细网格，方形展示字体，描边面板与图标', 'Charcoal with a glow and a fine grid, a square display face, outlined panels and icons')},
-    'clean': {'title': ('简洁白底', 'Clean white'), 'ground': 'light', 'header': 'none', 'footer': 'none',
+             'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'solid_layout': 'column', 'hero_bleed': .1}}]},
+                        'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'numbered', 'label_side': 'right'}}]},
+                        'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'ring'}}]},
+                        'T02': {'all': {'ground': 'carbon', 'rim': .22}},
+                        'T04': {'prefer': [{'from': '*', 'set': {'mode': 'band'}}], 'all': {'chip_style': 'dark'}},
+                        'T08': {'prefer': [{'from': 'stagger', 'set': {'mode': 'bento'}}]},
+                        'T06': {'all': {'dim_style': 'ticks'}},
+                        'T05': {'all': {'qty_style': 'badge'}}},
+             'note': ('深色高端：文字一栏靠左，产品放大出血到右下角，部件上编号、图例在右，圆形特写，参数数字排成一行',
+                      'Dark premium: the words in a column on the left, the product large and running off the corner, numbered parts with the legend on the right, round close-ups, figures in a row')},
+    'clean': {'title': ('简洁白底', 'Clean white'), 'ground': 'light', 'white': True, 'header': 'none', 'footer': 'none', 'fonts': 'clean',
               'headline': {'font': 'archivo', 'weight': 800, 'width': 100, 'case': 'none', 'leading': 1.04},
               'label': {'font': 'archivo', 'weight': 700, 'width': 100, 'case': 'none', 'leading': 1.14},
               'body': {'font': 'inter', 'weight': 400, 'case': 'none', 'leading': 1.34},
               'leader': {'route': 'angled', 'end': 'dot', 'width': 1.8, 'ink': 'soft'},
               'card': {'radius': 20, 'style': 'soft'}, 'chip': {'radius': 999, 'style': 'soft'}, 'badge': 'pill', 'icons': True,
-              'note': ('白底留白，黑色粗标题中一个词用品牌色，细灰引线', 'White space, a heavy black headline with one accent phrase, thin grey lines')},
-    'promo': {'title': ('促销冲击', 'Bold promo'), 'ground': 'dark', 'header': 'slash', 'footer': 'none',
+              'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'mode': 'center', 'center_type': 'below'}}]},
+                         'T01': {'prefer': [{'from': '*', 'set': {'frame': 'plain'}}]},
+                         'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'ring', 'ring_style': 'grey'}}]},
+                         'T02': {'all': {'edge': 'fade'}},
+                         'T04': {'prefer': [{'from': '*', 'set': {'mode': 'glass'}}]},
+                         'T08': {'prefer': [{'from': 'columns', 'set': {}}]},
+                         'T13': {'prefer': [{'from': 'columns', 'set': {}}]},
+                         'T05': {'all': {'header': 'light'}}},
+              'note': ('大留白白底：产品居中放大，标题在产品下方，细灰引线从两侧指向部件，圆形特写围着产品',
+                       'White space: the product centred and large with the headline under it, thin grey leaders from both sides, round close-ups around it')},
+    'promo': {'title': ('促销冲击', 'Bold promo'), 'ground': 'dark', 'header': 'slash', 'footer': 'none', 'fonts': 'poster',
               'headline': {'font': 'archivo', 'weight': 900, 'width': 68, 'italic': True, 'case': 'upper', 'leading': .96},
               'label': {'font': 'archivo', 'weight': 800, 'width': 80, 'italic': True, 'case': 'upper', 'leading': 1.08},
               'body': {'font': 'archivo', 'weight': 500, 'width': 92, 'case': 'none', 'leading': 1.26},
               'leader': {'route': 'straight', 'end': 'arrow', 'width': 4, 'ink': 'accent'},
               'card': {'radius': 6, 'style': 'solid'}, 'chip': {'radius': 4, 'style': 'slant'}, 'badge': 'burst', 'icons': True, 'effect': 'outline',
-              'note': ('窄体粗斜大写，斜切色带，描边加阴影标题，爆炸贴', 'Heavy condensed italic capitals, slanted bands, outlined headlines, burst badges')},
+              'layout': {'T12': {'prefer': [{'from': 'band', 'set': {}}, {'from': 'solid', 'set': {'hero_bleed': .12}}]},
+                         'T01': {'prefer': [{'from': '*', 'set': {'frame': 'band'}}]},
+                         'T03': {'prefer': [{'from': 'split', 'set': {'caption_style': 'band'}}]},
+                         'T02': {'prefer': [{'from': 'macro', 'set': {'panel_side': 'right'}}], 'all': {'ground': 'carbon'}},
+                         'T04': {'prefer': [{'from': '*', 'set': {'mode': 'band'}}]},
+                         'T08': {'all': {'first_side': 'left'}},
+                         'T05': {'all': {'qty_style': 'badge'}}},
+              'note': ('促销冲击：照片在上、大字压在下方厚色带里，无场景时产品放大冲出画面，页眉色带，特写配色块标签',
+                       'Bold promo: the scene on top and big words on a heavy band under it, without a scene the product large and running off the page, a header band, close-ups with solid tabs')},
+    'split': {'title': ('分屏色块', 'Split screen'), 'ground': 'light', 'header': 'none', 'footer': 'none',
+              'headline': {'font': 'archivo', 'weight': 900, 'width': 100, 'case': 'upper', 'leading': .96},
+              'label': {'font': 'archivo', 'weight': 800, 'width': 100, 'case': 'upper', 'leading': 1.08},
+              'body': {'font': 'inter', 'weight': 500, 'case': 'none', 'leading': 1.3},
+              'leader': {'route': 'straight', 'end': 'square', 'width': 3, 'ink': 'accent'},
+              'card': {'radius': 0, 'style': 'solid'}, 'chip': {'radius': 0, 'style': 'solid'}, 'badge': 'box', 'icons': False,
+              'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'mode': 'split', 'split_side': 'left', 'split_ratio': .46}}]},
+                         'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'column', 'label_side': 'right'}}]},
+                         'T03': {'prefer': [{'from': 'split', 'set': {'rail_side': 'right'}}]},
+                         'T02': {'prefer': [{'from': 'macro', 'set': {'panel_side': 'right'}}]},
+                         'T04': {'all': {'chip_style': 'dark'}},
+                         'T08': {'prefer': [{'from': 'split', 'set': {'split_dir': 'rows'}}, {'from': 'stagger', 'set': {'stagger_style': 'rows'}}]},
+                         'T05': {'all': {'header': 'light'}}},
+              'note': ('分屏色块：左边品牌色块放全部文字，产品跨在色块和浅色区的分界线上，标注竖排一列，特写栏在右',
+                       'Split screen: a brand-colour block on the left holds every word, the product straddles the seam into a light field, labels in one column, close-ups on the right')},
+    'blueprint': {'title': ('工程蓝图', 'Blueprint'), 'ground': 'blueprint', 'header': 'none', 'footer': 'line', 'fonts': 'impact',
+                  'texture': {'kind': 'drafting', 'opacity': .16},
+                  'headline': {'font': 'archivo', 'weight': 700, 'width': 75, 'case': 'upper', 'leading': 1.0, 'tracking': .03},
+                  'label': {'font': 'archivo', 'weight': 600, 'width': 80, 'case': 'upper', 'leading': 1.1, 'tracking': .04},
+                  'body': {'font': 'inter', 'weight': 400, 'case': 'none', 'leading': 1.34},
+                  'leader': {'route': 'elbow', 'end': 'ring', 'width': 2, 'ink': 'ink'},
+                  'card': {'radius': 0, 'style': 'outline'}, 'chip': {'radius': 0, 'style': 'outline'}, 'badge': 'box', 'icons': True,
+                  'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'hero_bleed': 0}}]},
+                             'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'numbered', 'label_side': 'right', 'frame': 'light'}}]},
+                             'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'strip'}}]},
+                             'T02': {'all': {'edge': 'fade', 'grain': False}},
+                             'T04': {'prefer': [{'from': '*', 'set': {'mode': 'band'}}]},
+                             'T08': {'prefer': [{'from': 'columns', 'set': {}}]},
+                             'T13': {'prefer': [{'from': 'columns', 'set': {}}]},
+                             'T06': {'all': {'dim_style': 'ticks', 'ground_style': 'blueprint', 'title_block': True}},
+                             'T05': {'all': {'qty_style': 'both', 'header': 'light'}}},
+                  'note': ('工程蓝图：蓝底细制图网格，产品完整摆正，尺寸线画在轮廓外、两端短竖线，右下角图签，零件编号加图例',
+                           'Blueprint: a fine drafting grid on blue, the whole product square on, dimension lines outside its outline with tick ends, a title block, numbered parts with a legend')},
+    'workshop': {'title': ('工业车间', 'Workshop'), 'ground': 'light', 'header': 'band', 'footer': 'none',
+                 'headline': {'font': 'archivo', 'weight': 900, 'width': 112, 'case': 'upper', 'leading': .96},
+                 'label': {'font': 'archivo', 'weight': 800, 'width': 104, 'case': 'upper', 'leading': 1.08},
+                 'body': {'font': 'archivo', 'weight': 500, 'width': 100, 'case': 'none', 'leading': 1.26},
+                 'leader': {'route': 'straight', 'end': 'square', 'width': 4, 'ink': 'accent'},
+                 'card': {'radius': 0, 'style': 'rules'}, 'chip': {'radius': 0, 'style': 'solid'}, 'badge': 'box', 'icons': False,
+                 'layout': {'T12': {'prefer': [{'from': 'overlay', 'set': {'text_zone': 'top'}}, {'from': 'band', 'set': {}},
+                                               {'from': 'solid', 'set': {'mode': 'split', 'split_side': 'right', 'split_ratio': .42}}]},
+                            'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'column', 'label_side': 'left', 'frame': 'band'}},
+                                               {'from': '*', 'set': {'callout_style': 'column', 'label_side': 'left'}}]},
+                            'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'rail'}}]},
+                            'T02': {'all': {'ground': 'carbon'}},
+                            'T04': {'prefer': [{'from': '*', 'set': {'mode': 'band'}}]},
+                            'T08': {'prefer': [{'from': 'stagger', 'set': {'stagger_style': 'rows'}}]},
+                            'T06': {'all': {'dim_style': 'ticks'}}},
+                 'note': ('工业车间：标题压在作业照片上方，深色页眉带，标注全部竖排在产品一侧、每条一根水平引线，一个场景一行',
+                          'Workshop: the headline over the top of a job-site scene, a dark header band, every label stacked on one side with a level leader each, one scene per row')},
+    'editorial': {'title': ('杂志编排', 'Editorial'), 'ground': 'paper', 'header': 'none', 'footer': 'none', 'fonts': 'elegant',
+                  'headline': {'font': 'archivo', 'weight': 700, 'width': 100, 'case': 'none', 'leading': 1.06},
+                  'label': {'font': 'archivo', 'weight': 600, 'width': 100, 'case': 'none', 'leading': 1.14},
+                  'body': {'font': 'inter', 'weight': 400, 'case': 'none', 'leading': 1.4},
+                  'leader': {'route': 'straight', 'end': 'dot', 'width': 1.6, 'ink': 'ink'},
+                  'card': {'radius': 0, 'style': 'rules'}, 'chip': {'radius': 999, 'style': 'outline'}, 'badge': 'pill', 'icons': False,
+                  'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'mode': 'split', 'split_side': 'right', 'split_ratio': .38}}]},
+                             'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'numbered', 'label_side': 'left'}}]},
+                             'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'rail'}}]},
+                             'T02': {'prefer': [{'from': 'macro', 'set': {'layout': 'band'}}], 'all': {'grain': False}},
+                             'T04': {'prefer': [{'from': '*', 'set': {'mode': 'stack'}}]},
+                             'T08': {'prefer': [{'from': 'stagger', 'set': {'mode': 'bento', 'bento_split': .64}}]},
+                             'T05': {'all': {'header': 'light'}}},
+                  'note': ('杂志编排：暖纸色底，衬线大标题，右侧三分之一窄色栏放文字，01/02/03 编号要点，标题、照片、参数上下分层',
+                           'Editorial: warm paper, a serif headline, the words in a narrow one-third column on the right, 01/02/03 numbered points, headline, scene and figures in layers')},
+    'catalogue': {'title': ('产品目录', 'Catalogue'), 'ground': 'light', 'white': True, 'header': 'none', 'footer': 'line', 'fonts': 'geometric',
+                  'headline': {'font': 'archivo', 'weight': 800, 'width': 100, 'case': 'none', 'leading': 1.04},
+                  'label': {'font': 'archivo', 'weight': 700, 'width': 100, 'case': 'none', 'leading': 1.12},
+                  'body': {'font': 'inter', 'weight': 400, 'case': 'none', 'leading': 1.34},
+                  'leader': {'route': 'straight', 'end': 'ring', 'width': 2, 'ink': 'soft'},
+                  'card': {'radius': 12, 'style': 'soft'}, 'chip': {'radius': 8, 'style': 'soft'}, 'badge': 'pill', 'icons': True,
+                  'layout': {'T12': {'prefer': [{'from': 'solid', 'set': {'solid_layout': 'column', 'hero_bleed': 0}}]},
+                             'T01': {'prefer': [{'from': '*', 'set': {'callout_style': 'numbered', 'label_side': 'right', 'frame': 'plain'}}]},
+                             'T03': {'prefer': [{'from': 'split', 'set': {'mode': 'strip'}}]},
+                             'T02': {'all': {'edge': 'fade'}},
+                             'T04': {'prefer': [{'from': '*', 'set': {'mode': 'glass'}}]},
+                             'T08': {'prefer': [{'from': 'stagger', 'set': {'mode': 'bento', 'bento_split': .5}}]},
+                             'T13': {'prefer': [{'from': 'columns', 'set': {}}]},
+                             'T06': {'prefer': [{'from': 'table', 'set': {}}], 'all': {'title_block': True}},
+                             'T05': {'prefer': [{'from': '*', 'set': {'mode': 'knolling'}}], 'all': {'qty_style': 'both', 'header': 'light'}}},
+                  'note': ('产品目录：白底网格，文字一栏在左、产品在右，部件编号加图例代替引线，多个状态并排，配件平铺成套',
+                           'Catalogue: a white grid, the words in a column left of the product, numbered parts with a legend instead of leaders, states side by side, the kit laid flat')},
 }
 DEFAULT_PRESET = 'frame'
 DEFAULT_ACCENT = '#e5322d'
 DARK = '#16171a'
 LIGHT = '#ffffff'
+# The grounds of the presets that bring their own: warm paper (editorial) and blueprint blue (blueprint).
+GROUNDS = {'paper': '#f4efe6', 'blueprint': '#173b63'}
 HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
 UNITS = ('mm', 'in')
 MAX_BADGES = 3
@@ -114,7 +239,15 @@ def validate(value, current=None):
     unit = value.get('unit', current.get('unit', 'mm'))
     if unit not in UNITS:
         raise ValueError('尺寸单位只能是 mm 或 in')
-    fonts = value.get('fonts', current.get('fonts', brandkit_assets.DEFAULT_PAIRING))
+    # fonts None: not chosen, the preset's own pairing is used (fonts_auto). A record from before presets had their own
+    # pairings always holds the default one, so the default without the mark reads as not chosen too.
+    if 'fonts' in value:
+        # a stored record read again (Brand(record)) carries its own mark
+        fonts = value['fonts']; fonts_auto = fonts in (None, '') or value.get('fonts_auto') is True
+    else:
+        fonts = current.get('fonts')
+        fonts_auto = current.get('fonts_auto', fonts in (None, brandkit_assets.DEFAULT_PAIRING))
+    fonts = fonts or brandkit_assets.DEFAULT_PAIRING
     if fonts not in brandkit_assets.PAIRINGS:
         raise ValueError('未知的字体搭配')
     badge_style = value.get('badge_style', current.get('badge_style', 'auto'))
@@ -131,7 +264,7 @@ def validate(value, current=None):
             'dark': _color(value['dark'], '深色') if 'dark' in value else current.get('dark'),
             'badges': [_text(badge, 16, '徽标文字') for badge in badges if _text(badge, 16, '徽标文字')],
             'legal': _text(value.get('legal', current.get('legal', '')), 200, '说明文字'),
-            'unit': unit, 'logo': logo, 'fonts': fonts, 'badge_style': badge_style, 'texture': texture}
+            'unit': unit, 'logo': logo, 'fonts': fonts, 'fonts_auto': bool(fonts_auto), 'badge_style': badge_style, 'texture': texture}
 
 
 def dominant_color(path):
@@ -165,7 +298,11 @@ class Brand:
     """A brand record resolved to the colours and type styles the templates draw with."""
 
     def __init__(self, record=None, product_color=None):
-        record = validate(record or {})
+        record = dict(record or {})
+        # a record stored before presets had their own pairings holds the default one without the mark: not chosen
+        if 'fonts_auto' not in record and record.get('fonts') in (None, brandkit_assets.DEFAULT_PAIRING):
+            record['fonts_auto'] = True
+        record = validate(record)
         self.record = record; self.preset = record['preset']; self.tokens = PRESETS[self.preset]
         self.name = record['name']; self.badges = record['badges']; self.legal = record['legal']; self.unit = record['unit']
         self.logo = record['logo']
@@ -175,7 +312,7 @@ class Brand:
         kind = self.tokens['ground']
         # A colour taken from the product would hide the product on a page of that colour: such a ground is deepened.
         flat = draw.mix(self.accent, '#000000', .42) if self.accent_source == 'product' else self.accent
-        self.ground = flat if kind == 'accent' else self.dark if kind == 'dark' else self.light
+        self.ground = flat if kind == 'accent' else self.dark if kind == 'dark' else GROUNDS.get(kind, self.light)
         self.ink = draw.on(self.ground, '#121212', '#ffffff')
         self.on_dark = self.ground != self.light and self.ink == '#ffffff'
         self.soft = draw.mix(self.ink, self.ground, .42)
@@ -233,7 +370,9 @@ class Brand:
         return {**self.tokens['headline'], 'size': size, 'color': self.accent_for(ground), 'leading': 1.0, **more}
 
     def public(self):
-        return {**self.record, 'accent_used': self.accent, 'accent_source': self.accent_source, 'dark_used': self.dark, 'ground': self.ground}
+        # fonts None while not chosen, so the workspace sends it back unchosen; fonts_used is what the pages are set in
+        return {**self.record, 'fonts': None if self.record.get('fonts_auto') else self.record['fonts'], 'fonts_used': fonts_of(self),
+                'accent_used': self.accent, 'accent_source': self.accent_source, 'dark_used': self.dark, 'ground': self.ground}
 
 
 def page_style(brand):
@@ -249,14 +388,34 @@ def page_style(brand):
         return {'weight': style.get('weight', 800), 'stretch': style.get('width', 100), 'case': style.get('case', 'none'),
                 'italic': bool(style.get('italic')), 'tracking': style.get('tracking', 0)}
     default = brand.preset == DEFAULT_PRESET
-    return {'preset': brand.preset, 'ground': tokens['ground'],
-            'headline': None if default else type_of('headline'), 'label': None if default else type_of('label'),
-            'card': None if default else {'radius': tokens['card']['radius'], 'style': tokens['card']['style']},
-            'chip': None if default else {'radius': tokens['chip']['radius'], 'style': tokens['chip']['style']},
-            'leader': None if default else dict(tokens['leader']),
-            'frame': {'header': 'none', 'footer': 'none'} if default else {'header': tokens['header'], 'footer': tokens['footer']}}
+    style = {'preset': brand.preset, 'ground': tokens['ground'],
+             'headline': None if default else type_of('headline'), 'label': None if default else type_of('label'),
+             'card': None if default else {'radius': tokens['card']['radius'], 'style': tokens['card']['style']},
+             'chip': None if default else {'radius': tokens['chip']['radius'], 'style': tokens['chip']['style']},
+             'leader': None if default else dict(tokens['leader']),
+             'frame': {'header': 'none', 'footer': 'none'} if default else {'header': tokens['header'], 'footer': tokens['footer']}}
+    if tokens.get('texture'):
+        # a ground pattern of the preset's own (the blueprint's drafting grid); only stated when there is one, so the
+        # pages of the other presets carry the same style as before. A texture the seller picked is drawn instead.
+        style['texture'] = dict(tokens['texture'])
+    return style
+
+
+def fonts_of(brand, language='en'):
+    """The font pairing a page is set in: the brand's own, or, while that is left at the default, the preset's. A Chinese
+    page takes the preset's only when its Chinese face is the default one: the other Chinese faces are downloads, and a
+    preset is never a reason to wait for one."""
+    if brand is None:
+        return None
+    chosen = brand.record.get('fonts')
+    own = brand.tokens.get('fonts')
+    if not brand.record.get('fonts_auto') or not own or own not in brandkit_assets.PAIRINGS:
+        return chosen
+    if language == 'zh' and brandkit_assets.PAIRINGS[own]['cjk'] != brandkit_assets.PAIRINGS[brandkit_assets.DEFAULT_PAIRING]['cjk']:
+        return chosen
+    return own
 
 
 def presets():
     return [{'id': key, 'label': {'zh': value['title'][0], 'en': value['title'][1]}, 'note': {'zh': value['note'][0], 'en': value['note'][1]},
-             'ground': value['ground']} for key, value in PRESETS.items()]
+             'ground': value['ground'], 'fonts': value.get('fonts') or brandkit_assets.DEFAULT_PAIRING} for key, value in PRESETS.items()]

@@ -14,6 +14,7 @@
   {"id": "dots", "label": {"zh": "圆点", "en": "Dots"}},
   {"id": "grid", "label": {"zh": "网格", "en": "Grid"}},
   {"id": "diagonal", "label": {"zh": "斜纹", "en": "Diagonal"}},
-  {"id": "carbon", "label": {"zh": "碳纤维", "en": "Carbon"}}
+  {"id": "carbon", "label": {"zh": "碳纤维", "en": "Carbon"}},
+  {"id": "drafting", "label": {"zh": "制图网格", "en": "Drafting grid"}}
  ]
 }

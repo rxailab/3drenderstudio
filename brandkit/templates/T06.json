@@ -99,6 +99,17 @@
    "radius": 14,
    "max_columns": 6,
    "style": "white card, 1px rules, full-height dividers, ink figures"
+  },
+  "blueprint": {
+   "grid": "SVG lines in --text: minor 1px at 7%, major (every 5th) 1.25px at 13%; step 24px at 1500 (min 16)",
+   "grid_area": "the drawing region only (between header and table/footer, 16px past its sides), radial fade to the edges",
+   "grid_cutout": "the product's own non-white pixels (thresholded picture, grown ~10px) are masked out of the grid",
+   "dimension_ends": "45° slashes 2x9px, line run 12px past each extension line; extension lines solid 1.25px at 50%"
+  },
+  "title_block": {
+   "box": "--bg fill, 2px --line inset border, 8px accent stripe at the left; rows 60px at 1500, 1px --line rules at 28%",
+   "type": "label Inter 700 20px tracked caps in --muted (zh Noto Sans SC 22px); value Archivo 800 wdth 90% 32px right-aligned, shrinks to >= 22px",
+   "width": "measured, at most 46% of W"
   }
  },
  "elements": [
@@ -147,6 +158,11 @@
    "kind": "text",
    "style_token": "disclaimer",
    "note": "one pattern: '<source>; please allow 1–2 cm variance.' / '<来源>，存在 1–2 cm 误差'; no source → 'Sizes are approximate…' / '尺寸为近似值…'"
+  },
+  {
+   "element_id": "title_block / tbN_name / tbN_val",
+   "kind": "shape+text",
+   "note": "job.title_block: up to 3 job.specs rows (label or name, value, unit), not the ones the table already shows; bottom-right of the drawing region when free, else up and to the left; fewer rows when 3 do not fit; left out with a note when none fit"
   }
  ],
  "adaptation_rules": [
@@ -163,7 +179,9 @@
   "the figures headline stays on one line: compact 72 step, then shrinks to ≥56px",
   "dim_style (optional, default 'arrows'): 'ticks' draws 24px bars square to the line",
   "disclaimer: job.disclaimer as given (ranges get an en dash, '1-2cm' → '1–2 cm'); else table_note's source sentence + variance clause; job.variance sets the range or false drops it (default '1–2 cm', '0.5–1 in' for inch jobs)",
-  "only the sizes the job gives are drawn (the set builder passes only sizes the user stated); a size the main view hides goes on job.end, the product itself turned a quarter at the same scale; there is no schematic depth box and no depth pill"
+  "only the sizes the job gives are drawn (the set builder passes only sizes the user stated); a size the main view hides goes on job.end, the product itself turned a quarter at the same scale; there is no schematic depth box and no depth pill",
+  "ground_style (optional, default 'plain'): 'blueprint' draws a fine drafting grid under the drawing only (never under the header, table or footer), in the ink's tint so it reads on light and dark grounds, cut away round the product; dimension lines end in 45° slashes unless dim_style is 'arrows'",
+  "title_block (optional, default false): a bordered block of up to 3 spec rows; placed only where TPL.freeSpot finds room and no dimension or extension line crosses it, else left out with a note"
  ],
  "render_outputs": [
   {

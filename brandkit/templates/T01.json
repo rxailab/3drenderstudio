@@ -366,6 +366,7 @@
     "frames: light (8px accent strip, white sweeping into #DCDDDE; the floor starts at the product's base footprint with a soft 0.11H gradient, contact shadow is an ellipse laid along the base's front edge), band (dark header 200, 232 with a badge, + 14px accent rule + 72px footer with disclaimer; header holds job.badge plus the headline right-aligned in 1-2 lines (60->40px) if it fits, or the headline alone), plain (studio radial ground)",
     "anchor marker: one style for every anchor, an open accent square (half-size 19, white halo) framing the part so small parts (rivets) stay visible; the drawn line stops at the square's edge",
     "vertical placement prefers the product top ~60px under the headline (no dead band), lower spots are tried after; size steps 1..0.6 in 0.05",
+    "callout_style numbered/column: one column on label_side as wide as its widest label (disc 48px or 6px accent bar, then the text), evenly spaced (gap 40..88 numbered, 40..260 column); the product is fitted beside it (48px gap numbered, 120px column) and centred in the room under the headline. numbered: discs (r24, white ring) sit on the anchors, numbered top to bottom; discs closer than 54px, or touching the headline or legend, are refused. column: labels in the parts' top-to-bottom order, a swap allowed at a price when it keeps a line off the product; leaders as the preset routes them, no crossings, 31px clear of other squares, no kinks under 72px, runs skimming the outline penalised. Too crowded at every size: a qa note and a forced layout whose collisions fail QA, so lay_out takes the next job",
     "labels may sit beside the headline when clear of its ink box by 64/56px; label column 420 (min(420,0.35W)), widened to min(500,0.38W) when that saves a title line; hyphenated compounds in en bodies use a non-breaking hyphen",
     "zh: a clause mark at a headline line break is dropped; a short headline (<=6 chars/line) is set at 120px",
     "hero keyed off its white backdrop with an SVG luminance key (job.hero_key, default on except band) so the split ground passes behind the product without tinting it; multiply blend only when the key is off",
@@ -452,6 +453,8 @@
     "contact_shadow": "bool",
     "badge_headline": "bool, default true: in band with a badge, also set the headline in the band if it fits",
     "marker_r": "anchor square half-size, default 19",
-    "floor_sweep": "floor gradient height in px, default 0.11*H"
+    "floor_sweep": "floor gradient height in px, default 0.11*H",
+    "callout_style": "'leaders' (default: labels in the margins) | 'numbered' (numbered accent discs on the parts + a numbered legend column, title and body, in reading order) | 'column' (every label stacked in one column, accent bar at its left edge, level or one-bend leaders)",
+    "label_side": "'left'|'right', default 'right': the side of the numbered legend / label column; the product takes the other side"
   }
 }

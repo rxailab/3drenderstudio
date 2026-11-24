@@ -40,6 +40,19 @@
   .td .u{font-size:.55em;font-weight:700;margin-left:.12em}
   .td-alt{font:500 24px/1 var(--f-text);color:var(--muted);text-align:center;white-space:nowrap}
   .disc{font:400 24px/1.3 var(--f-text);color:var(--muted);white-space:nowrap}
+  /* job.ground_style 'blueprint': a drafting grid in the ink's own tint (reads on light and dark grounds), solid thin
+     extension lines, oblique ticks; job.title_block: a bordered block of up to 3 spec rows, bottom-right when free */
+  .bp-grid{position:absolute;left:0;top:0;pointer-events:none}
+  .bp-grid .minor{stroke:var(--text);stroke-opacity:.07;stroke-width:1}
+  .bp-grid .major{stroke:var(--text);stroke-opacity:.13;stroke-width:1.25}
+  #canvas.bp .ext{stroke-dasharray:none;stroke-width:1.25;opacity:.5}
+  .tblock{position:absolute;background:var(--bg);box-shadow:inset 0 0 0 2px var(--line)}
+  .tblock .kick-in{position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--accent)}
+  .tblock .rw{position:absolute;height:1px;background:var(--line);opacity:.28}
+  .tb-k{font:700 20px/1 var(--f-text);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .tb-v{font-family:var(--f-display);font-weight:800;font-stretch:90%;font-size:32px;line-height:1;color:var(--text);white-space:nowrap;text-align:right}
+  #canvas[lang=zh] .tb-k{font-family:var(--f-cjk);letter-spacing:.04em;font-size:22px}
+  #canvas[lang=zh] .tb-v{font-family:var(--f-cjk);font-weight:700}
   #canvas[lang=zh] .eyebrow{font-family:var(--f-cjk);font-weight:700;letter-spacing:0;font-size:28px}
   #canvas[lang=zh] .headline{font-family:var(--f-cjk);font-weight:900;font-stretch:100%;font-size:92px;line-height:1.12;letter-spacing:.01em;text-transform:none;text-wrap:wrap}
   #canvas[lang=zh] .headline.compact{font-size:76px}
@@ -64,7 +77,9 @@ const m = Math.max(job.min_margin ?? 60, job.text_margin ?? 72);     // text mar
 const mode = job.mode || 'onproduct';
 const hero = T.asset(job.hero), cb = hero.content_bbox || [0, 0, 1, 1];
 const dims = (job.dimensions || []).filter(d => d && d.value != null && d.from && d.to).slice(0, 4);
+const blueprint = job.ground_style === 'blueprint';
 T.layoutInfo = {mode};
+if (blueprint) { T.root.classList.add('bp'); T.layoutInfo.ground_style = 'blueprint'; }
 
 /* --accent-ink from the accent's luminance when the palette does not carry it */
 (function(){
@@ -203,12 +218,13 @@ if (disclaimer) {
   const dc = T.text('disclaimer', disclaimer, m, 0, W - 2 * m, 'disc', {tier: 'meta', maxLines: 1});
   const h = T.rect(dc).h; dc.style.top = (floor - h) + 'px'; bottom = floor - h - 3 * G;
 }
+const inTable = new Set();     // specs the table shows, so the title block does not repeat them
 if (mode === 'table') {
   /* the table carries only what the drawing does not already show (job.table_all: true lists W/D/H too, in the headline order) */
   const drawn = new Set(allDims);
   const figs = order.concat(allDims.filter(d => !order.includes(d)));
   const cols = figs.filter(d => job.table_all || !drawn.has(d)).map(d => ({name: d.name, value: d.value, unit: d.unit, d}));
-  for (const s of (job.specs || [])) if (s && s.name && s.value != null) cols.push({name: s.name, value: s.value, unit: s.unit || '', d: s});
+  for (const s of (job.specs || [])) if (s && s.name && s.value != null) { cols.push({name: s.name, value: s.value, unit: s.unit || '', d: s}); inTable.add(s); }
   const n = Math.min(6, cols.length);
   if (!n) T.notes.push('table: every figure is already on the drawing, table left out');
   if (n) {
@@ -341,6 +357,49 @@ const ox = endV ? region.x + (region.w - (g0.ext.x1 - g0.ext.x0)) / 2 - g0.ext.x
 const oy = region.y + (region.h - (g0.ext.y1 - g0.ext.y0)) / 2 - g0.ext.y0;
 const geo = geometry(s, ox, oy);
 
+/* blueprint: the grid covers the drawing's region only (never the header, table or footer), fades at its edges and
+   is masked off the product's silhouette so it reads as the sheet the product lies on, not as lines across it */
+if (blueprint) {
+  const NS = 'http://www.w3.org/2000/svg', mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); parent.appendChild(e); return e; };
+  const sv = document.createElementNS(NS, 'svg');
+  sv.setAttribute('class', 'bp-grid'); sv.setAttribute('data-exempt', '1');
+  sv.setAttribute('width', W); sv.setAttribute('height', H); sv.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  T.root.appendChild(sv);
+  const df = mk('defs', {}, sv), step = Math.max(16, Math.round(24 * u)), pad = 2 * G;
+  const gx = region.x - pad, gy = region.y - pad, gw = region.w + 2 * pad, gh = region.h + pad;     // stops at the drawing's floor
+  // soft edges: a sheet, not a box
+  const fade = mk('radialGradient', {id: 'bpFade', cx: '50%', cy: '50%', r: '60%'}, df);
+  [['0', 1], ['.6', 1], ['1', 0]].forEach(([o, a]) => mk('stop', {offset: o, 'stop-color': '#fff', 'stop-opacity': a}, fade));
+  const fm = mk('mask', {id: 'bpFadeMask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H}, df);
+  mk('rect', {x: gx, y: gy, width: gw, height: gh, fill: 'url(#bpFade)'}, fm);
+  // the product's own pixels (anything opaque that is not the picture's white ground), grown a little, cut out of the
+  // grid: a convex hull would also blank the gaps of an open shape (a caliper's jaws). A transparent pixel is ground
+  // too (an RGBA render not laid on white), so the cut is built from alpha as well as colour: the product as
+  // alpha = 3A - R - G - B on the thresholded channels (opaque and not pure white), dilated, then laid black on white.
+  const flt = mk('filter', {id: 'bpCut', x: '-5%', y: '-5%', width: '110%', height: '110%', 'color-interpolation-filters': 'sRGB'}, df);
+  const ct = mk('feComponentTransfer', {result: 'th'}, flt), steps = Array(39).fill(0); steps[38] = 1;
+  for (const c of ['R', 'G', 'B']) mk('feFunc' + c, {type: 'discrete', tableValues: steps.join(' ')}, ct);
+  mk('feFuncA', {type: 'discrete', tableValues: '0 1'}, ct);
+  mk('feColorMatrix', {in: 'th', type: 'matrix', result: 'prod', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 -1 -1 3 0'}, flt);
+  mk('feMorphology', {in: 'prod', operator: 'dilate', radius: Math.max(4, Math.round(10 * u)), result: 'grown'}, flt);
+  mk('feFlood', {'flood-color': '#fff', 'flood-opacity': 1, result: 'paper'}, flt);
+  mk('feComposite', {in: 'grown', in2: 'paper', operator: 'over'}, flt);
+  const pm = mk('mask', {id: 'bpCutMask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H}, df);
+  mk('rect', {x: 0, y: 0, width: W, height: H, fill: '#fff'}, pm);
+  const cut = (a, x, y, w, h, deg) => mk('image', {href: a.file, x: x.toFixed(1), y: y.toFixed(1), width: w.toFixed(1), height: h.toFixed(1),
+    preserveAspectRatio: 'none', filter: 'url(#bpCut)', ...(deg ? {transform: `rotate(${deg} ${(x + w / 2).toFixed(1)} ${(y + h / 2).toFixed(1)})`} : {})}, pm);
+  cut(hero, ox - geo.w / 2, oy - geo.h / 2, geo.w, geo.h, theta);
+  if (geo.end) cut(endAsset, geo.end.cx - geo.end.w / 2, geo.end.cy - geo.end.h / 2, geo.end.w, geo.end.h, 0);
+  const g0m = mk('g', {mask: 'url(#bpFadeMask)'}, sv);
+  const g = mk('g', {mask: 'url(#bpCutMask)'}, g0m);
+  let minor = '', major = '';
+  for (let i = 0, x = gx; x <= gx + gw + .5; i++, x += step) (i % 5 ? (minor += `M${x} ${gy}V${gy + gh}`) : (major += `M${x} ${gy}V${gy + gh}`));
+  for (let i = 0, y = gy; y <= gy + gh + .5; i++, y += step) (i % 5 ? (minor += `M${gx} ${y}H${gx + gw}`) : (major += `M${gx} ${y}H${gx + gw}`));
+  mk('path', {d: minor, class: 'minor', fill: 'none'}, g); mk('path', {d: major, class: 'major', fill: 'none'}, g);
+  T.layoutInfo.grid = {x: gx, y: gy, w: gw, h: gh, step};
+}
+
 /* contact shadow under an upright product */
 const shadowUnder = quad => {
   const bl = quad[3], br = quad[2], sw = (br[0] - bl[0]) * 0.86;
@@ -364,12 +423,22 @@ const mk = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
 for (const [k, v] of Object.entries({id: 'arw', viewBox: '0 0 14 14', refX: '13', refY: '7', markerWidth: '14', markerHeight: '14', markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse'})) mk.setAttribute(k, v);
 const ap = document.createElementNS('http://www.w3.org/2000/svg', 'path'); ap.setAttribute('d', 'M0 1 L14 7 L0 13 Z'); ap.setAttribute('class', 'arrow');
 mk.appendChild(ap); defs.appendChild(mk);
-const ticks = job.dim_style === 'ticks';
+const ticks = job.dim_style === 'ticks' || (blueprint && job.dim_style !== 'arrows');
 const f = p => p[0].toFixed(1) + ' ' + p[1].toFixed(1);
+const inkSegs = [];      // the drawn lines as segments, for the title block's room (their boxes would block a whole diagonal)
 function dimLine(A, B, nrm, ex) {
+  inkSegs.push([A, B]);
+  if (ex) ex.forEach((q, i) => inkSegs.push([[q[0] + nrm[0] * 8, q[1] + nrm[1] * 8], [[A, B][i][0] + nrm[0] * 12, [A, B][i][1] + nrm[1] * 12]]));
   // extension lines: from just off the silhouette to a little past the dimension line
   if (ex) { const e = (q, end) => `M${f([q[0] + nrm[0] * 8, q[1] + nrm[1] * 8])} L${f([end[0] + nrm[0] * 12, end[1] + nrm[1] * 12])}`; T.svgEl('path', {d: e(ex[0], A) + ' ' + e(ex[1], B), class: 'ext'}); }
-  if (ticks) {
+  if (ticks && blueprint) {
+    // drafting style: 45° slashes, the line running a little past the extension lines
+    const l = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, ud = [(B[0] - A[0]) / l, (B[1] - A[1]) / l];
+    const sl = [(ud[0] + nrm[0]) * 9, (ud[1] + nrm[1]) * 9], run = 12;
+    const tk = q => `M${f([q[0] - sl[0], q[1] - sl[1]])} L${f([q[0] + sl[0], q[1] + sl[1]])}`;
+    T.svgEl('path', {d: `M${f([A[0] - ud[0] * run, A[1] - ud[1] * run])} L${f([B[0] + ud[0] * run, B[1] + ud[1] * run])}`, class: 'dim'});
+    T.svgEl('path', {d: tk(A) + ' ' + tk(B), class: 'tick'});
+  } else if (ticks) {
     const tk = q => `M${f([q[0] - nrm[0] * 12, q[1] - nrm[1] * 12])} L${f([q[0] + nrm[0] * 12, q[1] + nrm[1] * 12])}`;
     T.svgEl('path', {d: `M${f(A)} L${f(B)}`, class: 'dim'});
     T.svgEl('path', {d: tk(A) + ' ' + tk(B), class: 'tick'});
@@ -386,6 +455,59 @@ drawn.forEach(([L, lab], i) => {
 T.layoutInfo.hero_scale = +s.toFixed(3);
 T.layoutInfo.hero_cover = +((g0.ext.y1 - g0.ext.y0) / H).toFixed(3);
 T.layoutInfo.hero_width_share = +((Math.max(...geo.quad.map(q => q[0])) - Math.min(...geo.quad.map(q => q[0]))) / W).toFixed(3);
+
+/* ---------- title block (job.title_block): up to 3 spec rows, in the first free spot from the drawing's bottom-right ---------- */
+if (job.title_block) (function(){
+  const rows = (job.specs || []).filter(s => s && (s.label || s.name) && s.value != null && !inTable.has(s)).slice(0, 3)
+    .map(s => ({k: T.plain(s.label || s.name), v: String(s.value) + (s.unit ? ' ' + s.unit : '')}));
+  if (!rows.length) { T.notes.push('title block: no specs to show, left out'); return; }
+  const padL = Math.round(30 * u) + 8, padR = Math.round(26 * u), gap = Math.round(32 * u), rowH = Math.round(60 * u);
+  const maxW = Math.round(W * 0.46);
+  // measure the words off the page, then take them away so the free-spot search does not see them
+  const meas = rows.map((r, i) => {
+    const k = T.text('tb' + (i + 1) + '_name', r.k, 0, 0, 10, 'tb-k', {tier: 'meta', maxLines: 1}); k.style.width = 'auto';
+    const v = T.text('tb' + (i + 1) + '_val', r.v, 0, 0, 10, 'tb-v', {tier: 'meta', maxLines: 1}); v.style.width = 'auto';
+    const o = {kw: Math.ceil(T.rect(k).w) + 2, vw: Math.ceil(T.rect(v).w) + 2, kh: T.rect(k).h, vh: T.rect(v).h};
+    k.remove(); v.remove(); return o;
+  });
+  // spots: bottom-right first, then leftwards along the bottom, then up the right side and so on; free of the page's
+  // elements (the lines' layer set aside) and of the lines themselves, segment by segment. Three rows, else fewer.
+  const place = n => {
+    const kw = Math.max(...meas.slice(0, n).map(o => o.kw)), vw = Math.max(...meas.slice(0, n).map(o => o.vw));
+    if (padL + kw + gap + Math.min(vw, 160) + padR > maxW) return null;
+    const bw = Math.min(maxW, padL + kw + gap + vw + padR), bh = n * rowH, x0 = W - m - bw, y0 = bottom - bh, spots = [];
+    for (let dy = 0; dy <= region.h * 0.6; dy += 16) for (let dx = 0; dx <= W * 0.3; dx += 24) spots.push([x0 - dx, y0 - dy]);
+    spots.sort((a, b) => (y0 - a[1]) + (x0 - a[0]) * 1.5 - ((y0 - b[1]) + (x0 - b[0]) * 1.5));
+    const svgLayer = T._svg; T._svg = null;
+    try {
+      for (const sp of spots) {
+        if (inkSegs.some(([a, b]) => T.segRect(a, b, {x: sp[0], y: sp[1], w: bw, h: bh}, 24))) continue;
+        if (T.freeSpot(bw, bh, [sp], 20)) return {at: sp, bw, bh, kw, n};
+      }
+    } finally { T._svg = svgLayer; }
+    return null;
+  };
+  let fit = null;
+  for (let n = rows.length; n >= 1 && !fit; n--) fit = place(n);
+  if (!fit) { T.notes.push('title block left out: no free spot near the bottom-right'); return; }
+  if (fit.n < rows.length) T.notes.push(`title block: ${fit.n} of ${rows.length} spec rows fit`);
+  rows.length = fit.n;
+  const {at, bw, bh, kw} = fit;
+  const [bx, by] = at, ids = rows.flatMap((_, i) => ['tb' + (i + 1) + '_name', 'tb' + (i + 1) + '_val']);
+  const blk = T.box(T.el('div', {class: 'tblock', 'data-qa': 'title_block', 'data-kind': 'shape', 'data-allow': ids.join(',')}), bx, by, bw, bh);
+  T.el('div', {class: 'kick-in'}, blk);
+  rows.forEach((r, i) => {
+    const cy = by + i * rowH + rowH / 2, o = meas[i];
+    if (i) T.box(T.el('div', {class: 'rw'}, blk), 8, i * rowH, bw - 8, 1);
+    const k = T.text('tb' + (i + 1) + '_name', r.k, bx + padL, cy - o.kh / 2, kw, 'tb-k', {tier: 'meta', maxLines: 1, allow: ['title_block']});
+    const vx = bx + padL + kw + gap, vwid = bx + bw - padR - vx;
+    const v = T.text('tb' + (i + 1) + '_val', r.v, vx, cy - o.vh / 2, vwid, 'tb-v', {tier: 'meta', maxLines: 1, allow: ['title_block']});
+    let fs = parseFloat(getComputedStyle(v).fontSize);
+    while (v.scrollWidth > v.clientWidth + 1 && fs > 22) { fs -= 1; v.style.fontSize = fs + 'px'; }
+    v.style.top = (cy - T.rect(v).h / 2) + 'px';
+  });
+  T.layoutInfo.title_block = {x: bx, y: by, w: bw, h: bh, rows: rows.length};
+})();
 T.watermark();
 T.finish();
 })();

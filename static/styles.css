@@ -1028,6 +1028,8 @@ body.listing-wide { --inspector: 440px; }
 .listing-card:hover { border-color: var(--line-strong); background: var(--hover); }
 .listing-card input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .listing-card-thumb { position: relative; display: block; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--field); margin-bottom: 4px; }
+.listing-cards-wide { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.listing-cards-wide .listing-card-thumb { aspect-ratio: 952 / 480; }
 .listing-card-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .listing-card-ph { position: absolute; inset: 8px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; border: 1px dashed var(--line-strong); border-radius: 6px; color: var(--subtle); font-size: 13px; font-weight: 600; }
 .listing-card-mark { position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); background: rgba(19,19,20,.55); }
@@ -1043,7 +1045,41 @@ body.listing-wide { --inspector: 440px; }
 .listing-card.is-disabled .listing-card-thumb { opacity: .45; filter: grayscale(1); }
 .listing-card.is-disabled .listing-card-mark { display: none; }
 .listing-card.is-disabled .listing-card-name { color: var(--muted); }
+/* a page that waits for something the seller can fill in: pickable, amber line, 去填写 under the card (outside its label) */
+.listing-card-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.listing-card-wrap > .listing-card { flex: 1; }
+.listing-card.is-fill { border-color: var(--amber-line); }
+.listing-card.is-fill:has(input:checked) { border-color: var(--amber); background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber-line); }
+.listing-card.is-fill:has(input:checked) .listing-card-mark { border-color: var(--amber); background-color: var(--amber); }
+.listing-card-fill { align-self: flex-start; min-height: 24px; padding: 1px 10px; font-size: 12px; }
 .listing-pick-count { margin: 0 0 8px; font-size: 12px; color: var(--ink); }
+/* 填产品: what the chosen pages still need, ticked off as it is filled in, and the fields that supply it */
+.listing-needs { border: 1px solid var(--amber-line); border-left-width: 3px; border-radius: 10px; background: var(--amber-soft); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.listing-needs-title { margin: 0; display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-strong); }
+.listing-needs-title span { font-size: 12px; font-weight: 400; color: var(--amber); }
+.listing-needs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.listing-need { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; font-size: 12px; }
+.listing-need-mark { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--amber); }
+.listing-need[data-done="true"] .listing-need-mark { border-color: var(--green); background: var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px no-repeat; }
+.listing-need-text { min-width: 0; display: flex; flex-wrap: wrap; gap: 2px 6px; color: var(--ink); line-height: 1.45; }
+.listing-need-text span { color: var(--muted); }
+.listing-need[data-done="true"] .listing-need-text strong { color: var(--muted); text-decoration: line-through; }
+.listing-need-state { color: var(--amber); white-space: nowrap; }
+.listing-need[data-done="true"] .listing-need-state { color: var(--green); }
+.listing-need .button { min-height: 22px; padding: 1px 8px; font-size: 11px; }
+.listing-needs .field-help { margin: 0; }
+.listing-need-tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--amber-line); border-radius: 999px; font-size: 10px; font-weight: 600; color: var(--amber); background: var(--amber-soft); vertical-align: 1px; }
+.listing-field.is-needed input, .listing-field.is-needed select { border-color: var(--amber-line); }
+.listing-section.is-needed { border-color: var(--amber-line); }
+.listing-need-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--amber); }
+.listing-parts-none { margin: 0; }
+.listing-component-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.listing-component-add .field-help { margin: 0; }
+.listing-summary-held { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--amber-soft); }
+.listing-summary-held .listing-summary-label { color: var(--amber); }
+.listing-summary-held .button { min-height: 22px; padding: 1px 8px; font-size: 11px; }
+.listing-summary-held + .listing-summary-row { border-top: 1px solid var(--line); }
+@media (max-width: 420px) { .listing-need { grid-template-columns: 16px minmax(0, 1fr) auto; } .listing-need .button { grid-column: 2 / -1; justify-self: start; } }
 .listing-pick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 10px; }
 .listing-pick-actions .field-help { margin: 0; }
 /* collapsed sections with a one-line summary (填产品 更多信息, 品牌与场景) */
