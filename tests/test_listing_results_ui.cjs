@@ -104,6 +104,9 @@ test('a page opens in a detail view with the full picture, the review, its vetoe
   h.key(detail,'ArrowRight');await tick();
   assert.match(h.node('listingStageBody').querySelector('.listing-detail h3').textContent,/03 · 尺寸图/);
   assert.match(h.node('listingStageBody').textContent,/没有经过视觉审核/);
+  // the same keys on the step controls belong to the steps: the open page stays as it is
+  for(const node of [h.node('listingSteps'),h.node('listingNext')]){h.key(node,'ArrowRight');h.key(node,'Escape');}await tick();
+  assert.match(h.node('listingStageBody').querySelector('.listing-detail h3').textContent,/03 · 尺寸图/);
   h.key(h.node('listingStageBody'),'Escape');await tick();
   assert.equal(h.node('listingStageBody').querySelector('.listing-detail'),null);
   assert.equal(h.w.document.activeElement?.dataset.page,'p3','focus goes back to the page that was open');

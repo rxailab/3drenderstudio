@@ -765,8 +765,8 @@ async function listingResultsAction(button) {
 function listingOnStageKey(event) {
   if(!listingDetail || event.defaultPrevented)return;
   if(event.target.closest?.('input, textarea, select'))return;
-  // only while the seller is in the open page itself: on the steps these keys belong to the steps, not to a page left open
-  if(!event.target.closest?.('.listing-detail'))return;
+  // on the step controls these keys belong to the steps, not to a page left open in the stage
+  if(event.target.closest?.('#listingSteps, .listing-step-head, .listing-side, .listing-step-nav'))return;
   if(event.key==='Escape'){event.preventDefault();listingResultsAction({dataset:{action:'page-close'}});}
   else if(event.key==='ArrowLeft' || event.key==='ArrowRight'){event.preventDefault();listingResultsAction({dataset:{action:'page-step',step:event.key==='ArrowLeft'?'-1':'1'}});}
 }
