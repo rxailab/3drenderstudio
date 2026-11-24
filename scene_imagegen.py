@@ -61,9 +61,11 @@ RENDER_SAMPLES = 48
 LOCK_FIXES = {'moved': 'the product was moved, resized or drawn again somewhere else: it must stay exactly where it is in image 1, at the '
                        'same size and angle, and only the area around it may be painted',
               'changed': 'parts of the product were redrawn%s: every part must stay exactly as it is in image 1',
-              'hidden': 'the product is almost hidden: hands or objects may overlap its edges, but most of it must stay in view'}
+              'hidden': 'the product is almost hidden: hands or objects may overlap its edges, but most of it must stay in view',
+              'turned': 'the product was drawn turned by about %d degrees, a second tilted copy of it: there is exactly one product, at '
+                        'exactly the angle, place and size of image 1, with no copy or outline of it anywhere else'}
 LOCK_NOTES = {'moved': '图像模型移动或重画了产品，没有保持它在画面中的位置与外形。', 'changed': '图像模型改动了产品的部分外形。',
-              'hidden': '产品被手或物体遮挡得太多。'}
+              'hidden': '产品被手或物体遮挡得太多。', 'turned': '图像模型把产品画歪了几度，叠出了第二层产品。'}
 READ_TIMEOUT = 150             # seconds without a byte
 TOTAL_TIMEOUT = 480
 MAX_STREAM = 96 * 1024 * 1024
@@ -694,6 +696,9 @@ def _lock_verdict(lock, box):
     """A failed check for a picture whose product the measurement says was not kept."""
     import scene_lock
     status = lock['status']
+    if status == 'changed' and lock.get('turned'):
+        return {'status': 'failed', 'issues': [LOCK_FIXES['turned'] % abs((lock.get('turn') or {}).get('angle') or 0)],
+                'note': LOCK_NOTES['turned'], 'product_consistent': False}
     places = scene_lock.describe(lock, box) if status == 'changed' else []
     issue = LOCK_FIXES[status] % ((' (around its %s)' % ', '.join(places[:3])) if places else '') if status == 'changed' else LOCK_FIXES[status]
     return {'status': 'failed', 'issues': [issue], 'note': LOCK_NOTES[status], 'product_consistent': False}

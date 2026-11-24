@@ -129,6 +129,38 @@ class InspectTests(unittest.TestCase):
         self.assertAlmostEqual(report['scale'], .84, delta=.02)
         self.assertAlmostEqual(report['shift'][1] * SIZE[1], -50, delta=8)
 
+    def test_a_product_drawn_turned_is_not_kept_even_on_a_plain_surface(self):
+        # Users' pictures: a red wall cabinet drawn turned a few degrees, the upright render pasted over it - two cabinets.
+        # A plain door has no detail for the tiles to compare, so this used to read as kept.
+        cabinet = Image.new('RGBA', (420, 240), (0, 0, 0, 0)); pen = ImageDraw.Draw(cabinet)
+        pen.rectangle((0, 0, 419, 239), fill=(190, 30, 30, 255)); pen.rectangle((8, 8, 205, 231), outline=(150, 20, 20, 255), width=3)
+        pen.rectangle((214, 8, 411, 231), outline=(150, 20, 20, 255), width=3); pen.ellipse((230, 110, 244, 124), fill=(210, 210, 214, 255))
+        _, layer, _ = scene_lock.anchor(cabinet, SIZE, 'wall')
+        upright = scene(layer)
+        self.assertEqual(scene_lock.inspect(layer, upright)['status'], 'kept')
+        # checked on the image model's own picture, before anything is pasted back: the turned drawing is what it shows
+        for angle, top in ((5, 'turned'), (-6, 'turned'), (4, 'turned')):
+            with self.subTest(angle=angle, top=top):
+                bounds = layer.getchannel('A').getbbox(); centre = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
+                tilted = scene_lock._rotated(layer, angle, 6, 4, centre)
+                picture = scene(layer) if top == 'upright' else upright.copy()
+                drawn = tilted.convert('RGB').point(lambda value: round(value * .85 + 8))
+                if top == 'turned':
+                    picture.paste(drawn, mask=tilted.getchannel('A'))
+                else:                                            # the turned drawing under the pasted-back render
+                    picture = scene(layer); under = picture.copy(); under.paste(drawn, mask=tilted.getchannel('A'))
+                    lit = layer.convert('RGB').point(lambda value: round(value * .85 + 8)); under.paste(lit, mask=layer.getchannel('A'))
+                    picture = under
+                report = scene_lock.inspect(layer, picture)
+                self.assertEqual(report['status'], 'changed', report.get('turn'))         # not kept, by the tiles or by the turn
+        import scene_imagegen
+        verdict = scene_imagegen._lock_verdict({**report, 'status': 'changed', 'turned': True, 'turn': {'angle': -6}}, [.2, .2, .8, .8])
+        self.assertIn('turned by about 6 degrees', verdict['issues'][0]); self.assertEqual(verdict['note'], scene_imagegen.LOCK_NOTES['turned'])
+
+    def test_a_kept_product_is_not_called_turned(self):
+        report = scene_lock.inspect(self.layer, scene(self.layer, shift=(5, -4)))
+        self.assertEqual(report['status'], 'kept'); self.assertFalse(report.get('turned')); self.assertIn('turn', report)
+
     def test_a_product_drawn_somewhere_else_is_moved(self):
         far = scene(self.layer, shift=(150, 110))
         self.assertEqual(scene_lock.inspect(self.layer, far)['status'], 'moved')

@@ -19,9 +19,11 @@ moved a part by a few pixels, a finger, a pipe or an outline ends up cut or doub
 
 Only Pillow is used. Nothing here calls a model.
 """
+import math
+
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 
-VERSION = 1
+VERSION = 2                         # 2: a product drawn turned is not kept
 GROUND = (198, 200, 203)          # the plain ground the anchor stands on; nothing of it may remain in the picture
 # The product's longer side as a share of the canvas's shorter side, and how far down its centre sits.
 # A product on a wall sits higher in the frame, with the wall around it and the room below it.
@@ -40,6 +42,15 @@ TILE_AGREEMENT = .1               # a tile whose edges agree less than this with
 DETAIL = 4.0                      # mean edge strength (0-255) a tile needs before it can be compared
 MAX_CHANGED = .1                  # share of the product's tiles that may disagree before the product counts as redrawn
 MIN_CHANGED = 2                   # and never fewer tiles than this: one tile is the model's ordinary wobble
+# The image model sometimes draws the product turned a few degrees. The search above has no rotation and a plain surface
+# (a red cabinet's doors) has no tiles to compare, so such a picture read as kept; the render pasted back over it then left
+# the turned drawing showing round it: two cabinets, one tilted (users' pictures). Whether the render lies better on the
+# picture turned than upright is measured here; calibrated on the listings' own pictures and turned copies of them.
+TURN_ANGLES = (-8, -6, -4, -3, -2, 2, 3, 4, 6, 8)
+TURN_MIN = 3                      # degrees: a best fit nearer upright is the ordinary wobble, not a turned drawing
+TURN_RATIO = 1.12                 # the turned fit this much better than the upright one...
+TURN_GAIN = .05                   # ...and by at least this much agreement
+TURN_SIDE = 384                   # pixels: the product's own area is searched at this size
 SEARCH_SCALES = (.94, .97, 1.0, 1.03, 1.06)
 SEARCH_SHIFT = .06                # of the canvas, either way
 # The image model often draws the product smaller or a little off its anchor (a wall cabinet came back 16% smaller):
@@ -258,7 +269,44 @@ def inspect(layer, generated):
     report.update(covered=round(hidden, 4), changed=round(share, 4), regions=changed[:12], tiles=counted, tile_scores=scores)
     status = ('moved' if hidden > ABSENT else 'hidden' if hidden > MAX_HIDDEN else
               'changed' if share > MAX_CHANGED and len(changed) >= MIN_CHANGED else 'kept')
+    if status == 'kept':
+        angle, upright, best = turned(layer, picture, scale, dx, dy)
+        report['turn'] = {'angle': angle, 'upright': round(upright, 3), 'turned': round(best, 3)}
+        if abs(angle) >= TURN_MIN and best >= upright * TURN_RATIO and best - upright >= TURN_GAIN:
+            # drawn turned: pasting the upright render over it would show the product twice
+            status = 'changed'; report['turned'] = True
+            report['regions'] = report['regions'] or [[round(v, 3) for v in (box[0] / size[0], box[1] / size[1], box[2] / size[0], box[3] / size[1])]]
     return {**report, 'status': status}
+
+
+def _rotated(image, angle, dx, dy, centre):
+    """``image`` turned by ``angle`` degrees about ``centre`` and moved by (dx, dy) pixels."""
+    a = math.radians(angle); c, s = math.cos(a), math.sin(a); tx, ty = centre[0] + dx, centre[1] + dy
+    return image.transform(image.size, Image.Transform.AFFINE, (c, s, centre[0] - c * tx - s * ty, -s, c, centre[1] + s * tx - c * ty),
+                           resample=Image.Resampling.BILINEAR)
+
+
+def turned(layer, picture, scale, dx, dy):
+    """How the render lies on the picture upright and turned, where the check found it: (best angle, upright agreement,
+    best turned agreement). Searched on the product's own area at TURN_SIDE pixels, each angle with a small shift."""
+    width, height = layer.size
+    bounds = layer.getchannel('A').getbbox(); centre = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
+    placed = layer if (scale, dx, dy) == (1.0, 0.0, 0.0) else _transformed(layer, scale, dx * width, dy * height, centre, Image.Resampling.BICUBIC)
+    box = placed.getchannel('A').getbbox()
+    if box is None:
+        return 0, 0.0, 0.0
+    pad = .3 * max(box[2] - box[0], box[3] - box[1])
+    crop = (max(0, int(box[0] - pad)), max(0, int(box[1] - pad)), min(width, int(box[2] + pad)), min(height, int(box[3] + pad)))
+    views = _Views(placed.crop(crop), picture.convert('RGB').resize((width, height)).crop(crop) if picture.size != (width, height)
+                   else picture.convert('RGB').crop(crop), TURN_SIDE)
+
+    def best_at(angle):
+        return max(_agreement(_rotated(views.render_edges, angle, ix * 2.0, iy * 2.0, views.centre), views.picture_edges,
+                              _rotated(views.near, angle, ix * 2.0, iy * 2.0, views.centre))
+                   for ix in range(-2, 3) for iy in range(-2, 3))
+    upright = best_at(0)
+    angle, best = max(((angle, best_at(angle)) for angle in TURN_ANGLES), key=lambda row: row[1])
+    return angle, upright, best
 
 
 def _in_front(layer, picture, scale, dx, dy):
