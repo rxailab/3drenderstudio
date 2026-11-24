@@ -695,6 +695,84 @@ class RecordTests(StoreCase):
         self.assertEqual(listing.save_product('fixture', {'source': 'kept'})['product']['source'], 'kept')
 
 
+class FillTests(StoreCase):
+    """The pages a product cannot make yet: where the seller fills in what they wait for, and which nothing here can."""
+
+    def test_every_page_that_waits_names_the_step_and_field_and_only_what_this_app_cannot_supply_is_hard(self):
+        blocked = listing.state('fixture')['blocked']
+        for kind, field in (('T01', 'features'), ('T02', 'features'), ('T03', 'features'), ('T04', 'specs'), ('T06', 'size'),
+                            ('T05', 'components'), ('T13', 'articulation')):
+            with self.subTest(kind=kind):
+                self.assertEqual(set(blocked[kind]), {'why', 'fix', 'needs', 'hard'})
+                self.assertFalse(blocked[kind]['hard'])
+                self.assertEqual(blocked[kind]['fix'], {'step': 'product', 'field': field})
+                self.assertIn('第 3 步「填产品」', blocked[kind]['why'])
+        self.assertIn('「最长边真实尺寸（mm）」', blocked['T06']['why'])
+        self.assertIn('「卖点」', blocked['T01']['why']); self.assertTrue(blocked['T01']['why'].startswith('没有填写卖点'))
+        # the workpiece render is this pipe cutter's one scene: 场景 + 参数带 waits for its figures only, and says so
+        self.assertTrue(blocked['T04']['why'].startswith('场景图已有，缺参数'), blocked['T04']['why'])
+        # no image model here: nothing in the app makes a second scene, and the reason says where the model is set (not AI 设置)
+        self.assertTrue(blocked['T08']['hard']); self.assertIsNone(blocked['T08']['fix']); self.assertEqual(blocked['T08']['needs'], [])
+        self.assertIn('.env', blocked['T08']['why']); self.assertIn('「AI 设置」里不能设置', blocked['T08']['why'])
+        self.assertNotIn('可在 AI 设置里开启', json.dumps(blocked, ensure_ascii=False))
+
+    def test_the_scene_page_says_which_of_scene_and_figures_is_missing_and_what_really_blocks_the_scenes(self):
+        product = {'features': [], 'figures': [], 'specs': [], '_model_parts': PARTS}
+        ready = {'image_ready': True, 'enabled': True, 'count': 1, 'usecase': False, 'legacy': 0}
+        cases = (
+            (0, False, ready, '缺两样', [('product', 'specs'), ('brand', 'scenes')]),
+            (0, True, {**ready, 'enabled': False}, '参数已有，缺场景图', [('brand', 'scenes')]),
+            (1, False, ready, '场景图已有，缺参数', [('product', 'specs')]),
+        )
+        for supply, size, scenes, start, needs in cases:
+            with self.subTest(start=start):
+                has, why = brandkit_set.requirements(product, [], size, supply, scenes=scenes)
+                self.assertFalse(has['T04'])
+                self.assertTrue(why['T04'].startswith(start), why['T04'])
+                self.assertEqual([(row['step'], row['field']) for row in why['T04'].public()['needs']], needs)
+        _, why = brandkit_set.requirements(product, [], True, 0, scenes={**ready, 'enabled': False})
+        self.assertIn('已关闭', why['T04']); self.assertIn('「生成 AI 场景图」', why['T04'])
+        _, why = brandkit_set.requirements(product, [], True, 1, scenes=ready)
+        self.assertIn('只设了 1 张', why['T08']); self.assertIn('「工件使用图」', why['T08']); self.assertFalse(why['T08'].hard)
+        # without the image model one scene still comes from the workpiece render, so the page that needs one is not hard
+        _, why = brandkit_set.requirements(product, [], True, 0, scenes={**ready, 'image_ready': False})
+        self.assertFalse(why['T04'].hard); self.assertIn('「工件使用图」', why['T04']); self.assertIn('.env', why['T04'])
+
+    def test_a_one_piece_model_rules_out_the_close_ups_and_a_plain_reason_reads_as_ruled_out(self):
+        product = {'features': [{'title': 'Steel'}], 'figures': [], 'specs': [], '_model_parts': ['Body']}
+        _, why = brandkit_set.requirements(product, [], True, 0)
+        for kind in ('T02', 'T03', 'T07', 'T09', 'T10', 'T11'):
+            with self.subTest(kind=kind):
+                self.assertEqual(why[kind].public()['hard'], True); self.assertIsNone(why[kind].fix)
+        self.assertIn('整体', why['T03'])
+        self.assertFalse(why['T01'].hard); self.assertIn('视觉模型', why['T01'])        # found on the picture, by the vision model of AI 设置
+        self.assertEqual(listing.listing_kinds.reason_public('缺少内容'), {'why': '缺少内容', 'fix': None, 'needs': [], 'hard': True})
+        self.assertEqual(json.loads(json.dumps({'skipped': why['T06']}, ensure_ascii=False))['skipped'], str(why['T06']))   # stored as its words
+
+    def test_a_chosen_page_that_waits_stays_on_the_list_through_saves_and_is_made_once_it_is_filled_in(self):
+        listing.save_product('fixture', {'pages': ['T12', 'T06']})
+        listing.save_product('fixture', {'title': 'Pipe cutter'})
+        state = listing.state('fixture')
+        self.assertEqual(state['product']['pages'], ['T12', 'T06'])
+        self.assertEqual([(row['kind'], bool(row.get('skipped'))) for row in state['plan']], [('T12', False), ('T06', True)])
+        self.assertEqual(state['blocked']['T06']['fix'], {'step': 'product', 'field': 'size'})
+        listing.save_product('fixture', {'size_mm': 225})
+        state = listing.state('fixture')
+        self.assertEqual([(row['kind'], bool(row.get('skipped'))) for row in state['plan']], [('T12', False), ('T06', False)])
+        self.assertNotIn('T06', state['blocked'])
+
+    def test_a_build_with_only_waiting_pages_is_refused_with_what_to_fill_in(self):
+        listing.save_product('fixture', {'pages': ['T13', 'T06']})
+        with patch.object(listing.threading, 'Thread') as started:
+            with self.assertRaises(ValueError) as refused:
+                listing.submit('fixture', {})
+        started.assert_not_called()
+        said = str(refused.exception)
+        self.assertIn('没有现在能生成的图片', said)
+        self.assertIn('「多姿态展示」：没有识别出可以展示的活动部件', said); self.assertIn('「尺寸图」：没有填写真实尺寸', said)
+        self.assertIn('请先补齐', said)
+
+
 class BuildTests(StoreCase):
     def setUp(self):
         super().setUp()

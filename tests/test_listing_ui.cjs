@@ -15,6 +15,10 @@ const plain=value=>JSON.parse(JSON.stringify(value ?? null));
 
 const ORDER=['T12','T01','T03','T13','T02','T04','T08','T06','T05','T07','T09','T10','T11'];
 const AUTO=['T12','T01','T03','T13','T02','T04','T08','T06','T05'];
+// what the server says for a page it cannot make: the words, where it is filled in, and whether anything here can
+const SIZE_WHY='没有填写真实尺寸：在第 3 步「填产品」的「最长边真实尺寸（mm）」里填写';
+const BLOCKED={T06:{why:SIZE_WHY,fix:{step:'product',field:'size'},needs:[{step:'product',field:'size'}],hard:false},
+  T02:{why:'模型是一个整体，没有可单独特写的部件',fix:null,needs:[],hard:true}};
 const KINDS={T12:{zh:'海报主图',en:'Hero poster'},T01:{zh:'功能标注',en:'Callouts'},T03:{zh:'主体 + 细节栏',en:'Product + details'},T13:{zh:'多姿态展示',en:'Poses'},
   T02:{zh:'深色细节特写',en:'Close-ups'},T04:{zh:'场景 + 参数带',en:'Scene + key figures'},T08:{zh:'使用场景组图',en:'Usage scenes'},T06:{zh:'尺寸图',en:'Dimensions'},
   T05:{zh:'包装清单',en:'In the box'},T07:{zh:'模块系统',en:'Modules'},T09:{zh:'同条件对比',en:'Comparison'},T10:{zh:'接口与连接',en:'Connections'},T11:{zh:'同系列变体',en:'Variants'}};
@@ -27,7 +31,7 @@ function state(changes={}) {
     brand:{preset:'frame',name:'NORTHFORGE',accent:null,dark:null,badges:['PRO'],legal:'',unit:'mm',logo:null,accent_used:'#d9463d',accent_source:'product',dark_used:'#16171a',ground:'#ffffff'},
     presets:['frame','flat','tech','clean','promo'].map(id=>({id,label:{zh:'风格 '+id,en:id},note:{zh:'说明 '+id,en:''},ground:'light'})),
     components:[],roles:{battery:{zh:'电池',en:'Battery'},charger:{zh:'充电器',en:'Charger'},other:{zh:'其他',en:'Item'}},
-    pages:[],plan:[{kind:'T12',index:0},{kind:'T01',index:0},{kind:'T08',index:0},{kind:'T06',skipped:'没有填写真实尺寸'}],
+    pages:[],plan:[{kind:'T12',index:0},{kind:'T01',index:0},{kind:'T08',index:0},{kind:'T06',skipped:SIZE_WHY}],blocked:BLOCKED,
     kinds:KINDS,parts:['Frame','Cutting_Wheel','Knob'],size:{mm:215,known:false},
     options:{workpieces:['pipe','rod','board','sheet','block'],materials:['pvc_white','copper','steel','wood'],modes:['through','under','front','manual'],languages:['en','zh'],
       workpiece_names:{pipe:'管材',rod:'圆棒',board:'板材',sheet:'薄板',block:'块料'},material_names:{pvc_white:'PVC',copper:'铜',steel:'钢',wood:'木'}},
@@ -116,7 +120,9 @@ test('the steps go in order, 下一步 saves what was chosen, and visited steps 
   assert.equal(h.node('listingNext').hidden,true,'the last step has one primary action: 生成套图');
   const rows=[...h.node('listingPlan').querySelectorAll('.listing-summary-row')];
   assert.deepEqual(rows.map(row=>row.querySelector('.listing-summary-label').textContent),['风格','图片','产品','品牌与场景']);
-  assert.match(rows[0].textContent,/风格 promo/);assert.match(rows[1].textContent,/2 张：海报主图、功能标注；另有 1 张暂时无法生成/);
+  assert.match(rows[0].textContent,/风格 promo/);assert.match(rows[1].textContent,/2 张：海报主图、功能标注；另有 1 张缺资料，补齐前不会生成/);
+  const held=h.node('listingPlan').querySelector('.listing-summary-held');
+  assert.match(held.textContent,/不会生成/);assert.match(held.textContent,/「尺寸图」：没有填写真实尺寸/);assert.ok(held.querySelector('[data-action="fill"]'),'with the way to fill it in');
   assert.match(rows[2].textContent,/Ratchet Pipe Cutter · PC-22 · 未填真实尺寸 · 1 条卖点/);assert.match(rows[3].textContent,/NORTHFORGE · 场景图 3 张/);
   rows[2].querySelector('[data-action="step"]').click();await settle();
   assert.equal(h.step(),'product','修改 goes back to its step');
@@ -137,25 +143,34 @@ test('a step whose save fails stays on screen with the error, and the edits are 
   h.respond=null;await h.next();assert.equal(h.step(),'brand');assert.equal(h.w.listingUnsaved(),false);
 });
 
-test('the page cards: a thumbnail each, the kinds that cannot be made now disabled with the reason, and 恢复自动',async t=>{
+test('the page cards: a thumbnail each, a page waiting for the seller pickable with 去填写, one nothing here can supply disabled, and 恢复自动',async t=>{
   const h=await setup(t);await h.open();await h.goto('pages');
   const cards=[...h.node('listingPanel').querySelectorAll('.listing-card')];
   assert.deepEqual(cards.map(node=>node.dataset.card),AUTO,'only the kinds the app can build are offered');
   assert.deepEqual(cards.map(node=>node.querySelector('img').getAttribute('src')),AUTO.map(kind=>`/static/listing-thumbs/page-${kind}.jpg`));
   assert.deepEqual(cards.map(node=>node.querySelector('.listing-card-name').textContent),AUTO.map(kind=>KINDS[kind].zh));
   assert.match(h.card('T06').querySelector('.listing-card-note').textContent,/外形尺寸/);
-  assert.deepEqual(cards.map(node=>node.querySelector('input').checked),[true,true,false,false,false,false,true,false,false]);
-  const blocked=h.card('T06').querySelector('input');
-  assert.equal(blocked.disabled,true);assert.ok(h.card('T06').classList.contains('is-disabled'));
-  assert.match(h.card('T06').querySelector('.listing-card-why').textContent,/暂时无法生成：没有填写真实尺寸/);
-  assert.match(blocked.getAttribute('aria-describedby'),/-why/,'the reason is read out with the card');
-  assert.match(h.node('listingPanel').textContent,/已选 3 张（自动挑选）/);
+  assert.deepEqual(cards.map(node=>node.querySelector('input').checked),[true,true,false,false,false,false,true,true,false]);
+  // 尺寸图 waits for the size: it stays ticked, says what to fill in, and offers the way there
+  const fill=h.card('T06').querySelector('input');
+  assert.equal(fill.disabled,false);assert.ok(h.card('T06').classList.contains('is-fill'));
+  assert.match(h.card('T06').querySelector('.listing-card-why').textContent,/^需补充：没有填写真实尺寸：在第 3 步「填产品」/);
+  assert.match(fill.getAttribute('aria-describedby'),/-why/,'the reason is read out with the card');
+  assert.equal(h.card('T06').querySelector('[data-action="fill"]'),null,'去填写 is not inside the label');
+  assert.ok(h.card('T06').parentElement.querySelector('[data-action="fill"][data-kind="T06"]'));
+  // a one-piece model has no part to show close up: nothing here fixes that
+  const hard=h.card('T02').querySelector('input');
+  assert.equal(hard.disabled,true);assert.ok(h.card('T02').classList.contains('is-disabled'));
+  assert.match(h.card('T02').querySelector('.listing-card-why').textContent,/暂时无法生成：模型是一个整体/);
+  assert.equal(h.card('T02').closest('.listing-card-wrap'),null,'no 去填写 for it');
+  assert.match(h.node('listingPanel').textContent,/已选 4 张：3 张可以生成，1 张需补充资料（自动挑选）/);
+  assert.match(h.node('listingPanel').textContent,/标着「需补充」的不会生成，补齐资料后自动加入/,'auto says what it does with them');
   assert.equal(h.node('listingPanel').querySelector('[data-action="pages-auto"]'),null);
-  // turning one off makes an explicit list; the page that cannot be made yet stays on it
+  // turning one off makes an explicit list; the page waiting for its size stays on it
   h.change(h.card('T08').querySelector('input'),false);await tick();
-  assert.deepEqual(['T12','T01','T08','T06'].map(kind=>h.card(kind).querySelector('input').checked),[true,true,false,false]);
+  assert.deepEqual(['T12','T01','T08','T06'].map(kind=>h.card(kind).querySelector('input').checked),[true,true,false,true]);
   h.change(h.card('T03').querySelector('input'),true);await tick();
-  assert.match(h.node('listingPanel').textContent,/已选 3 张/);
+  assert.match(h.node('listingPanel').textContent,/已选 4 张：3 张可以生成，1 张需补充资料/);
   const auto=h.node('listingPanel').querySelector('[data-action="pages-auto"]');assert.ok(auto,'an explicit list offers the way back');
   await h.goto('build');
   assert.deepEqual(plain(h.writes().find(call=>call.path.endsWith('/listing/product')).body.pages),['T12','T01','T03','T06']);
@@ -163,9 +178,15 @@ test('the page cards: a thumbnail each, the kinds that cannot be made now disabl
   h.node('listingPanel').querySelector('[data-action="pages-auto"]').click();await settle();
   assert.equal(h.writes().at(-1).body.pages,null,'恢复自动 hands the list back to the planner');
   assert.equal(h.node('listingPanel').querySelector('[data-action="pages-auto"]'),null);
-  // nothing chosen: 下一步 says so instead of moving on
+  // only a page that waits for the seller: the steps go on (that is where it is filled in), the build waits and says for what
   for(const kind of ['T12','T01','T08'])h.change(h.card(kind).querySelector('input'),false);
-  await h.next();assert.equal(h.step(),'pages');assert.deepEqual(h.toasts.at(-1),['请至少选一张能生成的图片',true]);
+  await h.next();assert.equal(h.step(),'product');
+  await h.goto('build');
+  assert.equal(h.node('listingBuild').disabled,true);assert.match(h.node('listingBuild').title,/「尺寸图」最长边真实尺寸/);
+  assert.match(h.node('listingStatus').textContent,/选的图片都还缺资料/);
+  // nothing chosen: 下一步 says so instead of moving on
+  await h.goto('pages');h.change(h.card('T06').querySelector('input'),false);await tick();
+  await h.next();assert.equal(h.step(),'pages');assert.deepEqual(h.toasts.at(-1),['请至少选一张图片',true]);
   // nor do the dots or a jump to the summary get past it, and the build button is off while nothing can be made
   const writes=h.writes().length;
   h.node('listingSteps').querySelector('[data-step="build"]').click();await settle();
@@ -183,11 +204,12 @@ test('arrow keys move within a card group; on the style cards they also pick',as
   assert.equal(radio('frame').checked,true);
   await h.goto('pages');
   const box=kind=>h.card(kind).querySelector('input');
-  box('T08').focus();h.key(box('T08'),'ArrowRight');await tick();
-  assert.equal(h.w.document.activeElement,box('T05'),'the disabled 尺寸图 card is passed over');
-  assert.equal(box('T05').checked,false,'moving does not tick a page');
-  h.key(box('T05'),'ArrowLeft');await tick();assert.equal(h.w.document.activeElement,box('T08'));
-  h.key(box('T08'),'Home');await tick();assert.equal(h.w.document.activeElement,box('T12'));
+  box('T13').focus();h.key(box('T13'),'ArrowRight');await tick();
+  assert.equal(h.w.document.activeElement,box('T04'),'the disabled 深色细节特写 card is passed over');
+  assert.equal(box('T04').checked,false,'moving does not tick a page');
+  h.key(box('T04'),'ArrowLeft');await tick();assert.equal(h.w.document.activeElement,box('T13'));
+  h.key(box('T08'),'ArrowRight');await tick();assert.equal(h.w.document.activeElement,box('T06'),'a page waiting for the seller can be reached');
+  h.key(box('T06'),'Home');await tick();assert.equal(h.w.document.activeElement,box('T12'));
 });
 
 test('a missing preview picture leaves a neutral block with the name',async t=>{
@@ -335,8 +357,8 @@ test('components uploaded with the project are edited, turned and removed throug
   const sent=h.writes().map(call=>[call.method,call.path,call.body]);
   assert.deepEqual(plain(sent),[['PUT','/api/projects/a/components/c1',{quantity:3}],['PUT','/api/projects/a/components/c1',{included:false}],
     ['PUT','/api/projects/a/components/c1',{turn:'flip'}],['POST','/api/projects/a/components/c1/refresh',null],['DELETE','/api/projects/a/components/c1',null]]);
-  assert.equal(h.node('listingPanel').querySelector('form'),null,'components come with the project, not from here');
-  assert.match(h.node('listingPanel').textContent,/在新建项目时与主模型一起上传/);
+  assert.equal(h.node('listingPanel').querySelector('form'),null);
+  assert.ok(h.node('listingPanel').querySelector('[data-action="component-add"]'),'more can be added here (test_listing_fill_ui)');
 });
 
 test('the brand step is optional, each part a collapsed section with its summary; the colour follows the product until one is set',async t=>{
@@ -463,7 +485,8 @@ test('the moving parts sit in the product step while 多姿态展示 is chosen, 
     parts_sheet:'/api/projects/a/articulation/files/0123456789abcdef/parts.png',previews:'/api/projects/a/articulation/files/0123456789abcdef/states2.png'};
   h.respond=call=>{if(call.path==='/api/projects/a/articulation'){if(call.method==='POST')found={...found,running:true};return JSON.parse(JSON.stringify(found));}};
   await h.goto('pages');
-  assert.equal(h.card('T13').querySelector('input').disabled,true);assert.match(h.card('T13').textContent,/没有识别出可以展示的活动部件/);
+  assert.equal(h.card('T13').querySelector('input').disabled,false,'it can be found here: the card can be picked');
+  assert.equal(h.card('T13').querySelector('input').checked,true);assert.match(h.card('T13').textContent,/需补充：没有识别出可以展示的活动部件/);
   await h.goto('product');
   const section=h.node('listingPanel').querySelector('details[data-section="articulation"]');
   assert.equal(section.open,true,'the poses page waits for it: the box is open');

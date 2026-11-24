@@ -409,7 +409,7 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
     if not settings['enabled']:
         return [], None, notes
     if not image_model_ready():
-        notes.append('图像模型未配置，没有生成 AI 场景图；海报改用纯色版，需要场景的页面已跳过。')
+        notes.append('图像模型未配置（在服务器的 .env 文件里填写 AI_IMAGE_BASE_URL 和 AI_IMAGE_MODEL），没有生成 AI 场景图；海报改用纯色版，需要场景的页面已跳过。')
         return [], None, notes
     key = scene_key(project, product, settings)
     kept = []

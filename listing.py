@@ -37,6 +37,7 @@ import brandkit_render
 import brandkit_review
 import brandkit_set
 import components
+import listing_kinds
 
 KIND = 'listing_task'
 log = app_log.get('listing')
@@ -303,16 +304,26 @@ def ready_components(project):
 
 
 def blocked(project, product, parts):
-    """Why each page the app can make cannot be made now: {kind: reason}, for every kind, chosen or not (the page list
-    shows a kind off the seller's own list greyed out too, before it is picked)."""
+    """Why each page the app can make cannot be made now, for every kind, chosen or not (the page list shows a kind off
+    the seller's own list too, before it is picked): {kind: {'why', 'fix': {'step', 'field'} or None, 'needs', 'hard'}}.
+    ``hard`` pages wait for something this app cannot supply; the others can be picked and filled in."""
     has, why = _requirements(project, product, parts)
-    return {kind: why.get(kind, '缺少内容') for kind in AUTO_ORDER if not has.get(kind)}
+    return {kind: listing_kinds.reason_public(why.get(kind, '缺少内容')) for kind in AUTO_ORDER if not has.get(kind)}
+
+
+def scene_state(project, product):
+    """What the scene count of a build rests on, so a page that needs scenes says what really blocks it."""
+    settings = product.get('scenes') or brandkit_set.default_scenes()
+    return {'image_ready': brandkit_set.image_model_ready(), 'enabled': bool(settings.get('enabled')), 'count': int(settings.get('count') or 0),
+            'usecase': bool((product.get('usecase') or {}).get('enabled')), 'legacy': 1 if _photo(project) else 0}
 
 
 def _requirements(project, product, parts):
     product, _ = brandkit_set.printable(product)         # a selling point titled with a mesh name is never printed, so plans nothing
-    return brandkit_set.requirements(product, parts, product_size(project, product)[1],
-                                     brandkit_set.scene_supply(product, 1 if _photo(project) else 0), len(articulation.states(project)))
+    scenes = scene_state(project, product)
+    waiting = sum(1 for row in components.components(project) if row.get('status') in ('queued', 'processing'))
+    return brandkit_set.requirements(product, parts, product_size(project, product)[1], brandkit_set.scene_supply(product, scenes['legacy']),
+                                     len(articulation.states(project)), scenes=scenes, waiting=waiting)
 
 
 def planned(project, product, parts):
@@ -1169,7 +1180,7 @@ def redraw_scene(project_id, index, url=None):
     product, _, _ = stored(project)
     settings = product.get('scenes') or {}
     if not brandkit_set.image_model_ready():
-        raise ValueError('图像模型未配置或已关闭，现在重画不了这张场景图（原图保留）。')
+        raise ValueError('图像模型未配置或已关闭（在服务器的 .env 文件里设置，「AI 设置」里不能设置），现在重画不了这张场景图（原图保留）。')
     if not settings.get('enabled', True):
         raise ValueError('场景图已关闭：请先在「品牌与场景」步骤里打开 AI 场景图，再重画（原图保留）。')
     pages = product.get('pages')
@@ -1208,6 +1219,13 @@ def _scene_options():
             'aspects': list(brandkit_set.ASPECTS)}
 
 
+def _vision_ready():
+    try:
+        return brandkit_review.available()[1]
+    except Exception:
+        return False
+
+
 def state(project_id):
     """Everything the listing workspace shows."""
     import engine
@@ -1231,6 +1249,8 @@ def state(project_id):
             'order': list(brandkit_set.ORDER), 'auto': list(AUTO_ORDER),
             'scenes': [scene_public(row, index) for index, row in enumerate((listing.get('scenes') or {}).get('items', []))],
             'scene_options': _scene_options(),
+            # whether the moving parts can be found here (the pose agent needs the vision model of AI 设置)
+            'vision_ready': _vision_ready(),
             'layout_available': brandkit_render.available(),
             'parts': part_names(project), 'size': {'mm': size_mm, 'known': known},
             'options': {'workpieces': list(WORKPIECES), 'materials': list(MATERIALS), 'modes': list(MODES), 'languages': list(LANGUAGES),
@@ -1258,9 +1278,12 @@ def submit(project_id, body=None):
         if running:
             raise engine.JobConflictError('这个项目的套图正在生成，请等待完成或先取消。')
         product, _, _ = stored(project)
-        if not [row for row in planned(project, product, ready_components(project)) if not row.get('skipped')]:
-            # refused here, not after the build has started (and perhaps asked a vision model about the moving parts)
-            raise ValueError('图片清单里没有现在能生成的图片：请在「选图片」里至少选一张。')
+        rows = planned(project, product, ready_components(project))
+        if not [row for row in rows if not row.get('skipped')]:
+            # refused here, not after the build has started (and perhaps asked a vision model about the moving parts);
+            # the pages chosen that wait for something say what to fill in
+            held = ['「%s」：%s' % (brandkit_set.KINDS[row['kind']][0], str(row['skipped']).rstrip('。')) for row in rows if row.get('skipped')][:4]
+            raise ValueError('图片清单里没有现在能生成的图片：' + ('；'.join(held) + '。请先补齐，或' if held else '请') + '在「选图片」里加选能生成的图片。')
         task = {'id': uuid.uuid4().hex, 'project_id': project_id, 'status': 'queued', 'stage': 'queued', 'progress': 0, 'detail': '', 'error': '',
                 'created_at': time.time(), 'pages': 0, 'fresh': fresh}
         put(KIND, task)
@@ -1543,7 +1566,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     product, notes = brandkit_set.printable(product)
     product = {**product, 'title': brandkit_set.humanised(product['title'])}
     if not product['features']:
-        notes.append('没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请在「填产品」步骤里写下卖点，或粘贴产品介绍后点「提取到各栏」。')
+        notes.append('没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请在第 3 步「填产品」的「卖点」里添加，或粘贴产品介绍后点「提取到各栏」。')
     parts = ready_components(project); size_mm, known = product_size(project, product)
     # Which parts of the model move and the states worth showing (pliers closed / open): asked once per model file.
     project, moving_notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))

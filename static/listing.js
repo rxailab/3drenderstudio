@@ -6,6 +6,9 @@
 // scenes, build), so a seller is never faced with every control at once.
 let listingState=null,listingEdit=null,listingTimer=null,listingBusy=false,listingProject=null;
 const listingDirty={product:false,brand:false};
+// Every product edit bumps the revision: a save that returns after more was typed leaves the product unsaved (and kept).
+let listingProductRev=0;
+function listingTouch() { listingDirty.product=true;listingProductRev++; }
 const listingStageNames={queued:'排队中',analyse:'分析模型',pose:'检查摆放朝向',render:'渲染抠图',cutout:'抠图',ready:'已完成'};
 const listingModeNames={through:'穿过工具的开口',under:'垫在工具下方',front:'顶在工具前端',manual:'手动放置（工具中心）'};
 const listingClone=value=>JSON.parse(JSON.stringify(value));
@@ -18,12 +21,12 @@ const listingQuote=value=>String(value ?? '').replace(/["\\]/g,'\\$&');
 // ---- the steps ----
 const listingSteps=[
   {id:'style',name:'选风格',lead:'选一种版式风格，整套图片都按它排版。'},
-  {id:'pages',name:'选图片',lead:'点选要生成的图片，可以多选。灰色的暂时做不了，下面写着原因。'},
+  {id:'pages',name:'选图片',lead:'点选要生成的图片，可以多选。标着「需补充」的也能选，点「去填写」补齐资料；灰色的这个产品做不了，下面写着原因。'},
   {id:'product',name:'填产品',lead:'先填最要紧的几项；标题、规格等放在「更多信息」里，可以以后再补。'},
   {id:'brand',name:'品牌与场景',lead:'可选。品牌名称、颜色、标志和场景图都有默认设置，不改可以直接跳过。'},
   {id:'build',name:'生成',lead:'核对一下设置，然后生成整套图片。'}];
 // The page kinds that bring their own settings into the 填产品 step: the components for the in-the-box page and the
-// moving parts for the poses page. Each appears only while its page is on the list.
+// moving parts for the poses page. Each appears whenever its page is on the list (ready or still waiting for them).
 const LISTING_BOX='T05',LISTING_POSES='T13';
 // One short line on what each page shows, under its preview on the 选图片 cards.
 const listingKindNotes={T12:'产品大图配主标题，作为第一张',T01:'用引线标出各个部件的卖点',T03:'产品主体旁排出几处细节',T13:'同一件产品打开、合上等不同状态',
@@ -62,14 +65,14 @@ async function listingActivate(refresh=true) {
   finally{listingSwitching=null;}
   if(!current || current.id!==target)return;
   listingProject=current.id;listingState=null;listingEdit=null;listingDirty.product=listingDirty.brand=false;
-  listingDetail=null;listingStepFor=null;listingStep='style';listingVisited=new Set(['style']);listingOpenSections.clear();
+  listingDetail=null;listingStepFor=null;listingStep='style';listingVisited=new Set(['style']);listingOpenSections.clear();listingNeedsSeen.clear();clearTimeout(listingAutoTimer);
   $('listingPanel').hidden=false;$('listingMain').hidden=true;const side=$('listingPanel').closest('.listing-side');if(side)side.hidden=false;
   $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';listingSetHTML($('listingPages'),'');$('listingPlan').innerHTML='';listingSetHTML($('listingNotes'),'');listingSyncStage();
   try{await listingLoad(true);}catch(error){$('listingPanel').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;}
 }
 // Called when the user leaves the tab: words still being typed are saved, polling stops.
 function listingDeactivate() {
-  clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);
+  clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);clearTimeout(listingAutoTimer);
   document.body.classList.remove('listing-stage-on');const stage=listingStageNode();if(stage)stage.hidden=true;   // the model's view comes back
   if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
@@ -79,10 +82,11 @@ async function listingLoad(reset) {
   if(id!==listingOpenFor())return;
   listingAdopt(state,reset);
 }
-// Take the server's state. Words the user is still typing are kept unless `reset` says to drop them.
-function listingAdopt(state,reset) {
+// Take the server's state. Words the user is still typing are kept unless `reset` says to drop them; `keep` keeps the
+// product as typed (the background save of 填产品: its rows may still hold an empty line the server drops).
+function listingAdopt(state,reset,keep=false) {
   const first=!listingEdit || reset;listingState=state;
-  if(first || !listingDirty.product)listingEdit={...(listingEdit || {}),product:listingClone(state.product)};
+  if(!keep && (first || !listingDirty.product))listingEdit={...(listingEdit || {}),product:listingClone(state.product)};
   if(first || !listingDirty.brand)listingEdit={...listingEdit,brand:{preset:state.brand.preset,name:state.brand.name,accent:state.brand.accent,dark:state.brand.dark,
     badges:[...state.brand.badges],legal:state.brand.legal,unit:state.brand.unit,fonts:state.brand.fonts,badge_style:state.brand.badge_style,texture:state.brand.texture}};
   if(listingStepFor!==listingProject){
@@ -102,7 +106,7 @@ function listingSchedule() {
 // What a poll may change on the step shown without redrawing what the seller is typing into.
 function listingRefreshStep() {
   if(listingStep==='pages')listingRenderKinds();
-  else if(listingStep==='product')listingRenderComponents();
+  else if(listingStep==='product'){listingRenderComponents();listingRenderNeeds();}
 }
 // The progress line, the step dots and the Back / Next buttons.
 function listingSyncStepper() {
@@ -125,30 +129,37 @@ function listingSyncStepper() {
 async function listingGoStep(id,focus=true) {
   if(!listingEdit || listingStepMoving || !listingSteps.some(step=>step.id===id))return;
   if(listingLocked() && id!=='build')return;
-  // past 选图片 only with at least one page that can be made: the dots, 跳过 and 修改 go through here as well as 下一步
+  // past 选图片 only with at least one page chosen (one that can be made, or one still waiting for what the seller fills
+  // in on the next steps): the dots, 跳过 and 修改 go through here as well as 下一步
   const target=listingSteps.findIndex(step=>step.id===id),pages=listingSteps.findIndex(step=>step.id==='pages');
-  if(pages>=0 && target>pages && !listingMakeable().length){toast('请至少选一张能生成的图片',true);if(listingStep!=='pages')listingGoStep('pages');return;}
+  if(pages>=0 && target>pages && !listingPicked().length){toast('请至少选一张图片',true);if(listingStep!=='pages')listingGoStep('pages');return;}
   const project=listingProject;
+  clearTimeout(listingAutoTimer);
   listingStepMoving=true;listingSyncStepper();
   try{await listingSavePending();}
   catch(error){toast(error.message,true);return;}
   finally{listingStepMoving=false;listingSyncStepper();}
   if(listingOpenFor()!==project)return;
+  if(id!==listingStep)listingNeedsSeen.clear();      // the checklist of 填产品 starts from what is missing when it is entered
   listingStep=id;listingVisited.add(id);listingRenderPanel();listingRenderMain();
   if(focus)$('listingStepTitle')?.focus();
 }
 function listingNextStep() {
-  if(listingStep==='pages' && !listingMakeable().length){toast('请至少选一张能生成的图片',true);return;}
+  if(listingStep==='pages' && !listingPicked().length){toast('请至少选一张图片',true);return;}
   const next=listingSteps[listingStepIndex()+1];if(next)return listingGoStep(next.id);
 }
 function listingBackStep() { const back=listingSteps[listingStepIndex()-1];if(back)return listingGoStep(back.id); }
 
 // ---- the step on screen ----
-function listingField(label,html,help='') { return `<label class="listing-field"><span class="field-label">${esc(label)}</span>${html}${help?`<span class="field-help">${esc(help)}</span>`:''}</label>`; }
+// `mark`: the fields (listingNeedWords) this one supplies; it is marked while a chosen page still waits for them
+function listingField(label,html,help='',mark='') {
+  return `<label class="listing-field"${mark?` data-need-mark="${esc(mark)}"`:''}><span class="field-label">${esc(label)}${mark?listingNeedTag():''}</span>${html}${help?`<span class="field-help">${esc(help)}</span>`:''}</label>`;
+}
+function listingNeedTag() { return '<span class="listing-need-tag" hidden>所选图片需要</span>'; }
 function listingInput(scope,key,value,attrs='') { return `<input type="text" data-scope="${scope}" data-key="${esc(key)}" value="${esc(value ?? '')}" ${attrs}>`; }
 // A collapsed section with a one-line summary of what it holds; it stays open across redraws once opened.
-function listingSection(id,title,summary,body,open=false) {
-  return `<details class="listing-section" data-section="${id}" ${listingOpenSections.has(id) || open?'open':''}><summary><span class="listing-section-name">${esc(title)}</span>
+function listingSection(id,title,summary,body,open=false,mark='') {
+  return `<details class="listing-section" data-section="${id}" ${mark?`data-need-mark="${esc(mark)}"`:''} ${listingOpenSections.has(id) || open?'open':''}><summary><span class="listing-section-name">${esc(title)}${mark?listingNeedTag():''}</span>
     <span class="listing-section-sum" data-sum="${id}">${esc(summary)}</span></summary><div class="listing-section-body">${body}</div></details>`;
 }
 function listingRenderPanel() {
@@ -180,16 +191,17 @@ function listingKeepFocus(render) {
 }
 // A choice card: a large preview, the name and one line under it. The preview falls back to a neutral block with the
 // name when its picture is missing (listingInit hides a picture that fails to load).
-function listingCardHTML({type,name='',scope,key='',value,checked,disabled=false,thumb,title,note,why=''}) {
+// `fill`: the page waits for something the seller can fill in, so it can still be picked; the reason says what.
+function listingCardHTML({type,name='',scope,key='',value,checked,disabled=false,thumb,title,note,why='',fill=false}) {
   const id=`listingCard-${scope}-${value}`;
-  return `<label class="listing-card${disabled?' is-disabled':''}" data-card="${esc(value)}">
+  return `<label class="listing-card${disabled?' is-disabled':''}${fill?' is-fill':''}" data-card="${esc(value)}">
     <input type="${type}" ${name?`name="${esc(name)}"`:''} data-scope="${esc(scope)}" ${key?`data-key="${esc(key)}"`:''} value="${esc(value)}" ${checked?'checked':''} ${disabled?'disabled':''}
       aria-labelledby="${esc(id)}-name" aria-describedby="${esc(id)}-note${why?` ${esc(id)}-why`:''}">
     <span class="listing-card-thumb"><span class="listing-card-ph" aria-hidden="true">${esc(title)}</span><img src="${esc(listingThumbURL(thumb))}" alt="" loading="lazy" data-thumb></span>
     <span class="listing-card-mark" aria-hidden="true"></span>
     <span class="listing-card-name" id="${esc(id)}-name">${esc(title)}</span>
     <span class="listing-card-note" id="${esc(id)}-note">${esc(note)}</span>
-    ${why?`<span class="listing-card-why" id="${esc(id)}-why">暂时无法生成：${esc(why)}</span>`:''}</label>`;
+    ${why?`<span class="listing-card-why" id="${esc(id)}-why">${fill?'需补充：':'暂时无法生成：'}${esc(why)}</span>`:''}</label>`;
 }
 // ① 选风格: one of the brand kit's presets.
 function listingRenderStyle() {
@@ -199,38 +211,57 @@ function listingRenderStyle() {
       thumb:`style-${preset.id}`,title:preset.label.zh,note:preset.note.zh})).join('')}</fieldset>
     <p class="field-help">风格只决定排版方式；系统不内置任何品牌的标志或名称，请只使用你自己的品牌素材。</p>`;
 }
-// ② 选图片. The kinds offered are the ones the app can build (state.auto); a kind left on the list that the plan cannot
-// make yet stays on it, shown disabled with the reason, and is made once what it needs is there.
+// ② 选图片. The kinds offered are the ones the app can build (state.auto). A kind that waits for something the seller can
+// fill in ("需补充") can be picked and stays on the list until it is there; a kind nothing in this app can supply ("hard")
+// is shown disabled with the reason.
 function listingKindList() {
   const s=listingState,base=s.auto || s.order || Object.keys(s.kinds || {});
   const explicit=Array.isArray(listingEdit?.product?.pages)?listingEdit.product.pages:[];
   return [...base,...explicit.filter(kind=>!base.includes(kind))];
 }
 function listingChosen() { const p=listingEdit.product;return new Set(Array.isArray(p.pages)?p.pages:(listingState.plan || []).map(row=>row.kind)); }
-// why a kind cannot be made now: for every kind (state.blocked), so a kind off the seller's own list is greyed out before it is picked
-function listingSkipped() { return new Map([...Object.entries(listingState.blocked || {}),...(listingState.plan || []).filter(row=>row.skipped).map(row=>[row.kind,row.skipped])]); }
+// state.blocked holds {why, fix:{step, field}, needs, hard}; a plain reason (a plan row, an older server) has no fix to offer
+function listingReason(value) {
+  if(value && typeof value==='object')return {why:String(value.why || ''),fix:value.fix || null,needs:Array.isArray(value.needs)?value.needs:value.fix?[value.fix]:[],hard:!!value.hard};
+  return {why:String(value || ''),fix:null,needs:[],hard:false};
+}
+// why a kind cannot be made now: for every kind (state.blocked), so a kind off the seller's own list says so before it is picked
+function listingSkipped() {
+  return new Map([...(listingState.plan || []).filter(row=>row.skipped).map(row=>[row.kind,listingReason(row.skipped)]),
+    ...Object.entries(listingState.blocked || {}).map(([kind,value])=>[kind,listingReason(value)])]);
+}
 function listingMakeable() { const chosen=listingChosen(),skipped=listingSkipped();return listingKindList().filter(kind=>chosen.has(kind) && !skipped.has(kind)); }
+// the pages chosen that wait for the seller ("需补充"), and every page chosen that is not ruled out
+function listingFillable() { const chosen=listingChosen(),skipped=listingSkipped();return listingKindList().filter(kind=>chosen.has(kind) && skipped.has(kind) && !skipped.get(kind).hard); }
+function listingPicked() { const skipped=listingSkipped();return listingKindList().filter(kind=>listingChosen().has(kind) && !skipped.get(kind)?.hard); }
+function listingKindName(kind) { return listingState.kinds?.[kind]?.zh || kind; }
 function listingKindsHTML() {
   const chosen=listingChosen(),skipped=listingSkipped(),kinds=listingState.kinds || {},active=listingTaskActive(),explicit=Array.isArray(listingEdit.product.pages);
-  const cards=listingKindList().map(kind=>{const why=skipped.get(kind) || '';
-    return listingCardHTML({type:'checkbox',scope:'page',value:kind,checked:chosen.has(kind) && !why,disabled:active || !!why,thumb:`page-${kind}`,
-      title:kinds[kind]?.zh || kind,note:listingKindNotes[kind] || kinds[kind]?.en || '',why});}).join('');
-  return `<p class="listing-pick-count">已选 ${listingMakeable().length} 张${explicit?'':'（自动挑选）'}</p>
+  const cards=listingKindList().map(kind=>{const reason=skipped.get(kind),hard=!!reason?.hard,fill=!!reason && !hard;
+    const card=listingCardHTML({type:'checkbox',scope:'page',value:kind,checked:chosen.has(kind) && !hard,disabled:active || hard,thumb:`page-${kind}`,
+      title:kinds[kind]?.zh || kind,note:listingKindNotes[kind] || kinds[kind]?.en || '',why:reason?.why || '',fill});
+    // 去填写 sits outside the card's <label>, so pressing it does not tick or untick the page
+    return fill && reason.fix?`<div class="listing-card-wrap">${card}<button type="button" class="button subtle listing-card-fill" data-action="fill" data-kind="${esc(kind)}"
+      aria-label="去填写「${esc(kinds[kind]?.zh || kind)}」需要的资料" ${active?'disabled':''}>去填写</button></div>`:card;}).join('');
+  const make=listingMakeable().length,fill=listingFillable().length;
+  return `<p class="listing-pick-count" role="status">已选 ${make+fill} 张${fill?`：${make} 张可以生成，${fill} 张需补充资料`:''}${explicit?'':'（自动挑选）'}</p>
     <div class="listing-cards" role="group" aria-label="要生成的图片" data-arrows>${cards}</div>
     <div class="listing-pick-actions">${explicit?`<button type="button" class="button subtle" data-action="pages-auto" ${active?'disabled':''}>恢复自动</button>
-      <span class="field-help">恢复后按产品资料自动挑选能做的图片。</span>`:'<span class="field-help">现在是自动挑选：能做的都会生成。改动任意一张后，改为按你选的清单生成。</span>'}</div>`;
+      <span class="field-help">恢复后按产品资料自动挑选：能生成的都生成，需补充的补齐后自动加入。</span>`
+      :'<span class="field-help">现在是自动挑选：能生成的都会生成；标着「需补充」的不会生成，补齐资料后自动加入。改动任意一张后，改为按你选的清单生成。</span>'}</div>`;
 }
 function listingRenderPages() { $('listingPanel').innerHTML='<div id="listingKinds"></div>';listingRenderKinds(); }
 function listingRenderKinds() {
   const node=$('listingKinds');if(!node || !listingState)return;
   const focused=document.activeElement && node.contains(document.activeElement)?document.activeElement:null;
-  const value=focused?.value,action=focused?.dataset?.action;
+  const value=focused?.value,action=focused?.dataset?.action,kind=focused?.dataset?.kind;
   listingSetHTML(node,listingKindsHTML());
-  if(focused && !node.contains(focused))(value?node.querySelector(`input[value="${listingQuote(value)}"]`):node.querySelector(`[data-action="${listingQuote(action)}"]`))?.focus();
+  if(focused && !node.contains(focused))(value?node.querySelector(`input[value="${listingQuote(value)}"]`)
+    :node.querySelector(`[data-action="${listingQuote(action)}"]${kind?`[data-kind="${listingQuote(kind)}"]`:''}`))?.focus();
 }
 function listingPartsHTML(index,chosen) {
   const parts=listingState.parts || [];
-  if(!parts.length)return '';
+  if(parts.length<2)return '';            // one part is the whole product: picking it points at nothing (listingPartsNote says so)
   return `<details class="listing-parts"><summary>对应部件（${chosen.length}）</summary><div class="listing-parts-list">${parts.map(name=>
     `<label><input type="checkbox" data-scope="feature-part" data-index="${index}" value="${esc(name)}" ${chosen.includes(name)?'checked':''}> ${esc(name)}</label>`).join('')}</div>
     <span class="field-help">选中部件后，功能标注会画出引线，并可生成该部件的特写。</span></details>`;
@@ -258,19 +289,123 @@ function listingRenderProduct(reload=false) {
       <input type="text" data-scope="figure" data-index="${index}" data-key="label" value="${esc(row.label)}" maxlength="30" placeholder="名称" aria-label="指标名称">`)}`;
   const box=chosen.has(LISTING_BOX),poses=chosen.has(LISTING_POSES),comps=listingState.components || [];
   const notReady=comps.filter(row=>row.status!=='ready').length;
+  // the file input stays outside the box the poll redraws, so files chosen while it redraws still arrive
+  const boxBody='<input id="listingComponentFiles" type="file" multiple accept=".glb,.obj,.zip,.png,.jpg,.jpeg,.webp" hidden aria-label="选择组件文件"><div id="listingComponents"></div>';
   $('listingPanel').innerHTML=`
     ${listingSection('source','粘贴产品介绍，自动填写',p.source?'已粘贴介绍':'可选',source,empty)}
     <div class="listing-grid2">${listingField('产品名称',listingInput('product','title',p.title,'maxlength="60"'))}${listingField('型号',listingInput('product','model',p.model,'maxlength="40" placeholder="如 AG-20X"'))}</div>
-    <div class="listing-grid2">${listingField('最长边真实尺寸（mm）',listingInput('product','size_mm',p.size_mm ?? '',`inputmode="decimal" placeholder="按模型估计约 ${esc(Math.round(size.mm))}"`),size.known?'':'填写后才会画出产品尺寸线，套装里的大小比例也才准确。')}
+    <div class="listing-grid2">${listingField('最长边真实尺寸（mm）',listingInput('product','size_mm',p.size_mm ?? '',`inputmode="decimal" placeholder="按模型估计约 ${esc(Math.round(size.mm))}"`),size.known?'':'填写后才会画出产品尺寸线，套装里的大小比例也才准确。','size specs')}
     ${listingField('图片文字语言',`<select data-scope="product" data-key="language"><option value="en" ${p.language==='en'?'selected':''}>English</option><option value="zh" ${p.language==='zh'?'selected':''}>中文</option></select>`)}</div>
-    <h4 class="listing-heading">卖点 <button type="button" class="button subtle" data-action="add-feature">添加</button></h4>
+    <h4 class="listing-heading" data-need-mark="features feature_parts">卖点${listingNeedTag()} <button type="button" class="button subtle" data-action="add-feature">添加</button></h4>
+    ${listingPartsNote()}
     ${rows(p.features,'feature',(row,index)=>`<div class="listing-feature"><input type="text" data-scope="feature" data-index="${index}" data-key="title" value="${esc(row.title)}" maxlength="40" placeholder="卖点标题" aria-label="卖点标题">
       <input type="text" data-scope="feature" data-index="${index}" data-key="detail" value="${esc(row.detail || '')}" maxlength="90" placeholder="一行说明（可不填）" aria-label="卖点说明">${listingPartsHTML(index,row.parts || [])}</div>`) || '<p class="field-help">还没有卖点。可粘贴产品介绍后提取，或点「起草文案」，也可以手动添加。</p>'}
-    ${listingSection('more','更多信息',filled?`已填 ${filled} 项`:'主标题、副标题、规格、大数字指标',more)}
-    ${box?listingSection('components','套装组件',comps.length?`${comps.length} 个${notReady?`，${notReady} 个未就绪`:''}`:'没有组件','<div id="listingComponents"></div>',listingSkipped().has(LISTING_BOX)):''}
-    ${poses?listingSection('articulation','活动部件',listingArticulationSummary(),'<div id="listingArticulation"></div>',listingSkipped().has(LISTING_POSES)):''}`;
+    ${listingSection('more','更多信息',filled?`已填 ${filled} 项`:'主标题、副标题、规格、大数字指标',more,false,'specs')}
+    ${box?listingSection('components','套装组件',comps.length?`${comps.length} 个${notReady?`，${notReady} 个未就绪`:''}`:'没有组件',boxBody,listingSkipped().has(LISTING_BOX),'components'):''}
+    ${poses?listingSection('articulation','活动部件',listingArticulationSummary(),'<div id="listingArticulation"></div>',listingSkipped().has(LISTING_POSES),'articulation'):''}`;
+  $('listingPanel').insertAdjacentHTML('afterbegin','<section id="listingNeeds" class="listing-needs" aria-labelledby="listingNeedsTitle" hidden></section>');
+  listingRenderNeeds();
   if(box)listingRenderComponents();
   if(poses)listingRenderArticulation(reload || !listingArticulation || listingArticulation.project!==listingOpenFor());
+}
+// ---- what the chosen pages still need: the checklist on top of 填产品, the marks on its fields, and 去填写 ----
+// field (from state.blocked[kind].needs) -> what the seller fills in, in the words of the form
+const listingNeedWords={features:'卖点',feature_parts:'卖点的「对应部件」',size:'最长边真实尺寸',specs:'参数：真实尺寸、规格或大数字指标（任填一项）',
+  components:'套装组件',articulation:'活动部件',scenes:'场景图'};
+const listingNeedsSeen=new Map();         // field -> {step, kinds}: every row shown since 填产品 was entered, so a filled one ticks off
+// {field: {step, kinds:[...]}} for the chosen pages still waiting for the seller
+function listingNeedsNow() {
+  const now=new Map(),skipped=listingSkipped();
+  for(const kind of listingFillable())for(const need of skipped.get(kind).needs){
+    const row=now.get(need.field) || {step:need.step,kinds:[]};if(!row.kinds.includes(kind))row.kinds.push(kind);now.set(need.field,row);}
+  return now;
+}
+function listingNeedsHTML() {
+  const now=listingNeedsNow();
+  for(const [field,row] of now)listingNeedsSeen.set(field,{step:row.step,kinds:[...new Set([...(listingNeedsSeen.get(field)?.kinds || []),...row.kinds])]});
+  if(!listingNeedsSeen.size)return '';
+  const left=[...listingNeedsSeen.keys()].filter(field=>now.has(field)).length;
+  const items=[...listingNeedsSeen].map(([field,row])=>{
+    const done=!now.has(field),names=(now.get(field)?.kinds || row.kinds).map(kind=>`「${listingKindName(kind)}」`).join('');
+    const go=row.step==='brand'?'去第 4 步填写':'去填写';
+    return `<li class="listing-need" data-need="${esc(field)}" data-done="${done}"><span class="listing-need-mark" aria-hidden="true"></span>
+      <span class="listing-need-text"><strong>${esc(listingNeedWords[field] || field)}</strong><span>${esc(names)}${done?'':'需要'}</span></span>
+      <span class="listing-need-state">${done?'已补齐':'待填写'}</span>
+      ${done?'':`<button type="button" class="button subtle" data-action="need-go" data-step="${esc(row.step)}" data-field="${esc(field)}" aria-label="${esc(go)}：${esc(listingNeedWords[field] || field)}">${go}</button>`}</li>`;}).join('');
+  return `<h4 class="listing-needs-title" id="listingNeedsTitle">你选的图片还需要<span>${left?`还差 ${left} 项`:'都已补齐'}</span></h4>
+    <ul class="listing-needs-list">${items}</ul>
+    <p class="field-help">填写后会自动保存，补齐的项目会打勾；没补齐的图片不会生成，其余照常生成。</p>`;
+}
+// Redrawn after each background save; only this box changes, so what is being typed and the focus stay where they are.
+function listingRenderNeeds() {
+  const box=$('listingNeeds');if(!box || !listingState || !listingEdit)return;
+  const focused=document.activeElement && box.contains(document.activeElement)?document.activeElement.dataset.field:null;
+  const html=listingNeedsHTML();box.hidden=!html;listingSetHTML(box,html);
+  if(focused)(box.querySelector(`[data-field="${listingQuote(focused)}"]`) || $('listingNeedsTitle'))?.focus();
+  const now=listingNeedsNow();
+  for(const node of $('listingPanel').querySelectorAll('[data-need-mark]')){
+    const on=node.dataset.needMark.split(' ').some(field=>now.has(field));
+    node.classList.toggle('is-needed',on);
+    const tag=node.querySelector('.listing-need-tag');if(tag)tag.hidden=!on;
+  }
+}
+// What the 对应部件 picker means for this model: without two named parts there is nothing to pick.
+function listingPartsNote() {
+  if((listingState.parts || []).length>=2)return '';
+  return `<p class="listing-parts-none field-help" id="listingPartsNone">这个模型没有分出可以单独选的部件，所以卖点下没有「对应部件」可选。因此「功能标注」只能由视觉模型（「AI 设置」→「预览图像分析」）在主图上找出卖点的位置；
+    「主体 + 细节栏」和「深色细节特写」要靠部件特写，这个模型做不了。</p>`;
+}
+// 去填写: save, go to the step, open the section and put the cursor where the missing thing is typed.
+let listingFocusPending=null;
+async function listingGoFill(fix) {
+  if(!fix || !listingEdit)return;
+  await listingGoStep(fix.step,false);
+  if(listingStep!==fix.step)return;            // the save failed or the move was refused: it said why
+  listingFocusNeed(fix.field);
+}
+function listingFocusNeed(field) {
+  const panel=$('listingPanel'),open=id=>{listingOpenSections.add(id);const node=panel.querySelector(`details[data-section="${id}"]`);if(node)node.open=true;};
+  const first=(...selectors)=>{for(const selector of selectors){const node=[...panel.querySelectorAll(selector)].find(item=>!item.disabled);if(node)return node;}return null;};
+  let node=null;
+  if(field==='features')node=[...panel.querySelectorAll('[data-scope="feature"][data-key="title"]')].find(item=>!item.value.trim()) || first('[data-action="add-feature"]');
+  else if(field==='feature_parts'){
+    const picker=[...panel.querySelectorAll('details.listing-parts')].find(item=>!item.querySelector('input:checked')) || panel.querySelector('details.listing-parts');
+    if(picker){picker.open=true;node=picker.querySelector('input');}
+    else node=$('listingPartsNone') || first('[data-scope="feature"][data-key="title"]');
+    if(node && node.id==='listingPartsNone')node.tabIndex=-1;
+  }
+  else if(field==='size')node=first('[data-scope="product"][data-key="size_mm"]');
+  else if(field==='specs'){open('more');node=first('[data-scope="product"][data-key="size_mm"]');}
+  else if(field==='components'){open('components');node=first('[data-action="component-add"]');}
+  else if(field==='articulation'){open('articulation');node=first('[data-action="articulation-run"]');if(!node){listingFocusPending='articulation-run';node=panel.querySelector('details[data-section="articulation"] summary');}}
+  else if(field==='scenes'){
+    // without the image model the workpiece render is the scene this app can add
+    const usecase=listingState.scene_options && listingState.scene_options.image_ready===false;
+    open(usecase?'usecase':'scenes');node=first(usecase?'[data-scope="usecase"][data-key="enabled"]':'[data-scope="scenes"][data-key="enabled"]');
+  }
+  node?.scrollIntoView?.({block:'center'});node?.focus();
+}
+// On 填产品 the product is saved in the background shortly after each change, so the checklist can tick off.
+let listingAutoTimer=null;
+var listingAutoDelay=800;            // a var: the UI tests shorten it through window
+let listingAutoSaving=false;
+function listingAutoSave() {
+  clearTimeout(listingAutoTimer);
+  if(listingStep!=='product' || !listingDirty.product)return;
+  listingAutoTimer=setTimeout(async()=>{
+    if(listingAutoSaving)return listingAutoSave();     // one save at a time: answers never arrive out of order
+    const id=listingOpenFor();
+    if(!id || listingStep!=='product' || !listingDirty.product || listingStepMoving || listingBusy)return;
+    const rev=listingProductRev;listingAutoSaving=true;
+    try{
+      const state=await api(`/api/projects/${id}/listing/product`,{method:'PUT',body:listingProductBody()});
+      if(listingOpenFor()!==id)return;
+      if(rev===listingProductRev)listingDirty.product=false;
+      listingAdopt(state,false,true);
+    }catch(error){return;/* kept unsaved: 下一步 saves it again and says what is wrong */}
+    finally{listingAutoSaving=false;}
+    listingAutoSave();                // typed while it was saving: that goes in next
+  },listingAutoDelay);
 }
 // The earlier usage-scene pictures (app.js fills #sceneHistory) belong with the scene settings: shown on that step only.
 function listingSyncSceneHistory() {
@@ -310,7 +445,32 @@ function listingComponentHTML(row) {
       </div>
     </div></article>`;
 }
-// The components fill their own box inside the 填产品 step (shown while the in-the-box page is chosen).
+// The components fill their own box inside the 填产品 step (shown while the in-the-box page is chosen). New ones are
+// uploaded here as in the new-project dialog (POST /components, one file per component; at most 24 per project).
+const listingComponentLimit=24;
+let listingUploading=false;
+async function listingUploadComponents(files) {
+  const id=listingOpenFor();if(!id || !files.length || listingUploading)return;
+  const allowed=/\.(glb|obj|zip|png|jpe?g|webp)$/i,wrong=files.find(file=>!allowed.test(file.name));
+  if(wrong){toast(`「${wrong.name}」不是可用的组件文件：请上传 GLB、OBJ、ZIP 或 PNG / JPG / WEBP 图片`,true);return;}
+  if((listingState?.components || []).length+files.length>listingComponentLimit){toast(`一个项目最多 ${listingComponentLimit} 个组件`,true);return;}
+  listingUploading=true;listingRenderComponents();
+  let added=0;
+  try{
+    for(const file of files){
+      const form=new FormData();form.append('files',file);
+      await api(`/api/projects/${id}/components`,{method:'POST',body:form});added++;
+    }
+  }catch(error){toast(error.message,true);}
+  finally{
+    listingUploading=false;
+    if(listingOpenFor()===id){
+      if(added)toast(`已添加 ${added} 个组件，正在处理`);
+      await listingLoad(false).catch(()=>{});            // the processing is followed by the poll (listingSchedule)
+      listingRenderComponents();$('listingPanel')?.querySelector('[data-action="component-add"]')?.focus();
+    }
+  }
+}
 function listingRenderComponents() {
   const box=$('listingComponents');if(!box || !listingState)return;
   const rows=listingState.components || [],focused=document.activeElement && box.contains(document.activeElement)?document.activeElement:null;
@@ -319,8 +479,11 @@ function listingRenderComponents() {
     for(const row of rows){const node=box.querySelector(`[data-component="${row.id}"] .listing-component-status`);if(node)node.textContent=`${listingStageNames[row.stage] || '处理中'} · ${Math.round(row.progress || 0)}%`;}
     return;
   }
-  box.innerHTML=`<p class="field-help">随箱附带的电池、充电器、工具箱等组件，在新建项目时与主模型一起上传。模型组件会自动分析、摆正，在主图里与产品一起渲染；这里可以修改名称、型号、数量和朝向。</p>
-    <div class="listing-components">${rows.map(listingComponentHTML).join('') || '<p class="field-help">这个项目没有组件。新建项目时可在上传窗口的「套装组件」里添加。</p>'}</div>`;
+  const full=rows.length>=listingComponentLimit,uploading=listingUploading;
+  box.innerHTML=`<p class="field-help">随箱附带的电池、充电器、工具箱等组件：每个组件上传一个模型（GLB、OBJ，带贴图的请打包成 ZIP）或一张白底 / 透明背景的图片，一个文件算一个组件。模型组件会自动分析、摆正，在主图里与产品一起渲染；这里可以修改名称、型号、数量和朝向。</p>
+    <div class="listing-component-add"><button type="button" class="button secondary" data-action="component-add" ${full || uploading?'disabled':''} ${uploading?'aria-busy="true"':''}>${uploading?'正在上传…':'添加组件'}</button>
+      <span class="field-help">${full?`已有 ${rows.length} 个组件，达到上限`:`最多 ${listingComponentLimit} 个；上传后自动处理，处理完成就能放进包装清单。`}</span></div>
+    <div class="listing-components">${rows.map(listingComponentHTML).join('') || '<p class="field-help">这个项目还没有组件。点「添加组件」上传。</p>'}</div>`;
   const notReady=rows.filter(row=>row.status!=='ready').length,sum=$('listingPanel').querySelector('[data-sum="components"]');
   if(sum)sum.textContent=rows.length?`${rows.length} 个${notReady?`，${notReady} 个未就绪`:''}`:'没有组件';
 }
@@ -453,7 +616,7 @@ async function listingSaveMounting(value) {
 }
 function listingScenesHTML() {
   const sc=listingEdit.product.scenes || {enabled:true,count:3,audience:'auto',people:'auto',hint:''},so=listingState.scene_options || {audiences:[],people:{},max:3};
-  return `<p class="field-help">生成套图时，按目标人群策划使用场景，由图像模型围绕锁定的产品渲染生成（产品外形不会被改动），再排进海报主图、场景参数图和使用场景组图。${so.image_ready?'':'<strong>图像模型未配置</strong>：可在 AI 设置里开启；未开启时海报用纯色版，需要场景的页面会跳过。'}</p>
+  return `<p class="field-help">生成套图时，按目标人群策划使用场景，由图像模型围绕锁定的产品渲染生成（产品外形不会被改动），再排进海报主图、场景参数图和使用场景组图。${so.image_ready?'':'<strong>图像模型未配置</strong>：它只能在服务器的 .env 文件里配置（AI_IMAGE_BASE_URL、AI_IMAGE_MODEL），「AI 设置」里不能设置。没有它时海报用纯色版；需要场景的页面可以用下面的「工件使用图」（算 1 张场景图），其余跳过。'}</p>
     <label class="listing-check listing-toggle"><input type="checkbox" data-scope="scenes" data-key="enabled" ${sc.enabled?'checked':''}> 生成 AI 场景图</label>
     <div class="listing-grid2">${listingField('场景图数量',`<select data-scope="scenes" data-key="count">${Array.from({length:so.max || 3},(_,i)=>i+1).map(n=>`<option value="${n}" ${sc.count===n?'selected':''}>${n} 张</option>`).join('')}</select>`,'第 1 张是使用中的画面，第 2 张是产品放在使用环境里，第 3 张换一类买家的场景。')}
       ${listingField('目标人群',`<select data-scope="scenes" data-key="audience"><option value="auto">自动推荐</option>${(so.audiences || []).map(row=>`<option value="${esc(row.id)}" ${sc.audience===row.id?'selected':''}>${esc(row.label)}</option>`).join('')}</select>`)}</div>
@@ -504,7 +667,8 @@ async function listingRenderArticulation(reload=true) {
   }
   const box=$('listingArticulation');
   if(!box || listingOpenFor()!==id)return;
-  const a=listingArticulation.data,running=!!a.running;
+  // state.vision_ready false: the pose agent has no model to ask, so the button would only record that (undefined: not known)
+  const a=listingArticulation.data,running=!!a.running,noVision=listingState?.vision_ready===false && !running;
   const status=running?'识别中':(listingArticulationStatus[a.status] || a.status || '尚未识别');
   const states=(a.states || []).map((row,index)=>`<li><span class="listing-pose-num">${String(index+1).padStart(2,'0')}</span><strong>${esc(row.label_zh || row.id)}</strong> <span>${esc(row.label_en || '')}</span>${row.role?`<span class="listing-pose-role">${esc(listingRoleNames[row.role] || row.role)}</span>`:''}</li>`).join('');
   const usage=((a.usage || {}).zh || []).map(rule=>`<li>${esc(rule)}</li>`).join('');
@@ -518,8 +682,10 @@ async function listingRenderArticulation(reload=true) {
     ${usage?`<h4 class="listing-heading">正确用法</h4><ul class="listing-usage">${usage}</ul>`:''}
     ${notes?`<h4 class="listing-heading">说明</h4><ul class="listing-usage">${notes}</ul>`:''}
     ${a.parts_sheet || a.previews?`<div class="listing-articulation-pictures">${picture(a.parts_sheet,'部件编号图')}${picture(a.previews,'各姿态预览')}</div>`:''}
-    <div class="listing-save"><button type="button" class="button secondary" data-action="articulation-run" ${running?'disabled':''}>${running?'识别中…':'重新识别'}</button></div>`;
+    ${noVision?`<p class="listing-need-note" id="listingVisionNeeded" tabindex="-1">识别活动部件要用能看图的视觉模型，现在没有配置：在「AI 设置」里，主模型能看图就直接用它；不能的话，在「预览图像分析」里勾选「使用独立视觉模型」，填写「视觉模型名称」后保存。</p>`:''}
+    <div class="listing-save"><button type="button" class="button secondary" data-action="articulation-run" ${running || noVision?'disabled':''} ${noVision?'aria-describedby="listingVisionNeeded"':''}>${running?'识别中…':a.status==='unknown' || !a.status?'识别活动部件':'重新识别活动部件'}</button></div>`;
   const sum=$('listingPanel').querySelector('[data-sum="articulation"]');if(sum)sum.textContent=listingArticulationSummary();
+  if(listingFocusPending==='articulation-run'){listingFocusPending=null;(box.querySelector('[data-action="articulation-run"]:not(:disabled)') || box.querySelector('#listingVisionNeeded'))?.focus();}
   if(running && listingVisible())listingArticulationTimer=setTimeout(()=>listingRenderArticulation(true),2000);
 }
 
@@ -674,11 +840,21 @@ function listingSummaryHTML(active) {
   const sc=p.scenes || {enabled:true,count:3},m=s.mounting;
   const rows=[
     ['style','风格',preset?preset.label.zh:b.preset],
-    ['pages','图片',`${make.length} 张：${make.map(kind=>kinds[kind]?.zh || kind).join('、') || '没有能生成的图片'}${held.length?`；另有 ${held.length} 张暂时无法生成`:''}`],
+    ['pages','图片',`${make.length} 张：${make.map(kind=>kinds[kind]?.zh || kind).join('、') || '没有能生成的图片'}${held.length?`；另有 ${held.length} 张缺资料，补齐前不会生成`:''}`],
     ['product','产品',[p.title || '未填产品名称',p.model,p.size_mm?`最长边 ${p.size_mm} mm`:'未填真实尺寸',`${(p.features || []).filter(row=>String(row.title || '').trim()).length} 条卖点`].filter(Boolean).join(' · ')],
     ['brand','品牌与场景',[b.name || '未填品牌名称',sc.enabled?`场景图 ${sc.count} 张`:'不生成场景图',m?`安装：${m.setting?listingMountWords[m.setting]:'自动'}`:''].filter(Boolean).join(' · ')]];
+  // each chosen page that will not be made says so under the pages line, with the way to what it waits for
+  const missing=held.map(kind=>{const reason=skipped.get(kind),fill=!reason.hard && reason.fix;
+    return `<li class="listing-summary-held"><span class="listing-summary-label">不会生成</span><span class="listing-summary-text">「${esc(kinds[kind]?.zh || kind)}」：${esc(reason.why)}</span>
+    ${fill?`<button type="button" class="button subtle" data-action="fill" data-kind="${esc(kind)}" aria-label="去填写「${esc(kinds[kind]?.zh || kind)}」需要的资料" ${active?'disabled':''}>去填写</button>`:''}</li>`;}).join('');
   return rows.map(([step,label,text])=>`<li class="listing-summary-row"><span class="listing-summary-label">${esc(label)}</span><span class="listing-summary-text">${esc(text)}</span>
-    <button type="button" class="button subtle" data-action="step" data-step="${step}" aria-label="修改${esc(label)}" ${active?'disabled':''}>修改</button></li>`).join('');
+    <button type="button" class="button subtle" data-action="step" data-step="${step}" aria-label="修改${esc(label)}" ${active?'disabled':''}>修改</button></li>${step==='pages'?missing:''}`).join('');
+}
+// What the build button says when nothing chosen can be made: the pages waiting and what each needs, or that none is chosen.
+function listingNothingText() {
+  const skipped=listingSkipped(),fill=listingFillable();
+  if(!fill.length)return '图片清单里没有现在能生成的图片：请在「选图片」里至少选一张';
+  return '选的图片都还缺资料，现在没有能生成的：'+fill.map(kind=>`「${listingKindName(kind)}」${(skipped.get(kind).needs || []).map(need=>listingNeedWords[need.field] || need.field).join('、') || '缺资料'}`).join('；')+'。补齐后再生成。';
 }
 function listingRenderMain() {
   const state=listingState;if(!state)return;
@@ -687,7 +863,7 @@ function listingRenderMain() {
   if(listingEdit)listingSetHTML($('listingPlan'),listingSummaryHTML(active));
   const ready=pages.filter(listingPageReady).length,ran=listingReviewRan(pages),unready=pages.length-ready;
   const build=$('listingBuild'),none=!listingMakeable().length;build.disabled=active || listingBusy || !state.ready || !state.available || state.layout_available===false || none;
-  build.title=none?'图片清单里没有现在能生成的图片：请在「选图片」里至少选一张':'';
+  build.title=none?listingNothingText():'';
   build.textContent=pages.length?'重新生成套图':'生成套图';
   // Once a reviewed set can be downloaded, that download is the one primary action of the bar.
   build.className='button '+(pages.length && ran && ready?'secondary':'primary');
@@ -706,6 +882,7 @@ function listingRenderMain() {
   if(active){const value=Math.max(0,Math.min(100,Math.round(task.progress || 0)));$('listingProgressBar').style.width=value+'%';progress.setAttribute('aria-valuenow',String(value));}
   const degraded=state.degraded || null;
   $('listingStatus').textContent=!state.available?'渲染组件不可用，无法生成套图。':state.layout_available===false?'没有找到 Chrome 或 Edge 浏览器，无法排版品牌模板。':!state.ready?'模型分析完成后才能生成套图。'
+    :none && !active?listingNothingText()
     :active?`${task.detail || (task.status==='queued'?'排队中':'正在生成')} · ${Math.round(task.progress || 0)}%`
     :task?.status==='failed'?`上次生成失败：${task.error || ''}`:task?.status==='cancelled'?'上次生成已取消。'
     :pages.length?`共 ${pages.length} 张，${new Date((state.built_at || 0)*1000).toLocaleString('zh-CN',{hour12:false})} 生成${degraded?'，部分未完成':''}。`:'还没有生成套图。';
@@ -776,38 +953,40 @@ function listingOnStageKey(event) {
 function listingOnInput(event) {
   listingOnInputOnce(event);
   if(listingState && listingDirty.product)listingRenderCost(listingState,listingTaskActive());   // the estimate says it is stale
-  listingSyncSums();
+  listingSyncSums();listingAutoSave();
 }
 function listingOnInputOnce(event) {
   const node=event.target,scope=node.dataset.scope,key=node.dataset.key;if(!scope || !listingEdit)return;
   const p=listingEdit.product,index=Number(node.dataset.index);
-  if(scope==='product'){p[key]=key==='size_mm'?listingNumber(node.value):node.value;listingDirty.product=true;}
-  else if(scope==='feature'){p.features[index][key]=node.value;listingDirty.product=true;}
+  if(scope==='product'){p[key]=key==='size_mm'?listingNumber(node.value):node.value;listingTouch();}
+  else if(scope==='feature'){p.features[index][key]=node.value;listingTouch();}
   else if(scope==='feature-part'){const parts=new Set(p.features[index].parts || []);if(node.checked)parts.add(node.value);else parts.delete(node.value);p.features[index].parts=[...parts];
-    node.closest('details').querySelector('summary').textContent=`对应部件（${parts.size}）`;listingDirty.product=true;}
-  else if(scope==='spec'){p.specs[index][key]=node.value;listingDirty.product=true;}
-  else if(scope==='figure'){p.figures[index][key]=node.value;listingDirty.product=true;}
-  else if(scope==='usecase'){p.usecase[key]=node.type==='checkbox'?node.checked:['diameter_mm','width_mm','thickness_mm','length_mm'].includes(key)?listingNumber(node.value):node.value;listingDirty.product=true;
+    node.closest('details').querySelector('summary').textContent=`对应部件（${parts.size}）`;listingTouch();}
+  else if(scope==='spec'){p.specs[index][key]=node.value;listingTouch();}
+  else if(scope==='figure'){p.figures[index][key]=node.value;listingTouch();}
+  else if(scope==='usecase'){p.usecase[key]=node.type==='checkbox'?node.checked:['diameter_mm','width_mm','thickness_mm','length_mm'].includes(key)?listingNumber(node.value):node.value;listingTouch();
     if(event.type==='change' && ['kind','mode'].includes(key))listingKeepFocus(listingRenderBrand);}
-  else if(scope==='scenes'){p.scenes={...p.scenes,[key]:node.type==='checkbox'?node.checked:key==='count'?Number(node.value):node.value};listingDirty.product=true;}
-  else if(scope==='usecase-triple'){p.usecase[key][index]=listingNumber(node.value) ?? 0;listingDirty.product=true;}
+  else if(scope==='scenes'){p.scenes={...p.scenes,[key]:node.type==='checkbox'?node.checked:key==='count'?Number(node.value):node.value};listingTouch();}
+  else if(scope==='usecase-triple'){p.usecase[key][index]=listingNumber(node.value) ?? 0;listingTouch();}
   else if(scope==='brand'){
     if(node.type==='radio' && !node.checked)return;
     listingEdit.brand[key]=key==='badges'?node.value.split(/[,，;；\n]+/).map(text=>text.trim()).filter(Boolean):node.value;listingDirty.brand=true;}
   else if(scope==='brand-auto'){listingEdit.brand[key]=node.checked?null:listingState.brand[key+'_used'];listingDirty.brand=true;listingKeepFocus(listingRenderBrand);}
   else if(scope==='page' && event.type==='change'){
-    // From the automatic plan, the first change turns it into an explicit list; a page the plan cannot make yet stays
-    // on it (its card cannot be changed), so it is made once what it needs is there, as it would have been.
-    const chosen=listingChosen();
+    // From the automatic plan, the first change turns it into an explicit list. A page still waiting for the seller
+    // ("需补充") stays on it and is made once what it needs is there; one nothing here can supply is left off.
+    const chosen=listingChosen(),skipped=listingSkipped();
     if(node.checked)chosen.add(node.value);else chosen.delete(node.value);
+    for(const kind of [...chosen])if(skipped.get(kind)?.hard)chosen.delete(kind);
     p.pages=(listingState.order || Object.keys(listingState.kinds)).filter(kind=>chosen.has(kind));
     for(const kind of chosen)if(!p.pages.includes(kind))p.pages.push(kind);
-    listingDirty.product=true;listingRenderKinds();listingRenderMain();
+    listingTouch();listingRenderKinds();listingRenderMain();
   }
 }
 async function listingOnChange(event) {
   const node=event.target;
   if(node.dataset.scope==='mounting'){if(node.checked)await listingSaveMounting(node.value);}
+  else if(node.id==='listingComponentFiles'){const files=[...(node.files || [])];node.value='';await listingUploadComponents(files);}
   else if(node.dataset.scope==='component'){
     const key=node.dataset.key,value=node.type==='checkbox'?node.checked:key==='quantity'?Number(node.value):key==='size_mm'?listingNumber(node.value):node.value;
     try{await api(`/api/projects/${listingProject}/components/${node.dataset.id}`,{method:'PUT',body:{[key]:value}});await listingLoad(false);}
@@ -817,12 +996,16 @@ async function listingOnChange(event) {
     try{listingAdopt(await api(`/api/projects/${listingProject}/listing/logo`,{method:'POST',body:form}),false);listingShare=null;if(listingStep==='brand')listingKeepFocus(listingRenderBrand);toast('标志已上传');}catch(error){toast(error.message,true);}
   }else listingOnInput(event);
 }
-async function listingSaveProduct(quiet) {
+function listingProductBody() {
   const p=listingEdit.product;
-  const body={title:p.title,model:p.model,headline:p.headline,subline:p.subline,source:p.source || '',language:p.language,size_mm:p.size_mm,features:p.features.filter(row=>row.title.trim()),
+  return {title:p.title,model:p.model,headline:p.headline,subline:p.subline,source:p.source || '',language:p.language,size_mm:p.size_mm,features:p.features.filter(row=>row.title.trim()),
     specs:p.specs.filter(row=>row.label.trim() && row.value.trim()),figures:p.figures.filter(row=>row.value.trim() && row.label.trim()),pages:p.pages,usecase:p.usecase,scenes:p.scenes,aspect:p.aspect};
-  const state=await api(`/api/projects/${listingProject}/listing/product`,{method:'PUT',body});
-  listingDirty.product=false;listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
+}
+async function listingSaveProduct(quiet) {
+  const rev=listingProductRev;
+  const state=await api(`/api/projects/${listingProject}/listing/product`,{method:'PUT',body:listingProductBody()});
+  if(rev===listingProductRev)listingDirty.product=false;          // typed while it was saving: still unsaved, and kept
+  listingAdopt(state,false);if(!quiet){listingRenderPanel();toast('已保存');}
 }
 async function listingSaveBrand(quiet) {
   const b=listingEdit.brand;
@@ -857,14 +1040,14 @@ async function listingOnClick(event) {
   const action=button.dataset.action,p=listingEdit.product,index=Number(button.dataset.index),id=button.dataset.id;
   try{
     if(action==='step'){if(!button.disabled)await listingGoStep(button.dataset.step);}
-    else if(action==='add-feature'){if(p.features.length<8){p.features.push({title:'',detail:'',parts:[],icon:''});listingDirty.product=true;listingRenderProduct();
+    else if(action==='add-feature'){if(p.features.length<8){p.features.push({title:'',detail:'',parts:[],icon:''});listingTouch();listingRenderProduct();
       [...$('listingPanel').querySelectorAll('[data-scope="feature"][data-key="title"]')].pop()?.focus();}}
-    else if(action==='add-spec'){if(p.specs.length<10){p.specs.push({label:'',value:''});listingDirty.product=true;listingOpenSections.add('more');listingRenderProduct();
+    else if(action==='add-spec'){if(p.specs.length<10){p.specs.push({label:'',value:''});listingTouch();listingOpenSections.add('more');listingRenderProduct();
       [...$('listingPanel').querySelectorAll('[data-scope="spec"][data-key="label"]')].pop()?.focus();}}
-    else if(action==='add-figure'){if(p.figures.length<3){p.figures.push({value:'',unit:'',label:''});listingDirty.product=true;listingOpenSections.add('more');listingRenderProduct();
+    else if(action==='add-figure'){if(p.figures.length<3){p.figures.push({value:'',unit:'',label:''});listingTouch();listingOpenSections.add('more');listingRenderProduct();
       [...$('listingPanel').querySelectorAll('[data-scope="figure"][data-key="value"]')].pop()?.focus();}}
-    else if(action.startsWith('remove-')){p[{feature:'features',spec:'specs',figure:'figures'}[action.slice(7)]].splice(index,1);listingDirty.product=true;listingRenderProduct();}
-    else if(action==='pages-auto'){p.pages=null;listingDirty.product=true;await listingSaveProduct(true);listingRenderKinds();
+    else if(action.startsWith('remove-')){p[{feature:'features',spec:'specs',figure:'figures'}[action.slice(7)]].splice(index,1);listingTouch();listingRenderProduct();}
+    else if(action==='pages-auto'){p.pages=null;listingTouch();await listingSaveProduct(true);listingRenderKinds();
       $('listingKinds')?.querySelector('.listing-card input:not(:disabled)')?.focus();}
     else if(action==='extract'){
       const text=($('listingSource')?.value || '').trim();
@@ -919,7 +1102,11 @@ async function listingOnClick(event) {
       if(listingOpenFor()!==id)return;
       listingShare={project:id,data};listingRenderShare();toast(clear?'已取消默认品牌：新项目沿用最近保存的品牌':'已设为默认品牌：之后新建的项目会使用它');
     }
+    else if(action==='fill')await listingGoFill(listingSkipped().get(button.dataset.kind)?.fix);
+    else if(action==='need-go')await listingGoFill({step:button.dataset.step,field:button.dataset.field});
+    else if(action==='component-add'){if(!listingBusy)$('listingComponentFiles')?.click();}
   }catch(error){toast(error.message,true);}
+  listingAutoSave();                     // a row added or removed on 填产品 is saved like typing
 }
 function listingInit() {
   const panel=$('inspectorListing');if(!panel)return;
