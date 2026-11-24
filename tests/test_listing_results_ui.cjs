@@ -73,6 +73,22 @@ test('a built set fills the main stage with a large grid, each page with its sta
   assert.equal(h.w.document.body.classList.contains('listing-stage-on'),false);assert.equal(h.node('listingStage').hidden,true);
 });
 
+test('with a set built the inspector opens on the summary step, and the stage keeps the set while the settings are walked again',async t=>{
+  const h=await setup(t);await h.open();
+  const step=()=>h.w.document.querySelector('#listingSteps [aria-current="step"]')?.dataset.step;
+  assert.equal(step(),'build');assert.equal(h.node('listingStepCount').textContent,'5 / 5 · 生成');
+  assert.equal(h.node('listingMain').hidden,false);assert.equal(h.node('listingEditSteps').hidden,false);
+  assert.equal(h.node('listingPlan').querySelectorAll('[data-action="step"]').length,4,'each line of the summary leads back to its step');
+  h.node('listingEditSteps').click();for(let i=0;i<6;i++)await tick();
+  assert.equal(step(),'style');assert.equal(h.node('listingMain').hidden,true);
+  assert.equal(h.node('listingStage').hidden,false,'the set stays on the stage');assert.equal(h.cards().length,3);
+  h.node('listingNext').click();for(let i=0;i<6;i++)await tick();
+  assert.equal(step(),'pages');assert.equal(h.node('listingStage').hidden,false);
+  // a build that starts (here from the stage) brings the inspector back to the summary and locks the steps
+  h.node('listingStageBody').querySelectorAll('[data-action="scene-redraw"]')[0].click();for(let i=0;i<6;i++)await tick();
+  assert.equal(step(),'build');assert.ok([...h.node('listingSteps').querySelectorAll('button:not([aria-current])')].every(node=>node.disabled));
+});
+
 test('a page opens in a detail view with the full picture, the review, its vetoes and its notes, and the keyboard moves through it',async t=>{
   const h=await setup(t);await h.open();
   h.cards()[1].querySelector('.listing-page-open').click();await tick();

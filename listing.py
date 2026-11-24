@@ -1160,7 +1160,7 @@ def redraw_scene(project_id, index, url=None):
     if not brandkit_set.image_model_ready():
         raise ValueError('图像模型未配置或已关闭，现在重画不了这张场景图（原图保留）。')
     if not settings.get('enabled', True):
-        raise ValueError('场景图已关闭：请先在「场景」里打开 AI 场景图，再重画（原图保留）。')
+        raise ValueError('场景图已关闭：请先在「品牌与场景」步骤里打开 AI 场景图，再重画（原图保留）。')
     pages = product.get('pages')
     if isinstance(pages, list) and not set(pages) & {'T12', 'T04', 'T08'}:
         raise ValueError('图片清单里没有用到场景图的页面（海报、场景+参数、使用场景组图），重画的图不会被使用（原图保留）。')
@@ -1528,7 +1528,7 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     product, notes = brandkit_set.printable(product)
     product = {**product, 'title': brandkit_set.humanised(product['title'])}
     if not product['features']:
-        notes.append('没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请在「产品信息」里写下卖点，或粘贴产品介绍后点「提取到各栏」。')
+        notes.append('没有填写卖点，卖点标注图、细节特写图没有生成（不会替你编造卖点）：请在「填产品」步骤里写下卖点，或粘贴产品介绍后点「提取到各栏」。')
     parts = ready_components(project); size_mm, known = product_size(project, product)
     # Which parts of the model move and the states worth showing (pliers closed / open): asked once per model file.
     project, moving_notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))
