@@ -19,13 +19,19 @@ Composite. What the product does to the plane (its shadow, the colour it throws 
 product divided by the rendered plane without it. The photograph is multiplied by that and the product laid on top,
 as soft and as grainy as the photograph.
 
+A wall (stand 'wall'). The measured plane is then the wall itself and the geometry says which way is up along it. The
+product hangs flat against it by its back, upright, about level with the camera and clear of the bench top below; it is
+not turned to an asked side: which side of it shows is where the photograph's camera stands. The unseen light is the
+ceiling above, so the product's shadow falls down the wall under it.
+
 request.json: model_path, plan, longest_m (the product's longest side at rest, metres), backdrop (folder), output_dir,
-azimuth (degrees, as in a shot), share (longer side of the product in the frame), share_range, stand ('floor' or
-'surface'), samples, long (pixels; the backdrop's own size when absent), force_cpu.
+azimuth (degrees, as in a shot), share (longer side of the product in the frame), share_range, stand ('floor',
+'surface' or 'wall'), samples, long (pixels; the backdrop's own size when absent), force_cpu.
 result.json: success, file, box, share, ... or success False with reason 'no_fit' (the product has no free place in
 this backdrop at an acceptable size) or 'error'.
 
-World axes: the origin is where the product stands, Z is the plane's normal, Y points away from the camera.
+World axes: the origin is where the product stands, Z is the plane's normal, Y points away from the camera. On a wall
+the origin is the middle of the product's back, Z points out of the wall and Y is up.
 Camera axes in the measurements are OpenCV's: x right, y down, z forward.
 """
 import json
@@ -46,8 +52,11 @@ from blender import worker                       # the app's own import, normali
 LUMA = np.array([.2126, .7152, .0722])
 WHITE = .8                    # what the brightest matt surfaces of a room reflect: the plane's own reflectance is read against them
 LAMP_SHARE = .25              # of the light reaching the plane: from the lamps in view
-CEILING_M = {'floor': 2.5, 'surface': 1.7}       # above the plane, when no ceiling lamp in view gives the height
-PANEL_M = {'floor': 4.0, 'surface': 1.6}         # the unseen ceiling's light, a square this wide over product and camera
+CEILING_M = {'floor': 2.5, 'surface': 1.7, 'wall': 1.0}      # above the plane (a wall: above the camera), when no ceiling lamp in view gives the height
+PANEL_M = {'floor': 4.0, 'surface': 1.6, 'wall': 1.6}        # the unseen ceiling's light, a square this wide over product and camera
+OUT_M = (.5, .9)              # that light stands this far out from a wall, a third of the way to the camera: the shadow falls down the wall
+CLEAR_M = .25                 # a product on a wall hangs at least this far above the bench top or floor in view
+EYE_LEVEL = .2                # of the score, per product length its middle hangs above or below the camera
 LEAN = .7                     # of the ceiling's height: how far that light stands off to the side the plane is brighter on
 MARGIN = .04                  # of the frame, kept clear around the product
 OCCLUDED = .02                # share of the product's box that may lie behind something in the photograph
@@ -120,6 +129,7 @@ def insert(req, out):
     normal = np.array(geo['normal'], dtype=np.float64); normal /= np.linalg.norm(normal)
     step = int(geo.get('depth_step', 8)); depth = np.load(folder / 'depth.npy').astype(np.float32)
     stand = req.get('stand') if req.get('stand') in CEILING_M else 'floor'
+    wall = stand == 'wall' and bool(geo.get('up'))
     report = {'backdrop': folder.name, 'stand': stand}
 
     # ------------------------------------------------------------ the product, as the app prepares it
@@ -131,6 +141,10 @@ def insert(req, out):
     place.scale = (float(req['longest_m']) / 2,) * 3            # prepare() made the longest side two units
     bpy.context.view_layer.update()
     product = [ob for ob in scene.objects if ob.type == 'MESH' and len(ob.data.polygons)]
+    if wall:                                                     # its back to the wall (world Z out of it), its top up the wall (world Y)
+        place.rotation_euler = (-math.pi / 2, 0, 0); bpy.context.view_layer.update()
+        lo, hi, _ = worker.bounds(product)
+        place.location = (-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z); bpy.context.view_layer.update()
     _, _, corners = worker.bounds(product)
     at_rest = np.array([list(corner) for corner in corners], dtype=np.float64)          # metres, before it is turned
 
@@ -139,7 +153,8 @@ def insert(req, out):
     if floated: shown = display(shown)
     mask_image, support, _ = picture(folder / 'support.png', 1); support = support[..., 0] > .5
     bpy.data.images.remove(mask_image)
-    z_axis = normal; x_axis = np.array([1.0, 0, 0]); x_axis = x_axis - (x_axis @ z_axis) * z_axis; x_axis /= np.linalg.norm(x_axis)
+    z_axis = normal; x_axis = np.cross(np.array(geo['up'], dtype=np.float64), z_axis) if wall else np.array([1.0, 0, 0])
+    x_axis = x_axis - (x_axis @ z_axis) * z_axis; x_axis /= np.linalg.norm(x_axis)
     turn = np.vstack([x_axis, np.cross(z_axis, x_axis), z_axis])                           # world from camera
 
     def spot_at(u, v):
@@ -156,6 +171,8 @@ def insert(req, out):
 
     target = float(req.get('share', .5)); low, high = req.get('share_range') or (.3, .64)
     most = float(np.clip(req.get('max_zoom', MAX_ZOOM), 1, 4))
+    ledge = float(geo['ledge_m']) if wall and geo.get('ledge_m') else None      # the camera above the bench top or floor in view
+    longest = float(req['longest_m'])
 
     def stand_it(yaw):
         """Where on the free plane the product is closest to the asked size, nothing of the photograph on or before it;
@@ -163,9 +180,11 @@ def insert(req, out):
         points = turned(at_rest, yaw); foot = points.copy(); foot[:, 2] = 0; foot = np.vstack([foot, foot.mean(0)])
         best = None; largest = 0.0
         for u in np.linspace(.12 * W, .88 * W, 39):
-            for v in np.linspace(.4 * H, .995 * H, 110):
+            for v in np.linspace((.08 if wall else .4) * H, (.92 if wall else .995) * H, 110):
                 spot = spot_at(u, v)
                 if spot is None: continue
+                above = float((turn @ spot)[1]) if wall else 0.0                    # the product's middle above the camera
+                if ledge is not None and above + points[:, 1].min() < CLEAR_M - ledge: continue      # down on the bench, or behind it
                 px, py, pz = seen(points, spot)
                 if pz.min() < .05: continue
                 x0, x1, y0, y1 = px.min() / W, px.max() / W, py.min() / H, py.max() / H
@@ -174,7 +193,8 @@ def insert(req, out):
                 # enlarged no more than it takes to show the product at a fair size: the place around it is the point of the picture
                 aim = target if whole >= target else min(target, low + .1)
                 zoom = float(np.clip(aim / max(whole, 1e-6), 1, most)); share = whole * zoom; side = 1 / zoom
-                lowered = .56 + .12 * (zoom - 1)                 # in an enlarged view the product sits lower: more of the place behind it
+                # in an enlarged view the product sits lower: more of the place behind it; on a wall it hangs in the middle
+                lowered = .5 if wall else .56 + .12 * (zoom - 1)
                 largest = max(largest, whole * most)
                 if not low <= share <= high: continue
                 wx = float(np.clip((x0 + x1) / 2 - .5 * side, 0, 1 - side)); wy = float(np.clip((y0 + y1) / 2 - lowered * side, 0, 1 - side))
@@ -185,19 +205,25 @@ def insert(req, out):
                 if around.size and float((around < pz.min() * .97).mean()) > OCCLUDED: continue
                 centred = abs(((x0 + x1) / 2 - wx) / side - .5) + .5 * abs(((y0 + y1) / 2 - wy) / side - lowered)
                 score = abs(share - aim) + .15 * (zoom - 1) + .3 * centred + .1 * abs((x0 + x1) / 2 - .5)
+                if wall: score += EYE_LEVEL * abs(above) / max(longest, .1)
                 if best is None or score < best[0]: best = (score, u, v, spot, share, zoom, wx, wy, side)
         if best is None:
             raise Unfit('largest free placement fills %.2f of the picture; %.2f to %.2f is asked' % (largest, low, high))
         return best[1:]
 
     azimuth = math.radians(float(req.get('azimuth', 25)))
-    yaw = -azimuth
-    for _ in range(2):                                           # the camera does not stand straight in front: turn the product to the asked side
+    yaw = 0.0 if wall else -azimuth                              # flat against a wall there is no turning it
+    for _ in range(0 if wall else 2):                            # the camera does not stand straight in front: turn the product to the asked side
         spot = stand_it(yaw)[2]
         eye = -turn @ spot; yaw = math.atan2(eye[0], -eye[1]) - azimuth
     u, v, spot, share, zoom, wx, wy, side = stand_it(yaw)
     eye = -turn @ spot
-    place.rotation_euler = (0, 0, yaw); bpy.context.view_layer.update()
+    if wall:
+        # where the photograph's camera stands decides the side of the product that shows
+        report.update(seen_from_deg=round(math.degrees(math.atan2(eye[0], eye[2])), 1), above_camera_m=round(-float(eye[1]), 3),
+                      **({'above_ledge_m': round(float(ledge - eye[1] + at_rest[:, 1].min()), 3)} if ledge is not None else {}))
+    else:
+        place.rotation_euler = (0, 0, yaw); bpy.context.view_layer.update()
     report.update(base_pixel=[round(float(u)), round(float(v))], distance_m=round(float(np.linalg.norm(spot)), 3), share=round(float(share), 3),
                   zoom=round(zoom, 3), window=[round(wx, 4), round(wy, 4), round(side, 4)],
                   yaw_deg=round(math.degrees(yaw), 1), product_m=[round(float(n), 3) for n in np.ptp(turned(at_rest, yaw), axis=0)])
@@ -252,7 +278,9 @@ def insert(req, out):
         z = -facing; y = np.cross(z, along); y /= max(np.linalg.norm(y), 1e-9); x = np.cross(y, z)     # an area lamp shines down its -Z
         lamp.matrix_world = Matrix([[x[0], y[0], z[0], centre[0]], [x[1], y[1], z[1], centre[1]], [x[2], y[2], z[2], centre[2]], [0, 0, 0, 1]])
         lamps.append((lamp, float(row.get('pixels', 1))))
-        if abs(facing[2]) > .8 and centre[2] > 1.0: ceiling = float(centre[2])
+        if wall:
+            if abs(facing[1]) > .8 and centre[1] > eye[1] + .3: ceiling = float(centre[1] - eye[1])
+        elif abs(facing[2]) > .8 and centre[2] > 1.0: ceiling = float(centre[2])
     weight = sum(amount for _, amount in lamps) or 1
     panel_data = bpy.data.lights.new('Ceiling', 'AREA'); panel_data.shape = 'SQUARE'; panel_data.size = PANEL_M[stand]; panel_data.color = (1, 1, 1)
     panel = bpy.data.objects.new('Ceiling', panel_data); scene.collection.objects.link(panel)
@@ -263,10 +291,16 @@ def insert(req, out):
         rays = np.stack([(xs - W / 2) / focal, (ys - H / 2) / focal, np.ones(len(xs))], 1); down = rays @ normal
         hit = down < -1e-4; where = to_world(rays[hit] * (-height / down[hit])[:, None])[:, :2]; tone = luminance[ys[hit], xs[hit]]
         slope, *_ = np.linalg.lstsq(np.column_stack([where, np.ones(len(where))]), tone, rcond=None)
+        if wall: slope[1] = 0                                    # along a wall only left and right: the light itself is overhead
         steep = float(np.linalg.norm(slope[:2])) / max(float(tone.mean()), 1e-4)                # share of brightness gained per metre
         if steep > .03: lean = slope[:2] / np.linalg.norm(slope[:2]) * min(1.0, steep * 4)
-    panel.location = (eye[0] / 2 + lean[0] * LEAN * ceiling, eye[1] / 2 + lean[1] * LEAN * ceiling, ceiling - .02)
-    aim = Vector((eye[0] / 2, eye[1] / 2, 0)) - panel.location                               # it still faces where the product stands
+    if wall:                                                     # the ceiling, over the room between the wall and the camera
+        overhead = float(eye[1]) + ceiling
+        panel.location = (eye[0] / 3 + lean[0] * LEAN * ceiling, overhead - .02, float(np.clip(eye[2] / 3, *OUT_M)))
+        aim = Vector((0, 0, min(.3, longest / 2))) - panel.location
+    else:
+        panel.location = (eye[0] / 2 + lean[0] * LEAN * ceiling, eye[1] / 2 + lean[1] * LEAN * ceiling, ceiling - .02)
+        aim = Vector((eye[0] / 2, eye[1] / 2, 0)) - panel.location                           # it still faces where the product stands
     panel.rotation_euler = aim.to_track_quat('-Z', 'Y').to_euler()
     report['unseen_light_leans'] = [round(float(n), 2) for n in lean]
 
@@ -347,7 +381,12 @@ def insert(req, out):
     spread = blur(near * known[..., None], sigma); amount = blur(known, sigma)[..., None]
     ratio[y0:y1, x0:x1] = np.where(known[..., None] > 0, near, np.where(amount > 1e-3, spread / np.maximum(amount, 1e-3), 1))
     ratio = blur(ratio, width / 1400)                           # the last of the render's noise
-    edge = blur(erode(free.astype(np.float32), 2), width / 500)[..., None]       # no shadow painted over what stands on the plane
+    if wall:
+        # A wall's free part stops short of the bench under it and the boards beside it, and the product's shadow runs
+        # down to them: it fades out towards that edge, where stopping it short left a line across the wall.
+        edge = np.clip(blur(free.astype(np.float32), width / 60) * 2 - 1, 0, 1)[..., None]
+    else:
+        edge = blur(erode(free.astype(np.float32), 2), width / 500)[..., None]   # no shadow painted over what stands on the plane
     plane_now = linear(photograph) * (1 + (ratio - 1) * edge)
     soft = SOFTEN * width / 2048 * math.sqrt(zoom)              # an enlarged part of the photograph is softer
     if soft >= .3: alone = blur(alone, soft)
