@@ -68,6 +68,7 @@ def scene_supply(product, legacy=0):
     return made + (1 if product['usecase']['enabled'] else 0) + (legacy if not made else 0)
 
 
+WALL_SCENES = 'wall-backdrop-1'
 SCENE_PLAN = 7        # how the scenes are planned; a change makes every listing's scenes again (2: a third scene in its own setting;
 
 
@@ -79,10 +80,13 @@ def scene_key(project, product, settings):
     plan = project.get('plan') or {}
     moving = project.get('articulation') if isinstance(project.get('articulation'), dict) else {}
     metadata = project.get('metadata') if isinstance(project.get('metadata'), dict) else {}
+    mount = mounting.of(project, (settings or {}).get('hint', '') if isinstance(settings, dict) else '')
     raw = json.dumps([project.get('model_path'), plan.get('rotation'), plan.get('material_overrides'), settings, SCENE_PLAN,
                       moving.get('key'), moving.get('status'), *([POSES_SHOWN] if moving.get('states') else []),
+                      # a wall product's place scene is now set onto a photograph of the wall: only those listings' scenes are made again
+                      *([WALL_SCENES] if mount == 'wall' else []),
                       {'name': project.get('name'), 'category': metadata.get('product_category'), 'size_mm': plan.get('dimensions_mm'),
-                       'mounting': mounting.of(project, (settings or {}).get('hint', '') if isinstance(settings, dict) else '')}],
+                       'mounting': mount}],
                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -151,8 +155,8 @@ def scene_briefs(project, settings, count):
             second = {**first, 'scene': first.get('scene', '') + ' A different moment of the same job, seen from another side.'}
         else:
             # the product at rest in the buyer's place, nobody there: set into a backdrop photograph when one can be had
-            # (a backdrop is a floor or a table top: a wall-mounted product is painted on a wall instead)
-            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False, mount), 'backdrop': mount != 'wall'}
+            # (a floor or a table top; for a wall-mounted product, the place's wall)
+            second = {**first, 'people': False, 'framing': None, 'scene': scene_audience.fixed_scene(segment, False, mount), 'backdrop': True}
         briefs.append({'proposal': second, 'role': 'place' if people_allowed else 'use'})
     if count >= 3:
         others = [item for item in ranked if item != segment and suited(item)]
@@ -169,7 +173,7 @@ def scene_briefs(project, settings, count):
         if other:
             # the third scene's own plan, not the first one's carried over
             third.update(summary=(scene_audience.segment(other) or {}).get('label', ''), reference_id=None, reason='',
-                         backdrop=not wants and mount != 'wall')
+                         backdrop=not wants)
         briefs.append({'proposal': third, 'role': 'other'})
     briefs = briefs[:count]
     import articulation

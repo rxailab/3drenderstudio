@@ -63,6 +63,29 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(scene_backdrop.spec_for('workshop_hobbyist', .16)['id'], 'workshop_hobbyist-surface-small')
         self.assertEqual(scene_backdrop.spec_for('home_starter', .45)['stand'], 'surface')
 
+    def test_a_product_made_to_hang_on_a_wall_gets_the_places_wall_whatever_its_size(self):
+        for size, name in ((.85, 'large'), (.4, 'medium'), (.2, 'small')):
+            spec = scene_backdrop.spec_for('workshop_hobbyist', size, 'wall')
+            self.assertEqual(spec['id'], 'workshop_hobbyist-wall-' + name)
+            self.assertIn('Photograph of a wall', spec['prompt']); self.assertIn('nothing hangs on it', spec['prompt'])
+            self.assertIn('workbench', spec['prompt']); self.assertNotIn('{', spec['prompt'])
+        self.assertEqual(scene_backdrop.spec_for('workshop_hobbyist', .85, None)['stand'], 'floor')
+        self.assertIsNone(scene_backdrop.spec_for('home_garden', .85, 'wall'))               # outdoors there is still no backdrop
+        for segment in scene_backdrop.PLACES:
+            self.assertTrue(scene_backdrop.spec_for(segment, .85, 'wall'), segment)
+
+    def test_a_measured_wall_is_checked_before_it_is_used(self):
+        wall = {'version': scene_backdrop.VERSION, 'size': [1536, 1536], 'focal_px': 1500.0, 'fov_deg': 54.0, 'stand': 'wall',
+                'normal': [.3, 0, -.95], 'up': [0, -1, 0], 'height_m': 1.9, 'turn_deg': 18.0, 'tilt_down_deg': 3.0, 'roll_deg': .5,
+                'support_share': .3, 'near_m': 1.9}
+        spec = scene_backdrop.spec_for('workshop_hobbyist', .85, 'wall')
+        self.assertIsNone(scene_backdrop.gate(wall, spec))                                  # framed for a product of 0.97 m
+        for change in ({'support_share': .05}, {'roll_deg': 9}, {'tilt_down_deg': 40}, {'turn_deg': 60}, {'height_m': .2}, {'fov_deg': 140},
+                       {'near_m': .5}, {'stand': None}):
+            self.assertTrue(scene_backdrop.gate({**wall, **change}, spec), change)
+        self.assertEqual(scene_backdrop.flaw(GOOD, 'wall'), 'not measured as a wall')        # a floor's measurements are no wall's
+        self.assertEqual(scene_backdrop.flaw(wall, 'floor'), 'not measured as a floor')
+
     def test_outdoor_places_and_sizes_no_picture_is_framed_for_have_no_backdrop(self):
         for segment in ('home_garden', 'pro_landscape', 'mobile_tradesperson', 'nobody', None):
             self.assertIsNone(scene_backdrop.spec_for(segment, .5))
@@ -101,7 +124,7 @@ class LibraryTests(unittest.TestCase):
         buffer = self.folder / 'painted.png'; Image.new('RGB', (32, 32), (160, 160, 160)).save(buffer); self.png = buffer.read_bytes()
 
     def measured(self, geometry):
-        def measure(folder, stop=None):
+        def measure(folder, stop=None, stand=None):
             if geometry is None: return None
             Image.new('L', (32, 32), 255).save(folder / 'support.png'); (folder / 'depth.npy').write_bytes(b'x')
             (folder / 'geometry.json').write_text(json.dumps(geometry)); return geometry
@@ -306,6 +329,14 @@ class SceneTests(unittest.TestCase):
         self.assertEqual((record['model'], record['backdrop']['id']), ('composite', 'workshop_hobbyist-floor-large'))
         self.assertNotIn('painted_because', record)
 
+    def test_a_wall_products_place_scene_is_set_onto_the_places_wall(self):
+        seen = {}
+
+        def composite(*args, **kwargs):
+            seen.update(kwargs); return self.composite()
+        _, record, _ = self.generate({'scene': 'x', 'segment_id': 'workshop_hobbyist', 'people': False, 'backdrop': True, 'mounting': 'wall'}, composite)
+        self.assertEqual(self.asked, ['composite']); self.assertEqual(seen.get('mounting'), 'wall'); self.assertEqual(record['model'], 'composite')
+
     def test_a_scene_with_people_or_without_the_mark_is_painted(self):
         for proposal in ({'scene': 'x', 'people': True, 'backdrop': True}, {'scene': 'x', 'people': False}, {'scene': 'x', 'backdrop': True}):
             _, record, _ = self.generate(proposal)
@@ -444,7 +475,7 @@ bpy.ops.export_scene.gltf(filepath=sys.argv[-1], export_format='GLB')
         plan = planner.default_plan(); plan.update(visual_review=False)
         with patch.dict(os.environ, {'BLENDER_PATH': BLENDER}):
             return scene_backdrop.render({'model_path': str(self.model), 'plan': plan, 'longest_m': longest_m, 'backdrop': str(backdrop), 'azimuth': 30,
-                                          'share': .3, 'share_range': list(share_range), 'stand': 'floor', 'samples': 16, 'long': self.SIZE, **more}, out)
+                                          'share': .3, 'share_range': list(share_range), 'samples': 16, 'long': self.SIZE, **{'stand': 'floor', **more}}, out)
 
     def test_the_box_stands_on_the_floor_at_the_asked_size_and_darkens_it(self):
         out = self.folder / 'scene1'; result = self.run_blender(self.place, out)
@@ -483,6 +514,47 @@ bpy.ops.export_scene.gltf(filepath=sys.argv[-1], export_format='GLB')
     def test_a_place_with_no_free_floor_is_reported_as_no_fit(self):
         result = self.run_blender(self.full, self.folder / 'scene2')
         self.assertEqual((result or {}).get('reason'), 'no_fit')
+
+    @classmethod
+    def wall_backdrop(cls, folder, turn=20.0, distance=1.6, ledge=None):
+        """A light wall the camera faces from ``turn`` degrees to one side, level; a bench top ``ledge`` below the camera when given."""
+        folder.mkdir(); size = cls.SIZE; angle = math.radians(turn); normal = [math.sin(angle), 0.0, -math.cos(angle)]
+
+        def depth(u, v):
+            return -distance / (normal[0] * (u - size / 2) / cls.FOCAL + normal[2])
+        Image.new('RGB', (size, size), (200, 200, 200)).save(folder / 'backdrop.png'); Image.new('L', (size, size), 255).save(folder / 'support.png')
+        save_npy(folder / 'depth.npy', [[depth(u, v) for u in range(0, size, 8)] for v in range(0, size, 8)])
+        (folder / 'geometry.json').write_text(json.dumps({'version': 1, 'size': [size, size], 'focal_px': cls.FOCAL, 'fov_deg': 56.1, 'normal': normal,
+                                                         'height_m': distance, 'stand': 'wall', 'up': [0, -1, 0], 'turn_deg': turn, 'tilt_down_deg': 0,
+                                                         'roll_deg': 0, 'support_share': 1, 'depth_step': 8, 'lamps': [],
+                                                         **({'ledge_m': ledge} if ledge else {})}))
+        return folder
+
+    def test_a_wall_product_hangs_flat_on_the_wall_seen_by_the_photographs_own_camera(self):
+        place = self.wall_backdrop(self.folder / 'wall'); out = self.folder / 'scene5'
+        result = self.run_blender(place, out, stand='wall')
+        self.assertTrue(result and result.get('success'), (result, (out / 'blender.log').read_text()[-1500:] if (out / 'blender.log').is_file() else ''))
+        self.assertEqual(result['yaw_deg'], 0)                                            # not turned to the asked side: it lies on the wall
+        self.assertAlmostEqual(abs(result['seen_from_deg']), 20, delta=6)                 # the side that shows is where the camera stands
+        self.assertEqual(result['product_m'], [.6, .5, .4])                               # width along the wall, height up it, depth out of it
+        self.assertLess(abs(result['above_camera_m']), .25)                               # about level with the camera
+        x0, y0, x1, y1 = result['box']
+        self.assertTrue(.03 < x0 < x1 < .97 and .03 < y0 < y1 < .97, result['box'])
+        with Image.open(out / 'scene5.png') as image:
+            image = image.convert('RGB'); size = image.size
+            middle = image.getpixel((int((x0 + x1) / 2 * size[0]), int((y0 + y1) / 2 * size[1])))
+            corner = image.getpixel((6, size[1] - 6))
+            under = image.getpixel((int((x0 + x1) / 2 * size[0]), min(int(y1 * size[1]) + 3, size[1] - 1)))
+        self.assertGreater(middle[0], middle[1] + 40)                                     # the red box is there
+        self.assertTrue(all(abs(value - 200) <= 8 for value in corner), corner)           # the wall far from it is the photograph's
+        self.assertLess(under[1], 200 - 8)                                                # lit from the ceiling: its shadow is on the wall under it
+
+    def test_a_wall_product_hangs_clear_of_the_bench_below(self):
+        place = self.wall_backdrop(self.folder / 'wall-bench', ledge=.3); out = self.folder / 'scene6'
+        result = self.run_blender(place, out, stand='wall')
+        self.assertTrue(result and result.get('success'), result)
+        self.assertGreaterEqual(result['above_ledge_m'], .25)
+        self.assertGreater(result['above_camera_m'], .15)                                 # so it hangs higher than the camera here
 
 
 if __name__ == '__main__':

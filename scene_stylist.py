@@ -686,15 +686,15 @@ def generate(project, proposal, hint='', cancelled=None, progress=None, folder=N
         scene = (scene + ' ' + hint).strip()     # the strategist already read the hint; rules have not
     folder = folder or (DATA / project['id'] / 'scene_ai' / uuid.uuid4().hex / 'scene')
     picture = None; painted_because = None
-    if proposal.get('backdrop') and proposal.get('people') is False and mount != 'wall':
+    if proposal.get('backdrop') and proposal.get('people') is False:
         # The product at rest in a place, nobody in the picture: its own model is rendered into a photograph of the
-        # empty place (scene_backdrop.py) instead of being drawn again by the image model. A size guessed from the
-        # category alone is not a size to build a picture on.
+        # empty place (scene_backdrop.py) instead of being drawn again by the image model; a wall-mounted one onto a
+        # photograph of the place's wall. A size guessed from the category alone is not a size to build a picture on.
         import scene_backdrop
         try:
             if basis == 'category':
                 raise scene_backdrop.Unavailable('不知道产品的实际尺寸')
-            picture = scene_backdrop.create(project, plan, proposal, azimuth, size_mm, folder, cancelled, progress)
+            picture = scene_backdrop.create(project, plan, proposal, azimuth, size_mm, folder, cancelled, progress, mounting=mount)
         except scene_backdrop.Unavailable as exc:
             painted_because = str(exc)[:200]
     if picture is None:

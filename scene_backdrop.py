@@ -6,6 +6,11 @@ cabinet came out standing on a workbench, a third of its real size. Here the pro
 photograph of the empty place (blender/backdrop.py): its shape, its moving parts and its size are the model's, it
 stands on the measured floor or bench top, and the place lights it and takes its shadow.
 
+A product made to hang on a wall (mounting.py) gets a photograph of the place's empty wall instead (stand 'wall'): the
+wall's plane and the way up along it are measured, and the product hangs flat against it, seen by the photograph's own
+camera. Painted round a render made beforehand, it kept that render's camera: turned a quarter away from a wall that
+faced the picture square-on, and without the room's perspective.
+
     spec_for()   the backdrop a scene asks for: the buyer's place, what the product stands on, how large it is
     ensure()     that backdrop, made when it is missing: one picture of the empty place from the image model, measured
                  once by a depth model (scripts/backdrop_measure.py, in its own Python) and checked; kept for good
@@ -56,19 +61,24 @@ DEPTH_MODEL = 'models--apple--DepthPro-hf'
 # 'room' is the place seen across its floor; 'behind' what is seen behind its table or bench, when that is not the same.
 PLACES = {
     'home_starter': {'room': 'a bright, newly furnished living room at home, a new sofa and a bookshelf far behind',
-                     'surface': 'a new plain light wooden table with a smooth, flawless top', 'floor': 'a new light wooden floor'},
+                     'surface': 'a new plain light wooden table with a smooth, flawless top', 'floor': 'a new light wooden floor',
+                     'wall': 'a smooth, freshly painted white wall', 'below': 'a new low wooden sideboard'},
     'diy_project': {'room': 'a clean, newly built home garage during a home improvement project, new timber boards stacked neatly at one side and a '
                             'half-finished wooden frame of fresh pale timber far behind',
-                    'surface': 'a new, sturdy work table with a smooth, clean birch plywood top', 'floor': 'a smooth, clean, new sealed concrete floor'},
+                    'surface': 'a new, sturdy work table with a smooth, clean birch plywood top', 'floor': 'a smooth, clean, new sealed concrete floor',
+                    'wall': 'a smooth, freshly painted light grey garage wall', 'below': 'a new work table with a clean birch plywood top'},
     'workshop_hobbyist': {'room': 'a newly fitted-out private garage workshop, new hand tools neatly on a white pegboard on the wall and a new '
                                   'workbench against the wall at one side',
                           'behind': 'the freshly painted wall of a newly fitted-out private workshop, new hand tools hanging neatly on a pegboard',
                           'surface': 'a brand-new workbench with a smooth, flawless light beech top',
-                          'floor': 'a smooth, clean, light grey sealed concrete floor'},
+                          'floor': 'a smooth, clean, light grey sealed concrete floor',
+                          'wall': 'a smooth, freshly painted light grey workshop wall', 'below': 'a brand-new workbench with a light beech top'},
     'site_team': {'room': 'a freshly plastered, clean room being renovated, a new stepladder and neatly folded white dust sheets at one side',
-                  'surface': 'a new, clean plywood board laid across two new trestles', 'floor': 'a clean, new screed floor, swept spotless'},
+                  'surface': 'a new, clean plywood board laid across two new trestles', 'floor': 'a clean, new screed floor, swept spotless',
+                  'wall': 'a smooth, freshly plastered and painted white wall', 'below': 'a new, clean plywood board laid across two new trestles'},
     'industrial_maintenance': {'room': 'a clean, new industrial plant room with new pipework and grey control cabinets along the walls',
-                               'surface': 'a new stainless steel work table with a clean, unmarked top', 'floor': 'a clean, new grey epoxy-painted floor'},
+                               'surface': 'a new stainless steel work table with a clean, unmarked top', 'floor': 'a clean, new grey epoxy-painted floor',
+                               'wall': 'a smooth, freshly painted light grey wall', 'below': 'a new stainless steel work table'},
 }
 # How the place is photographed for each size of product. The image model does not keep to distances it is told, so what
 # a picture is framed for is measured afterwards (FRAMED) and the picture filed under that size.
@@ -82,8 +92,23 @@ CAMERAS = {
                                      '40 centimetres back from its clear middle, looking down at about 35 degrees, 50 mm lens, level horizon. The wood '
                                      'of the table top is large and sharp in the foreground.',
                            'clear': '40 centimetres'},
+    # a wall: the camera stands in the room as a person does and looks at the wall about level, from a little to one side.
+    # Seen square-on, what hangs there shows only its front and looks flat.
+    ('wall', 'large'): {'camera': 'The camera stands about 2 metres from the wall at eye height, about 1.5 metres above the floor. ' + (WALL_SIDE := (
+                                  'It does not face the wall square-on: it stands a little to the left and is turned about 25 degrees to the right, '
+                                  'a three-quarter view in which the wall runs gently away to the right and the lines along it converge. ')) +
+                                  'Looking level, 35 mm lens, level horizon, upright lines upright.',
+                        'clear': '1.4 metres'},
+    ('wall', 'medium'): {'camera': 'The camera stands about 1.1 metres from the wall, about 1.4 metres above the floor. ' + WALL_SIDE +
+                                   'Looking level, 40 mm lens, level horizon, upright lines upright.',
+                         'clear': '80 centimetres'},
+    ('wall', 'small'): {'camera': 'A close view of the wall: the camera is only about 60 centimetres from it, about 1.4 metres above the floor. ' +
+                                  WALL_SIDE + 'Looking level, 50 mm lens, level horizon, upright lines upright.',
+                        'clear': '40 centimetres'},
 }
-HEIGHT_M = {'floor': (.9, 2.0), 'surface': (.12, 1.1)}       # the camera above the plane: a floor view is not a bench view
+# the camera above the plane (a floor view is not a bench view); for a wall, the camera's distance from it
+HEIGHT_M = {'floor': (.9, 2.0), 'surface': (.12, 1.1), 'wall': (.35, 4.5)}
+WALL_TURN = 45                # degrees: seen further from the side than this, a wall shows the product's flank, not its front
 # The product size (metres) a picture is framed for: one that fills SHARE of the frame where the free plane is nearest.
 # Each size takes pictures framed for about its own products; blender/backdrop.py enlarges a part of the frame for the rest.
 FRAMED = {'small': (.12, .34), 'medium': (.3, .8), 'large': (.7, 1.9)}
@@ -96,6 +121,12 @@ SURFACE_PROMPT = ('Photograph of the top of {plane}, seen from its long side, no
                   'of focus, {room}. Soft, even daylight from large windows behind the camera and ceiling lights, gentle soft shadows, no hard sun '
                   'patches on the table top. {new} Natural colours, realistic, product-catalogue photography background. No text, no logos, '
                   'no people, nothing in the centre of the table top.')
+WALL_PROMPT = ('Photograph of a wall in {room}, no people. {camera} The middle of the picture is {plane}, plain and completely empty: nothing '
+               'hangs on it, leans against it or stands in front of it, a clear area at least {clear} wide and {clear} tall at the height of '
+               'the camera. Along the bottom edge of the picture, {below} standing against that wall, its top empty. Things of the place '
+               'only at the far left and right edges of the picture. Soft, even daylight from large windows behind the camera and ceiling '
+               'lights, gentle soft shadows, no hard sun patches on the wall. {new} Natural colours, realistic, sharp, product-catalogue '
+               'photography background. No text, no logos, no people; no pictures, shelves, sockets or switches on the middle of the wall.')
 # The image model's own workshop is a used one: an old bench scored and drilled. Every place is shown as new (LOOK).
 NEW_PLACE = ('Everything is brand new and spotless, as on the day it was fitted out: the surface in front is smooth and unmarked, '
              'walls freshly painted, every object new and in order. No wear, scratches, scoring, dents, holes, burn marks, rust, '
@@ -138,16 +169,18 @@ def _spec(segment_id, stand, size):
     place = PLACES.get(segment_id); camera = CAMERAS.get((stand, size))
     if not place or not camera:
         return None
-    template = FLOOR_PROMPT if stand == 'floor' else SURFACE_PROMPT
+    template = {'floor': FLOOR_PROMPT, 'wall': WALL_PROMPT}.get(stand, SURFACE_PROMPT)
     return {'id': '%s-%s-%s' % (segment_id, stand, size), 'segment': segment_id, 'stand': stand, 'size': size,
-            'prompt': template.format(room=place['room'] if stand == 'floor' else place.get('behind', place['room']), plane=place[stand],
-                                      camera=camera['camera'], clear=camera['clear'], new=NEW_PLACE)}
+            'prompt': template.format(room=place.get('behind', place['room']) if stand == 'surface' else place['room'], plane=place[stand],
+                                      below=place.get('below', ''), camera=camera['camera'], clear=camera['clear'], new=NEW_PLACE)}
 
 
-def spec_for(segment_id, longest_m):
-    """The backdrop for a buyer's place and a product of this size, or None when there is none to be had."""
+def spec_for(segment_id, longest_m, mounting=None):
+    """The backdrop for a buyer's place and a product of this size, or None when there is none to be had. A product
+    made to hang on a wall (``mounting`` 'wall') gets the place's wall, whatever its size."""
     longest_m = float(longest_m or 0); size = size_class(longest_m)
-    return _spec(segment_id, 'floor' if longest_m >= FLOOR_FROM_M else 'surface', size) if size else None
+    stand = 'wall' if mounting == 'wall' else 'floor' if longest_m >= FLOOR_FROM_M else 'surface'
+    return _spec(segment_id, stand, size) if size else None
 
 
 def siblings(spec):
@@ -168,6 +201,20 @@ def flaw(geometry, stand):
     low, high = HEIGHT_M[stand]
     if not isinstance(geometry, dict) or geometry.get('version') != VERSION:
         return 'not measured'
+    if (geometry.get('stand') == 'wall') != (stand == 'wall'):
+        return 'not measured as a %s' % stand
+    if stand == 'wall':
+        if geometry.get('support_share', 0) < .1:
+            return 'too little free wall in the picture'
+        if abs(geometry.get('roll_deg', 0)) > 4:
+            return 'the camera is tilted sideways'
+        if not -12 <= geometry.get('tilt_down_deg', 0) <= 30:
+            return 'the camera does not look at the wall about level'
+        if geometry.get('turn_deg', 90) > WALL_TURN:
+            return 'the wall is seen too far from the side'
+        if not low <= geometry.get('height_m', 0) <= high:
+            return 'the camera is %.2f m from the wall, %.2f to %.2f m was asked' % (geometry.get('height_m', 0), low, high)
+        return None if 25 <= geometry.get('fov_deg', 0) <= 100 else 'the lens could not be measured'
     if geometry.get('support_share', 0) < .12:
         return 'too little free %s in the picture' % stand
     if abs(geometry.get('roll_deg', 0)) > 4:
@@ -318,13 +365,14 @@ def _run(command, folder, log, stop, timeout, env=None, lane=None):
     return process.returncode
 
 
-def measure(folder, stop=lambda: False):
-    """Measure folder/backdrop.png with the depth model, in its own Python: the geometry, or None when that did not work."""
+def measure(folder, stop=lambda: False, stand=None):
+    """Measure folder/backdrop.png with the depth model, in its own Python: the geometry, or None when that did not work.
+    ``stand`` 'wall' measures the wall a product hangs on, not the plane one stands on."""
     python = depth_python()
     if not python:
         return None
     env = {**os.environ, 'HF_HOME': str(models_folder()), 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_VERBOSITY': 'error'}
-    code = _run([str(python), '-I', str(ROOT / 'scripts' / 'backdrop_measure.py'), str(folder)], folder, 'measure.log', stop, MEASURE_TIMEOUT, env)
+    code = _run([str(python), '-I', str(ROOT / 'scripts' / 'backdrop_measure.py'), str(folder)] + (['wall'] if stand == 'wall' else []), folder, 'measure.log', stop, MEASURE_TIMEOUT, env)
     if code != 0:
         return None
     try:
@@ -368,8 +416,8 @@ def ensure(spec, cancelled=None, progress=None):
                 why = '; '.join(looks['issues'])[:300]
                 atomic_json(LIBRARY / (spec['id'] + '.worn.json'), {'look': LOOK, 'count': worn.get('count', 0) + 1, 'reason': why, 'at': time.time()})
                 raise Unavailable('生成的背景图显得陈旧或脏乱（%s）' % '; '.join(looks['issues'])[:200])
-            say('测量背景图的地面、相机和灯（每个场所只做一次，需要几分钟）')
-            geometry = measure(work, stop)
+            say('测量背景图的%s、相机和灯（每个场所只做一次，需要几分钟）' % ('墙面' if spec['stand'] == 'wall' else '地面'))
+            geometry = measure(work, stop, spec['stand'])
             reason = flaw(geometry, spec['stand']) if geometry else 'the depth model did not finish'
             filed = None
             if not reason:
@@ -417,8 +465,8 @@ def render(request, folder, stop=lambda: False):
     return result if isinstance(result, dict) else None
 
 
-def create(project, plan, proposal, azimuth, size_mm, folder, cancelled=None, progress=None):
-    """The product set down in the backdrop its scene asks for.
+def create(project, plan, proposal, azimuth, size_mm, folder, cancelled=None, progress=None, mounting=None):
+    """The product set down in the backdrop its scene asks for; hung on the place's wall when ``mounting`` is 'wall'.
 
     Returns {'png', 'jpg', 'width', 'height', 'record'} like scene_imagegen.create(); the record says 'model': 'composite'.
     Raises Unavailable when the scene cannot be made this way.
@@ -429,7 +477,7 @@ def create(project, plan, proposal, azimuth, size_mm, folder, cancelled=None, pr
         raise Unavailable('合成场景已关闭或渲染组件未就绪')
     if not size_mm or size_mm <= 0:
         raise Unavailable('不知道产品的实际尺寸')
-    spec = spec_for(proposal.get('segment_id'), size_mm / 1000)
+    spec = spec_for(proposal.get('segment_id'), size_mm / 1000, mounting)
     if not spec:
         raise Unavailable('这个场所或这个尺寸的产品没有可用的背景图')
     started = time.time()
@@ -467,7 +515,7 @@ def create(project, plan, proposal, azimuth, size_mm, folder, cancelled=None, pr
             result = set_into(filed, backdrop)
             if result: spec = filed
     if not result:
-        raise Unavailable('背景图里没有能按合适大小放下产品的空位')
+        raise Unavailable('背景图里没有能按合适大小%s产品的空位' % ('挂上' if spec['stand'] == 'wall' else '放下'))
     width, height = engine.verify_image(png, 'PNG')
     jpg = folder / (folder.name + '.jpg')
     with Image.open(png) as picture:

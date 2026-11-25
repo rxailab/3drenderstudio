@@ -446,7 +446,8 @@ class ReviseTests(unittest.TestCase):
             self.assertNotIn('mobile_tradesperson', [row['segment_id'] for row in proposals])
             self.assertEqual({row['mounting'] for row in proposals}, {'wall'})
             for row in proposals:
-                self.assertIn('wall', row['scene']); self.assertNotIn('van', row['scene'].lower()); self.assertFalse(row.get('backdrop'))
+                self.assertIn('wall', row['scene']); self.assertNotIn('van', row['scene'].lower())
+            self.assertTrue(proposals[1].get('backdrop'))            # the place scene: set onto a photograph of the place's wall
         # a product too big to carry is not set out at a van either; a pair of pliers still may be
         self.assertFalse(scene_audience.fits('mobile_tradesperson', None, .9))
         self.assertTrue(scene_audience.fits('mobile_tradesperson', None, .2))
