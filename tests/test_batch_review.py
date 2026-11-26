@@ -111,7 +111,7 @@ class SceneBatchCheckTests(unittest.TestCase):
     def test_check_batch_combines_three_scenes_into_one_vision_call(self):
         items = [
             {'reference_paths': [self.ref], 'generated_path': self.s1, 'product': 'Cabinet', 'people': False, 'closeup': self.c1, 'mounting': 'wall'},
-            {'reference_paths': [self.ref], 'generated_path': self.s2, 'product': 'Cabinet', 'people': True, 'framing': 'hands', 'closeup': self.c2},
+            {'reference_paths': [self.ref], 'generated_path': self.s2, 'product': 'Cabinet', 'people': False, 'closeup': self.c2},
             {'reference_paths': [self.ref], 'generated_path': self.s3, 'product': 'Cabinet', 'people': False, 'closeup': self.c3},
         ]
         posts = []
@@ -122,7 +122,7 @@ class SceneBatchCheckTests(unittest.TestCase):
 
         fake_answer = {'results': [
             _fidelity_row(1, person_visible=False),
-            _fidelity_row(2, person_visible=True, face_visible=True),               # hands requested -> face fails
+            _fidelity_row(2, person_visible=True, face_visible=True),               # nobody was asked for -> a person fails
             _fidelity_row(3, surroundings_new=False, issues=['scratched bench']),   # worn surroundings fails
         ]}
 
@@ -140,6 +140,28 @@ class SceneBatchCheckTests(unittest.TestCase):
         self.assertFalse(verdicts[1]['people']['ok'])
         self.assertEqual(verdicts[2]['status'], 'failed')
         self.assertFalse(verdicts[2]['flags']['surroundings_new'])
+
+    def test_a_scene_with_hands_or_a_person_is_checked_alone_at_full_size(self):
+        """Whether fingers close round a handle cannot be told on a small tile among others: such a scene has its own call."""
+        items = [
+            {'reference_paths': [self.ref], 'generated_path': self.s1, 'product': 'Pliers', 'people': False, 'closeup': self.c1},
+            {'reference_paths': [self.ref], 'generated_path': self.s2, 'product': 'Pliers', 'people': True, 'framing': 'hands', 'closeup': self.c2},
+            {'reference_paths': [self.ref], 'generated_path': self.s3, 'product': 'Pliers', 'people': False, 'closeup': self.c3},
+        ]
+        alone = []
+
+        def single(reference_paths, generated_path, *args, **kwargs):
+            alone.append(generated_path)
+            return {'status': 'failed', 'flags': {'held_correctly': False}, 'issues': ['the pliers lie on an open palm'], 'note': ''}
+        import ai_client, ai_config
+        posts = []
+        answer = {'results': [_fidelity_row(1, person_visible=False), _fidelity_row(2, person_visible=False)]}
+        with patch.object(ai_config, 'get_vision_config', return_value={'enabled': True, 'api_key': 'k', 'model': 'm', 'provider': 'anthropic'}), \
+                patch.object(ai_client, '_post', side_effect=lambda cfg, body: posts.append(body) or {'ok': True}), \
+                patch.object(ai_client, '_response', return_value=answer), patch.object(scene_imagegen, 'check', side_effect=single):
+            verdicts = scene_imagegen.check_batch(items)
+        self.assertEqual(alone, [self.s2]); self.assertEqual(len(posts), 1)          # the other two still share one call
+        self.assertEqual([verdict['status'] for verdict in verdicts], ['passed', 'failed', 'passed'])
 
     def test_batch_checker_coalesces_parallel_workers_and_handles_early_leave(self):
         calls = []

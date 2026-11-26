@@ -1697,6 +1697,12 @@ function renderShots() {
     const generating=(current.jobs || []).some(job=>job.origin==='auto_thumbnails' && ['queued','running'].includes(job.status) && (job.shot_ids || []).includes(s.id) && !(job.completed || []).includes(s.id));
     return `<div class="shot-card ${active?'active':''} ${selectedShots.has(s.id)?'selected':''}"><button type="button" data-shot="${esc(s.id)}" aria-pressed="${active}" aria-label="查看${esc(s.label)}${active?'（当前画面）':''}">${o?`<img src="${esc(o.jpg_url || o.png_url)}" alt="${esc(s.label)}${o.quality==='generated'?'（AI 生成）':'的真实渲染'}" loading="lazy">`:''}</button><label title="将${esc(s.label)}加入 4K 输出"><input type="checkbox" data-select-shot="${esc(s.id)}" aria-label="将${esc(s.label)}加入 4K 输出" ${selectedShots.has(s.id)?'checked':''}></label><strong>${String(i+1).padStart(2,'0')} ${esc(s.label)}</strong><small>${o?`${sceneQualityLabel(o.quality,o)} · v${o.version}${o.version!==current.version?' · 旧版':''}`:generating?'缩略图生成中':'未出图'}</small></div>`;
   }).join(''));
+  const thumbnailButton=$('shotThumbnails');
+  if(thumbnailButton){
+    const running=(current.jobs || []).some(job=>job.origin==='auto_thumbnails' && ['queued','running'].includes(job.status));
+    thumbnailButton.hidden=!current?.analysis || !system?.runtime?.capabilities?.thumbnails || !latestOutput('hero') || !shotsWithoutPicture().length;
+    thumbnailButton.disabled=running;thumbnailButton.textContent=running?'正在生成缩略图…':'生成其余镜头缩略图';
+  }
   $('selectAllShots').checked=!!shots().length && selectedShots.size===shots().length;$('selectAllShots').indeterminate=selectedShots.size>0 && selectedShots.size<shots().length;
 }
 // How far a running job is, as one number: finished shots plus the share of the shot being rendered.
@@ -1845,7 +1851,13 @@ async function openProject(id) {
   finally{if(requestId===projectRequest){projectLoading=false;renderProject();scheduleThumbnails();}}
 }
 const thumbnailAttempts=new Map();
+// Projects whose other shots the user asked to see as thumbnails. Nothing renders them unasked: a new project shows its
+// main image, and five more renders nobody may look at kept the graphics card from the listing's own pictures.
+const thumbnailsWanted=new Set();
 let thumbnailSubmitting=false;
+function shotsWithoutPicture() {
+  return shots().filter(shot=>{const full=latestOutput(shot.id),small=latestThumbnail(shot.id);return shot.id!=='hero' && (!full || full.version<current.version) && small?.version!==current.version;});
+}
 function thumbnailStateSignature(project) {
   return JSON.stringify([project.version,project.status,
     (project.outputs || []).map(o=>[o.job_id,o.shot_id,o.version,o.quality,o.png_url]),
@@ -1854,8 +1866,9 @@ function thumbnailStateSignature(project) {
 }
 function scheduleThumbnails() {
   if(!current?.analysis || !system?.runtime?.capabilities?.thumbnails || thumbnailSubmitting || busy || projectLoading || planSavePromise || dirty || activeJob() || polishJob() || automaticMaterialBusy() || serviceDisconnected)return;
+  if(!thumbnailsWanted.has(current.id))return;
   if(!latestOutput('hero'))return;
-  if(!shots().some(shot=>{const full=latestOutput(shot.id),small=latestThumbnail(shot.id);return shot.id!=='hero' && (!full || full.version<current.version) && small?.version!==current.version;}))return;
+  if(!shotsWithoutPicture().length)return;
   const projectId=current.id,version=current.version,key=projectId+':'+version;
   const jobs=(current.jobs || []).filter(job=>job.origin==='auto_thumbnails' && job.version===version).sort((a,b)=>(b.created_at || 0)-(a.created_at || 0));
   const last=jobs[0],state=thumbnailAttempts.get(key) || {count:0,lastAt:0,lastYield:null};
@@ -2472,6 +2485,10 @@ function installEvents() {
   $('shotList').onchange=e=>{if(e.target.dataset.selectShot){if(e.target.checked)selectedShots.add(e.target.dataset.selectShot);else selectedShots.delete(e.target.dataset.selectShot);renderProject();}};
   $('selectAllShots').onchange=()=>{selectedShots=$('selectAllShots').checked?new Set(shots().map(s=>s.id)):new Set();renderProject();};
   if($('selectCurrentShot'))$('selectCurrentShot').onclick=()=>{selectedShots=new Set(activeShot?[activeShot]:[]);renderProject();};
+  if($('shotThumbnails'))$('shotThumbnails').onclick=()=>{
+    if(!current)return;
+    thumbnailsWanted.add(current.id);thumbnailAttempts.delete(current.id+':'+current.version);scheduleThumbnails();
+  };
   if($('discardPlan'))$('discardPlan').onclick=()=>{if(busy || planSavePromise)return;syncSettings();renderProject();toast('已放弃本次草稿，恢复当前保存的方案。');};
   $('bundleButton').onclick=event=>{if($('bundleButton').getAttribute('aria-disabled')==='true')event.preventDefault();};
   $('jobPanel').onclick=async e=>{const autoCancel=e.target.closest('[data-cancel-auto-material]');if(autoCancel){try{await api(`/api/projects/${current.id}/material-agent/tasks/${autoCancel.dataset.cancelAutoMaterial}/cancel`,{method:'POST'});await poll();toast('自动优化已取消，已完成图片保留。');}catch(error){toast(error.message,true);}return;}const cancel=e.target.closest('[data-cancel]'),retry=e.target.closest('[data-retry]');if(!cancel && !retry)return;try{const id=cancel?.dataset.cancel || retry.dataset.retry;await api(`/api/jobs/${id}/${cancel?'cancel':'retry'}`,{method:'POST'});await poll();toast(cancel?'已发送取消请求，已完成图片保留。':'正在继续原任务的未完成镜头。');}catch(error){toast(error.message,true);}};

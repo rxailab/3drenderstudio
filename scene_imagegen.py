@@ -836,6 +836,18 @@ def check_batch(items):
     call per chunk of up to 4 scenes, saving ~65% of scene-check input tokens. Returns a list of verdicts aligned with ``items``."""
     if not items:
         return []
+    # A scene with hands or a person in it is judged alone, at full size. Whether fingers close round a handle and a wire
+    # lies between the jaws or runs through them cannot be told on a 768-pixel tile among three others: such pictures
+    # passed. The saving of a shared call is a few cents; a wrong picture kept costs a generation and a page.
+    alone = [index for index, item in enumerate(items) if item.get('people') is True]
+    if alone and len(items) > 1:
+        rest = [index for index in range(len(items)) if index not in alone]
+        verdicts = [None] * len(items)
+        for index in alone:
+            verdicts[index] = check_batch([items[index]])[0]
+        for index, verdict in zip(rest, check_batch([items[index] for index in rest])):
+            verdicts[index] = verdict
+        return verdicts
     if len(items) == 1:
         item = items[0]
         return [check(item['reference_paths'], item['generated_path'], item['product'], item.get('people'),
@@ -1185,6 +1197,8 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                 closeup = folder / ('closeup%d.jpg' % number)
                 scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
         batch = _ACTIVE_BATCH.get() if number == 1 else None
+        if batch is not None and people is True:
+            batch.leave_current(); batch = None                # hands and a person are judged alone at full size (check_batch)
         if lock['status'] != 'kept':
             if batch is not None:
                 batch.leave_current()                          # do not make sibling scenes wait while this one retries

@@ -1,5 +1,9 @@
 """Project deletion isolation and real request/worker lifetime boundaries.
 
+Deleting from the interface is forced (DELETE /api/projects/<id>): whatever the project is doing is cancelled, its
+processes are stopped and it is removed. lifecycle.delete_project() without ``force`` still refuses a busy project, and
+that is what shows here that requests and workers reserve the project they work on.
+
 Run through qa/run_v3_tests.py so the uploaded .env and external networking stay
 blocked. Every project, file, database and worker in these tests is temporary.
 """
@@ -41,6 +45,8 @@ class ProjectLifecycleTests(unittest.TestCase):
             self.replace(module, 'QUEUE', queue.Queue())
         with store.connection() as connection:
             connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT,id TEXT,payload TEXT,PRIMARY KEY(kind,id))')
+        # a forced delete waits this long for requests still inside the project before it removes it anyway
+        self.replace(lifecycle.abort_project_operations, '__defaults__', (.2,))
         self.projects = {ident: self.make_project(ident) for ident in ('alpha', 'beta')}
         self.client = web.app.test_client()
 
@@ -78,7 +84,21 @@ class ProjectLifecycleTests(unittest.TestCase):
         self.assertTrue((self.data / ident / 'originals/model.obj').is_file())
 
     def delete(self, ident='alpha'):
+        """The interface's delete: forced."""
         return self.client.delete('/api/projects/' + ident)
+
+    def assert_busy(self, ident='alpha'):
+        """An unforced delete is refused and leaves the project as it was."""
+        with self.assertRaises(lifecycle.ProjectBusyError):
+            lifecycle.delete_project(ident)
+        self.assert_project_present(ident)
+
+    def assert_deleted(self, ident='alpha'):
+        with self.assertRaises(KeyError):
+            store.get('project', ident)
+        self.assertFalse((self.data / ident).exists())
+        self.assertEqual([item for kind in ('job', 'export', 'material_task') for item in store.all_records(kind)
+                          if item.get('project_id') == ident], [])
 
     def test_project_list_summarizes_only_active_jobs_for_home_cards(self):
         self.record('job', 'done', 'alpha', 'completed')
@@ -172,18 +192,46 @@ class ProjectLifecycleTests(unittest.TestCase):
         self.assertEqual(marker.read_text(), 'untouched')
         self.assertEqual(store.all_records(lifecycle.CLEANUP_KIND), [])
 
-    def test_each_active_task_status_blocks_deletion(self):
-        kinds = {'job': ('queued', 'running'), 'export': ('queued', 'running'),
-                 'material_task': ('queued', 'running', 'rendering')}
-        for kind, statuses in kinds.items():
+    ACTIVE = {'job': ('queued', 'running'), 'export': ('queued', 'running'), 'material_task': ('queued', 'running', 'rendering')}
+
+    def test_each_active_task_status_blocks_an_unforced_delete(self):
+        for kind, statuses in self.ACTIVE.items():
             for status in statuses:
                 with self.subTest(kind=kind, status=status):
                     self.record(kind, 'active', status=status)
-                    response = self.delete()
-                    self.assertEqual(response.status_code, 409)
-                    self.assert_project_present()
+                    self.assert_busy()
                     self.assertEqual(store.get(kind, 'active')['status'], status)
                     self.remove_record(kind, 'active')
+
+    def test_the_interfaces_delete_cancels_whatever_is_active_and_removes_the_project(self):
+        for kind, statuses in self.ACTIVE.items():
+            for status in statuses:
+                with self.subTest(kind=kind, status=status):
+                    self.make_project('alpha')
+                    self.record(kind, 'active', status=status)
+                    self.record(kind, 'other', project='beta', status=status)
+                    response = self.delete()
+                    self.assertEqual(response.status_code, 200, response.get_json())
+                    self.assertEqual(response.get_json(), {'deleted': True, 'id': 'alpha', 'cleanup_pending': False})
+                    self.assert_deleted()
+                    self.assertEqual(store.get(kind, 'other')['status'], status)          # another project's work goes on
+                    self.remove_record(kind, 'other')
+        self.assert_project_present('beta')
+
+    def test_a_forced_delete_stops_the_projects_running_processes(self):
+        for module, kind in ((engine, 'job'), (scene_exports, 'export')):
+            with self.subTest(kind=kind):
+                self.make_project('alpha')
+                self.record(kind, 'rendering', status='running'); self.record(kind, 'elsewhere', project='beta', status='running')
+                mine = Mock(); mine.poll.side_effect = lambda mine=mine: 0 if mine.terminate.called else None
+                other = Mock(); other.poll.return_value = None
+                module.PROCESSES.update(rendering=mine, elsewhere=other)
+                try:
+                    self.assertEqual(self.delete().status_code, 200)
+                    mine.terminate.assert_called(); other.terminate.assert_not_called(); other.kill.assert_not_called()
+                    self.assert_deleted()
+                finally:
+                    module.PROCESSES.clear(); self.remove_record(kind, 'elsewhere')
 
     def test_unrelated_active_tasks_do_not_block_deletion(self):
         for kind in ('job', 'export', 'material_task'):
@@ -191,7 +239,7 @@ class ProjectLifecycleTests(unittest.TestCase):
         self.assertEqual(self.delete().status_code, 200)
         self.assert_project_present('beta')
 
-    def test_cancelled_tasks_remain_protected_until_worker_and_process_exit(self):
+    def test_cancelled_tasks_remain_protected_from_an_unforced_delete_until_worker_and_process_exit(self):
         entries = [(engine, 'RUNNING_JOBS', 'job'), (scene_exports, 'RUNNING_EXPORTS', 'export'),
                    (material_agent, 'RUNNING_TASKS', 'material_task'),
                    (engine, 'PROCESSES', 'job'), (scene_exports, 'PROCESSES', 'export')]
@@ -204,27 +252,34 @@ class ProjectLifecycleTests(unittest.TestCase):
                 else:
                     tracking['finishing'] = Mock()
                 try:
-                    self.assertEqual(self.delete().status_code, 409)
-                    self.assert_project_present()
+                    self.assert_busy()
                 finally:
                     tracking.clear()
                     self.remove_record(kind, 'finishing')
         self.assertEqual(self.delete().status_code, 200)
 
-    def test_request_operation_count_and_inflight_instruction_block_deletion(self):
+    def test_request_operation_count_and_inflight_instruction_block_an_unforced_delete(self):
         lifecycle.begin_operation('alpha')
         lifecycle.begin_operation('alpha')
         self.assertEqual(lifecycle.OPERATIONS['alpha'], 2)
-        self.assertEqual(self.delete().status_code, 409)
+        self.assert_busy()
         lifecycle.end_operation('alpha')
-        self.assertEqual(self.delete().status_code, 409)
+        self.assert_busy()
         lifecycle.end_operation('alpha')
         self.assertNotIn('alpha', lifecycle.OPERATIONS)
         instruction_service._INFLIGHT['alpha'] = {'token': 'temporary'}
-        self.assertEqual(self.delete().status_code, 409)
-        self.assert_project_present()
+        self.assert_busy()
         instruction_service._INFLIGHT.clear()
+        self.assertEqual(lifecycle.delete_project('alpha')['deleted'], True)
+
+    def test_the_interfaces_delete_does_not_wait_for_requests_or_an_instruction_in_flight(self):
+        lifecycle.begin_operation('alpha')
+        instruction_service._INFLIGHT['alpha'] = {'token': 'temporary'}
         self.assertEqual(self.delete().status_code, 200)
+        self.assert_deleted()
+        self.assertNotIn('alpha', instruction_service._INFLIGHT)
+        lifecycle.end_operation('alpha')                 # the request it did not wait for ends later, harmlessly
+        self.assertEqual(lifecycle.OPERATIONS, {})
 
     def test_worker_entrypoints_safely_ignore_deleted_queue_ids(self):
         self.assertEqual(self.delete().status_code, 200)
@@ -262,7 +317,7 @@ class ProjectLifecycleTests(unittest.TestCase):
                     item['status'] = 'cancelled'
                     store.put(kind, item)
                     self.assertIn(ident, getattr(module, field))
-                    self.assertEqual(self.delete().status_code, 409)
+                    self.assert_busy()
                 with patch.object(module, implementation, side_effect=finish):
                     getattr(module, entry)('finishing')
                 self.assertEqual(getattr(module, field), set())
@@ -282,14 +337,24 @@ class ProjectLifecycleTests(unittest.TestCase):
                 self.assertEqual(getattr(module, field), set())
                 self.remove_record(kind, 'failure')
 
-    def test_rename_failure_preserves_database_and_original_files(self):
+    def test_rename_failure_preserves_database_and_original_files_when_not_forced(self):
         self.record('job', 'old-job')
         with patch.object(Path, 'rename', side_effect=PermissionError('file is busy')):
-            response = self.delete()
-        self.assertEqual(response.status_code, 409)
+            with self.assertRaises(PermissionError):
+                lifecycle.delete_project('alpha')
         self.assert_project_present()
         self.assertEqual(store.get('job', 'old-job')['project_id'], 'alpha')
         self.assertEqual(store.all_records(lifecycle.CLEANUP_KIND), [])
+
+    def test_a_forced_delete_whose_folder_cannot_be_moved_still_removes_the_project(self):
+        self.record('job', 'old-job')
+        with patch.object(Path, 'rename', side_effect=PermissionError('file is busy')), patch.object(lifecycle.time, 'sleep'):
+            response = self.delete()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'deleted': True, 'id': 'alpha', 'cleanup_pending': False})    # removed in place instead
+        self.assert_deleted()
+        self.assertEqual(store.all_records(lifecycle.CLEANUP_KIND), [])
+        self.assert_project_present('beta')
 
     def test_database_failure_rolls_back_records_and_restores_renamed_folder(self):
         self.record('job', 'old-job')
@@ -494,7 +559,7 @@ class ProjectLifecycleTests(unittest.TestCase):
         self.assertEqual(store.get('project', 'beta')['id'], 'beta')
         self.assert_project_present()
 
-    def threaded_request(self, endpoint, action, patch_target, patch_name, return_value):
+    def threaded_request(self, endpoint, action, patch_target, patch_name, return_value, force=False, gone=404):
         entered, release = threading.Event(), threading.Event()
         responses, exceptions = [], []
         def blocked(*args, **kwargs):
@@ -513,29 +578,50 @@ class ProjectLifecycleTests(unittest.TestCase):
             try:
                 self.assertTrue(entered.wait(5), endpoint + ' did not enter the blocked operation')
                 self.assertEqual(lifecycle.OPERATIONS.get('alpha'), 1)
-                self.assertEqual(self.delete().status_code, 409)
-                self.assert_project_present()
+                self.assert_busy()
+                if force:
+                    self.assertEqual(self.delete().status_code, 200)
+                    self.assert_deleted()
             finally:
                 release.set()
                 thread.join(5)
             self.assertFalse(thread.is_alive())
         self.assertEqual(exceptions, [])
         self.assertEqual(len(responses), 1)
-        self.assertEqual(responses[0].status_code, 200, responses[0].get_json())
         self.assertNotIn('alpha', lifecycle.OPERATIONS)
-        self.assertEqual(self.delete().status_code, 200)
+        if force:
+            # the request the delete did not wait for ends as ``gone`` says: never a server error
+            self.assertEqual(responses[0].status_code, gone, responses[0].get_json())
+            self.assert_deleted()                         # and it does not bring the project back
+            self.assert_project_present('beta')
+        else:
+            self.assertEqual(responses[0].status_code, 200, responses[0].get_json())
+            self.assertEqual(self.delete().status_code, 200)
 
-    def test_material_upload_request_blocks_delete_until_file_processing_finishes(self):
+    def test_material_upload_request_blocks_an_unforced_delete_until_file_processing_finishes(self):
         def upload(client):
             return client.post('/api/projects/alpha/materials/import', data={
                 'name': 'Paint', 'source': 'temporary fixture', 'license': 'CC0',
                 'roughness': (io.BytesIO(b'temporary fixture image'), 'roughness.png')})
         self.threaded_request('material import', upload, engine, 'verify_image', (8, 8))
 
-    def test_pick_request_blocks_delete_until_subprocess_boundary_returns(self):
+    def test_pick_request_blocks_an_unforced_delete_until_subprocess_boundary_returns(self):
         def pick(client):
             return client.post('/api/projects/alpha/feedback/pick', json={'points': []})
         self.threaded_request('surface pick', pick, engine, 'pick_output', {'snapshot': {}, 'hits': []})
+
+    def test_a_request_whose_project_is_deleted_under_it_ends_as_not_found(self):
+        def upload(client):
+            return client.post('/api/projects/alpha/materials/import', data={
+                'name': 'Paint', 'source': 'temporary fixture', 'license': 'CC0',
+                'roughness': (io.BytesIO(b'temporary fixture image'), 'roughness.png')})
+        self.threaded_request('material import', upload, engine, 'verify_image', (8, 8), force=True)
+
+    def test_a_pick_whose_project_is_deleted_under_it_ends_cleanly(self):
+        def pick(client):
+            return client.post('/api/projects/alpha/feedback/pick', json={'points': []})
+        # it only reads: what it had already found is still its answer, and nothing is written back
+        self.threaded_request('surface pick', pick, engine, 'pick_output', {'snapshot': {}, 'hits': []}, force=True, gone=200)
 
     def test_request_reservation_is_released_after_validation_error(self):
         def fail(*_args):
@@ -554,7 +640,7 @@ class ProjectLifecycleTests(unittest.TestCase):
                 item = self.record(kind, 'old', status='failed')
                 def cancel(_ident):
                     self.assertEqual(lifecycle.OPERATIONS.get('alpha'), 1)
-                    self.assertEqual(web.app.test_client().delete('/api/projects/alpha').status_code, 409)
+                    self.assert_busy()
                     return item
                 with patch.object(module, function, side_effect=cancel):
                     self.assertEqual(self.client.post(endpoint).status_code, 200)
