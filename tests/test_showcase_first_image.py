@@ -209,8 +209,7 @@ class PassFixture(unittest.TestCase):
     def start(self):
         engine.submit('fixture', 'analyze')
         self.run_one(); self.run_one()            # analysis, then the upload's quick first look: nothing follows it
-        engine.submit('fixture', 'preview', 'preview', ['hero']); self.run_one()      # the user's first preview: the background work follows
-        self.run_one()                            # other shots before 2K polish
+        engine.submit('fixture', 'preview', 'preview', ['hero']); self.run_one()      # the user's first preview: the 2K polish follows
 
 
 class BackgroundPassTests(PassFixture):
@@ -229,15 +228,16 @@ class BackgroundPassTests(PassFixture):
         self.assertTrue(engine.quick_first_look(self.jobs('initial_preview')[0]))
         self.assertFalse(engine.quick_first_look({'kind': 'preview', 'origin': None}))
 
-    def test_failed_thumbnail_does_not_prevent_hero_polish(self):
-        engine.submit('fixture','analyze');self.run_one();self.run_one()
-        engine.submit('fixture','preview','preview',['hero']);self.run_one()
-        thumb=self.jobs(engine.THUMBNAIL_ORIGIN)[0]
-        self.rendered=[]
-        with patch.object(engine,'execute',side_effect=RuntimeError('thumbnail failed')):
-            engine.run_job(thumb['id'])
-        self.assertEqual(store.get('job',thumb['id'])['status'],'failed')
-        self.assertEqual(self.jobs(engine.POLISH_ORIGIN)[0]['status'],'queued')
+    def test_the_other_shots_are_not_rendered_unasked(self):
+        """Five thumbnails used to follow every first preview and held the renderer; they are made when the user asks."""
+        self.start()
+        self.assertEqual(self.jobs(engine.THUMBNAIL_ORIGIN), [])
+        self.assertEqual(self.jobs(engine.POLISH_ORIGIN)[0]['status'], 'queued')
+        self.drain()
+        self.assertEqual(self.jobs(engine.THUMBNAIL_ORIGIN), [])                    # nor after the high-quality pass
+        self.assertFalse(any(quality == 'thumbnail' for quality, _ in self.rendered))
+        asked = engine.schedule_thumbnails('fixture', store.get('project', 'fixture')['version'])
+        self.assertEqual((asked['origin'], asked['quality'], asked['status']), (engine.THUMBNAIL_ORIGIN, 'thumbnail', 'queued'))
 
     def test_analysis_develops_the_look_before_the_first_image(self):
         engine.submit('fixture', 'analyze'); self.run_one()
@@ -255,8 +255,7 @@ class BackgroundPassTests(PassFixture):
         project = store.get('project', 'fixture')
         self.assertEqual(self.rendered[0],('preview','hero'))
         self.assertEqual(self.rendered[-1],('showcase','hero'))
-        self.assertEqual({shot for quality,shot in self.rendered if quality=='thumbnail'},
-                         {shot['id'] for shot in project['plan']['shots'] if shot['id']!='hero'})
+        self.assertEqual(self.rendered, [('preview', 'hero'), ('preview', 'hero'), ('showcase', 'hero')])     # nothing but the main image
         final = project['outputs'][-1]
         self.assertEqual((final['quality'], final['width'], final['height']), ('showcase', 2048, 2048))
         self.assertEqual(project['polish']['status'], 'completed')

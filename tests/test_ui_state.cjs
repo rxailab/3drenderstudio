@@ -572,10 +572,18 @@ test('thumbnail shows current shot without becoming a full image, diagnostic sou
   h.run("current.outputs.push({job_id:'full-new',shot_id:'campaign',version:2,quality:'preview',width:512,height:512,png_url:'/qa/full-new.png',created_at:0});renderProject()");
   assert.equal(h.node('renderImage').getAttribute('src'),'/qa/full-new.png','normal preview wins at the same version');
 });
+test('the other shots are rendered as thumbnails only when the user asks for them',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});h.run('system.runtime.capabilities.thumbnails=true');
+  let count=0;h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return h.response({job:{id:'thumb-'+count}},202);}};
+  await h.run("openProject('a')");await tick();await h.run('poll()');await tick();
+  assert.equal(count,0,'opening a project renders nothing unasked');
+  assert.equal(h.node('shotThumbnails').hidden,false);assert.equal(h.node('shotThumbnails').textContent,'生成其余镜头缩略图');
+  h.node('shotThumbnails').click();await tick();assert.equal(count,1);
+});
 test('thumbnail scheduling resumes only preempted work and never blocks normal tasks',async t=>{
   const p=previewProject(),h=await setup(t,{projects:[p]});h.run('system.runtime.capabilities.thumbnails=true');
   let count=0;h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return h.response({job:{id:'thumb-'+count}},202);}};
-  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  h.run("thumbnailsWanted.add('a')");await h.run("openProject('a')");await tick();assert.equal(count,1);
   let jobs=h.records.get('a').jobs;jobs.unshift({id:'thumb-1',origin:'auto_thumbnails',kind:'preview',quality:'thumbnail',status:'running',version:1,shot_ids:['campaign','side'],completed:[],created_at:1});
   await h.run('poll()');assert.equal(h.run('activeJob()'),undefined);assert.match(h.node('shotList').textContent,/缩略图生成中/);
   jobs[0].status='cancelled';jobs[0].yielded=true;h.run("thumbnailAttempts.get('a:1').lastAt=0");
@@ -587,13 +595,13 @@ test('thumbnail scheduling resumes only preempted work and never blocks normal t
 test('thumbnail scheduling retries a temporary submission error without an unbounded loop',async t=>{
   const h=await setup(t,{projects:[previewProject()]});h.run('system.runtime.capabilities.thumbnails=true');let count=0;
   h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return count===1?h.response({error:'暂不可用'},503):h.response({job:null});}};
-  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  h.run("thumbnailsWanted.add('a')");await h.run("openProject('a')");await tick();assert.equal(count,1);
   h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,2);
 });
 test('a no-op thumbnail response is not re-requested until project state changes or it is reopened',async t=>{
   const h=await setup(t,{projects:[previewProject(),project('b')]});h.run('system.runtime.capabilities.thumbnails=true');let count=0;
   h.intercept=call=>{if(call.url.endsWith('/thumbnails')){count++;return h.response({job:null},200);}};
-  await h.run("openProject('a')");await tick();assert.equal(count,1);
+  h.run("thumbnailsWanted.add('a')");await h.run("openProject('a')");await tick();assert.equal(count,1);
   h.run("thumbnailAttempts.get('a:1').lastAt=0");await h.run('poll()');await tick();assert.equal(count,1);
   h.records.get('a').jobs.push({id:'external',status:'completed',kind:'preview',shot_ids:['hero'],version:1});
   await h.run('poll()');await tick();assert.equal(count,2,'changed task state can need a fresh check');

@@ -4,6 +4,7 @@ reading the answer, strict JSON, the generic schema check and the usage log (wha
 It imports no domain module (planner, material_intent, scene_*, brandkit_*, listing, engine...), so anything can use it
 without pulling in the photography logic. ai_client re-exports every name here, and most callers still reach these names
 through ai_client: tests patch 'ai_client._post', and that one patch must keep covering every request."""
+import logging
 import base64
 import contextlib
 import contextvars
@@ -294,11 +295,9 @@ def _response(data, config, tool_name=None):
         if reason not in ['end_turn','tool_use','stop_sequence']:
             details = data.get('stop_details') if isinstance(data.get('stop_details'), dict) else {}
             category = str(details.get('category') or '').strip()
-            try:
-                import app_log
-                app_log.get('ai_transport').warning('anthropic incomplete stop_reason=%r category=%r model=%r', reason, category, config.get('model'))
-            except Exception:
-                pass
+            # The app's own log (app_log.get('ai_transport') is this logger), without importing an app module here.
+            logging.getLogger('studio.ai_transport').warning('anthropic incomplete stop_reason=%r category=%r model=%r',
+                                                             reason, category, config.get('model'))
             if reason == 'refusal' and category:
                 raise ValueError('AI 未完成此次请求（服务拒绝：%s），当前方案未修改。' % category)
             raise ValueError('AI 未完成此次请求，当前方案未修改。')

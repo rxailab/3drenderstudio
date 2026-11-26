@@ -1213,19 +1213,15 @@ def _run_job(ident):
                 material_agent.schedule_after_preview(j['project_id'],ident)
             except Exception as exc:
                 update_job(ident,material_notice='自动材质检查未完成，原渲染结果已保留：'+str(exc)[:300])
-            try: thumbnail=schedule_thumbnails(j['project_id'],get('project',j['project_id'])['version'],ident)
-            except (KeyError,ValueError,OSError): thumbnail=None
-            if not thumbnail:
-                try: schedule_polish(j['project_id'],ident)
-                except Exception as exc:
-                    update_job(ident,polish_notice='高清图未自动开始：'+str(exc)[:200])
+            # The other shots' thumbnails are rendered only when the user asks for them (POST .../thumbnails): five renders
+            # after every first preview held the graphics card while the listing's own pictures waited.
+            try: schedule_polish(j['project_id'],ident)
+            except Exception as exc:
+                update_job(ident,polish_notice='高清图未自动开始：'+str(exc)[:200])
         elif j.get('origin')==THUMBNAIL_ORIGIN and get('job',ident)['status']=='completed':
             if j.get('polish_after_job_id'):
                 try: schedule_polish(j['project_id'],j['polish_after_job_id'])
                 except (KeyError,ValueError,OSError): pass
-        elif j.get('origin')==POLISH_ORIGIN and get('job',ident)['status']=='completed':
-            try: schedule_thumbnails(j['project_id'],get('project',j['project_id'])['version'])
-            except (KeyError,ValueError,OSError): pass
     except InterruptedError: pass
     except Exception as exc:
         log.exception('job %s (%s) failed',ident,j.get('kind'))
