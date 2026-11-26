@@ -119,27 +119,24 @@ class DraftTests(StoreCase):
                   'points': [{'title': title, 'detail': '', 'icon': '', 'parts': []} for title in points]}
         return [patch.object(info_layer, '_config', return_value={'model': 'text'}), patch.object(info_layer, '_ask', return_value=answer)]
 
-    def test_without_the_users_points_none_is_drafted(self):
-        patches = self.compose(['Angled cutting edges', 'Cylinder grip'])
+    def test_without_the_users_points_model_structure_points_are_drafted_without_mesh_names(self):
+        patches = self.compose(['Angled cutting edges', 'Cylinder grip', 'Cuts 50 mm cable'])
         for item in patches:
             item.start(); self.addCleanup(item.stop)
         product = listing.draft('fixture', {'hint': ''})['product']
-        self.assertEqual(product['features'], [])
-        self.assertIn('没有写卖点', product['drafted']['notes'][0])
-        # the rules (no model) draft nothing from the part names either
+        # Grounded feature drafted; raw CAD mesh name ('Cylinder grip') and invented number ('50 mm') are rejected.
+        self.assertEqual([row['title'] for row in product['features']], ['Angled cutting edges'])
+        self.assertIn('起草 1 条卖点', product['drafted']['notes'][0])
         for item in patches:
             item.stop()
-        self.assertEqual(listing.draft('fixture', {'hint': '', 'replace': True})['product']['features'], [])
 
-    def test_a_drafted_point_is_kept_only_when_the_user_wrote_it(self):
-        for item in self.compose(['Flush-cut jaws', 'Angled cutting edges', 'Cylinder grip']):
+    def test_a_drafted_point_drops_mesh_names_and_unverified_numbers(self):
+        for item in self.compose(['Flush-cut jaws', 'Cylinder grip', 'Rated 999 V']):
             item.start(); self.addCleanup(item.stop)
         product = listing.draft('fixture', {'hint': 'Flush cut jaws for clean wire ends', 'language': 'en'})['product']
         self.assertEqual([row['title'] for row in product['features']], ['Flush-cut jaws'])
-        self.assertTrue(any('2 条卖点' in note for note in product['drafted']['notes']), product['drafted']['notes'])
-        # A Chinese hint on an English page: the user's own lines, translated at build time, never the model's.
-        zh = listing.draft('fixture', {'hint': '刀口平齐\n握把防滑', 'language': 'en', 'replace': True})['product']
-        self.assertEqual([row['title'] for row in zh['features']], ['刀口平齐', '握把防滑'])
+        self.assertTrue(any('Cylinder grip' in note for note in product['drafted']['notes']), product['drafted']['notes'])
+        self.assertTrue(any('未提供的数字' in note for note in product['drafted']['notes']), product['drafted']['notes'])
 
     def test_extraction_never_keeps_a_mesh_name(self):
         answer = {'title': 'Diagonal Cutting Pliers', 'model': '', 'longest_side': {'value': '', 'unit': '', 'quote': ''}, 'headline': '', 'subline': '',

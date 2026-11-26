@@ -35,7 +35,7 @@ from studio_store import get, put
 ROOT = Path(__file__).resolve().parent
 SCRIPT = ROOT / 'blender' / 'articulate.py'
 DATA = components.DATA
-VERSION = 1
+VERSION = 4
 LOCK = threading.Lock()
 RUNNING = {}
 
@@ -70,7 +70,19 @@ ARTICULATOR = (
     'Only a part modelled already out (a tape or knife blade showing) takes a negative value to pull it in, no more than '
     'it is out. role: rest, open or working.\n'
     'A cabinet, chest or toolbox: each drawer is its own slide joint (the drawer front with its handle and the drawer body, '
-    'moving out of the cabinet, away from it, along the drawer\'s depth), each door and lid its own hinge.\n'
+    'moving out of the cabinet, away from it, along the drawer\'s depth), each door and lid its own hinge. '
+    'CRITICAL for cabinets with front doors (wall-mounted cabinets, double-door cabinets, lockers): '
+    'each front door is its own hinge with axis "z" (vertical hinge line), pivot kind "edge" with side "-x" for the left door '
+    'and "+x" for the right door (the outer side edge where the hinge pins sit, opposite the center handles), max 90-110 degrees, '
+    'and moving MUST include the door panel PLUS every part mounted on that door (handles/aluminum strips, inner astragal/door-stop '
+    'stiffeners, latch/hinge brackets mounted on the door, lock cylinder, lock rods, logo badge) so nothing floats behind when the door opens. '
+    'NEVER treat a fixed bolted/screwed top housing panel as a hinged lid just because its CAD name says "盖子", "上盖", "顶盖" or "cover": '
+    'in Chinese sheet-metal CAD, the fixed top panel of a cabinet is commonly named "盖子". A wall-mounted cabinet or front-door cabinet '
+    'whose front doors carry handles or a lock opens via its FRONT DOORS, not its top panel; only a true top-opening toolbox/chest '
+    'whose lid is unfastened and designed to lift open has a lid hinge. '
+    'When user_selected_parts is present, the user explicitly clicked those moving parts on the product: set articulated=true, '
+    'articulate ONLY the joints for those user-selected moving parts (each moving together with its attached hardware such as handles, '
+    'locks, badges, or drawers), and do NOT articulate other panels.\n'
     'scene_hint, when present, is what the user wants the scene pictures to show. If it asks for moving parts in a pose '
     '(drawers pulled out, a door or a lid open, a blade out), add one state showing exactly that and only that (\"the first '
     'two drawers\" are the two top drawers, pulled out about two thirds of their depth; everything else stays shut) and set '
@@ -84,24 +96,29 @@ ARTICULATOR = (
     'the handle levered back), at what angle (square to the blades, perpendicular to the surface, on the screw\'s axis; a '
     'caliper\'s jaws square on both faces of the workpiece, the beam perpendicular to them, not tilted) and what the work '
     'is (only a wire thin enough for the jaws). '
-    'Keep labels short (zh at most 6 characters, en at most 16).')
+    'Keep labels short (zh at most 6 characters, en at most 16). '
+    'summary: one brief factual sentence (under 180 characters) naming which parts move and how; no step-by-step commentary.')
 
 VERIFIER = (
     'You check poses of a 3D product model. The picture shows the same product in several states side by side, each '
     'labelled. For each state say whether it is physically right for this product: the moving parts still joined where '
     'they should be (a pliers half still on its rivet, a slider still on its beam, a lid still on its hinge), nothing '
     'floating or detached, no part passing through another, opened the way the real product opens and not past its real '
-    'range. A state that looks like the model as delivered is fine, and a state whose values are all 0 IS the model as '
-    'delivered: never fail it, even if the product was modelled half open. Be strict about detached or intersecting parts, not '
-    'about rendering style. If something is wrong, say in fix which part moved wrongly and how (e.g. "parts 1 and 2 turn '
-    'about the wrong point: the rivet is part 5", "the slider should move toward +x, away from the fixed jaw"). Write '
+    'range. FIRST check functional correctness: did the RIGHT parts move for this product? If a front-door or wall-mounted '
+    'cabinet lifted its fixed top housing panel like a lid while its front doors (with handles or lock) stayed shut, OR if '
+    'handles, locks, badges, inner door stiffeners/astragal bars, or door-mounted brackets stayed floating behind in the opening when a door opened, FAIL that state with fault "detached" (or "wrong_part" if the wrong panel moved). '
+    'A state that looks like the model as delivered is fine, and a state whose values are all 0 IS the model as '
+    'delivered: never fail it, even if the product was modelled half open. Be strict about wrong moving parts, detached or '
+    'intersecting parts, not about rendering style. If something is wrong, say in fix which part moved wrongly and how '
+    '(e.g. "parts 1 and 2 turn about the wrong point: the rivet is part 5", "the slider should move toward +x, away from the '
+    'fixed jaw", "part 12 is the fixed top panel; open the front doors instead"). Write '
     'issues in Simplified Chinese. When a state is drawn twice, the upper picture is from the front right and the lower one '
     'from the front left: judge a door, lid or flap in the picture that shows it broad, never in the one that shows it '
     'edge-on. `measured` is what was measured on the geometry in that state, not an opinion: crossing "none" or "at the '
     'hinge only" (a door\'s edge meeting the cabinet along its hinge line) means no moving part passes through any other '
     'part, and moved_away_mm above 0 means the moving parts went away from the body (outward). Do not report a part '
     'passing through another, or opening inward, when the measurement rules it out. Give each state its fault: none, '
-    'passes_through, wrong_direction, detached, past_range or other.')
+    'wrong_part, passes_through, wrong_direction, detached, past_range or other.')
 MEASURABLE = ('passes_through', 'wrong_direction')        # faults the geometry answers for itself
 
 
@@ -123,19 +140,20 @@ def _schema():
                             'role': {'type': 'string', 'enum': ['rest', 'open', 'working']}, 'matches_scene_hint': {'type': 'boolean'},
                             'values': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['joint', 'value'],
                                                                   'properties': {'joint': {'type': 'string'}, 'value': number}}}}}
-    return {'type': 'object', 'additionalProperties': False, 'required': ['articulated', 'product_kind', 'reasoning', 'joints', 'states', 'usage'],
-            'properties': {'articulated': {'type': 'boolean'}, 'product_kind': {'type': 'string'}, 'reasoning': {'type': 'string'},
+    return {'type': 'object', 'additionalProperties': False, 'required': ['articulated', 'product_kind', 'joints', 'states', 'usage', 'summary'],
+            'properties': {'articulated': {'type': 'boolean'}, 'product_kind': {'type': 'string'},
                            'joints': {'type': 'array', 'items': joint}, 'states': {'type': 'array', 'items': state},
                            'usage': {'type': 'object', 'additionalProperties': False, 'required': ['en', 'zh'],
                                      'properties': {'en': {'type': 'array', 'items': {'type': 'string'}},
-                                                    'zh': {'type': 'array', 'items': {'type': 'string'}}}}}}
+                                                    'zh': {'type': 'array', 'items': {'type': 'string'}}}},
+                           'summary': {'type': 'string', 'maxLength': 240}}}
 
 
 def _verify_schema():
     return {'type': 'object', 'additionalProperties': False, 'required': ['states', 'ok', 'fix'],
             'properties': {'states': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False, 'required': ['id', 'ok', 'issue', 'fault'],
                                                                  'properties': {'id': {'type': 'string'}, 'ok': {'type': 'boolean'}, 'issue': {'type': 'string'},
-                                                                                'fault': {'type': 'string', 'enum': ['none', 'passes_through', 'wrong_direction',
+                                                                                'fault': {'type': 'string', 'enum': ['none', 'wrong_part', 'passes_through', 'wrong_direction',
                                                                                                                      'detached', 'past_range', 'other']}}}},
                            'ok': {'type': 'boolean'}, 'fix': {'type': 'string'}}}
 
@@ -154,8 +172,163 @@ def _font(size):
         return ImageFont.load_default()
 
 
+FASTENER_WORDS = re.compile(r'螺丝|螺钉|螺母|卡扣|固定片|固定件|垫片|screw|bolt|nut|clip|washer', re.I)
+DOOR_WORDS = re.compile(r'(?:^|[^a-z])doors?(?:$|[^a-z])|左门|右门|柜门|门板|前门|侧门', re.I)
+DOOR_NON_PANEL_WORDS = re.compile(r'门挡|门档|门框|门插销|门锁|门铝条|door\s*(?:stop|frame|lock|handle|hinge|pin)', re.I)
+
+
+def _is_fastener(part, longest):
+    size = part.get('size_mm') or [0, 0, 0]
+    return bool(FASTENER_WORDS.search(str(part.get('object') or ''))) and max(size) < longest * .08
+
+
+def _structural_analysis(probe):
+    """Detect mechanically fastened top panels and front cabinet doors (+ attached hardware) from geometry and part names."""
+    parts = probe.get('parts') or []
+    bbox = probe.get('bbox_mm')
+    if not parts or not bbox or len(bbox) != 2:
+        return {}
+    lo, hi = bbox[0], bbox[1]
+    span = [max(float(b - a), 1e-6) for a, b in zip(lo, hi)]
+    longest = max(span)
+    fasteners = [p for p in parts if _is_fastener(p, longest)]
+    top_slabs = []
+    front_doors = []
+    for part in parts:
+        size = [float(v) for v in (part.get('size_mm') or [0, 0, 0])]
+        centre = [float(v) for v in (part.get('centroid_mm') or [0, 0, 0])]
+        name = str(part.get('object') or '')
+        if (size[0] >= span[0] * .6 and size[1] >= span[1] * .55
+                and size[2] <= max(size[0] * .25, size[1] * .35)
+                and centre[2] >= hi[2] - span[2] * .16):
+            near = [f for f in fasteners if abs(float(f['centroid_mm'][2]) - centre[2]) <= max(size[2], longest * .05)]
+            top_slabs.append({'id': part['id'], 'object': name, 'fastener_count': len(near)})
+        is_vertical_front = (size[2] >= span[2] * .45 and size[0] >= span[0] * .2
+                             and size[1] <= min(size[0], size[2]) * .35
+                             and (centre[1] <= lo[1] + span[1] * .22 or centre[1] >= hi[1] - span[1] * .22))
+        named_door = bool(DOOR_WORDS.search(name)) and not DOOR_NON_PANEL_WORDS.search(name)
+        if is_vertical_front and named_door:
+            mid_x = (lo[0] + hi[0]) / 2.0
+            hinge_side = '-x' if centre[0] < mid_x else '+x'
+            front_doors.append({'id': part['id'], 'object': name, 'hinge_axis': 'z', 'hinge_side': hinge_side,
+                                'attached_parts': [], '_centre': centre, '_size': size})
+    if front_doors:
+        # Assign each front-mounted hardware part (handles, locks, badges, lock rods) to its single nearest door.
+        door_ids = {d['id'] for d in front_doors}
+        pad_xz = longest * .05
+        pad_y = longest * .08
+        for other in parts:
+            if other['id'] in door_ids or _is_fastener(other, longest):
+                continue
+            osize = [float(v) for v in (other.get('size_mm') or [0, 0, 0])]
+            oc = [float(v) for v in (other.get('centroid_mm') or [0, 0, 0])]
+            oname = str(other.get('object') or '')
+            if re.search(r'固定插销|活动插销', oname):
+                continue
+            best = None
+            for d in front_doors:
+                dc, ds = d['_centre'], d['_size']
+                if max(osize) >= max(ds) * 1.05 or osize[0] > ds[0] * 1.05:
+                    continue
+                dlo_x, dhi_x = dc[0] - ds[0] / 2.0, dc[0] + ds[0] / 2.0
+                dlo_z, dhi_z = dc[2] - ds[2] / 2.0, dc[2] + ds[2] / 2.0
+                if dlo_x - pad_xz <= oc[0] <= dhi_x + pad_xz and dlo_z - pad_xz <= oc[2] <= dhi_z + pad_xz and abs(oc[1] - dc[1]) <= pad_y:
+                    dx = 0.0 if dlo_x <= oc[0] <= dhi_x else min(abs(oc[0] - dlo_x), abs(oc[0] - dhi_x))
+                    dist = (dx, abs(oc[0] - dc[0]))
+                    if best is None or dist < best[0]:
+                        best = (dist, d)
+            if best is not None:
+                best[1]['attached_parts'].append(other['id'])
+        for d in front_doors:
+            d.pop('_centre', None); d.pop('_size', None)
+    out = {}
+    fixed_tops = [t for t in top_slabs if t['fastener_count'] >= 2 or front_doors]
+    if fixed_tops:
+        out['fixed_top_panels'] = fixed_tops
+    if front_doors:
+        out['front_doors'] = front_doors
+        out['note'] = (
+            'Front cabinet doors detected. Open these front doors around vertical axis "z" using pivot kind "edge" '
+            'with the listed hinge_side ("-x" for left door, "+x" for right door), moving each door together with its '
+            'attached_parts (handles, lock, logo). Do NOT lift fixed_top_panels as a lid.'
+        )
+    return out
+
+
+def _resolve_selected_parts(selected_parts, probe):
+    """Map user-selected object names or part numbers to valid part dicts in probe['parts']."""
+    if not selected_parts:
+        return []
+    parts = probe.get('parts') or []
+    by_id = {part['id']: part for part in parts}
+    by_obj = {}
+    for part in parts:
+        by_obj.setdefault(str(part.get('object') or ''), []).append(part)
+    found = []; seen = set()
+    for item in selected_parts:
+        matches = []
+        if isinstance(item, int) and item in by_id:
+            matches = [by_id[item]]
+        elif isinstance(item, str):
+            text = item.strip()
+            if text.isdigit() and int(text) in by_id:
+                matches = [by_id[int(text)]]
+            elif text in by_obj:
+                matches = by_obj[text]
+        for part in matches:
+            if part['id'] not in seen:
+                seen.add(part['id']); found.append(part)
+    return found
+
+
+def _structural_fault(answer, probe, selected_ids=None):
+    """Deterministic guard: enforce user-selected parts when provided, and reject lifting a fixed bolted/cabinet top panel."""
+    if not answer.get('articulated') or not answer.get('joints'):
+        if selected_ids:
+            return 'The user explicitly selected moving parts %s. You must set articulated=true and create joints for them.' % sorted(selected_ids)
+        return ''
+    moved_ids = {pid for joint in answer['joints'] for pid in (joint.get('moving') or []) + (joint.get('counter') or [])}
+    if selected_ids:
+        missing = [pid for pid in sorted(selected_ids) if pid not in moved_ids]
+        if missing:
+            by_id = {p['id']: p.get('object', '') for p in (probe.get('parts') or [])}
+            desc = ', '.join('part %d (%s)' % (pid, by_id.get(pid, '')) for pid in missing)
+            return 'The user explicitly clicked %s as moving parts, but your answer left them stationary. Articulate these parts (with their attached handles/locks/badges) and remove unrelated housing joints.' % desc
+    info = _structural_analysis(probe)
+    fixed_tops = {row['id']: row for row in info.get('fixed_top_panels') or []}
+    front_doors = info.get('front_doors') or []
+    door_ids = {row['id'] for row in front_doors}
+    if not fixed_tops:
+        return ''
+    bad_tops = [fixed_tops[pid] for pid in moved_ids if pid in fixed_tops and (not selected_ids or pid not in selected_ids)]
+    if not bad_tops:
+        return ''
+    # Reject if the top panel is mechanically fastened (>=2 screws/clips) OR if front doors exist and were ignored.
+    bolted = [row for row in bad_tops if row['fastener_count'] >= 2]
+    doors_ignored = bool(front_doors) and not (moved_ids & door_ids)
+    if not bolted and not doors_ignored:
+        return ''
+    top_desc = ', '.join('part %d (%s)' % (row['id'], row['object']) for row in bad_tops)
+    if front_doors:
+        door_desc = '; '.join(
+            'part %d (%s): axis="z", pivot={"kind":"edge","side":"%s"}, moving=[%s]' % (
+                d['id'], d['object'], d['hinge_side'],
+                ', '.join(str(x) for x in [d['id']] + d['attached_parts'])
+            ) for d in front_doors
+        )
+        return (
+            '%s is a FIXED bolted top roof panel (not a hinged lid; Chinese CAD often names fixed cabinet tops "盖子"). '
+            'Remove the lid joint and instead articulate the front doors: %s.' % (top_desc, door_desc)
+        )
+    return '%s is fastened with screws/clips and is a fixed top housing panel, not a hinged lid.' % top_desc
+
+
 def labelled_sheet(folder, probe, out):
     """The two probe views side by side, each part's number in a white disc at its label point, and the top view's axes."""
+    parts = probe.get('parts') or []
+    bbox = probe.get('bbox_mm')
+    longest = max((max(b - a for a, b in zip(*bbox)) if bbox and len(bbox) == 2 else 0), 1e-6)
+    skip_labels = {str(p['id']) for p in parts if _is_fastener(p, longest)} if len(parts) > 20 else set()
     tiles = []
     for view in probe['views']:
         with Image.open(Path(folder) / view['image']) as opened:
@@ -163,6 +336,8 @@ def labelled_sheet(folder, probe, out):
         draw = ImageDraw.Draw(image); w, h = image.size; font = _font(max(14, w // 48)); r = max(11, w // 70)
         placed = []
         for part_id, (x, y) in sorted(view['labels'].items(), key=lambda kv: int(kv[0])):
+            if str(part_id) in skip_labels:
+                continue
             px, py = x * w, y * h
             for _ in range(12):            # nudge labels apart
                 clash = [q for q in placed if (q[0] - px) ** 2 + (q[1] - py) ** 2 < (2.2 * r) ** 2]
@@ -234,22 +409,30 @@ def asks_for_pose(hint):
 
 
 def _facts(project, product, probe):
-    return {'product': (product or {}).get('title') or project.get('name', ''),
-            'category': ((project.get('metadata') or {}).get('product_category') or ''),
-            'description': ' '.join(str((product or {}).get(key) or '') for key in ('headline', 'subline'))[:300],
-            'model_size_mm': [round(b - a, 1) for a, b in zip(*probe['bbox_mm'])],
-            'parts': [{'number': part['id'], 'object': part['object'], 'size_mm': part['size_mm'], 'centre_mm': part['centroid_mm'],
-                       'materials': part['materials'], 'loose_piece_of_one_mesh': bool(part.get('pieces'))} for part in probe['parts']],
-            'objects': [{'name': row['name'], 'parent': row['parent'], 'type': row['type']} for row in probe['objects']]}
+    facts = {'product': (product or {}).get('title') or project.get('name', ''),
+             'category': ((project.get('metadata') or {}).get('product_category') or ''),
+             'description': ' '.join(str((product or {}).get(key) or '') for key in ('headline', 'subline'))[:300],
+             'model_size_mm': [round(b - a, 1) for a, b in zip(*probe['bbox_mm'])],
+             'parts': [{'number': part['id'], 'object': part['object'], 'size_mm': part['size_mm'], 'centre_mm': part['centroid_mm'],
+                        'materials': part['materials'], 'loose_piece_of_one_mesh': bool(part.get('pieces'))} for part in probe['parts']],
+             'objects': [{'name': row['name'], 'parent': row['parent'], 'type': row['type']} for row in probe['objects']]}
+    hints = _structural_analysis(probe)
+    if hints:
+        facts['structural_hints'] = hints
+    return facts
 
 
 def _tidy(answer):
-    """Small shape slips a model makes: usage rules as a bare list (taken as English), a missing usage."""
+    """Small shape slips a model makes: usage rules as a bare list (taken as English), a missing usage, overlong summary."""
     usage = answer.get('usage')
     if isinstance(usage, list):
         answer['usage'] = {'en': [str(rule) for rule in usage], 'zh': []}
     elif not isinstance(usage, dict):
         answer['usage'] = {'en': [], 'zh': []}
+    if 'summary' not in answer and isinstance(answer.get('reasoning'), str):
+        answer['summary'] = answer.pop('reasoning')
+    if isinstance(answer.get('summary'), str):
+        answer['summary'] = answer['summary'].strip()[:240]
     return answer
 
 
@@ -288,7 +471,7 @@ def _clean_answer(answer, probe):
             elif not state['values'].get(name):
                 state['values'][name] = widest
     return {'articulated': bool(answer.get('articulated') and joints and len(states) >= 2), 'product_kind': str(answer.get('product_kind', ''))[:60],
-            'reasoning': str(answer.get('reasoning', ''))[:400], 'joints': joints, 'states': states[:4],
+            'reasoning': str(answer.get('summary') or answer.get('reasoning') or '')[:400], 'joints': joints, 'states': states[:4],
             'usage': {lang: [str(rule)[:200] for rule in (answer.get('usage') or {}).get(lang) or []][:4] for lang in ('en', 'zh')}}
 
 
@@ -315,46 +498,80 @@ def _clamped(states, joints):
     return out
 
 
-def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda text: None, force=False, hint=''):
+def analyse(project_id, product=None, size_mm=None, cancelled=None, say=lambda text: None, force=False, hint='', selected_parts=None):
     """The project's moving parts, worked out once per model file (``force`` asks again). ``hint`` is the user's scene hint:
     when it asks for a pose ("拉开前两个抽屉"), the agent adds a state for exactly that, rendered from the model, so the scene
-    pictures show the real drawers pulled out instead of drawers an image model painted. Returns the stored record."""
+    pictures show the real drawers pulled out instead of drawers an image model painted. ``selected_parts`` lets the user
+    click specific moving parts on the product to speed up and guide identification. Returns the stored record."""
     project = get('project', project_id)
     key = key_of(project, size_mm, hint)
     known = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
-    if known and known.get('key') == key and known.get('status') in ('ready', 'none') and not force:
+    clean_selected = [str(item).strip() for item in (selected_parts or []) if str(item).strip()][:24]
+    if known and known.get('key') == key and known.get('status') in ('ready', 'none') and not force and not clean_selected:
         return known
     import ai_client
     import brandkit_review
     _, vision = brandkit_review._configs()
     folder = DATA / project_id / 'articulation' / key; folder.mkdir(parents=True, exist_ok=True)
-    say('正在拆分模型部件')
-    probe = components.run_blender(SCRIPT, {'action': 'probe', 'model_path': str(project['model_path']), 'size_mm': size_mm, 'size': 1024},
-                                   folder / 'probe', cancelled)
-    sheet = labelled_sheet(folder / 'probe', probe, folder / 'parts.png')
+    probe_result = folder / 'probe' / 'result.json'
+    sheet = folder / 'parts.png'
+    probe = None
+    # Reuse an already-probed part breakdown for the same model key to skip ~10-15s of Blender startup & rendering.
+    if probe_result.is_file() and sheet.is_file():
+        try:
+            cached = json.loads(probe_result.read_text(encoding='utf-8'))
+            if cached.get('success') and cached.get('parts') and cached.get('bbox_mm'):
+                probe = cached
+        except (OSError, ValueError):
+            probe = None
+    if probe is None:
+        say('正在拆分模型部件')
+        probe = components.run_blender(SCRIPT, {'action': 'probe', 'model_path': str(project['model_path']), 'size_mm': size_mm, 'size': 1024},
+                                       folder / 'probe', cancelled)
+        sheet = labelled_sheet(folder / 'probe', probe, folder / 'parts.png')
+    resolved_selected = _resolve_selected_parts(clean_selected, probe)
+    selected_ids = {p['id'] for p in resolved_selected}
     record = {'key': key, 'version': VERSION, 'at': time.time(), 'parts_sheet': str(sheet), 'parts': probe['parts'], 'unit_mm': probe['unit_mm'],
+              'selected_parts': clean_selected,
               'status': 'none', 'joints': [], 'states': [], 'usage': {'en': [], 'zh': []}, 'notes': [], 'previews': None, 'usage_tokens': 0}
     if not vision:
         record['notes'].append('没有配置视觉模型，无法识别活动部件。')
         return _store(project_id, record)
     facts = _facts(project, product, probe); feedback = None
+    if resolved_selected:
+        doors_by_id = {d['id']: d for d in ((facts.get('structural_hints') or {}).get('front_doors') or [])}
+        facts['user_selected_parts'] = [
+            {'number': p['id'], 'object': p['object'], 'size_mm': p['size_mm'], 'centre_mm': p['centroid_mm'],
+             **({'hinge_axis': doors_by_id[p['id']]['hinge_axis'], 'hinge_side': doors_by_id[p['id']]['hinge_side'],
+                 'attached_parts': doors_by_id[p['id']]['attached_parts']} if p['id'] in doors_by_id else {})}
+            for p in resolved_selected
+        ]
     if asks_for_pose(hint):
         facts['scene_hint'] = ' '.join(str(hint).split())[:300]
     for attempt in (1, 2):
         say('正在识别活动部件' if attempt == 1 else '按检查意见重新识别活动部件')
         ask = dict(facts, **({'previous_attempt': {k: v for k, v in feedback.items() if k != 'states_picture'},
-                              'note': 'The second picture shows how your previous answer posed the product; fix what the check found.'}
+                              'note': ('The second picture shows how your previous answer posed the product; fix what the check found.'
+                                       if feedback.get('states_picture')
+                                       else 'Your previous answer failed the structural check; fix the joints as instructed in previous_attempt.fix.')}
                              if feedback else {}))
         with ai_client.tally() as used:          # the tokens both questions of each attempt cost, in usage_tokens
             answer = _clean_answer(brandkit_review._ask(vision, ARTICULATOR, ask, _schema(), image_path=str(sheet),
-                                                        reference_path=str(feedback['states_picture']) if feedback else None,
+                                                        reference_path=str(feedback['states_picture']) if feedback and feedback.get('states_picture') else None,
                                                         clean=_tidy), probe)
         record['usage_tokens'] += used['tokens']
         record.update(product_kind=answer['product_kind'], reasoning=answer['reasoning'], usage=answer['usage'])
-        if not answer['articulated']:
+        if not answer['articulated'] and not selected_ids:
             record.update(status='none', joints=[], states=[])
             record['notes'].append('没有需要展示的活动部件。')
             return _store(project_id, record)
+        structural_issue = _structural_fault(answer, probe, selected_ids=selected_ids)
+        if structural_issue:
+            feedback = {'answer': {'joints': answer['joints'], 'states': answer['states']},
+                        'problems': [{'id': 'open', 'ok': False, 'issue': structural_issue, 'fault': 'wrong_part'}],
+                        'fix': structural_issue}
+            record['notes'].append('结构检查未通过：%s' % structural_issue[:200])
+            continue
         say('正在求解关节并渲染各个姿态')
         where = folder / ('solve%d' % attempt)
         solved = components.run_blender(SCRIPT, {'action': 'solve', 'model_path': str(project['model_path']), 'size_mm': size_mm, 'size': 640,
@@ -429,9 +646,27 @@ def usage(project, language='en'):
 def public(project):
     """What the UI shows: status, joints in words, states with their preview."""
     record = project.get('articulation') if isinstance(project.get('articulation'), dict) else None
+    parts_src = (record.get('parts') if record and record.get('parts') else None) or []
+    choices = []
+    seen = set()
+    if parts_src:
+        longest = max((max(p.get('size_mm') or [0]) for p in parts_src), default=1.0) or 1.0
+        for p in sorted(parts_src, key=lambda r: max(r.get('size_mm') or [0]), reverse=True):
+            name = str(p.get('object') or '').strip()
+            if not name or name in seen or (len(parts_src) > 12 and _is_fastener(p, longest)):
+                continue
+            seen.add(name); choices.append({'id': p['id'], 'name': name})
+    else:
+        objs = ((project.get('analysis') or {}).get('objects') or [])
+        for row in objs:
+            name = str(row.get('name') or '').strip() if isinstance(row, dict) else ''
+            if not name or name in seen or (len(objs) > 12 and FASTENER_WORDS.search(name)):
+                continue
+            seen.add(name); choices.append({'id': None, 'name': name})
     if not record:
-        return {'status': 'unknown'}
+        return {'status': 'unknown', 'selected_parts': [], 'part_choices': choices[:40]}
     return {'status': record.get('status'), 'product_kind': record.get('product_kind', ''), 'reasoning': record.get('reasoning', ''),
             'joints': [{'name': j['name'], 'type': j['type'], 'max': j['max'], 'moving': len(j.get('moving') or [])} for j in record.get('joints') or []],
             'states': record.get('states') or [], 'usage': record.get('usage') or {}, 'notes': record.get('notes') or [],
+            'selected_parts': list(record.get('selected_parts') or []), 'part_choices': choices[:40],
             'running': project.get('id') in RUNNING}

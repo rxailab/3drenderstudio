@@ -336,11 +336,30 @@ class DecisionTests(Fixture):
         self.front = {'row': 'turn90', 'confident': False}
         self.assertEqual(self.decide()['rotation'], [180.0, 0.0, 0.0])       # an unsure answer turns nothing
 
-    def test_a_model_that_is_already_upright_is_not_touched_and_its_front_is_not_asked_about(self):
+    def test_an_upright_model_still_gets_a_front_check(self):
         self.upright['row'] = 'file'
         record = self.decide()
         self.assertEqual((record['changed'], record['rotation'], record['source']), (False, [0.0, 0.0, 0.0], 'vision'))
-        self.assertEqual(len(self.pictured), 1)
+        self.assertEqual(len(self.pictured), 2)
+        self.front = {'row': 'turn90'}
+        record = self.decide()
+        self.assertTrue(record['changed']); self.assertEqual(record['rotation'], [0.0, 0.0, 90.0])
+
+    def test_current_yaw_is_preserved_without_a_confident_better_view(self):
+        self.upright['row'] = 'file'
+        stored = store.get('project', 'fixture')
+        stored['plan']['rotation'] = [0, 0, 90]
+        self.front = {'row': 'turn180', 'confident': False}
+        record = orientation.decide(stored, stored['plan'], self.data / 'fixture' / 'orientation' / 'yaw')
+        self.assertFalse(record['changed'])
+        self.assertEqual(record['rotation'], [0, 0, 90])
+
+    def test_the_first_plan_uses_a_front_only_turn(self):
+        self.upright['row'] = 'file'; self.front = {'row': 'turn90'}
+        stored = store.get('project', 'fixture')
+        record = orientation.first_pose(stored, stored['analysis'], self.data / 'fixture' / 'orientation' / 'first')
+        self.assertTrue(record['changed'])
+        self.assertEqual(record['rotation'], [0.0, 0.0, 90.0])
 
     def test_an_upload_never_fails_over_its_orientation(self):
         stored = store.get('project', 'fixture')
@@ -492,6 +511,13 @@ class TaskTests(Fixture):
         view = engine.project_view('fixture')
         self.assertEqual((view['orient_task']['status'], view['orientation']['source']), ('completed', 'vision')); self.assertNotIn('sheet_url', view['orientation'])
 
+    def test_front_only_change_is_applied_and_previewed(self):
+        self.upright['row'] = 'file'; self.front = {'row': 'turn90'}
+        task = self.run_task()
+        self.assertTrue(task['changed'])
+        self.assertEqual(store.get('project', 'fixture')['plan']['rotation'], [0.0, 0.0, 90.0])
+        self.assertEqual(len(store.all_records('job')), 1)
+
     def test_nothing_changes_when_nothing_could_be_told_or_the_right_side_is_already_up(self):
         record = store.get('project', 'fixture'); record['plan']['rotation'] = [180, 0, 90]; store.put('project', record)
         task = self.run_task()                                   # the user already turned it: flipped, facing another way
@@ -590,6 +616,29 @@ class FirstImageTests(Fixture):
         with patch.object(orientation, 'picture', side_effect=ValueError('朝向检查失败，模型保持当前朝向。')):
             saved = self.analyse()
         self.assertEqual((saved['status'], saved['plan']['rotation'], saved['orientation']['status']), ('ready', [0, 0, 0], 'failed'))
+
+
+class TiltedGeometryTests(unittest.TestCase):
+    def test_blender_generates_both_sides_of_a_tilted_surface(self):
+        blender = engine.blender_path()
+        if not blender: self.skipTest('Blender unavailable')
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            model = folder / 'tilted.obj'
+            model.write_text('v 0 0 0\nv 1 0 0\nv 0 0.8660254 0.5\nf 1 2 3\n', encoding='utf-8')
+            request = {'model_path': str(model), 'output_dir': str(folder), 'render': False, 'geometry_candidates': True,
+                       'candidates': [{'id': ident, 'rotation': rotation} for ident, _, rotation in orientation.POSES]}
+            request_path = folder / 'request.json'; request_path.write_text(json.dumps(request), encoding='utf-8')
+            ran = subprocess.run([blender, '-b', '--factory-startup', '--disable-autoexec', '-t', '4', '--python-exit-code', '1',
+                                  '--python', str(ROOT / 'blender' / 'orient.py'), '--', str(request_path)],
+                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+            self.assertEqual(ran.returncode, 0, ran.stdout[-1500:] + ran.stderr[-1500:])
+            result = json.loads((folder / 'result.json').read_text(encoding='utf-8'))
+            extra = [row for row in result['candidates'] if row['id'].startswith('geo')]
+            self.assertEqual(len(extra), 2)
+            a, b = [orientation.matrix(row['rotation'])[2] for row in extra]
+            self.assertAlmostEqual(sum(x*y for x, y in zip(a, b)), -1, places=4)
+            self.assertTrue(all(not orientation.same_up(extra[0]['rotation'], pose[2]) for pose in orientation.POSES))
 
 
 @unittest.skipUnless(shutil.which('blender'), 'Blender unavailable: candidate poses not rendered')

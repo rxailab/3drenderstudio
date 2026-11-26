@@ -228,7 +228,7 @@ test('the product step shows the essentials first and the rest behind 更多信�
   for(const key of ['headline','subline'])assert.equal(h.field('product',key).closest('details').dataset.section,'more',key);
   assert.equal(panel.querySelector('details[data-section="more"]').open,false);
   assert.match(panel.querySelector('[data-sum="more"]').textContent,/已填 1 项/);
-  assert.equal(inClosed(h.node('listingSource')),true,'a product with a name does not open the paste box');
+  assert.equal(inClosed(h.node('listingSource')),false,'the paste box and draft controls are open by default');
   assert.match(h.field('product','size_mm').placeholder,/按模型估计约 215/);assert.match(panel.textContent,/填写后才会画出产品尺寸线/);
   assert.match(panel.querySelector('.listing-parts summary').textContent,/对应部件（1）/);
   assert.equal(h.node('listingComponents'),null,'no 包装清单 page: no components');assert.equal(h.node('listingArticulation'),null,'no 多姿态展示 page: no moving parts');

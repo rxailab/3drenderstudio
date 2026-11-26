@@ -292,6 +292,15 @@ def _response(data, config, tool_name=None):
         if reason in ['max_tokens','model_context_window_exceeded']:
             raise ValueError('AI 输出被截断，当前方案未修改，请缩短指令后重试。')
         if reason not in ['end_turn','tool_use','stop_sequence']:
+            details = data.get('stop_details') if isinstance(data.get('stop_details'), dict) else {}
+            category = str(details.get('category') or '').strip()
+            try:
+                import app_log
+                app_log.get('ai_transport').warning('anthropic incomplete stop_reason=%r category=%r model=%r', reason, category, config.get('model'))
+            except Exception:
+                pass
+            if reason == 'refusal' and category:
+                raise ValueError('AI 未完成此次请求（服务拒绝：%s），当前方案未修改。' % category)
             raise ValueError('AI 未完成此次请求，当前方案未修改。')
         blocks = data.get('content')
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):

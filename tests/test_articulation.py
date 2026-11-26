@@ -311,3 +311,117 @@ class PromptTests(unittest.TestCase):
         text = scene_imagegen.prompt('rolling tool cabinet', 900, 'A garage, drawers pulled out.', people=False)
         self.assertIn('never open, pull out, close, fold or move any of them', text)
         self.assertIn('open or closed exactly as in the references', scene_imagegen.FIDELITY_PROMPT)
+
+
+class StructuralGuardTests(unittest.TestCase):
+    def _cabinet_probe(self):
+        return {
+            'bbox_mm': [[0.0, 0.0, 0.0], [900.0, 355.0, 450.0]],
+            'parts': [
+                {'id': 3, 'object': 'G-01D右门', 'size_mm': [410.0, 27.0, 416.0], 'centroid_mm': [680.0, 15.0, 225.0], 'materials': ['red']},
+                {'id': 9, 'object': 'G-01D左门', 'size_mm': [410.0, 26.0, 416.0], 'centroid_mm': [220.0, 15.0, 225.0], 'materials': ['red']},
+                {'id': 12, 'object': 'G-01D盖子', 'size_mm': [900.0, 355.0, 40.0], 'centroid_mm': [450.0, 177.0, 430.0], 'materials': ['red']},
+                {'id': 20, 'object': 'G-01D门铝条', 'size_mm': [34.0, 31.0, 414.0], 'centroid_mm': [415.0, 12.0, 225.0], 'materials': ['alu']},
+                {'id': 21, 'object': 'G-01D门铝条_2', 'size_mm': [34.0, 31.0, 414.0], 'centroid_mm': [485.0, 12.0, 225.0], 'materials': ['alu']},
+                {'id': 26, 'object': 'M4X6自攻螺丝_1', 'size_mm': [11.0, 11.0, 13.0], 'centroid_mm': [40.0, 320.0, 430.0], 'materials': ['steel']},
+                {'id': 27, 'object': 'M4X6自攻螺丝_2', 'size_mm': [11.0, 11.0, 13.0], 'centroid_mm': [860.0, 20.0, 430.0], 'materials': ['steel']},
+            ],
+        }
+
+    def test_bolted_cabinet_top_is_rejected_and_front_doors_are_identified(self):
+        probe = self._cabinet_probe()
+        info = articulation._structural_analysis(probe)
+        self.assertEqual([t['id'] for t in info['fixed_top_panels']], [12])
+        by_id = {d['id']: d for d in info['front_doors']}
+        self.assertEqual(by_id[9]['hinge_side'], '-x')
+        self.assertEqual(by_id[3]['hinge_side'], '+x')
+        self.assertEqual(by_id[9]['attached_parts'], [20])
+        self.assertEqual(by_id[3]['attached_parts'], [21])
+        bad = {'articulated': True, 'joints': [{'name': 'lid', 'type': 'hinge', 'moving': [12]}], 'states': []}
+        fault = articulation._structural_fault(bad, probe)
+        self.assertIn('part 12', fault)
+        self.assertIn('front doors', fault)
+        good = {'articulated': True, 'joints': [
+            {'name': 'left_door', 'type': 'hinge', 'moving': [9, 20]},
+            {'name': 'right_door', 'type': 'hinge', 'moving': [3, 21]},
+        ], 'states': []}
+        self.assertEqual(articulation._structural_fault(good, probe), '')
+
+    def test_true_unfastened_toolbox_lid_is_not_blocked(self):
+        probe = {
+            'bbox_mm': [[0.0, 0.0, 0.0], [500.0, 250.0, 220.0]],
+            'parts': [
+                {'id': 1, 'object': 'toolbox_body', 'size_mm': [500.0, 250.0, 180.0], 'centroid_mm': [250.0, 125.0, 90.0], 'materials': ['red']},
+                {'id': 2, 'object': 'toolbox_lid', 'size_mm': [500.0, 250.0, 40.0], 'centroid_mm': [250.0, 125.0, 200.0], 'materials': ['red']},
+            ],
+        }
+        lid_answer = {'articulated': True, 'joints': [{'name': 'lid', 'type': 'hinge', 'moving': [2]}], 'states': []}
+        self.assertEqual(articulation._structural_fault(lid_answer, probe), '')
+
+
+@unittest.skipUnless(BLENDER and Path(BLENDER).is_file(), 'Blender is not installed')
+class AttachmentPropagationTests(unittest.TestCase):
+    """Hidden back-side stiffeners, brackets and multi-hop plaques welded to a moving door follow it automatically,
+    while fixed cabinet rails bolted to the carcass stay behind."""
+
+    MAKE = '''
+import bpy, sys
+bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete()
+def box(name, center, size):
+    bpy.ops.mesh.primitive_cube_add(location=center)
+    ob = bpy.context.object; ob.name = name
+    ob.scale = (size[0] / 2, size[1] / 2, size[2] / 2)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    return ob
+# Cabinet carcass: 0.90 x 0.35 x 0.45 m
+box('Floor', (0, 0, -0.22), (0.90, 0.35, 0.02))
+box('Roof', (0, 0, 0.22), (0.90, 0.35, 0.02))
+box('Back', (0, 0.165, 0), (0.90, 0.02, 0.44))
+box('SideLeft', (-0.44, 0, 0), (0.02, 0.35, 0.44))
+box('SideRight', (0.44, 0, 0), (0.02, 0.35, 0.44))
+# Fixed bottom door-stop rail bolted to the floor (NOT touching doors)
+box('BottomSill', (0, -0.145, -0.202), (0.86, 0.015, 0.016))
+# Two front doors
+box('LeftDoor', (-0.215, -0.175, 0), (0.42, 0.02, 0.41))
+box('RightDoor', (0.215, -0.175, 0), (0.42, 0.02, 0.41))
+# Back-side astragal/stiffener bar welded flush onto inner edge of LeftDoor (y=-0.165 touches LeftDoor back face)
+box('LeftDoorStiffener', (-0.010, -0.162, 0), (0.032, 0.006, 0.40))
+# Door-mounted hinge brackets welded to backs of LeftDoor & RightDoor
+box('LeftBracket', (-0.40, -0.162, 0.17), (0.02, 0.006, 0.05))
+box('RightBracket', (0.40, -0.162, 0.17), (0.02, 0.006, 0.05))
+# Multi-hop badge: Backing welded to LeftDoor front, Text welded to Backing
+box('LogoBacking', (-0.30, -0.188, 0.12), (0.14, 0.006, 0.04))
+box('LogoText', (-0.30, -0.193, 0.12), (0.10, 0.004, 0.02))
+bpy.ops.export_scene.gltf(filepath=sys.argv[-1], export_format='GLB')
+'''
+
+    def test_backside_stiffeners_brackets_and_multihop_hardware_follow_bare_doors(self):
+        folder = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, folder, True)
+        model = folder / 'cabinet.glb'
+        script = folder / 'make.py'; script.write_text(self.MAKE)
+        subprocess.run([BLENDER, '-b', '--factory-startup', '--python', str(script), '--', str(model)], capture_output=True, timeout=300, check=True)
+        def run_art(req, sub):
+            out = folder / sub; out.mkdir(exist_ok=True)
+            (out / 'req.json').write_text(json.dumps({**req, 'model_path': str(model), 'output_dir': str(out)}))
+            subprocess.run([BLENDER, '-b', '--factory-startup', '--python', str(ROOT / 'blender' / 'articulate.py'), '--', str(out / 'req.json')],
+                           capture_output=True, timeout=300, check=True)
+            return json.loads((out / 'result.json').read_text())
+        probe = run_art({'action': 'probe', 'size': 128, 'size_mm': 900}, 'probe')
+        ids = {p['object']: p['id'] for p in probe['parts']}
+        # Deliberately pass ONLY the bare door panels (simulating vision model missing occluded back-side hardware).
+        joints = [
+            {'name': 'left', 'type': 'hinge', 'moving': [ids['LeftDoor']], 'counter': [], 'stretch': [], 'axis': 'z',
+             'pivot': {'kind': 'edge', 'part': None, 'side': '-x'}, 'away_from': ids['Back'], 'max': 95},
+            {'name': 'right', 'type': 'hinge', 'moving': [ids['RightDoor']], 'counter': [], 'stretch': [], 'axis': 'z',
+             'pivot': {'kind': 'edge', 'part': None, 'side': '+x'}, 'away_from': ids['Back'], 'max': 95},
+        ]
+        states = [{'id': 'closed', 'values': {'left': 0, 'right': 0}}, {'id': 'open', 'values': {'left': 95, 'right': 95}}]
+        solved = run_art({'action': 'solve', 'size': 128, 'size_mm': 900, 'joints': joints, 'states': states}, 'solve')
+        self.assertTrue(solved['success'], solved.get('error'))
+        left = {m['object'] for m in next(j for j in solved['joints'] if j['name'] == 'left')['moving']}
+        right = {m['object'] for m in next(j for j in solved['joints'] if j['name'] == 'right')['moving']}
+        self.assertEqual(left, {'LeftDoor', 'LeftDoorStiffener', 'LeftBracket', 'LogoBacking', 'LogoText'})
+        self.assertEqual(right, {'RightDoor', 'RightBracket'})
+        for fixed_name in ('Floor', 'Roof', 'Back', 'SideLeft', 'SideRight', 'BottomSill'):
+            self.assertNotIn(fixed_name, left)
+            self.assertNotIn(fixed_name, right)

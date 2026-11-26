@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
 BRIEFS = ROOT / 'brandkit' / 'briefs.json'
@@ -57,7 +57,7 @@ ART_DIRECTOR = (
     'List a veto only for a visible, serious fault: product_distorted, product_cropped (a working end, handle, wheel or similar cut off '
     'without being a declared close-up), text_unreadable, text_broken (overflow, clipped, wrong line break inside a word or phrase), '
     'claim_not_in_facts (text says something the facts do not support), scene_product_mismatch (the product in a scene is not the one in '
-    'REFERENCE_IMAGE), wrong_pointer (a callout line points at the wrong part). '
+    'REFERENCE_IMAGE, OR the scene\'s wall/bench/room perspective clearly contradicts the product\'s camera angle so the product looks pasted diagonally off the wall or surface), wrong_pointer (a callout line points at the wrong part). '
     'Then name at most three of the most important problems, each with the region, the visible evidence, and one fix chosen from the '
     'allowed actions (editable lists the exact targets): shorten_text (target a text field, give the new shorter text, meaning kept, no '
     'new facts or numbers), remove_text (target an optional text field), default_text (the eyebrow or headline is wrong, mistyped or '
@@ -101,6 +101,19 @@ SET_REVIEW = (
     'You review a whole e-commerce listing set shown as a contact sheet (pages numbered in reading order). Say whether the set reads as one '
     'brand system, which pages repeat the same picture or message, and which page adds least. notes: at most two plain sentences, no '
     'markdown, no lists.')
+TRIAGE_DIRECTOR = (
+    'You are the art director doing a fast 2x2 contact-sheet triage of 2 to 4 finished e-commerce listing pages before publication. '
+    'CURRENT_RENDER shows the pages in numbered tiles ([1], [2], ... with template IDs in each header bar); REFERENCE_IMAGE (when given) '
+    'is the product\'s own render. For EACH numbered slot in `pages`, evaluate it strictly against its template goal/avoid, `facts`, and '
+    '`measured_layout` (which is ground truth measured in the browser: never report a product cropped if measured_layout says it shows '
+    'the whole product uncropped). Score all six criteria within `criteria_maximum`. '
+    'BE CONSERVATIVE: set `needs_deep_review` to false ONLY when that page is clearly publication-ready (score >= 80, zero vetoes, '
+    'clean typography, no crowding, no mispointed callouts, no unsupported claims, faithful product). Whenever ANY fault is suspected '
+    '(crowded layout, small/clipped text, questionable pointer, possible unsupported claim, scene mismatch, or anything too small to read '
+    'clearly on the contact sheet), set `needs_deep_review` to true so it receives a dedicated full-resolution single-page review and '
+    'automatic revision. Write `summary` briefly in Simplified Chinese; quote page text with 「」.')
+TRIAGE_BATCH_SIZE = 4
+TRIAGE_TILE_PX = 768
 
 
 def briefs():
@@ -169,7 +182,7 @@ def _decoded(value, schema):
 # that fitted the schema are kept. The pose agent, translations and scene captions are not: they keep what they accept
 # themselves, and asking them again is how a refused answer gets another chance.
 CACHE_KIND = 'ai_cache'
-CACHED_CALLERS = ('brandkit_review.write_copy', 'brandkit_review.review', 'brandkit_review.verify', 'brandkit_review.review_set')
+CACHED_CALLERS = ('brandkit_review.write_copy', 'brandkit_review.review', 'brandkit_review.verify', 'brandkit_review.triage', 'brandkit_review.review_set')
 CACHE_KEEP = 4000                           # answers kept (a 7-page build asks about 12 questions)
 CACHE_DAYS = 90
 FRESH = contextvars.ContextVar('brandkit_fresh', default=False)
@@ -600,6 +613,117 @@ def revise(kind, job, verdict, facts, other_scenes=()):
     if not applied and next_layout:
         return 'next_layout', ['换一种排法']
     return (new, applied) if applied else (None, [])
+
+
+def _triage_font(size):
+    for candidate in (ROOT / 'brandkit' / 'fonts' / 'Inter-Variable.ttf', 'DejaVuSans-Bold.ttf'):
+        try:
+            return ImageFont.truetype(str(candidate), size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def triage_sheet(items, target, tile=TRIAGE_TILE_PX):
+    """Compose 2 to 4 listing pages into a crisp numbered contact sheet (max 2x2) with dark header bars so each slot is
+    unmistakable and stays ~768 px wide for vision triage."""
+    rendered = []
+    for slot, item in enumerate(items, 1):
+        with Image.open(item['png']) as opened:
+            image = opened.convert('RGB')
+            image.thumbnail((tile, round(tile * 1.25)), Image.Resampling.LANCZOS)
+            rendered.append((slot, item['kind'], image))
+    cols = 2 if len(rendered) >= 2 else 1
+    rows = (len(rendered) + cols - 1) // cols
+    cell_w = max(img.width for _, _, img in rendered)
+    cell_h = max(img.height for _, _, img in rendered)
+    bar_h = 34
+    gutter = 14
+    sheet_w = cols * (cell_w + gutter) + gutter
+    sheet_h = rows * (cell_h + bar_h + gutter) + gutter
+    sheet = Image.new('RGB', (sheet_w, sheet_h), (120, 124, 130))
+    draw = ImageDraw.Draw(sheet)
+    font = _triage_font(18)
+    for idx, (slot, kind, image) in enumerate(rendered):
+        col, row = idx % cols, idx // cols
+        x0 = gutter + col * (cell_w + gutter)
+        y0 = gutter + row * (cell_h + bar_h + gutter)
+        draw.rectangle([x0, y0, x0 + cell_w, y0 + bar_h], fill=(24, 26, 30))
+        draw.text((x0 + 10, y0 + bar_h // 2), '[%d] %s' % (slot, kind), fill=(245, 245, 245), font=font, anchor='lm')
+        ox = x0 + (cell_w - image.width) // 2
+        oy = y0 + bar_h + (cell_h - image.height) // 2
+        sheet.paste(image, (ox, oy))
+    sheet.save(target, quality=90)
+    return target
+
+
+def _triage_schema():
+    score_props = {key: {'type': 'integer', 'minimum': 0, 'maximum': maximum} for key, maximum in CRITERIA.items()}
+    page = {'type': 'object', 'additionalProperties': False,
+            'required': ['slot', 'needs_deep_review', 'scores', 'vetoes', 'summary'],
+            'properties': {'slot': {'type': 'integer'},
+                           'needs_deep_review': {'type': 'boolean'},
+                           'scores': {'type': 'object', 'additionalProperties': False, 'required': list(CRITERIA), 'properties': score_props},
+                           'vetoes': {'type': 'array', 'items': {'type': 'string', 'enum': list(VETOES)}},
+                           'summary': {'type': 'string'}}}
+    return {'type': 'object', 'additionalProperties': False, 'required': ['pages'],
+            'properties': {'pages': {'type': 'array', 'items': page}}}
+
+
+def triage_pages(items, folder, product, reference=None, facts=None):
+    """2x2 contact-sheet triage over multiple pages: returns {kind: verdict} ONLY for pages that cleanly pass triage
+    (needs_deep_review=False, zero vetoes, score >= PASS_SCORE, no hard browser layout issues). Every other page is
+    omitted so the caller gives it a full-resolution single-page review + revision loop."""
+    _, vision = _configs()
+    if not vision or len(items) < 2:
+        return {}
+    all_briefs = briefs()
+    base_facts = facts or facts_of(product)
+    passed_map = {}
+    for batch_idx in range(0, len(items), TRIAGE_BATCH_SIZE):
+        chunk = items[batch_idx:batch_idx + TRIAGE_BATCH_SIZE]
+        if len(chunk) < 2:
+            break                       # a lone leftover page goes straight to normal single-page review
+        sheet_path = Path(folder) / ('_triage_%d.jpg' % batch_idx)
+        triage_sheet(chunk, sheet_path)
+        pages_meta = []
+        for slot, item in enumerate(chunk, 1):
+            brief = all_briefs.get(item['kind'], {})
+            pages_meta.append({'slot': slot, 'template': {'id': item['kind'], 'name': brief.get('name_zh'),
+                                                          'goal': brief.get('goal'), 'avoid': brief.get('avoid')},
+                               'canvas': item['job'].get('canvas'),
+                               'measured_layout': item.get('measured') or {}})
+        request = {'page_language': product['language'], 'facts': base_facts, 'criteria_maximum': CRITERIA, 'pages': pages_meta}
+        try:
+            answer = _ask(vision, TRIAGE_DIRECTOR, request, _triage_schema(), image_path=str(sheet_path),
+                          reference_path=str(reference) if reference else None, caller='brandkit_review.triage')
+        except Exception as exc:
+            if re.search(r'HTTP 40[123]', str(exc)):
+                raise                   # quota or auth refusal stops further paid calls
+            continue                    # any other error safely falls back to single-page review
+        finally:
+            sheet_path.unlink(missing_ok=True)
+        if not isinstance(answer, dict) or not isinstance(answer.get('pages'), list):
+            continue
+        by_slot = {slot: item for slot, item in enumerate(chunk, 1)}
+        for row in answer['pages']:
+            if not isinstance(row, dict):
+                continue
+            item = by_slot.get(row.get('slot'))
+            if not item or item.get('has_hard_issues'):
+                continue
+            raw_scores = row.get('scores') if isinstance(row.get('scores'), dict) else {}
+            scores = {key: max(0, min(CRITERIA[key], int(raw_scores.get(key, 0)))) for key in CRITERIA}
+            score = sum(scores.values())
+            has_scene = any(str(key).startswith('scene') for key in (item['job'].get('assets') or {}))
+            vetoes = [{'kind': kind_name, 'evidence': ''} for kind_name in (row.get('vetoes') or [])
+                      if kind_name in VETOES and (has_scene or kind_name != 'scene_product_mismatch')]
+            if row.get('needs_deep_review') or vetoes or score < PASS_SCORE:
+                continue                # flagged or borderline: goes to full-resolution single-page review
+            passed_map[item['kind']] = {'score': score, 'scores': scores, 'vetoes': [], 'issues': [],
+                                        'summary': str(row.get('summary', ''))[:400], 'model': vision.get('model'),
+                                        'triage': True}
+    return passed_map
 
 
 # ---- the whole set ----

@@ -500,12 +500,13 @@ test('missing runtime blocks jobs, explains why, and leaves environment help rea
   h.node('runtimeHelp').click();await tick();assert.equal(h.node('infoDialog').open,true);
 });
 
-test('upload preflight rejects missing models, multiple models, and oversized files',async t=>{
+test('upload preflight rejects missing models and multiple models, and allows large files',async t=>{
   const h=await setup(t);
   h.w.testFiles=[new h.w.File(['x'],'texture.png')];h.run('addFiles(testFiles)');assert.match(h.node('uploadError').textContent,/缺少模型/);
   h.w.testFiles=[new h.w.File(['x'],'part.obj')];h.run('addFiles(testFiles)');assert.equal(h.node('uploadSubmit').disabled,false);
-  h.w.testFiles=[new h.w.File(['x'],'other.glb')];h.run('addFiles(testFiles)');assert.match(h.node('uploadError').textContent,/一个 GLB 或 OBJ/);
-  h.run("uploadFiles=[{name:'big.glb',size:512*1024*1024}];addFiles([])");assert.match(h.node('uploadError').textContent,/512 MB/);assert.equal(h.node('uploadSubmit').disabled,true);
+  h.w.testFiles=[new h.w.File(['x'],'other.glb')];h.run('addFiles(testFiles)');assert.match(h.node('uploadError').textContent,/一个 GLB、OBJ 或 STL/);
+  h.run("uploadFiles=[{name:'part.stl',size:1024}];addFiles([])");assert.equal(h.node('uploadError').textContent,'');assert.equal(h.node('uploadSubmit').disabled,false);
+  h.run("uploadFiles=[{name:'big.glb',size:512*1024*1024}];addFiles([])");assert.equal(h.node('uploadError').textContent,'');assert.equal(h.node('uploadSubmit').disabled,false);
 });
 
 test('stable polling keeps focus on the selected shot checkbox',async t=>{

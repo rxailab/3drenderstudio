@@ -30,8 +30,8 @@ import ecommerce
 import ecommerce_platforms
 from planner import default_plan,validate,instruct,PRESETS
 app=Flask(__name__,static_folder='static')
-app.config['MAX_CONTENT_LENGTH']=512*1024*1024
-ALLOWED={'.obj','.mtl','.glb','.png','.jpg','.jpeg','.webp','.tga','.bmp','.tif','.tiff','.exr','.hdr','.json','.txt'}
+app.config['MAX_CONTENT_LENGTH']=None
+ALLOWED={'.obj','.mtl','.glb','.stl','.png','.jpg','.jpeg','.webp','.tga','.bmp','.tif','.tiff','.exr','.hdr','.json','.txt'}
 
 @app.errorhandler(Exception)
 def error(exc):
@@ -55,17 +55,11 @@ YIELDING_ENDPOINTS={'plan','undo','instruction','instruction_confirm','feedback_
 @app.before_request
 def yield_background_polish():
     """A request that changes or renders the project takes the renderer from background polish."""
-    deleting=request.method=='DELETE' and request.endpoint=='project_delete'
-    if not deleting and (request.method!='POST' or request.endpoint not in YIELDING_ENDPOINTS): return
+    if request.method!='POST' or request.endpoint not in YIELDING_ENDPOINTS: return
     ident=(request.view_args or {}).get('ident')
     if isinstance(ident,str):
-        try: stopped=engine.yield_to_user(ident)
+        try: engine.yield_to_user(ident)
         except KeyError: return
-        if stopped and deleting:
-            # Deletion needs the renderer to have let go of the project's files.
-            deadline=time.time()+5
-            while time.time()<deadline and any(job.get('project_id')==ident and job['id'] in engine.RUNNING_JOBS for job in all_records('job')):
-                time.sleep(.1)
 
 @app.before_request
 def reserve_project_operation():
@@ -179,12 +173,16 @@ def conditional(response):
     return response.make_conditional(request)
 
 @app.get('/api/projects/<ident>')
-def project(ident): return conditional(jsonify(engine.project_view(ident)))
+def project(ident):
+    import listing
+    view=engine.project_view(ident)
+    view['ai_spend']=listing.spend(ident)
+    return conditional(jsonify(view))
 
 @app.delete('/api/projects/<ident>')
 def project_delete(ident):
     try:
-        result=project_lifecycle.delete_project(ident)
+        result=project_lifecycle.delete_project(ident,force=True)
     except project_lifecycle.ProjectBusyError as exc:
         return jsonify(error=str(exc)),409
     except OSError:
@@ -205,7 +203,7 @@ def safe_path(base,name):
 def extract_archive(content,base):
     with zipfile.ZipFile(content) as z:
         entries=[i for i in z.infolist() if not i.is_dir()]
-        if len(entries)>2000 or sum(i.file_size for i in entries)>1024**3: raise ValueError('ZIP 解压内容超过限制')
+        if len(entries)>2000: raise ValueError('ZIP 解压内容超过限制')
         for i in entries:
             if (i.external_attr >> 16) & 0o170000 == 0o120000: raise ValueError('不接受符号链接')
             safe_path(base,i.filename).write_bytes(z.read(i))
@@ -241,10 +239,10 @@ def check_resources(base):
                     if ':' in uri or uri.startswith(('/', '\\')) or base.resolve() not in resolved.parents: raise ValueError('GLB 外部资源引用不安全')
 
 def create_project(base,name='',metadata=None,platform=None):
-    models=list(base.rglob('*.glb'))+list(base.rglob('*.obj'))
+    models=list(base.rglob('*.glb'))+list(base.rglob('*.obj'))+list(base.rglob('*.stl'))
     # Case-insensitive extension handling on Windows and Linux.
-    models=list(dict.fromkeys(models+[p for p in base.rglob('*') if p.suffix.lower() in ['.glb','.obj']]))
-    if len(models)!=1: raise ValueError('每个项目请上传一个 OBJ 或 GLB，配套贴图可放在同一 ZIP 中')
+    models=list(dict.fromkeys(models+[p for p in base.rglob('*') if p.suffix.lower() in ['.glb','.obj','.stl']]))
+    if len(models)!=1: raise ValueError('每个项目请上传一个 OBJ、GLB 或 STL，配套贴图可放在同一 ZIP 中')
     check_resources(base)
     ident=base.parent.name;name=name.strip() or models[0].stem
     slug=re.sub(r'[^\w\-]+','_',name)[:60] or 'product'
@@ -764,12 +762,15 @@ def articulation_run(ident):
     project=get('project',ident)
     if not project.get('analysis') or project.get('status')!='ready': raise ValueError('请先等待模型分析完成')
     if ident in articulation.RUNNING: return jsonify(_articulation_view(ident)),202
+    body=request.get_json(silent=True) or {}
+    raw_selected=body.get('selected_parts')
+    selected_parts=[str(x).strip() for x in raw_selected if str(x).strip()][:24] if isinstance(raw_selected,list) else []
     product,_,_=listing.stored(project)
     size_mm,_=listing.product_size(project,product)
     articulation.RUNNING[ident]=True
 
     def run():
-        try: articulation.analyse(ident,product,size_mm,force=True)
+        try: articulation.analyse(ident,product,size_mm,force=True,**({'selected_parts':selected_parts} if selected_parts else {}))
         except Exception as exc:
             app.logger.warning('articulation failed: %s',exc)
             with LOCK:

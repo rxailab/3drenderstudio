@@ -372,6 +372,32 @@ def _crossing_points(joint, others):
     return centres[sorted(hit)] if hit else np.zeros((0, 3))
 
 
+def _crossing_hinge_distances(joint, others, pivot, axis):
+    """For every overlapping triangle pair, the smaller distance to the hinge line between the two face centres.
+    A giant flat door triangle grazing a 10 mm hinge pin has its own centre 200 mm away, while the pin face is right on
+    the hinge line."""
+    tree, centres = _bvh(_members(joint, 'moving'), centres=True)
+    if tree is None:
+        return np.zeros(0)
+    along = np.array(axis, dtype=float); along /= max(np.linalg.norm(along), 1e-9)
+    piv = np.array(pivot, dtype=float)
+    def dist(pts):
+        off = pts - piv; off -= np.outer(off @ along, along)
+        return np.linalg.norm(off, axis=1)
+    dists = []
+    for rows in others:
+        other, ocentres = _bvh(rows, centres=True)
+        if other is None:
+            continue
+        pairs = other.overlap(tree)
+        if not pairs:
+            continue
+        oi = np.fromiter((p[0] for p in pairs), dtype=np.int64)
+        mi = np.fromiter((p[1] for p in pairs), dtype=np.int64)
+        dists.append(np.minimum(dist(centres[mi]), dist(ocentres[oi])))
+    return np.concatenate(dists) if dists else np.zeros(0)
+
+
 def _fixed_rows(joint, all_rows):
     """The parts a joint does not move: not selected, and not a child of a whole object that is."""
     taken = {}
@@ -434,6 +460,47 @@ def _axis_vector(name):
     return {'x': [1, 0, 0], 'y': [0, 1, 0], 'z': [0, 0, 1]}.get(str(name).lower().lstrip('+-'), [0, 0, 1])
 
 
+def _primary_points(moving):
+    """Points of the largest primary moving part (e.g. the door panel itself), so protruding handles or badges do not
+    shift an edge hinge off the panel's true corner."""
+    if len(moving) <= 1:
+        return _group_points(moving)
+    best_pts = None; best_area = -1.0
+    for row in moving:
+        pts = _group_points([row])
+        if not len(pts):
+            continue
+        s = sorted(np.ptp(pts, axis=0).tolist())
+        area = s[1] * s[2]
+        if area > best_area:
+            best_area = area; best_pts = pts
+    return best_pts if best_pts is not None else _group_points(moving)
+
+
+def _edge_pivots(joint, hint, all_rows):
+    """Both thickness corners along the requested edge: [inner (body-side), outer (front/exposed-side)].
+    An overlay lid pivots cleanly on its inner rim; an inset cabinet door must pivot on its outer corner or its front
+    corner swings directly into the cabinet side wall."""
+    moving = _members(joint, 'moving')
+    pts = _primary_points(moving)
+    lo, hi = pts.min(0), pts.max(0)
+    side = str((hint or {}).get('side') or '-y')
+    axis_index = 'xyz'.index(side[-1]) if side[-1] in 'xyz' else 1
+    base = (lo + hi) / 2
+    base[axis_index] = lo[axis_index] if side.startswith('-') else hi[axis_index]
+    hinge_axis = int(np.argmax(np.abs(_axis_vector(joint.get('axis_name', 'x')))))
+    rest = [i for i in range(3) if i not in (axis_index, hinge_axis)]
+    fixed = _group_points(_fixed_rows(joint, all_rows))
+    if rest and len(fixed):
+        r = rest[0]; centre = fixed.mean(0)[r]
+        inner_val = lo[r] if abs(lo[r] - centre) < abs(hi[r] - centre) else hi[r]
+        outer_val = hi[r] if inner_val == lo[r] else lo[r]
+        inner = base.copy(); inner[r] = inner_val
+        outer = base.copy(); outer[r] = outer_val
+        return [inner, outer]
+    return [base]
+
+
 def _pivot(joint, hint, all_rows):
     moving = _members(joint, 'moving'); counter = _members(joint, 'counter')
     kind = (hint or {}).get('kind', 'auto')
@@ -465,17 +532,7 @@ def _pivot(joint, hint, all_rows):
         if found is not None:
             return found, 'crossing'
     if kind == 'edge' or not counter:
-        side = str((hint or {}).get('side') or '-y')
-        axis_index = 'xyz'.index(side[-1]) if side[-1] in 'xyz' else 1
-        point = (lo + hi) / 2
-        point[axis_index] = lo[axis_index] if side.startswith('-') else hi[axis_index]
-        hinge_axis = int(np.argmax(np.abs(_axis_vector(joint.get('axis_name', 'x')))))
-        rest = [i for i in range(3) if i not in (axis_index, hinge_axis)]
-        fixed = _group_points(_fixed_rows(joint, all_rows))
-        if rest and len(fixed):
-            r = rest[0]; centre = fixed.mean(0)[r]
-            point[r] = lo[r] if abs(lo[r] - centre) < abs(hi[r] - centre) else hi[r]
-        return point, 'edge'
+        return _edge_pivots(joint, hint, all_rows)[0], 'edge'
     return (lo + hi) / 2, 'centre'
 
 
@@ -527,31 +584,76 @@ def _crossing(joint):
     return near.mean(0) if len(near) else centre + length * best
 
 
+def _body_collisions(joint, others, near=0.0):
+    """Overlapping triangle pairs excluding contact right along a hinge's own axis (pins, clips, door-frame lip)."""
+    if joint.get('type') == 'hinge' and near > 0:
+        dists = _crossing_hinge_distances(joint, others, joint['pivot'], joint['axis'])
+        return int((dists > near).sum()) if len(dists) else 0
+    return _collisions(joint, others)
+
+
 def solve_joint(joint, all_rows, unit_mm):
     """Fill in a joint the vision model described: pivot, axis vector, opening sign, safe maximum, rail fill, stretch span."""
     axis = _axis_vector(joint.get('axis_name', 'z'))
     joint['axis'] = axis; joint['unit_mm'] = unit_mm
     fixed = _fixed_rows(joint, all_rows)
     others = [rows for rows in (_members(joint, 'counter'), fixed) if rows]
+    whole_pts = np.concatenate([_world(ob) for ob in _mesh_objects()]) if _mesh_objects() else np.zeros((1, 3))
+    near = .04 * (float(np.ptp(whole_pts, axis=0).max()) or 1.0)
     notes = []
     if joint['type'] == 'hinge':
         pivot, how = _pivot(joint, joint.get('pivot_hint'), all_rows)
         joint['pivot'] = [float(v) for v in pivot]; notes.append('pivot by %s' % how)
     else:
+        how = None
         joint['pivot'] = [0.0, 0.0, 0.0]
     maximum = float(joint.get('max') or (25 if joint['type'] == 'hinge' else 50))
     trial = maximum * .3
-    base = _collisions(joint, others)
-    scores = {}
-    for sign in (1, -1):
-        snap = Snapshot(); joint['sign'] = sign
-        apply({'joints': [{**joint, 'value': trial, 'fill': [], 'stretch': []}]})
-        scores[sign] = _collisions(joint, others) - base
-        if joint.get('away_from') is not None:
-            ref = [row for row in all_rows if row['id'] == joint['away_from']]
-            if ref:
-                scores[sign] = (scores[sign], -float(np.linalg.norm(_group_points(_members(joint, 'moving')).mean(0) - _group_points(ref).mean(0))))
-        snap.restore()
+
+    def _eval_signs(pivot_vec):
+        joint['pivot'] = [float(v) for v in pivot_vec]
+        base = _body_collisions(joint, others, near)
+        local_scores = {}
+        for sign in (1, -1):
+            snap = Snapshot(); joint['sign'] = sign
+            apply({'joints': [{**joint, 'value': trial, 'fill': [], 'stretch': []}]})
+            local_scores[sign] = _body_collisions(joint, others, near) - base
+            if joint.get('away_from') is not None:
+                ref = [row for row in all_rows if row['id'] == joint['away_from']]
+                if ref:
+                    local_scores[sign] = (local_scores[sign], -float(np.linalg.norm(_group_points(_members(joint, 'moving')).mean(0) - _group_points(ref).mean(0))))
+            snap.restore()
+        return local_scores, base
+
+    if joint['type'] == 'hinge' and how == 'edge' and not joint.get('counter'):
+        edge_pts = _edge_pivots(joint, joint.get('pivot_hint'), all_rows)
+        scores, base = _eval_signs(edge_pts[0])
+        def _best_sign(sc):
+            return min((1, -1), key=lambda s: sc[s] if isinstance(sc[s], tuple) else (sc[s], 0))
+        def _full_hits(pivot_vec, sc):
+            snap = Snapshot(); joint['pivot'] = [float(v) for v in pivot_vec]; joint['sign'] = _best_sign(sc)
+            apply({'joints': [{**joint, 'value': maximum, 'fill': [], 'stretch': []}]})
+            # Count both body collisions away from hinge and total raw collisions at full opening so an inset door
+            # that jams into its side frame at 90 deg prefers the clean outer corner.
+            body_h = _body_collisions(joint, others, near)
+            raw_h = _collisions(joint, others)
+            snap.restore()
+            return body_h, raw_h
+        if len(edge_pts) > 1:
+            in_body, in_raw = _full_hits(edge_pts[0], scores)
+            if in_body > 0 or in_raw > max(12, base * 1.1):
+                outer_scores, outer_base = _eval_signs(edge_pts[1])
+                out_body, out_raw = _full_hits(edge_pts[1], outer_scores)
+                if (out_body, out_raw) < (in_body, in_raw) and (in_body - out_body >= 4 or in_raw - out_raw >= 12):
+                    joint['pivot'] = [float(v) for v in edge_pts[1]]
+                    scores, base = outer_scores, outer_base
+                    notes[-1] = 'pivot by outer edge'
+                else:
+                    joint['pivot'] = [float(v) for v in edge_pts[0]]
+            else:
+                joint['pivot'] = [float(v) for v in edge_pts[0]]
+    else:
+        scores, base = _eval_signs(joint['pivot'])
     if joint['type'] == 'hinge' and joint.get('counter'):
         # a scissor pair: opening moves the far ends of the two halves apart; closing first brings them together
         for sign in (1, -1):
@@ -596,7 +698,7 @@ def solve_joint(joint, all_rows, unit_mm):
         value = maximum * k / 10
         snap = Snapshot()
         apply({'joints': [{**joint, 'value': value, 'fill': [], 'stretch': []}]})
-        hits = _collisions(joint, others) - base
+        hits = _body_collisions(joint, others, near) - base
         snap.restore()
         if hits > max(4, base * .05):
             break
@@ -865,6 +967,158 @@ def _selector(part):
     return {'object': part['object'], 'pieces': part['pieces']}
 
 
+def _part_geometry(part):
+    """World-space BVH, bounding box, total surface area, and sampled faces [(center, weighted_area)] for one part."""
+    ob = bpy.data.objects.get(part['object'])
+    if ob is None or ob.type != 'MESH' or not len(ob.data.vertices):
+        return None
+    world = _world(ob)
+    keep = set(selector_indices(ob, part).tolist()) if part.get('pieces') else None
+    polys = [poly for poly in ob.data.polygons if keep is None or poly.vertices[0] in keep]
+    if not polys:
+        return None
+    pts = world if keep is None else world[sorted(keep)]
+    lo, hi = pts.min(0), pts.max(0)
+    verts_t = [tuple(p) for p in world]
+    bvh = BVHTree.FromPolygons(verts_t, [list(poly.vertices) for poly in polys], epsilon=0.0)
+    # Compute world-space polygon areas and centroids via triangle fan around vertex 0 (accurate even under non-uniform scale).
+    total_area = 0.0
+    stride = max(1, len(polys) // 400)
+    samples = []
+    for idx, poly in enumerate(polys):
+        vs = world[list(poly.vertices)]
+        area = 0.0
+        v0 = vs[0]
+        for k in range(1, len(vs) - 1):
+            area += 0.5 * float(np.linalg.norm(np.cross(vs[k] - v0, vs[k + 1] - v0)))
+        total_area += area
+        if idx % stride == 0 and area > 0.0:
+            samples.append((Vector(vs.mean(0).tolist()), area * stride))
+    return {'bvh': bvh, 'lo': lo, 'hi': hi, 'max_dim': float((hi - lo).max()), 'area': total_area, 'samples': samples}
+
+
+def _attach_riders(joints, parts, longest):
+    """Propagate rigid sub-assembly membership across the 3D surface-contact graph (random-walker / harmonic potential).
+
+    Parts mounted on the hidden back/inside of a door, lid, or drawer (stiffeners, astragal bars, inner latch brackets,
+    handles, lock rods, logo plates) are often occluded in exterior probe views and missed by the vision model. Using
+    distance-weighted surface-area contact between parts, any non-structural part predominantly supported by one moving
+    group (and NOT grounded to the stationary body or straddling two moving groups / a hinge axis) automatically rides
+    along with that group.
+    """
+    if len(parts) < 3 or not joints:
+        return joints, {}
+    by_id = {p['id']: p for p in parts}
+    seed_groups = []          # (joint_index, role, set_of_ids)
+    all_claimed = set()
+    explicit_fixed = set()
+    for ji, joint in enumerate(joints):
+        for role in ('moving', 'counter', 'stretch'):
+            ids = {i for i in (joint.get(role) or []) if i in by_id}
+            if ids:
+                seed_groups.append((ji, role, ids))
+                all_claimed.update(ids)
+        away = joint.get('away_from')
+        if away in by_id:
+            explicit_fixed.add(away)
+        piv_part = (joint.get('pivot') or {}).get('part')
+        if piv_part in by_id:
+            explicit_fixed.add(piv_part)
+    explicit_fixed -= all_claimed
+    rider_groups = [(ji, role, ids) for ji, role, ids in seed_groups if role in ('moving', 'counter')]
+    if not rider_groups or len(all_claimed) >= len(parts):
+        return joints, {}
+
+    geom = {}
+    for p in parts:
+        g = _part_geometry(p)
+        if g is not None:
+            geom[p['id']] = g
+    valid_ids = sorted(geom.keys())
+    if len(valid_ids) < 3:
+        return joints, {}
+
+    group_max_dim = {(ji, role): max((geom[i]['max_dim'] for i in ids if i in geom), default=0.0) for ji, role, ids in rider_groups}
+    group_area = {(ji, role): sum(geom[i]['area'] for i in ids if i in geom) for ji, role, ids in rider_groups}
+    max_g_dim = max(group_max_dim.values(), default=0.0)
+    max_g_area = max(group_area.values(), default=0.0)
+
+    # Grounded stationary structural anchors (cabinet carcass, fixed sills, equal-size base/box, other major panels).
+    fixed_anchors = {pid for pid in explicit_fixed if pid in geom}
+    for pid in valid_ids:
+        if pid in all_claimed:
+            continue
+        g = geom[pid]
+        if g['max_dim'] > max_g_dim * 1.05 or (g['max_dim'] >= max_g_dim * 0.65 and g['area'] >= max_g_area * 0.45):
+            fixed_anchors.add(pid)
+    has_counter = any(role == 'counter' for _, role, _ in rider_groups)
+    if not fixed_anchors and not has_counter:
+        unclaimed = [pid for pid in valid_ids if pid not in all_claimed]
+        if unclaimed:
+            fixed_anchors.add(max(unclaimed, key=lambda pid: geom[pid]['area']))
+
+    seeds = sorted((all_claimed | fixed_anchors) & set(valid_ids))
+    unknown = [pid for pid in valid_ids if pid not in seeds]
+    if not unknown:
+        return joints, {}
+
+    tol = max(longest * 0.0025, 1e-5)
+    d0 = max(longest * 0.0003, 1e-6)
+    pos = {pid: i for i, pid in enumerate(valid_ids)}
+    n = len(valid_ids)
+    weights = np.zeros((n, n), dtype=float)
+
+    def _wcontact(src_id, dst_id):
+        bvh = geom[dst_id]['bvh']
+        hit = 0.0
+        for centre, area in geom[src_id]['samples']:
+            _, _, _, dist = bvh.find_nearest(centre)
+            if dist is not None and dist <= tol:
+                hit += area / (1.0 + (dist / d0) ** 2)
+        return hit
+
+    for i in range(n):
+        pi = valid_ids[i]; gi = geom[pi]
+        for j in range(i + 1, n):
+            pj = valid_ids[j]; gj = geom[pj]
+            if not (np.all(gi['lo'] <= gj['hi'] + tol) and np.all(gj['lo'] <= gi['hi'] + tol)):
+                continue
+            w = max(_wcontact(pi, pj), _wcontact(pj, pi))
+            if w > 0.0:
+                weights[i, j] = weights[j, i] = w
+
+    lap = np.diag(weights.sum(axis=1)) - weights
+    u_idx = [pos[pid] for pid in unknown]
+    s_idx = [pos[pid] for pid in seeds]
+    lap_uu = lap[np.ix_(u_idx, u_idx)] + np.eye(len(u_idx)) * 1e-12
+    lap_us = lap[np.ix_(u_idx, s_idx)]
+
+    potentials = {}
+    for ji, role, ids in rider_groups:
+        x_s = np.array([1.0 if pid in ids else 0.0 for pid in seeds], dtype=float)
+        try:
+            x_u = np.linalg.solve(lap_uu, -lap_us @ x_s)
+        except np.linalg.LinAlgError:
+            x_u = np.zeros(len(unknown), dtype=float)
+        potentials[(ji, role)] = {unknown[k]: float(x_u[k]) for k in range(len(unknown))}
+
+    updated = [dict(j, moving=list(j.get('moving') or []), counter=list(j.get('counter') or []), stretch=list(j.get('stretch') or [])) for j in joints]
+    attached_log = {}
+    for pid in unknown:
+        scores = sorted(((potentials[(ji, role)][pid], (ji, role)) for ji, role, _ in rider_groups), key=lambda kv: -kv[0])
+        best_p, best_key = scores[0]
+        second_p = scores[1][0] if len(scores) > 1 else 0.0
+        total_moving_p = sum(s for s, _ in scores)
+        g = geom[pid]
+        eligible = g['max_dim'] <= group_max_dim[best_key] * 1.05 and g['area'] <= group_area[best_key] * 0.90
+        if eligible and ((best_p >= 0.72 and best_p >= second_p * 2.0) or (total_moving_p >= 0.85 and best_p >= 0.60 and best_p >= second_p * 1.8)):
+            ji, role = best_key
+            if pid not in updated[ji][role]:
+                updated[ji][role].append(pid)
+                attached_log.setdefault(ji, []).append(by_id[pid]['object'])
+    return updated, attached_log
+
+
 def solve(request):
     out = Path(request['output_dir'])
     _import(request['model_path'])
@@ -874,18 +1128,23 @@ def solve(request):
     parts = part_list(unit_mm); by_id = {part['id']: part for part in parts}
     rows = [{**_selector(part), 'id': part['id']} for part in parts]
     hosts = _decal_hosts(parts)
+    prepped = [_follow_hosts(joint, hosts) for joint in request.get('joints') or []]
+    prepped, attached_log = _attach_riders(prepped, parts, longest)
     solved = []
-    for joint in request.get('joints') or []:
-        joint = _follow_hosts(joint, hosts)
+    for ji, joint in enumerate(prepped):
         made = {'name': joint.get('name') or 'joint%d' % (len(solved) + 1), 'type': 'hinge' if joint.get('type') == 'hinge' else 'slide',
                 'axis_name': joint.get('axis') or 'z', 'pivot_hint': joint.get('pivot') or {}, 'away_from': joint.get('away_from'),
-                'max': joint.get('max')}
+                'max': joint.get('max'), '_attached': attached_log.get(ji) or []}
         for role in ('moving', 'counter', 'stretch'):
             made[role] = _whole([_selector(by_id[i]) for i in joint.get(role) or [] if i in by_id], parts)
         if made['moving']:
             solved.append(made)
     _detach_crossing_children(solved)          # a tape blade under its hook is its own group from here on
     solved = [solve_joint(joint, rows, unit_mm) for joint in solved]
+    for joint in solved:
+        extra = joint.pop('_attached', None)
+        if extra:
+            joint.setdefault('notes', []).append('auto-attached %d mounted part(s): %s' % (len(extra), ', '.join(extra[:8])))
     # previews: every state, one fixed camera framing all of them
     states = request.get('states') or []
     envelope = [pts]
@@ -915,10 +1174,10 @@ def solve(request):
             points = _crossing_points(joint, others)
             if len(points) > before:
                 # A door's own thickness meets the cabinet along its hinge line: that is how a hinge sits, not a part
-                # passing through another.
-                along = np.array(joint['axis'], dtype=float); along /= max(np.linalg.norm(along), 1e-9)
-                off = points - np.array(joint['pivot'], dtype=float); off -= np.outer(off @ along, along)
-                at_hinge = joint['type'] == 'hinge' and float(np.linalg.norm(off, axis=1).max()) <= near
+                # passing through another. Measure each overlapping pair by the closer of its two face centres to the
+                # hinge axis so a large door triangle grazing a small hinge pin still reads as hinge-only contact.
+                dists = _crossing_hinge_distances(joint, others, joint['pivot'], joint['axis'])
+                at_hinge = joint['type'] == 'hinge' and (not len(dists) or float(dists.max()) <= near)
                 crossing = 'at the hinge only' if at_hinge and crossing != 'yes' else 'yes'
             now = _stand_off(joint, fixed)
             if stood is not None and now is not None: away.append((now - stood) * unit_mm)
@@ -957,7 +1216,16 @@ def _import(path):
         for item in list(block):
             if not item.users:
                 block.remove(item)
-    bpy.ops.import_scene.gltf(filepath=str(path), import_pack_images=True)
+    suffix = Path(path).suffix.lower()
+    if suffix == '.obj':
+        bpy.ops.wm.obj_import(filepath=str(path), forward_axis='NEGATIVE_Z', up_axis='Y')
+    elif suffix == '.stl':
+        if hasattr(bpy.ops.wm, 'stl_import'):
+            bpy.ops.wm.stl_import(filepath=str(path))
+        else:
+            bpy.ops.import_mesh.stl(filepath=str(path))
+    else:
+        bpy.ops.import_scene.gltf(filepath=str(path), import_pack_images=True)
     bpy.context.view_layer.update()
     _PIECES.clear()
 

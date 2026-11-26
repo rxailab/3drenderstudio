@@ -68,7 +68,7 @@ def glb_resources(source,root):
 def open_source(request,root):
     import bpy
     source=confined(request['source_path'],root)
-    if source.suffix.lower() not in ('.blend','.glb','.obj'):raise ValueError('实时预览支持 Blender、GLB 与 OBJ 模型。')
+    if source.suffix.lower() not in ('.blend','.glb','.obj','.stl'):raise ValueError('实时预览支持 Blender、GLB、OBJ 与 STL 模型。')
     if sha(source)!=request['source_sha256']:raise ValueError('模型已变化，请重新准备实时预览。')
     resources=[]
     if source.suffix.lower()=='.blend':
@@ -81,6 +81,9 @@ def open_source(request,root):
         if source.suffix.lower()=='.glb':
             resources=glb_resources(source,root)
             bpy.ops.import_scene.gltf(filepath=str(source))
+        elif source.suffix.lower()=='.stl':
+            if hasattr(bpy.ops.wm,'stl_import'):bpy.ops.wm.stl_import(filepath=str(source))
+            else:bpy.ops.import_mesh.stl(filepath=str(source))
         else:
             # Uploaded OBJ/MTL resources are checked at import; the export below
             # additionally refuses every referenced image outside this project.
@@ -315,7 +318,7 @@ def run(path):
         hero_scene._checkpoint(scene,products,points,request['plan'],request['baseline_plan'],request['shot_id'],operations,authorized)
     else:
         original_plan(scene,products,points,request['plan'],request['shot_id'],operations,authorized,
-                      fresh_upload=source.suffix.lower() in ('.obj','.glb'),root=root,warnings=warnings)
+                      fresh_upload=source.suffix.lower() in ('.obj','.glb','.stl'),root=root,warnings=warnings)
         warnings.append('当前实时画面从上传的模型准备，可在正式出图前旋转查看。')
     resources+=material_resources(products,root,warnings)
     manifest=metadata(scene,products,points,warnings,operations)

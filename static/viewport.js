@@ -48,8 +48,9 @@ function createStudioEnvironment() {
 }
 
 export class ProductViewport {
-  constructor(host,{onChange=()=>{},onError=()=>{}}={}) {
-    this.host=host;this.onChange=onChange;this.onError=onError;this.disposed=false;this.visible=true;this.generation=0;
+  constructor(host,{onChange=()=>{},onError=()=>{},onPick=()=>{},onHover=()=>{}}={}) {
+    this.host=host;this.onChange=onChange;this.onError=onError;this.onPick=onPick;this.onHover=onHover;this.disposed=false;this.visible=true;this.generation=0;
+    this.pickEnabled=false;this.highlighted=new Set();this.raycaster=new THREE.Raycaster();this.pointerDown=null;this.hoveredPart='';this.clonedMaterials=new Set();
     this.frame=document.createElement('div');this.frame.className='realtime-canvas-frame';host.replaceChildren(this.frame);
     try{this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});}
     catch(_){this.frame.remove();throw new Error('浏览器未能开启 3D 加速。请开启硬件加速后重试，或切换到已渲染图片。');}
@@ -64,6 +65,14 @@ export class ProductViewport {
     this.contextLost=event=>{event.preventDefault();this.onError(new Error('3D 显示连接中断，请重新载入实时预览。'));};
     canvas.addEventListener('webglcontextlost',this.contextLost);
     this.keyHandler=event=>this.onKey(event);canvas.addEventListener('keydown',this.keyHandler);
+    this.pointerDownHandler=event=>{if(event.button===0)this.pointerDown={x:event.clientX,y:event.clientY};};
+    this.pointerUpHandler=event=>this.onPointerUp(event);
+    this.pointerMoveHandler=event=>this.onPointerMove(event);
+    this.pointerLeaveHandler=()=>{if(this.hoveredPart){this.hoveredPart='';this.onHover('');}};
+    canvas.addEventListener('pointerdown',this.pointerDownHandler);
+    canvas.addEventListener('pointerup',this.pointerUpHandler);
+    canvas.addEventListener('pointermove',this.pointerMoveHandler);
+    canvas.addEventListener('pointerleave',this.pointerLeaveHandler);
     this.resizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(()=>this.resize()):null;this.resizeObserver?.observe(host);
     this.windowResize=()=>this.resize();window.addEventListener('resize',this.windowResize);
     this.visibilityHandler=()=>{if(!document.hidden)this.requestDraw();};document.addEventListener('visibilitychange',this.visibilityHandler);
@@ -88,8 +97,31 @@ export class ProductViewport {
     });
     const gltf=await new GLTFLoader(manager).parseAsync(buffer,directory);
     if(this.disposed || generation!==this.generation){disposeTree(gltf.scene);return;}
+    const nameLookup=new Map();
+    for(const rawName of (metadata.product_object_names || [])){
+      if(typeof rawName!=='string' || !rawName)continue;
+      const withSuffix=rawName+' · viewport';
+      nameLookup.set(withSuffix,rawName);
+      nameLookup.set(THREE.PropertyBinding.sanitizeNodeName(withSuffix),rawName);
+      nameLookup.set(rawName,rawName);
+      nameLookup.set(THREE.PropertyBinding.sanitizeNodeName(rawName),rawName);
+    }
+    const resolveProductName=node=>{
+      let cur=node;
+      while(cur){
+        if(cur.name && nameLookup.has(cur.name))return nameLookup.get(cur.name);
+        if(cur.name && /[\s_]·[\s_]viewport$/i.test(cur.name)){
+          const stripped=cur.name.replace(/[\s_]·[\s_]viewport$/i,'');
+          if(nameLookup.has(stripped))return nameLookup.get(stripped);
+          return stripped;
+        }
+        cur=cur.parent;
+      }
+      return (node.name || '').replace(/[\s_]·[\s_]viewport$/i,'').replace(/_\d+$/,'');
+    };
     gltf.scene.traverse(node=>{
       if(node.isMesh){
+        node.userData.productObjectName=resolveProductName(node);
         const materials=(Array.isArray(node.material)?node.material:[node.material]).filter(Boolean);
         // Three's real-time shadow maps treat transmission as opaque. Avoid a
         // false black silhouette when the entire mesh is transmissive; mixed
@@ -104,7 +136,7 @@ export class ProductViewport {
     // plan. The export manifest measures the actual current scene camera.
     const actual={...shot};
     for(const key of ['projection','azimuth','elevation','focal_length','ortho_scale','target_offset','camera_distance'])if(metadata.camera?.[key]!==undefined)actual[key]=metadata.camera[key];
-    this.setShot(actual,plan);this.ready=true;this.requestDraw();
+    this.setShot(actual,plan);this.ready=true;this.applyHighlights();this.requestDraw();
   }
   buildLighting(metadata) {
     const b=this.bounds,d=b.diagonal,c=new THREE.Vector3(...b.center);
@@ -205,10 +237,75 @@ export class ProductViewport {
     else {state.azimuth+=(event.key==='ArrowLeft'?-5:event.key==='ArrowRight'?5:0);state.elevation=Math.max(-80,Math.min(89.9,state.elevation+(event.key==='ArrowUp'?5:event.key==='ArrowDown'?-5:0)));const next=cameraFromShot(state,b,this.aspect,{position:this.camera.position.toArray(),target:this.controls.target.toArray()},this.planMargin);this.camera.position.fromArray(next.position);}
     this.camera.updateProjectionMatrix();this.controls.update();this.onChange(this.hasChanged());this.requestDraw();
   }
+  setPickMode(enabled) {
+    this.pickEnabled=!!enabled;
+    this.renderer.domElement.classList.toggle('is-picking',this.pickEnabled);
+    if(!this.pickEnabled && this.hoveredPart){this.hoveredPart='';this.onHover('');}
+  }
+  setHighlightedParts(names) {
+    this.highlighted=new Set(Array.from(names || []).filter(Boolean));
+    this.applyHighlights();
+    this.requestDraw();
+  }
+  applyHighlights() {
+    if(!this.model)return;
+    const tint=new THREE.Color(0xd99b43);
+    this.model.traverse(node=>{
+      if(!node.isMesh)return;
+      const on=this.highlighted.has(node.userData.productObjectName);
+      if(on && !node.userData._pickCloned){
+        if(Array.isArray(node.material)){
+          node.material=node.material.map(m=>{const c=m.clone();this.clonedMaterials.add(c);return c;});
+        }else if(node.material){
+          const c=node.material.clone();this.clonedMaterials.add(c);node.material=c;
+        }
+        node.userData._pickCloned=true;
+      }
+      const mats=(Array.isArray(node.material)?node.material:[node.material]).filter(Boolean);
+      for(const mat of mats){
+        if(!('emissive' in mat))continue;
+        if(!mat.userData._origEmissive){
+          mat.userData._origEmissive=mat.emissive.clone();
+          mat.userData._origEmissiveIntensity=mat.emissiveIntensity ?? 1;
+        }
+        if(on){mat.emissive.copy(tint);mat.emissiveIntensity=0.45;}
+        else{mat.emissive.copy(mat.userData._origEmissive);mat.emissiveIntensity=mat.userData._origEmissiveIntensity;}
+      }
+    });
+  }
+  raycastClient(clientX,clientY) {
+    if(!this.ready || !this.model || !this.camera)return '';
+    const rect=this.renderer.domElement.getBoundingClientRect();
+    if(rect.width<=0 || rect.height<=0)return '';
+    const ndc=new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1,-((clientY-rect.top)/rect.height)*2+1);
+    this.raycaster.setFromCamera(ndc,this.camera);
+    const hits=this.raycaster.intersectObject(this.model,true);
+    for(const hit of hits){
+      const name=hit.object?.userData?.productObjectName;
+      if(name)return name;
+    }
+    return '';
+  }
+  onPointerMove(event) {
+    if(!this.pickEnabled || !this.ready)return;
+    const name=this.raycastClient(event.clientX,event.clientY);
+    if(name!==this.hoveredPart){this.hoveredPart=name;this.onHover(name);}
+  }
+  onPointerUp(event) {
+    if(!this.pickEnabled || !this.pointerDown || event.button!==0){this.pointerDown=null;return;}
+    const dist=Math.hypot(event.clientX-this.pointerDown.x,event.clientY-this.pointerDown.y);
+    this.pointerDown=null;
+    if(dist>5)return;
+    const name=this.raycastClient(event.clientX,event.clientY);
+    if(name)this.onPick(name);
+  }
   dispose() {
     if(this.disposed)return;this.disposed=true;this.generation++;this.abort?.abort();cancelAnimationFrame(this.frameRequest);this.resizeObserver?.disconnect();this.controls?.dispose();
     window.removeEventListener('resize',this.windowResize);document.removeEventListener('visibilitychange',this.visibilityHandler);
     this.renderer.domElement.removeEventListener('webglcontextlost',this.contextLost);this.renderer.domElement.removeEventListener('keydown',this.keyHandler);
+    this.renderer.domElement.removeEventListener('pointerdown',this.pointerDownHandler);this.renderer.domElement.removeEventListener('pointerup',this.pointerUpHandler);
+    this.renderer.domElement.removeEventListener('pointermove',this.pointerMoveHandler);this.renderer.domElement.removeEventListener('pointerleave',this.pointerLeaveHandler);
+    for(const mat of this.clonedMaterials)mat.dispose();this.clonedMaterials.clear();
     disposeTree(this.scene);this.environment?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();this.frame.remove();
   }
 }

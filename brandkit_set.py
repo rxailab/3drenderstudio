@@ -67,7 +67,7 @@ from listing_jobs import (
     _job, ICON_WORDS, _icon_for, _chip_rows, _number_unit, jobs_for, CROP_SHIFTS, _recropped, _data_line, GENERIC_PLACES,
     _data_eyebrow, TPL_PLAIN, _not_printed, _printable_rows, _jobs_for
 )
-from listing_layout import SOFT_CHECKS, hard_issues, _measured, scene_vetoes, _better, _cut_text, lay_out
+from listing_layout import SOFT_CHECKS, hard_issues, _measured, scene_vetoes, _better, _cut_text, render_best, finish_page, lay_out
 
 
 LOCATOR = ('You look at a product photo for an online listing and say where each selling point is on the product. For each '

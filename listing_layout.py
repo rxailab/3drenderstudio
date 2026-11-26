@@ -80,11 +80,9 @@ def _cut_text(qa, problems):
                    if row.get('check') == 'text_overflow' or (row.get('check') == 'out_of_canvas' and row.get('id') in texts)})
 
 
-def lay_out(kind, ctx, out, work):
-    """Lay a page out: the first version that passes the layout checks (or the one with the fewest problems), then,
-    when a vision model is configured, the art director's review and up to two rounds of fixes.
-    Returns (qa, notes, review record)."""
-    import brandkit_review
+def render_best(kind, ctx, out, work):
+    """Render candidate versions of one page in the headless browser and keep the best PNG at ``out``.
+    Returns (qa, problems, candidates, number, notes)."""
     candidates = jobs_for(kind, ctx)
     if not candidates:
         raise ValueError('「%s」没有可用的内容' % KINDS[kind][0])
@@ -129,17 +127,34 @@ def lay_out(kind, ctx, out, work):
         notes.append('为通过版式检查，这张图用了精简版本（第 %d 种排法）。' % (job.get('_group', number) + 1))
     if any(row.get('check') == 'frame_cuts_part' for row in problems):
         notes.append('特写框仍切到了小部件（%s），换几种取景都没能避开。' % '、'.join(sorted({row['id'].split('×')[-1] for row in problems if row.get('check') == 'frame_cuts_part'})))
+    return qa, problems, candidates, number, notes
+
+
+def finish_page(kind, ctx, out, work, rendered, pre_verdict=None):
+    """Run vision supervision (using a passing ``pre_verdict`` from 2x2 triage when valid, otherwise full single-page
+    review + up to two revision rounds), finalize notes and export editable SVG. Returns (qa, notes, review record)."""
+    import brandkit_review
+    qa, problems, candidates, number, notes = rendered
+    notes = list(notes)
+    job = candidates[number]
     record = {'status': 'not_verified', 'rounds': 0, 'applied': []}
     if ctx.get('review') and not ctx.get('review_refused'):
         reference = ctx['assets']['hero']['path']
         facts = ctx.get('facts') or brandkit_review.facts_of(ctx['product'])
         scenes = swappable_scenes(ctx)
-        try:
-            verdict = brandkit_review.checked(kind, job, out, ctx['product'], reference, _measured(qa), ctx.get('facts'))
-        except Exception as exc:
-            verdict = None; notes.append('视觉审核没有完成（%s），这张图未经审核。' % str(exc)[:80])
-            if re.search(r'HTTP 40[123]', str(exc)):
-                ctx['review_refused'] = str(exc)[:80]        # quota or key refused: the other pages do not ask again
+        # If a scene on this page failed its own check, never short-circuit via triage: run full review + scene swap.
+        shown_initial = {key: (ctx['scenes'][int(key[5:]) - 1] if int(key[5:]) <= len(ctx['scenes']) else {}).get('check')
+                         for key in job.get('assets', {}) if key.startswith('scene') and key[5:].isdigit()}
+        use_triage = bool(pre_verdict and brandkit_review.passed(pre_verdict) and not any(v == 'failed' for v in shown_initial.values()))
+        if use_triage:
+            verdict = pre_verdict
+        else:
+            try:
+                verdict = brandkit_review.checked(kind, job, out, ctx['product'], reference, _measured(qa), ctx.get('facts'))
+            except Exception as exc:
+                verdict = None; notes.append('视觉审核没有完成（%s），这张图未经审核。' % str(exc)[:80])
+                if re.search(r'HTTP 40[123]', str(exc)):
+                    ctx['review_refused'] = str(exc)[:80]        # quota or key refused: the other pages do not ask again
         if verdict:
             first = verdict; tried = {number}; current = (job, verdict, qa)
             for round_number in range(1, brandkit_review.MAX_REVISIONS + 1):
@@ -180,7 +195,8 @@ def lay_out(kind, ctx, out, work):
                                  'revised' if brandkit_review.passed(verdict) else 'failed',
                           score=verdict['score'], first_score=first['score'], scores=verdict['scores'], model=verdict.get('model'),
                           vetoes=[row['kind'] for row in verdict['vetoes']], summary=verdict['summary'], refuted=verdict.get('refuted', 0),
-                          issues=[{'region': row.get('region', ''), 'evidence': row.get('evidence', '')} for row in verdict['issues']])
+                          issues=[{'region': row.get('region', ''), 'evidence': row.get('evidence', '')} for row in verdict['issues']],
+                          **({'triage': True} if verdict.get('triage') else {}))
             if record['applied']:
                 notes.append('按视觉审核修改：%s（%d → %d 分）。' % ('、'.join(record['applied']), first['score'], verdict['score']))
             if record['status'] == 'failed':
@@ -210,3 +226,10 @@ def lay_out(kind, ctx, out, work):
     except Exception as exc:          # the PNG stands without it
         notes.append('可编辑 SVG 没有导出：%s' % str(exc)[:120])
     return qa, notes, record
+
+
+def lay_out(kind, ctx, out, work):
+    """Lay a page out: the first version that passes the layout checks (or the one with the fewest problems), then,
+    when a vision model is configured, the art director's review and up to two rounds of fixes.
+    Returns (qa, notes, review record)."""
+    return finish_page(kind, ctx, out, work, render_best(kind, ctx, out, work))

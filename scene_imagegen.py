@@ -26,6 +26,8 @@ No third-party picture is ever sent: the reference pack contributes words
 only (see scene_audience.py), and publisher names are removed from them.
 """
 import base64
+import contextlib
+import contextvars
 import copy
 import hashlib
 import io
@@ -34,13 +36,15 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 import blender_runner
 import engine
@@ -54,7 +58,7 @@ REFERENCE_TIMEOUT = 900
 MAX_ATTEMPTS = 2               # the first picture, and one correction when the product changed
 # A picture that kept the product but got its use wrong (held by one handle, the wire at the tip, balanced on a point)
 # is the image model's commonest miss and the one a correction most often fixes: it gets one try more.
-USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible', 'installed_correctly'))
+USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible', 'installed_correctly', 'perspective_consistent'))
 USAGE_RETRY = 1                # recorded on a scene made with that extra try, so older failed scenes are tried again once
 RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
 RENDER_SAMPLES = 48
@@ -88,7 +92,8 @@ Compare the product in GENERATED with the references. Return data only:
 - used_correctly: when usage rules are in the facts and the product is being used, it is used as they say (for example a caliper's jaws close squarely on both faces of the workpiece with the beam perpendicular to them, not tilted across it or touching only an edge; cutting pliers hold the wire deep in the jaws near the pivot, square to the blades, never at the tips; a hammer's face meets the nail head squarely with the nail perpendicular to the surface, or the nail's shank sits in the claw's slot with the handle levered back, never the claw just pressed against a wall). True when the product is at rest or no rules are given.
 - rests_stably: when nothing holds the product, it rests the way it really would on its surface (a product whose mounting is 'wall', hanging flat against a wall, rests stably): lying on a side or standing on its base, its weight over what carries it. False when it is balanced on a tip, an edge, a jaw point or a handle end, propped at an angle with nothing holding it, or floating above the surface. True when hands hold it.
 - surroundings_new: everything around the product looks brand new and clean. False when any work surface, table, bench, shelf, wall, floor, vehicle interior or object in the scene looks used: worn, scratched, scored, dented, drilled, chipped, rusty, stained, oily, greasy, dusty or dirty, with peeling paint, or with rubbish or a mess strewn about. Judge the condition of the surfaces and things, not whether the place is a working one: tools, parts, boxes and supplies set out or hanging in their places are not wear, and neither are reflections, shadows, natural wood grain or the even texture of concrete or plaster. False only for wear or dirt that can clearly be seen; true when unsure. The product itself is not judged here. When false, one of the issues says what looks used (\"the workbench top is scratched and stained\").
-- installed_correctly: when mounting in the facts is 'wall', the product hangs on a vertical wall with its back against it, at a natural height, and does not stand on a floor, a bench, a table, a shelf or a vehicle floor. True when mounting is not 'wall'.
+- installed_correctly: when mounting in the facts is 'wall', the product hangs on a vertical wall with its back lying completely flush and parallel against that wall (never angled diagonally away from the wall), at a natural height, and does not stand on a floor, a bench, a table, a shelf or a vehicle floor. True when mounting is not 'wall'.
+- perspective_consistent: the surrounding room, wall, floor, workbench, pegboard, window, shelves and furniture share the EXACT SAME 3D camera viewpoint and vanishing points as the product in REFERENCE/GENERATED. Check which way horizontal edges recede: if the product's right side is closer to the camera and its front/back/top edges recede toward the LEFT, then the wall behind it (and every pegboard, shelf, window frame and bench back edge on that wall) MUST also recede toward the LEFT — NEVER toward the right! False whenever the wall or supporting surface recedes in the opposite direction to the product, the product's back juts diagonally out from the wall instead of lying flush parallel to it, the camera elevation/horizon contradicts the product's visible top or bottom surfaces, or the product looks pasted onto a room photographed from a different angle.
 - scale_plausible: the surroundings are at a believable scale for the product's real size (size_mm in the facts, its longest side): a tool on a van floor or a table is the size it would really be beside them, not a giant or a toy.
 - person_visible: a person, or a clearly visible part of one (a hand, an arm, legs), appears anywhere in GENERATED. This is an observation, not a fault.
 - face_visible: a human face or head appears anywhere in GENERATED. This is an observation, not a fault.
@@ -342,16 +347,67 @@ def fresh(text):
 
 
 # A product made to hang on a wall (mounting.py) is shown hanging there: never stood on a floor, a bench or a van floor.
-WALL_RULE = ('IT HANGS ON A WALL. The product is made to be mounted on a wall: it hangs on a vertical wall, its back flat against '
-             'the wall and held by its fixings, at a natural height (a cabinet at about chest height), with only the wall behind it '
-             'and nothing under it. It never stands on a floor, a bench, a table, a shelf or a vehicle floor, and its front faces the '
-             'camera exactly as in image 1.')
-INSTALL_FIX = ('the product must hang on a wall: its back flat against a vertical wall at a natural height with nothing under it, '
-               'never standing on a floor, bench, table, shelf or vehicle floor')
+WALL_RULE = ('IT HANGS ON A WALL. The product is made to be mounted on a wall: it hangs on a vertical wall, its back flat and strictly '
+             'parallel against the wall and held by its fixings, at a natural height (a cabinet at about chest height), with only the '
+             'wall behind it and nothing under it. It never stands on a floor, a bench, a table, a shelf or a vehicle floor, and its '
+             'front faces the camera exactly as in image 1.')
+INSTALL_FIX = ('the product must hang on a wall: its back completely flush and parallel against a vertical wall at a natural height with '
+               'nothing under it, never standing on a floor, bench, table, shelf or vehicle floor')
+PERSPECTIVE_FIX = ('the room perspective contradicts the product angle: match the camera viewpoint and vanishing points strictly to the '
+                   'product in image 1 so every wall, pegboard, window, shelf and bench edge recedes in the EXACT SAME direction as the '
+                   'product\'s own horizontal edges, with the product\'s back or base lying flush against its surface')
+PERSPECTIVE_NOTE = '背景墙面或台面的透视方向与产品拍摄视角冲突。'
+
+
+def _perspective_hint(azimuth=None, elevation=None, mounting=None, for_check=False):
+    """Explicit 3D camera viewpoint and vanishing-point direction derived from Blender's (azimuth, elevation) convention
+    (azimuth > 0 = camera at front-right, so product's right side is closer and back/wall plane recedes toward the LEFT)."""
+    if azimuth is None or not isinstance(azimuth, (int, float)):
+        return ''
+    az = float(azimuth)
+    el = float(elevation) if isinstance(elevation, (int, float)) else 15.0
+    pitch = ('slightly downward from above (horizon line above the product; top surfaces are visible)' if el > 8
+             else 'near eye level (horizon line near the middle of the product)' if el >= -6
+             else 'slightly upward from below (underside visible)')
+    if mounting == 'wall':
+        if az > 8:
+            side_desc = (
+                'photographed from the FRONT-RIGHT (~%d deg right, %d deg elevation, looking %s): its RIGHT side is closer to the '
+                'camera and its horizontal top/bottom/back edges recede toward the LEFT. The vertical wall behind it MUST lie strictly '
+                'parallel to the product\'s back face — closer on the right, receding away toward the LEFT (left vanishing point). '
+                'Any pegboard, shelf, window frame, or workbench back edge along that wall MUST also recede toward the LEFT, NEVER '
+                'toward the right' % (round(abs(az)), round(el), pitch)
+            )
+        elif az < -8:
+            side_desc = (
+                'photographed from the FRONT-LEFT (~%d deg left, %d deg elevation, looking %s): its LEFT side is closer to the '
+                'camera and its horizontal top/bottom/back edges recede toward the RIGHT. The vertical wall behind it MUST lie strictly '
+                'parallel to the product\'s back face — closer on the left, receding away toward the RIGHT (right vanishing point). '
+                'Any pegboard, shelf, window frame, or workbench back edge along that wall MUST also recede toward the RIGHT, NEVER '
+                'toward the left' % (round(abs(az)), round(el), pitch)
+            )
+        else:
+            side_desc = (
+                'photographed straight-on from the front (~%d deg elevation, looking %s). The vertical wall behind it is parallel to '
+                'the image plane: horizontal wall lines, pegboards, shelves and workbench back edges are level, not skewed diagonally'
+                % (round(el), pitch)
+            )
+        return side_desc if for_check else ('CAMERA & WALL PERSPECTIVE (CRITICAL). The product in image 1 is %s, with its back completely flush against that wall.' % side_desc)
+    if az > 8:
+        side_desc = ('photographed from the FRONT-RIGHT (~%d deg right, %d deg elevation, looking %s): its right side is closer and '
+                     'its main horizontal edges recede toward the LEFT; align the floor/bench/room vanishing lines with those same edges'
+                     % (round(abs(az)), round(el), pitch))
+    elif az < -8:
+        side_desc = ('photographed from the FRONT-LEFT (~%d deg left, %d deg elevation, looking %s): its left side is closer and '
+                     'its main horizontal edges recede toward the RIGHT; align the floor/bench/room vanishing lines with those same edges'
+                     % (round(abs(az)), round(el), pitch))
+    else:
+        side_desc = 'photographed from straight in front (~%d deg elevation, looking %s); match the floor/bench horizon and perspective to image 1' % (round(el), pitch)
+    return side_desc if for_check else ('CAMERA PERSPECTIVE. The product in image 1 is %s.' % side_desc)
 
 
 def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None,
-           mounting=None):
+           mounting=None, azimuth=None, elevation=None):
     """The words sent with the anchored canvas. ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
@@ -381,6 +437,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
             'A believable place where this product is used, the product set down there ready for use.' if people is False
             else 'A believable place where this product is used, with a person using it.')),
         NEW_PLACE,
+        *([_perspective_hint(azimuth, elevation, mounting, for_check=False)] if azimuth is not None else []),
         'RULES. Natural, believable light. Correct scale between the product%s. No brand names, logos, '
         'signs, captions or other text anywhere in the picture, and no watermark.%s Nothing is added to the product: no extra grip, '
         'sleeve, cover, cap, strap or bracket on it. Whatever it touches (a wire, pipe, branch, board) meets it as one whole piece, '
@@ -581,7 +638,7 @@ def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
 
 FIDELITY_FLAGS = ('product_present', 'shape_consistent', 'parts_consistent', 'colours_consistent', 'no_added_text',
                   'nothing_attached', 'held_correctly', 'contact_plausible', 'used_correctly', 'rests_stably', 'scale_plausible',
-                  'installed_correctly', 'surroundings_new')
+                  'installed_correctly', 'perspective_consistent', 'surroundings_new')
 
 
 def fidelity_schema():
@@ -591,7 +648,49 @@ def fidelity_schema():
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None, usage=None, mounting=None):
+def _verdict_from_answer(answer, people=None, framing=None, mounting=None, azimuth=None, elevation=None):
+    """Turn one raw fidelity answer dict into the standard check verdict dict."""
+    flags = {name: answer[name] for name in FIDELITY_FLAGS}
+    faithful = all(flags.values()); visible = answer['person_visible']; face = answer['face_visible']
+    kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)      # the product, apart from the place round it
+    issues = [] if faithful else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
+    note = re.sub(r'\s+', ' ', answer['note']).strip()[:300]
+    if mounting != 'wall' and not flags['installed_correctly']:
+        flags['installed_correctly'] = True              # only a wall-mounted product can be wrongly installed
+        faithful = all(flags.values()); kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)
+        issues = [] if faithful else issues
+    if not flags['perspective_consistent']:
+        hint_fix = _perspective_hint(azimuth, elevation, mounting, for_check=True)
+        p_fix = ('the room/wall perspective contradicts the product angle: ' + hint_fix) if hint_fix else PERSPECTIVE_FIX
+        if p_fix not in issues:
+            issues = [p_fix] + issues[:5]
+        if PERSPECTIVE_NOTE not in note:
+            note = (PERSPECTIVE_NOTE + note)[:300]
+    if not flags['installed_correctly'] and INSTALL_FIX not in issues:
+        issues = [INSTALL_FIX] + issues[:5]
+    if not flags['surroundings_new']:
+        issues = issues[:5] + [WORN_FIX]          # the product's own differences first: corrections keep the first six
+        if kept:
+            note = WORN_NOTE + note[:300 - len(WORN_NOTE)]
+    hands = people is True and framing == 'hands'
+    wrong_people = people in PEOPLE_FIXES and visible != people
+    # Hands were asked for: a picture that shows a face or a whole figure is as wrong as one with nobody in it.
+    slip = 'missing' if hands and wrong_people else 'face' if hands and face else None
+    if slip:
+        issues = [HANDS_FIXES[slip]] + issues[:5]
+        note = (HANDS_NOTES[slip] + ('' if faithful else note))[:300]; wrong_people = True
+    elif wrong_people:
+        issues = [PEOPLE_FIXES[people]] + issues[:5]
+        note = (PEOPLE_NOTES[people] + ('' if faithful else note))[:300]
+    seen = {'expected': people, 'visible': visible, 'ok': not wrong_people}
+    if hands:
+        seen.update(framing='hands', face_visible=face)
+    return {'status': 'passed' if faithful and not wrong_people else 'failed', 'flags': flags, 'issues': issues, 'note': note,
+            'product_consistent': kept, 'people': seen}
+
+
+def check(reference_paths, generated_path, product, people=None, framing=None, closeup=None, size_mm=None, usage=None, mounting=None,
+          azimuth=None, elevation=None):
     """Compare the generated product with the renders, and see whether a person is in the picture.
 
     Returns {'status': 'passed' | 'failed' | 'unchecked', 'issues', 'note', ...}.
@@ -607,8 +706,10 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
         return {'status': 'unchecked', 'issues': [], 'note': '未配置视觉模型，未自动核对产品是否变形，请对照参考图查看。'}
     schema = fidelity_schema()
     try:
+        cam_view = _perspective_hint(azimuth, elevation, mounting, for_check=True)
         facts = {'product': str(product)[:120], 'reference_count': len(reference_paths), 'note_language': 'zh-CN',
                  'size_mm': round(float(size_mm)) if size_mm else None, 'mounting': mounting or 'not wall-mounted',
+                 **({'camera_view': cam_view} if cam_view else {}),
                  'usage_rules': [str(rule)[:usage_rules.LENGTH] for rule in (usage or [])[:usage_rules.LIMIT]]}
         body = ai._payload(value, FIDELITY_PROMPT, facts, schema, max_tokens=1500)
         blocks = []
@@ -631,36 +732,242 @@ def check(reference_paths, generated_path, product, people=None, framing=None, c
         # 'error': the check is owed (quota, timeout) and is run again on this picture at the next build; until then the
         # scene is kept off the pages. Without a vision model at all there is nothing to wait for (no 'error').
         return {'status': 'unchecked', 'error': True, 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
-    flags = {name: answer[name] for name in FIDELITY_FLAGS}
-    faithful = all(flags.values()); visible = answer['person_visible']; face = answer['face_visible']
-    kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)      # the product, apart from the place round it
-    issues = [] if faithful else [re.sub(r'\s+', ' ', item).strip()[:200] for item in answer['issues']]
-    note = re.sub(r'\s+', ' ', answer['note']).strip()[:300]
-    if mounting != 'wall' and not flags['installed_correctly']:
-        flags['installed_correctly'] = True              # only a wall-mounted product can be wrongly installed
-        faithful = all(flags.values()); kept = all(ok for name, ok in flags.items() if name not in PLACE_FLAGS)
-        issues = [] if faithful else issues
-    if not flags['installed_correctly'] and INSTALL_FIX not in issues:
-        issues = [INSTALL_FIX] + issues[:5]
-    if not flags['surroundings_new']:
-        issues = issues[:5] + [WORN_FIX]          # the product's own differences first: corrections keep the first six
-        if kept:
-            note = WORN_NOTE + note[:300 - len(WORN_NOTE)]
-    hands = people is True and framing == 'hands'
-    wrong_people = people in PEOPLE_FIXES and visible != people
-    # Hands were asked for: a picture that shows a face or a whole figure is as wrong as one with nobody in it.
-    slip = 'missing' if hands and wrong_people else 'face' if hands and face else None
-    if slip:
-        issues = [HANDS_FIXES[slip]] + issues[:5]
-        note = (HANDS_NOTES[slip] + ('' if faithful else note))[:300]; wrong_people = True
-    elif wrong_people:
-        issues = [PEOPLE_FIXES[people]] + issues[:5]
-        note = (PEOPLE_NOTES[people] + ('' if faithful else note))[:300]
-    seen = {'expected': people, 'visible': visible, 'ok': not wrong_people}
-    if hands:
-        seen.update(framing='hands', face_visible=face)
-    return {'status': 'passed' if faithful and not wrong_people else 'failed', 'flags': flags, 'issues': issues, 'note': note,
-            'product_consistent': kept, 'people': seen}
+    return _verdict_from_answer(answer, people=people, framing=framing, mounting=mounting, azimuth=azimuth, elevation=elevation)
+
+
+BATCH_CHECK_SIZE = 4
+BATCH_TILE_PX = 768
+BATCH_FIDELITY_PROMPT = (
+    'You check MULTIPLE generated scene photographs in one batch against renders of the real product. '
+    'GENERATED_SHEET shows 2 to 4 scenes in numbered tiles ([1], [2], ...). '
+    'CLOSEUP_SHEET (when given) shows matching numbered comparison panels (render first, then generated) at the same scale; '
+    'compare product fidelity part by part there. REFERENCE_SHEET / REFERENCE (when given) shows renders for any scene without a closeup. '
+    'Judge EACH numbered slot independently using the exact rules below and return one entry per slot in `results`.\n\n' + FIDELITY_PROMPT
+)
+
+
+def _sheet_font(size):
+    for candidate in (ROOT / 'brandkit' / 'fonts' / 'Inter-Variable.ttf', 'DejaVuSans-Bold.ttf'):
+        try:
+            return ImageFont.truetype(str(candidate), size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _stitch_sheet(labelled_paths, target, tile=BATCH_TILE_PX, stack=False):
+    """Compose [(label, path), ...] into a numbered contact sheet with clear dark header bars."""
+    tiles = []
+    for label, path in labelled_paths:
+        with Image.open(path) as opened:
+            image = opened.convert('RGB')
+            max_w = tile * 2 if stack else tile
+            max_h = tile if stack else round(tile * 1.25)
+            image.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+            tiles.append((label, image))
+    cols = 1 if stack else (2 if len(tiles) >= 2 else 1)
+    rows = (len(tiles) + cols - 1) // cols
+    cell_w = max(img.width for _, img in tiles)
+    cell_h = max(img.height for _, img in tiles)
+    bar_h = 34; gutter = 12
+    sheet = Image.new('RGB', (cols * (cell_w + gutter) + gutter, rows * (cell_h + bar_h + gutter) + gutter), (120, 124, 130))
+    draw = ImageDraw.Draw(sheet); font = _sheet_font(18)
+    for idx, (label, img) in enumerate(tiles):
+        col, row = idx % cols, idx // cols
+        x0 = gutter + col * (cell_w + gutter); y0 = gutter + row * (cell_h + bar_h + gutter)
+        draw.rectangle([x0, y0, x0 + cell_w, y0 + bar_h], fill=(24, 26, 30))
+        draw.text((x0 + 10, y0 + bar_h // 2), str(label), fill=(245, 245, 245), font=font, anchor='lm')
+        sheet.paste(img, (x0 + (cell_w - img.width) // 2, y0 + bar_h + (cell_h - img.height) // 2))
+    sheet.save(target, quality=90)
+    return target
+
+
+def batch_fidelity_schema():
+    item = fidelity_schema()
+    item['properties']['slot'] = {'type': 'integer'}
+    item['required'] = ['slot'] + list(item['required'])
+    return {'type': 'object', 'properties': {'results': {'type': 'array', 'items': item}},
+            'required': ['results'], 'additionalProperties': False}
+
+
+def check_batch(items):
+    """Check 2+ generated scenes together on numbered contact sheets (GENERATED_SHEET + CLOSEUP_SHEET) in one vision
+    call per chunk of up to 4 scenes, saving ~65% of scene-check input tokens. Returns a list of verdicts aligned with ``items``."""
+    if not items:
+        return []
+    if len(items) == 1:
+        item = items[0]
+        return [check(item['reference_paths'], item['generated_path'], item['product'], item.get('people'),
+                      item.get('framing'), item.get('closeup'), item.get('size_mm'), item.get('usage'), item.get('mounting'),
+                      azimuth=item.get('azimuth'), elevation=item.get('elevation'))]
+    import ai_client as ai
+    import ai_config
+    value = ai_config.get_vision_config()
+    if not all(value.get(key) for key in ('enabled', 'api_key', 'model')):
+        return [{'status': 'unchecked', 'issues': [], 'note': '未配置视觉模型，未自动核对产品是否变形，请对照参考图查看。'} for _ in items]
+    schema = batch_fidelity_schema()
+    verdicts = [None] * len(items)
+    for start in range(0, len(items), BATCH_CHECK_SIZE):
+        chunk = items[start:start + BATCH_CHECK_SIZE]
+        if len(chunk) == 1:
+            it = chunk[0]
+            verdicts[start] = check(it['reference_paths'], it['generated_path'], it['product'], it.get('people'),
+                                    it.get('framing'), it.get('closeup'), it.get('size_mm'), it.get('usage'), it.get('mounting'),
+                                    azimuth=it.get('azimuth'), elevation=it.get('elevation'))
+            continue
+        tmp = Path(tempfile.mkdtemp(prefix='scene_chk_'))
+        try:
+            gen_sheet = _stitch_sheet([('[%d] SCENE' % slot, it['generated_path']) for slot, it in enumerate(chunk, 1)],
+                                      tmp / 'generated_sheet.jpg', tile=BATCH_TILE_PX, stack=False)
+            closeups = [('[%d] CLOSE-UP (render | generated)' % slot, it['closeup'])
+                        for slot, it in enumerate(chunk, 1) if it.get('closeup') and Path(it['closeup']).is_file()]
+            closeup_sheet = _stitch_sheet(closeups, tmp / 'closeup_sheet.jpg', tile=BATCH_TILE_PX, stack=True) if closeups else None
+            # Only attach reference render(s) separately for slots that do not already have a render-vs-generated closeup.
+            need_ref = [(slot, it['reference_paths'][0]) for slot, it in enumerate(chunk, 1)
+                        if not (it.get('closeup') and Path(it['closeup']).is_file()) and it.get('reference_paths')]
+            ref_sheet = None; single_ref = None
+            if need_ref:
+                uniq_refs = {str(Path(p).resolve()) for _, p in need_ref}
+                if len(uniq_refs) == 1:
+                    single_ref = need_ref[0][1]
+                else:
+                    ref_sheet = _stitch_sheet([('[%d] REFERENCE' % slot, p) for slot, p in need_ref],
+                                              tmp / 'ref_sheet.jpg', tile=BATCH_TILE_PX, stack=False)
+            facts = {
+                'note_language': 'zh-CN',
+                'scenes': [{
+                    'slot': slot,
+                    'product': str(it['product'])[:120],
+                    'size_mm': round(float(it['size_mm'])) if it.get('size_mm') else None,
+                    'mounting': it.get('mounting') or 'not wall-mounted',
+                    **({'camera_view': _perspective_hint(it.get('azimuth'), it.get('elevation'), it.get('mounting'), for_check=True)}
+                       if it.get('azimuth') is not None else {}),
+                    'usage_rules': [str(rule)[:usage_rules.LENGTH] for rule in (it.get('usage') or [])[:usage_rules.LIMIT]],
+                } for slot, it in enumerate(chunk, 1)],
+            }
+            body = ai._payload(value, BATCH_FIDELITY_PROMPT, facts, schema, max_tokens=2400)
+            blocks = []
+            if single_ref:
+                blocks += [{'type': 'text', 'text': 'REFERENCE: render of the real product.'}, ai._image(single_ref, value['provider'])]
+            elif ref_sheet:
+                blocks += [{'type': 'text', 'text': 'REFERENCE_SHEET: renders of the real product for the matching numbered slots.'},
+                           ai._image(ref_sheet, value['provider'], max_size=1536)]
+            blocks += [{'type': 'text', 'text': 'GENERATED_SHEET: the numbered scene photographs to check ([1], [2], ...).'},
+                       ai._image(gen_sheet, value['provider'], max_size=1536)]
+            if closeup_sheet:
+                blocks += [{'type': 'text', 'text': 'CLOSEUP_SHEET: matching numbered comparison panels (render first, then generated) at the same scale. '
+                                                    'Compare each product part by part here; anything in front of it (a hand, the workpiece) is not a difference.'},
+                           ai._image(closeup_sheet, value['provider'], max_size=1536)]
+            message = body['messages'][-1]
+            if not isinstance(message.get('content'), list):
+                raise ValueError('unexpected request shape')
+            message['content'][:0] = blocks
+            with ai.calling('scene_imagegen.check_batch'):
+                answer = ai._response(ai._post(value, body), value, ai.TOOL_NAME)
+            ai._check_schema(answer, schema)
+            by_slot = {row['slot']: row for row in answer.get('results') or [] if isinstance(row, dict) and 'slot' in row}
+            for offset, it in enumerate(chunk):
+                row = by_slot.get(offset + 1)
+                if row is not None:
+                    verdicts[start + offset] = _verdict_from_answer(row, people=it.get('people'), framing=it.get('framing'),
+                                                                    mounting=it.get('mounting'), azimuth=it.get('azimuth'),
+                                                                    elevation=it.get('elevation'))
+                else:
+                    verdicts[start + offset] = {'status': 'unchecked', 'error': True, 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
+        except Exception:
+            for offset in range(len(chunk)):
+                if verdicts[start + offset] is None:
+                    verdicts[start + offset] = {'status': 'unchecked', 'error': True, 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return verdicts
+
+
+_ACTIVE_BATCH = contextvars.ContextVar('scene_imagegen_batch', default=None)
+_ACTIVE_PARTICIPANT = contextvars.ContextVar('scene_imagegen_batch_slot', default=None)
+
+
+class BatchChecker:
+    """Coalesce parallel attempt-1 scene checks from concurrent scene workers into one ``check_batch`` vision call."""
+
+    def __init__(self, expected, timeout=120.0):
+        self._lock = threading.Lock()
+        self._active = max(0, int(expected))
+        self._pending = []           # [(spec, event, box)]
+        self._flushed = False
+        self._timeout = float(timeout)
+
+    @contextlib.contextmanager
+    def participant(self):
+        state = {'left': False}
+        tok_b = _ACTIVE_BATCH.set(self)
+        tok_s = _ACTIVE_PARTICIPANT.set(state)
+        try:
+            yield
+        finally:
+            self.leave_current()
+            _ACTIVE_PARTICIPANT.reset(tok_s)
+            _ACTIVE_BATCH.reset(tok_b)
+
+    def _run_flush(self, entries):
+        try:
+            results = check_batch([spec for spec, _, _ in entries])
+        except Exception:
+            results = [{'status': 'unchecked', 'error': True, 'issues': [], 'note': '视觉模型未能完成核对，请对照参考图查看产品是否变形。'}
+                       for _ in entries]
+        for (_, event, box), verdict in zip(entries, results):
+            box['verdict'] = verdict
+            event.set()
+
+    def leave_current(self):
+        state = _ACTIVE_PARTICIPANT.get()
+        if not state or state['left']:
+            return
+        state['left'] = True
+        to_flush = None
+        with self._lock:
+            self._active = max(0, self._active - 1)
+            if not self._flushed and self._pending and len(self._pending) >= self._active:
+                self._flushed = True
+                to_flush = list(self._pending); self._pending.clear()
+        if to_flush:
+            self._run_flush(to_flush)
+
+    def submit(self, spec):
+        state = _ACTIVE_PARTICIPANT.get()
+        event = threading.Event(); box = {}; to_flush = None
+        with self._lock:
+            if self._flushed or self._active <= 1:
+                pass_direct = True
+            else:
+                pass_direct = False
+                if state and not state['left']:
+                    state['left'] = True         # this participant has delivered its attempt-1 check
+                self._pending.append((spec, event, box))
+                if len(self._pending) >= self._active:
+                    self._flushed = True
+                    to_flush = list(self._pending); self._pending.clear()
+        if pass_direct:
+            return check(spec['reference_paths'], spec['generated_path'], spec['product'], spec.get('people'),
+                         spec.get('framing'), spec.get('closeup'), spec.get('size_mm'), spec.get('usage'), spec.get('mounting'),
+                         azimuth=spec.get('azimuth'), elevation=spec.get('elevation'))
+        if to_flush:
+            self._run_flush(to_flush)
+            return box['verdict']
+        if not event.wait(timeout=self._timeout):
+            # Timed out waiting for a stalled sibling: flush whoever is waiting right now.
+            stale = None
+            with self._lock:
+                if not self._flushed and self._pending:
+                    self._flushed = True
+                    stale = list(self._pending); self._pending.clear()
+            if stale:
+                self._run_flush(stale)
+        if 'verdict' in box:
+            return box['verdict']
+        return check(spec['reference_paths'], spec['generated_path'], spec['product'], spec.get('people'),
+                     spec.get('framing'), spec.get('closeup'), spec.get('size_mm'), spec.get('usage'), spec.get('mounting'),
+                     azimuth=spec.get('azimuth'), elevation=spec.get('elevation'))
 
 
 PLACE_PROMPT = '''You check a photograph of an empty place that products will be shown in, for an online shop: a room, a workshop, a bench or table top, a vehicle. Every place must look brand new: as on the day it was fitted out.
@@ -777,9 +1084,10 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     while number < limit:
         number += 1
         if stop(): raise InterruptedError()
+        actual_az = staged.get('azimuth', azimuth); actual_el = staged.get('elevation', elevation)
         say('图像模型正在生成场景' if number == 1 else retry)
         text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
-                      (articulation or {}).get('label'), mounting)
+                      (articulation or {}).get('label'), mounting, azimuth=actual_az, elevation=actual_el)
 
         def call(value):
             nonlocal masked
@@ -826,12 +1134,21 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             with Image.open(target) as picture:
                 closeup = folder / ('closeup%d.jpg' % number)
                 scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
+        batch = _ACTIVE_BATCH.get() if number == 1 else None
         if lock['status'] != 'kept':
-            verdict = _lock_verdict(lock, box_share)          # no need to ask a model about a product that is measurably not there
+            if batch is not None:
+                batch.leave_current()                          # do not make sibling scenes wait while this one retries
+            verdict = _lock_verdict(lock, box_share)           # no need to ask a model about a product that is measurably not there
         else:
             say('核对产品是否与参考图一致' if people is None else '核对产品与画面中的手部' if hands else '核对产品与画面中的人物')
-            verdict = check([reference_path], target, product, people, framing, closeup, size_mm,
-                            **({'usage': usage_rules} if usage_rules else {}), **({'mounting': mounting} if mounting else {}))
+            if batch is not None:
+                verdict = batch.submit({'reference_paths': [reference_path], 'generated_path': target, 'product': product,
+                                        'people': people, 'framing': framing, 'closeup': closeup, 'size_mm': size_mm,
+                                        'usage': usage_rules, 'mounting': mounting, 'azimuth': actual_az, 'elevation': actual_el})
+            else:
+                verdict = check([reference_path], target, product, people, framing, closeup, size_mm,
+                                **({'usage': usage_rules} if usage_rules else {}), **({'mounting': mounting} if mounting else {}),
+                                azimuth=actual_az, elevation=actual_el)
         verdict['lock'] = lock
         attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup,
                          'original': folder / ('attempt%d.model.png' % number) if restored else target})
@@ -842,6 +1159,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
         wrong = {name for name, ok in (verdict.get('flags') or {}).items() if ok is False}
         retry = ('产品被移动或改动，正在重新生成' if lock['status'] != 'kept' else
                  '背景显得陈旧或脏乱，正在按崭新的环境重新生成' if wrong and wrong <= PLACE_FLAGS and not wrong_people else
+                 '背景透视与产品角度不符，正在按正确透视重新生成' if 'perspective_consistent' in wrong and not wrong_people else
                  '产品与参考图不一致，正在重新生成' if not wrong_people else
                  '画面里出现了人脸或整个人，正在重新生成手部特写' if hands and verdict['people'].get('visible') else
                  '画面里没有操作产品的手，正在重新生成' if hands else
@@ -874,6 +1192,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
               # what the check needs to be run again on this picture, without painting it again
               'recheck': {'reference': str(reference_path), 'closeup': str(chosen['closeup']) if chosen.get('closeup') else None,
                           'product': product, 'people': people, 'framing': framing, 'size_mm': size_mm, 'mounting': mounting,
+                          'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation),
                           'usage': usage_rules},
               'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,

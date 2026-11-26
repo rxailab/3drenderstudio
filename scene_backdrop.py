@@ -157,8 +157,10 @@ def models_folder():
 
 
 def can_measure():
-    """Whether a new backdrop can be measured: the depth environment, its script and the model's weights are there."""
-    return bool(depth_python()) and (ROOT / 'scripts' / 'backdrop_measure.py').is_file() and (models_folder() / 'hub' / DEPTH_MODEL).is_dir()
+    """Whether a new backdrop can be measured: the depth environment, its script and the complete model weights are there."""
+    snaps = models_folder() / 'hub' / DEPTH_MODEL / 'snapshots'
+    has_weights = snaps.is_dir() and any(p.is_file() and p.stat().st_size > 100_000_000 for p in snaps.glob('*/model.safetensors'))
+    return bool(depth_python()) and (ROOT / 'scripts' / 'backdrop_measure.py').is_file() and has_weights
 
 
 def size_class(longest_m):

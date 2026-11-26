@@ -201,23 +201,38 @@ def swappable_scenes(ctx):
 
 def recheck_scenes(rows):
     """Run the vision check again on kept scenes whose check could not run, on the picture already made (no image-model
-    call). Returns (rows, notes)."""
+    call). Batches 2+ pending scenes onto a contact sheet in one call. Returns (rows, notes)."""
     import scene_imagegen
-    out = []; notes = []
-    for row in rows:
+    out = list(rows); notes = []; pending = []
+    for idx, row in enumerate(rows):
         again = row.get('recheck') if row.get('check_error') else None
         if not again or not Path(row.get('path', '')).is_file() or not again.get('reference') or not Path(again['reference']).is_file():
-            out.append(row); continue
+            continue
         closeup = again.get('closeup') if again.get('closeup') and Path(again['closeup']).is_file() else None
-        checked = scene_imagegen.check([again['reference']], row['path'], again.get('product') or '', again.get('people'), again.get('framing'),
-                                       closeup, again.get('size_mm'), **({'usage': again['usage']} if again.get('usage') else {}),
-                                       **({'mounting': again['mounting']} if again.get('mounting') else {}))
-        row = {**row, **_check_fields(checked)}
+        pending.append((idx, {'reference_paths': [again['reference']], 'generated_path': row['path'],
+                              'product': again.get('product') or '', 'people': again.get('people'),
+                              'framing': again.get('framing'), 'closeup': closeup, 'size_mm': again.get('size_mm'),
+                              'usage': again.get('usage'), 'mounting': again.get('mounting'),
+                              'azimuth': again.get('azimuth'), 'elevation': again.get('elevation')}))
+    if not pending:
+        return out, notes
+    if len(pending) >= 2:
+        verdicts = scene_imagegen.check_batch([spec for _, spec in pending])
+    else:
+        spec = pending[0][1]
+        verdicts = [scene_imagegen.check(spec['reference_paths'], spec['generated_path'], spec['product'], spec['people'],
+                                         spec['framing'], spec['closeup'], spec['size_mm'],
+                                         **({'usage': spec['usage']} if spec.get('usage') else {}),
+                                         **({'mounting': spec['mounting']} if spec.get('mounting') else {}),
+                                         **({'azimuth': spec['azimuth']} if spec.get('azimuth') is not None else {}),
+                                         **({'elevation': spec['elevation']} if spec.get('elevation') is not None else {}))]
+    for (idx, _), checked in zip(pending, verdicts):
+        row = {**out[idx], **_check_fields(checked)}
         if checked.get('status') == 'failed':
             row['usage_retry'] = 0           # failed on its first real check: it gets the one more try a failed scene gets
         if not checked.get('error'):
             notes.append('补做了一张场景图的产品核对（上次因 AI 服务未能完成）：%s。' % ('通过' if checked.get('status') != 'failed' else '未通过，不放进页面'))
-        out.append(row)
+        out[idx] = row
     return out, notes
 
 
@@ -493,13 +508,20 @@ def make_scenes(project, product, folder, cancelled, say, previous=None, failure
     # progress is how many scenes are finished (several run at once, so the index of the one speaking would jump back and forth)
     tell = lambda detail: say(finished[0], len(briefs), detail)
 
+    batch_checker = scene_imagegen.BatchChecker(min(len(jobs), SCENE_WORKERS)) if len(jobs) >= 2 else None
+
     def make(index, brief, caption, name, before, where):
         if halt():
             raise InterruptedError()
         tell('生成第 %d / %d 张场景图' % (index + 1, len(briefs)))
         try:
-            _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], halt,
-                                                        lambda text: tell('场景 %d：%s' % (index + 1, text)), where)
+            if batch_checker is not None:
+                with batch_checker.participant():
+                    _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], halt,
+                                                                lambda text: tell('场景 %d：%s' % (index + 1, text)), where)
+            else:
+                _, record, picture = scene_stylist.generate(project, brief['proposal'], settings['hint'], halt,
+                                                            lambda text: tell('场景 %d：%s' % (index + 1, text)), where)
         except InterruptedError:
             raise
         except Exception as exc:

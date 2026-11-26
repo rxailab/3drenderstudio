@@ -765,26 +765,45 @@ def _project_tagged(function):
 
 
 def drafted_features(features, hint, language, product):
-    """(features, notes): the drafted selling points the user actually gave. Pliers uploaded with no description were
-    printed with "Angled cutting edges" and "Cylinder grip": the drafter made points up from the product name and the
-    mesh names. Now a point is kept only when its title is in the user's own words (``said_in`` the hint) and is not a
-    mesh name (``brandkit_set.mesh_named``); with nothing written there are no points, and a note asks for them. A hint
-    in another language than the pages cannot be matched word for word: the user's own lines are taken as they are."""
-    if not hint:
-        return [], ['没有写卖点，所以没有起草卖点（不会根据模型或部件名称编造）：请在上方写下卖点，或粘贴产品介绍后点「提取到各栏」。']
-    other = (language == 'en') == (_language_of(hint) == 'zh')
-    kept = _own_lines(hint) if other else [row for row in features if said_in(row['title'], hint)]
+    """(features, notes): keep concrete selling points drafted from the user's hint or the model's structure, while
+    refusing raw CAD mesh names (``brandkit_set.mesh_named``) and numbers not backed by the hint or product facts."""
+    allowed_numbers = _numbers(' '.join(filter(None, [hint, str(product.get('model') or ''),
+                                                      str(product.get('size_mm') or '')])))
     notes = []
-    if not other and len(features) > len(kept):
-        notes.append('AI 起草的 %d 条卖点不是你写的内容，已去掉；卖点只采用你写下的要点。' % (len(features) - len(kept)))
     clean = []
-    for row in kept:
-        why = brandkit_set.mesh_named(row['title'], product)
+    seen = set()
+    candidates = list(features or [])
+    if hint and not candidates:
+        candidates = _own_lines(hint)
+    for row in candidates:
+        title = str(row.get('title') or '').strip()
+        if not title or title.casefold() in seen:
+            continue
+        why = brandkit_set.mesh_named(title, product)
         if why:
-            notes.append('卖点「%s」%s，已去掉。' % (row['title'], why))
+            notes.append('卖点「%s」%s，已去掉。' % (title, why))
+            continue
+        detail = str(row.get('detail') or '').strip()
+        row_nums = _numbers(title + ' ' + detail)
+        if row_nums and not row_nums <= allowed_numbers:
+            if not (_numbers(title) - allowed_numbers):
+                detail = ''                     # keep the grounded title; drop only the unverified number in detail
+            else:
+                notes.append('卖点「%s」含有未提供的数字，已略去。' % title)
+                continue
+        seen.add(title.casefold())
+        clean.append({**row, 'title': title, 'detail': detail})
+    if not clean and hint:
+        for row in _own_lines(hint):
+            if not brandkit_set.mesh_named(row['title'], product):
+                clean.append(row)
+    clean = clean[:MAX_FEATURES]
+    if not hint:
+        if clean:
+            notes.insert(0, '已根据模型结构起草 %d 条卖点（请核对后按实际规格微调）。' % len(clean))
         else:
-            clean.append(row)
-    return clean[:MAX_FEATURES], notes
+            notes.insert(0, '未能从模型部件识别出可起草的卖点：请在上方粘贴产品介绍后点「提取到各栏」，或手动添加。')
+    return clean, notes
 
 
 @_project_tagged
@@ -1571,9 +1590,16 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
     # Which parts of the model move and the states worth showing (pliers closed / open): asked once per model file.
     project, moving_notes = _moving_parts(project_id, project, product, size_mm, cancelled, lambda text: progress('pictures', 0, text))
     notes += moving_notes
-    rows = [row for row in planned(project, product, parts) if not row.get('skipped')]
+    plan_rows = planned(project, product, parts)
+    rows = [row for row in plan_rows if not row.get('skipped')]
     if not rows:
-        raise ValueError('没有可以生成的图片。')
+        skipped = [row for row in plan_rows if row.get('skipped')]
+        if skipped:
+            reasons = '；'.join('「%s」%s' % (brandkit_set.KINDS.get(row['kind'], (row['kind'],))[0], row['skipped']) for row in skipped)
+            if any('真实尺寸' in str(row.get('skipped', '')) for row in skipped):
+                raise ValueError('没有可以生成的图片：%s。请先在「产品信息」中填写最长边真实尺寸（mm）后再生成。' % reasons)
+            raise ValueError('没有可以生成的图片：%s。' % reasons)
+        raise ValueError('没有可以生成的图片，请至少勾选一张套图页面。')
     kinds = {row['kind'] for row in rows}
     requests = picture_requests(project, product, size_mm, rows, parts)
     shots = {}; names = list(requests)
@@ -1812,28 +1838,100 @@ def build(project_id, cancelled=lambda: False, progress=lambda stage, share, det
         if not vision_ready:
             notes.append('视觉模型未配置：各页只做了版式测量，没有经过视觉审核。')
         laid = {}; done = [0]; lock = threading.Lock()
-
-        def one(row):
-            if cancelled():
-                raise ListingCancelled()
-            kind = row['kind']
-            try:
-                with brandkit_review.fresh_answers(fresh):          # set in this worker thread: it does not inherit the build's
-                    result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
-            except brandkit_render.RenderError:
-                raise
-            except Exception as exc:
-                result = exc
-            with lock:
-                done[0] += 1
-                progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
-            return kind, result
-        progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
         import ai_client
-        # pool threads start with an empty context: the page reviews made there are tagged with the project here
-        with concurrent.futures.ThreadPoolExecutor(3) as pool:
-            for kind, result in pool.map(lambda row: ai_client.in_project(project_id, one, row), made):
-                laid[kind] = result
+        if vision_ready and len(made) >= 2 and not ctx.get('review_refused'):
+            # Phase 1: render every page locally first, then run 2x2 contact-sheet triage so clean pages skip single-page calls.
+            rendered = {}
+
+            def render_one(row):
+                if cancelled():
+                    raise ListingCancelled()
+                kind = row['kind']
+                try:
+                    result = brandkit_set.render_best(kind, ctx, folder / ('%s.png' % kind), work)
+                except brandkit_render.RenderError:
+                    raise
+                except Exception as exc:
+                    result = exc
+                with lock:
+                    done[0] += 1
+                    progress('compose', done[0] / (len(made) * 2), '已排好 %d / %d 张，准备拼图初筛' % (done[0], len(made)))
+                return kind, result
+
+            progress('compose', 0, '排版 %d 张图片（准备 2×2 拼图初筛）' % len(made))
+            with concurrent.futures.ThreadPoolExecutor(3) as pool:
+                for kind, result in pool.map(render_one, made):
+                    rendered[kind] = result
+
+            triage_items = []
+            for row in made:
+                kind = row['kind']; item = rendered[kind]
+                if isinstance(item, Exception):
+                    continue
+                qa_i, probs_i, cands_i, num_i, _ = item
+                triage_items.append({'kind': kind, 'png': folder / ('%s.png' % kind), 'job': cands_i[num_i],
+                                     'measured': brandkit_set._measured(qa_i),
+                                     'has_hard_issues': bool(brandkit_set.hard_issues(qa_i))})
+            triaged = {}
+            if len(triage_items) >= 2:
+                progress('compose', 0.5, '2×2 拼图初筛 %d 张图片' % len(triage_items))
+                try:
+                    with brandkit_review.fresh_answers(fresh):
+                        triaged = ai_client.in_project(
+                            project_id, brandkit_review.triage_pages, triage_items, folder, ctx['product'],
+                            ctx['assets']['hero']['path'], ctx.get('facts'))
+                except Exception as exc:
+                    if re.search(r'HTTP 40[123]', str(exc)):
+                        ctx['review_refused'] = str(exc)[:80]
+                    triaged = {}
+            if triaged:
+                need_deep = len(triage_items) - len(triaged)
+                notes.append('2×2 拼图初筛直接通过 %d / %d 张%s。' % (
+                    len(triaged), len(triage_items), '，仅对 %d 张疑似问题页做了单页精审' % need_deep if need_deep else ''))
+            done[0] = 0
+
+            def finish_one(row):
+                if cancelled():
+                    raise ListingCancelled()
+                kind = row['kind']; item = rendered[kind]
+                if isinstance(item, Exception):
+                    return kind, item
+                try:
+                    with brandkit_review.fresh_answers(fresh):
+                        result = brandkit_set.finish_page(kind, ctx, folder / ('%s.png' % kind), work, item, pre_verdict=triaged.get(kind))
+                except brandkit_render.RenderError:
+                    raise
+                except Exception as exc:
+                    result = exc
+                with lock:
+                    done[0] += 1
+                    progress('compose', 0.5 + 0.5 * (done[0] / len(made)), '审核与收尾 %d / %d 张' % (done[0], len(made)))
+                return kind, result
+
+            with concurrent.futures.ThreadPoolExecutor(3) as pool:
+                for kind, result in pool.map(lambda row: ai_client.in_project(project_id, finish_one, row), made):
+                    laid[kind] = result
+        else:
+            def one(row):
+                if cancelled():
+                    raise ListingCancelled()
+                kind = row['kind']
+                try:
+                    with brandkit_review.fresh_answers(fresh):          # set in this worker thread: it does not inherit the build's
+                        result = brandkit_set.lay_out(kind, ctx, folder / ('%s.png' % kind), work)
+                except brandkit_render.RenderError:
+                    raise
+                except Exception as exc:
+                    result = exc
+                with lock:
+                    done[0] += 1
+                    progress('compose', done[0] / len(made), '已排好 %d / %d 张%s' % (done[0], len(made), '（含视觉审核）' if vision_ready else ''))
+                return kind, result
+            progress('compose', 0, '排版 %d 张图片%s' % (len(made), '，并逐张视觉审核' if vision_ready else ''))
+            # pool threads start with an empty context: the page reviews made there are tagged with the project here
+            with concurrent.futures.ThreadPoolExecutor(3) as pool:
+                for kind, result in pool.map(lambda row: ai_client.in_project(project_id, one, row), made):
+                    laid[kind] = result
         for row in made:
             kind = row['kind']; result = laid[kind]
             if isinstance(result, Exception):

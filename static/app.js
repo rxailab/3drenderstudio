@@ -87,7 +87,19 @@ function renderWorkflow() {
   $('runtimeHelp').hidden=renderReady();
   setText('planState',!current?'':planSavePromise?'正在保存…':dirty?'有未保存调整':'已保存');
   $('planState').hidden=!current;$('planState').classList.toggle('is-dirty',dirty);
+  renderProjectSpend(current?.ai_spend);
   $('planSaveActions').hidden=!dirty;$('discardPlan').disabled=busy || !!planSavePromise;
+}
+function renderProjectSpend(spend) {
+  const node=$('projectSpend');if(!node)return;
+  if(!current){node.hidden=true;node.textContent='';return;}
+  const s=spend && typeof spend==='object'?spend:{usd:0,calls:0,unpriced:0};
+  const usd=Number(s.usd) || 0,calls=Number(s.calls) || 0,unpriced=Number(s.unpriced) || 0;
+  const amount=usd>0 && usd<0.01?'<$0.01':`$${usd.toFixed(2)}`;
+  node.hidden=false;
+  node.textContent=`总花销 ${amount}`;
+  node.dataset.hasSpend=calls>0?'true':'false';
+  node.title=calls?`本项目已记录 AI 总花销约 US${amount}（共 ${calls} 次调用${unpriced?`，含 ${unpriced} 次未计价调用`:''}；按官方原价估算）`:'本项目暂无已记录的 AI 调用花销（从本版本起自动累计）';
 }
 function persistInstructionJournal() {
   const attempts=[...instructionAttempts.values()].filter(item=>unfinishedInstructionPhases.has(item.phase));
@@ -486,13 +498,22 @@ function renderOrientation() {
     else message=orientAvailable()?'这个项目还没有检查过朝向。模型倒着或躺着时，点「自动摆正」，或直接用下面的按钮翻转。':'朝向检查组件未就绪；仍可用下面的按钮翻转或转向。';
   }
   const status=$('orientStatus');status.textContent=message;status.hidden=!message;status.classList.toggle('is-summary',!problem);
+  const observation=record?.experimental_prediction,experiment=$('orientExperiment');
+  experiment.hidden=!observation;
+  if(observation)experiment.textContent=observation.status==='observed'
+    ?'实验模型分析候选图的展示面和图内方向；模型在商品照片上训练，未验证 Blender 渲染图，预测概率未经校准。结果不代表最佳姿态，也没有参与自动摆放。'
+    :(observation.reason || '实验模型未能运行，沿用现有摆放判断。');
   const badge=$('orientBadge'),changed=rotation.some(value=>Math.abs(value)>1e-6);
   badge.textContent=changed?'已调整':'原始朝向';badge.hidden=!current.analysis;badge.classList.toggle('is-changed',changed);
   const poses=$('orientPoses');poses.hidden=!rows.length;
   stableHTML(poses,rows.map((row,index)=>{
     const picked=upright===row;
+    const prediction=observation?.status==='observed'?observation.predictions?.find(item=>item.id===row.id):null;
+    const labels={front:'正面',front_oblique:'正面斜视',side:'侧面',back:'背面',top:'顶部',bottom:'底部',oblique:'斜视',interior:'内部',horizontal:'水平',vertical:'竖直',diagonal_up_right:'斜向右上',diagonal_down_right:'斜向右下',broad_side:'宽侧面',working_head:'工作头',blade_face:'刀刃面',jaw_face:'钳口',handle_face:'握柄',control_face:'控制面'};
+    const hints=['image_axis','primary_display_surface','view_direction'].map(key=>prediction?.[key]).filter(item=>item && Number.isFinite(item.confidence) && item.confidence>=.7 && labels[item.label]).map(item=>labels[item.label]);
+    const hint=hints.length?`实验识别：${hints.join('、')}`:'';
     return `<button type="button" class="orient-pose${picked?' is-current':''}" data-orient-pose="${esc(row.id)}" aria-pressed="${picked}" title="${esc((row.label || '')+(picked?'（当前）':'，点击改用'))}"${locked || active || !ready?' disabled':''}>`
-      +`<img src="${esc(orientFile(row.image_url))}" alt="${esc('候选姿态：'+(row.label || ''))}" loading="lazy"><span>${esc('ABCDEFGHIJKL'[index]+' '+(row.label || ''))}</span></button>`;
+      +`<img src="${esc(orientFile(row.image_url))}" alt="${esc('候选姿态：'+(row.label || ''))}" loading="lazy"><span>${esc('ABCDEFGHIJKL'[index]+' '+(row.label || ''))}</span>${hint?`<small>${esc(hint)}</small>`:''}</button>`;
   }).join(''));
   const disabled=locked || active || !ready;
   for(const id of ['orientFlip','orientTurnLeft','orientTurnRight'])$(id).disabled=disabled;
@@ -1002,7 +1023,7 @@ function disposeRealtime(clearContext=true) {
   if(clearContext){realtime.context='';realtime.mode='live';}
 }
 function realtimeIdentity() { const output=latestOutput(activeShot);return JSON.stringify([current?.id,current?.version,activeShot,output?sceneOutputKey(output):'']); }
-function realtimeStillCurrent(epoch,key) { return epoch===realtime.epoch && key===realtime.key && !!current && key===realtimeIdentity(); }
+function realtimeStillCurrent(epoch,key) { return typeof document!=='undefined' && !!document && epoch===realtime.epoch && key===realtime.key && !!current && key===realtimeIdentity(); }
 function viewportFileURL(value,projectId) {
   if(typeof value!=='string')throw new Error('实时预览缺少模型文件。');
   const url=new URL(value,window.location.href);
@@ -1027,7 +1048,9 @@ async function refreshRealtimeAsset(epoch=realtime.epoch,key=realtime.key,first=
     const asset={...record.asset,url:viewportFileURL(record.asset.url,projectId)};
     const instance=window.WuyingViewport.create($('realtimeViewport'),{
       onChange:changed=>{if(realtimeStillCurrent(epoch,key)){realtime.changed=changed;renderRealtimeControls();}},
-      onError:error=>{if(realtimeStillCurrent(epoch,key)){realtime.error=error.message;realtime.status='failed';renderRealtimeStage();}}
+      onError:error=>{if(realtimeStillCurrent(epoch,key)){realtime.error=error.message;realtime.status='failed';renderRealtimeStage();}},
+      onPick:partName=>{if(realtimeStillCurrent(epoch,key) && typeof listingArticulationTogglePart==='function')listingArticulationTogglePart(partName);},
+      onHover:partName=>{if(realtimeStillCurrent(epoch,key)){realtime.hoveredPart=partName||'';renderRealtimeControls();}}
     });
     realtime.instance=instance;
     await instance.load(asset,metadata,clone(shots().find(shot=>shot.id===shotId)),clone(current.plan),projectId);
@@ -1043,7 +1066,9 @@ async function refreshRealtimeAsset(epoch=realtime.epoch,key=realtime.key,first=
         instance.setShot({...view,...changes},draft,{autoFit:true});
       }
     }
-    realtime.status='ready';realtime.changed=!!preservedView;renderRealtimeStage();renderRenderActivity();
+    realtime.status='ready';realtime.changed=!!preservedView;
+    if(typeof listingSyncRealtimePick==='function')listingSyncRealtimePick();
+    renderRealtimeStage();renderRenderActivity();
   }catch(error){
     if(!realtimeStillCurrent(epoch,key) || error.name==='AbortError')return;
     realtime.instance?.dispose();realtime.instance=null;realtime.status='failed';realtime.error=error.message || '实时模型载入失败，请重试。';renderRealtimeStage();renderRenderActivity();
@@ -1070,8 +1095,19 @@ function renderRealtimeControls() {
   $('savedViewButton').disabled=!currentOutput;
   $('resetViewport').hidden=!ready;$('applyViewportView').hidden=!ready || !realtime.changed;
   $('applyViewportView').disabled=projectWritePending() || projectLoading || !!activeJob() || automaticMaterialBusy();
-  if(ready)$('viewportHint').textContent=realtime.changed?'视角已调整 · 点击预览将使用当前视角':'拖动旋转 · 滚轮缩放 · 右键平移';
+  const artPicking=typeof listingArticulationPicking==='function' && listingArticulationPicking();
+  if(ready)$('viewportHint').textContent=artPicking
+    ?(realtime.hoveredPart?`点击选中/取消：${realtime.hoveredPart} · 拖动仍可旋转视角`:'点击 3D 模型上的活动部件（如左门、右门）即可选中 · 拖动仍可旋转视角')
+    :(realtime.changed?'视角已调整 · 点击预览将使用当前视角':'拖动旋转 · 滚轮缩放 · 右键平移');
   $('zoomImage').title=active?'全屏查看 3D':'查看原图';$('zoomImage').setAttribute('aria-label',active?'全屏查看 3D':'查看原图');
+}
+function syncRealtimeArticulationPick(on,pickedSet) {
+  if(!on)realtime.hoveredPart='';
+  if(realtime.instance){
+    realtime.instance.setPickMode(!!on);
+    realtime.instance.setHighlightedParts(on?pickedSet:[]);
+  }
+  renderRealtimeControls();
 }
 function renderRealtimeStage() {
   const active=realtimeActive(),ready=active && realtime.status==='ready';
@@ -1476,6 +1512,7 @@ function pointFromClient(clientX,clientY,rect=imageContentRect()) {
   return {x:(clientX-rect.left)/rect.width,y:(clientY-rect.top)/rect.height};
 }
 function renderFeedbackMarkers() {
+  if(typeof listingArticulationPicking==='function' && listingArticulationPicking()){listingRenderArticulationMarkers();return;}
   const rect=imageContentRect(),viewer=$('viewer').getBoundingClientRect();
   $('feedbackMarkers').innerHTML=feedbackMode && rect?feedbackPoints.map((point,index)=>`<button type="button" class="feedback-marker ${point.pending?'pending':point.hit?'':'miss'}" data-remove-point="${esc(point.id)}" style="left:${rect.left-viewer.left+rect.width*point.x}px;top:${rect.top-viewer.top+rect.height*point.y}px" aria-label="移除位置 ${index+1}" title="移除位置 ${index+1}">${index+1}</button>`).join(''):'';
 }
@@ -1496,7 +1533,8 @@ function renderFeedback() {
   $('feedbackToggle').disabled=!canSelect || interactionBusy;
   $('feedbackToggle').setAttribute('aria-pressed',feedbackMode);
   $('feedbackToggle').title=feedbackMode?'结束点选':'选择部件 / 材质';$('feedbackToggle').setAttribute('aria-label',$('feedbackToggle').title);
-  $('feedbackPanel').hidden=!feedbackMode;$('viewer').classList.toggle('feedback-selecting',feedbackMode);
+  const artPicking=typeof listingArticulationPicking==='function' && listingArticulationPicking();
+  $('feedbackPanel').hidden=!feedbackMode;$('viewer').classList.toggle('feedback-selecting',feedbackMode || artPicking);
   $('feedbackContext').textContent=currentOutput?`${sceneShotLabel(currentOutput.shot_id)} · 方案 v${currentOutput.version} · ${feedbackPoints.length}/12 个位置`:'';
   $('feedbackSelection').innerHTML=feedbackPoints.length?feedbackPoints.map((point,index)=>`<li><span class="feedback-number">${index+1}</span><span>${point.pending?'正在定位实际部件…':point.error?esc(point.error):point.hit?`<strong>${esc(point.object_name || '部件')}</strong><small>材质：${esc(point.material_name || '未分配材质')}</small>`:esc(point.message || '没有命中产品，请移除后重新点选')}<small>位置 ${Math.round(point.x*100)}%, ${Math.round(point.y*100)}%</small></span><button type="button" class="text-button" data-remove-point="${esc(point.id)}" aria-label="移除位置 ${index+1}">移除</button></li>`).join(''):'<li class="feedback-empty">尚未选择部件。</li>';
   $('feedbackClear').disabled=!feedbackPoints.length || busy;
@@ -2036,14 +2074,13 @@ async function applyInstructionAndPreview(event) {
 }
 function uploadValidation() {
   if(!uploadFiles.length)return '';
-  const allowed=new Set(['glb','obj','mtl','zip','png','jpg','jpeg','webp','tga','bmp','tif','tiff','exr','hdr','json','txt']);
+  const allowed=new Set(['glb','obj','stl','mtl','zip','png','jpg','jpeg','webp','tga','bmp','tif','tiff','exr','hdr','json','txt']);
   const extension=file=>file.name.split('.').pop().toLowerCase();
   const unsupported=uploadFiles.find(file=>!allowed.has(extension(file)));
   if(unsupported)return `不支持 ${unsupported.name}。请移除后再上传模型与配套资源。`;
-  if(uploadFiles.reduce((sum,file)=>sum+file.size,0)>=512*1024*1024)return '文件总量需小于 512 MB，请减少资源或压缩贴图。';
-  const modelCount=uploadFiles.filter(file=>['glb','obj'].includes(extension(file))).length;
-  if(modelCount>1)return '每个项目只能包含一个 GLB 或 OBJ，请移除多余模型。';
-  if(!modelCount && !uploadFiles.some(file=>extension(file)==='zip'))return '还缺少模型文件。请添加一个 GLB / OBJ，或包含模型的 ZIP。';
+  const modelCount=uploadFiles.filter(file=>['glb','obj','stl'].includes(extension(file))).length;
+  if(modelCount>1)return '每个项目只能包含一个 GLB、OBJ 或 STL，请移除多余模型。';
+  if(!modelCount && !uploadFiles.some(file=>extension(file)==='zip'))return '还缺少模型文件。请添加一个 GLB / OBJ / STL，或包含模型的 ZIP。';
   return '';
 }
 function componentRoleFor(name) {
@@ -2053,9 +2090,9 @@ function componentRoleFor(name) {
   return 'other';
 }
 function componentUploadValidation() {
-  const allowed=new Set(['glb','obj','zip','png','jpg','jpeg','webp']);
+  const allowed=new Set(['glb','obj','stl','zip','png','jpg','jpeg','webp']);
   const wrong=uploadComponents.find(row=>!allowed.has(row.file.name.split('.').pop().toLowerCase()));
-  if(wrong)return `组件 ${wrong.file.name} 的格式不受支持：每个组件请用一个 GLB / OBJ / ZIP，或一张 PNG / JPG / WebP 图片。`;
+  if(wrong)return `组件 ${wrong.file.name} 的格式不受支持：每个组件请用一个 GLB / OBJ / STL / ZIP，或一张 PNG / JPG / WebP 图片。`;
   if(uploadComponents.length>24)return '一个项目最多 24 个组件。';
   if(uploadComponents.some(row=>!(Number.isInteger(row.quantity) && row.quantity>=1 && row.quantity<=99)))return '组件数量需为 1 到 99 的整数。';
   return '';
@@ -2081,7 +2118,7 @@ function addFiles(files) {
   if(uploadSubmitting)return;
   const pathOf=file=>file.webkitRelativePath || file._relativePath || file.name;
   for(const file of files){const index=uploadFiles.findIndex(item=>pathOf(item)===pathOf(file));if(index>=0)uploadFiles[index]=file;else uploadFiles.push(file);}
-  $('chosenFiles').innerHTML=uploadFiles.map((file,index)=>`<div><span>${esc(pathOf(file))}</span><span>${filenameSize(file.size)} <button type="button" data-remove-file="${index}" aria-label="移除${esc(file.name)}">×</button></span></div>`).join('')+(uploadFiles.length?`<p class="field-help">已选 ${uploadFiles.length} 个文件 · 合计 ${filenameSize(uploadFiles.reduce((sum,file)=>sum+file.size,0))} · 上限 512 MB</p>`:'');
+  $('chosenFiles').innerHTML=uploadFiles.map((file,index)=>`<div><span>${esc(pathOf(file))}</span><span>${filenameSize(file.size)} <button type="button" data-remove-file="${index}" aria-label="移除${esc(file.name)}">×</button></span></div>`).join('')+(uploadFiles.length?`<p class="field-help">已选 ${uploadFiles.length} 个文件 · 合计 ${filenameSize(uploadFiles.reduce((sum,file)=>sum+file.size,0))}</p>`:'');
   $('uploadError').textContent=uploadValidation() || componentUploadValidation() || (uploadFiles.length && !workerRenderReady()?runtimeReason():'');
   $('uploadSubmit').disabled=!uploadFiles.length || !!uploadValidation() || !!componentUploadValidation() || !workerRenderReady();
 }
@@ -2363,7 +2400,7 @@ function installEvents() {
   $('partMaterialForm').onsubmit=event=>{event.preventDefault();submitPartMaterial(false);};$('partMaterialReset').onclick=()=>submitPartMaterial(true);
   $('reviewRefreshButton').onclick=requestRealismReview;
   $('feedbackAddPoint').onclick=()=>addFeedbackPoint({x:readNumber('feedbackX')/100,y:readNumber('feedbackY')/100});
-  $('renderImage').onclick=e=>{if(realtimeActive() || comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
+  $('renderImage').onclick=e=>{if(typeof listingArticulationPickClick==='function' && listingArticulationPickClick(e))return;if(realtimeActive() || comparePrevious || busy || planSavePromise || projectLoading || realismBusy || materialAgentSubmitting || activeJob() || automaticMaterialBusy() || !currentOutput || system?.runtime?.capabilities?.pick===false)return;const point=pointFromClient(e.clientX,e.clientY);if(point){feedbackMode=true;setInspectorTab('material');addFeedbackPoint(point);}};
   $('renderImage').addEventListener('load',renderFeedbackMarkers);window.addEventListener('resize',renderFeedbackMarkers);
   const removePoint=e=>{const button=e.target.closest('[data-remove-point]');if(button && !busy){feedbackPoints=feedbackPoints.filter(point=>point.id!==button.dataset.removePoint);renderFeedback();renderInstruction();}};
   $('feedbackSelection').onclick=removePoint;$('feedbackMarkers').onclick=removePoint;
@@ -2456,7 +2493,7 @@ function installEvents() {
   $('applyViewportView').onclick=()=>{if($('applyViewportView').disabled)return;try{applyRealtimeView();}catch(error){toast(error.message,true);}};
   $('resetViewport').onclick=()=>{realtime.instance?.reset();realtime.changed=false;renderRealtimeControls();};
   $('retryViewport').onclick=()=>{disposeRealtime(false);ensureRealtime();renderRealtimeStage();};
-  window.addEventListener('wuying-viewport-ready',()=>{if(current)renderViewer();});
+  window.addEventListener('wuying-viewport-ready',()=>{if(current)renderViewer();if(typeof listingRenderArticulation==='function' && typeof listingVisible==='function' && listingVisible() && typeof listingStep!=='undefined' && listingStep==='product')listingRenderArticulation(false);});
   $('zoomImage').onclick=async()=>{if(realtimeActive()){try{if(document.fullscreenElement)await document.exitFullscreen();else if($('viewer').requestFullscreen)await $('viewer').requestFullscreen();else toast('当前浏览器不支持全屏，请放大浏览器窗口查看。');}catch(_){toast('无法进入全屏，请放大浏览器窗口查看。',true);}}else if(currentOutput){$('fullImage').src=currentOutput.png_url;$('imageDialog').showModal();}else toast('生成预览后即可查看原图。');};
   $('systemInfo').onclick=async()=>{
     try{system=await api('/api/system');serviceDisconnected=false;}catch(error){serviceDisconnected=true;}

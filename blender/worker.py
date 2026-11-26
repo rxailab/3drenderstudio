@@ -38,8 +38,13 @@ def load_asset(path):
         bpy.ops.wm.obj_import(filepath=str(p), forward_axis='NEGATIVE_Z', up_axis='Y')
     elif p.suffix.lower() == '.glb':
         bpy.ops.import_scene.gltf(filepath=str(p), import_pack_images=True)
+    elif p.suffix.lower() == '.stl':
+        if hasattr(bpy.ops.wm, 'stl_import'):
+            bpy.ops.wm.stl_import(filepath=str(p))
+        else:
+            bpy.ops.import_mesh.stl(filepath=str(p))
     else:
-        raise ValueError('首版仅支持 OBJ 和 GLB')
+        raise ValueError('仅支持 OBJ、GLB 和 STL 模型')
     objects = list(bpy.context.scene.objects)
     meshes = [o for o in objects if o.type == 'MESH' and len(o.data.polygons)]
     if not meshes:

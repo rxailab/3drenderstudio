@@ -3,7 +3,7 @@
 A model file's axes are whatever its CAD program used, so a tool can arrive
 upside-down or lying on its back, and every picture then shows it that way. At
 analysis, and again whenever the user asks, the model is pictured in six
-candidate poses (blender/orient.py) and one of them is chosen:
+axis poses plus up to six tilted surface candidates (blender/orient.py):
 
     geometry a long or flat tool (a saw, a wrench, a screwdriver) lies on its largest face, by measurement alone
     vision   the pose agent looks at the six pictures and decides how the product rests
@@ -238,13 +238,24 @@ def picture(project, plan, poses, folder, cancelled=None, view=None, floor=True,
     """
     import engine
     request = {'model_path': project['model_path'], 'plan': plan, 'size': size, 'samples': samples, 'floor': bool(floor),
-               'render': bool(render), 'candidates': [{'id': ident, 'rotation': rotation} for ident, _, rotation in poses]}
+               'render': bool(render), 'geometry_candidates': poses is POSES,
+               'candidates': [{'id': ident, 'rotation': rotation} for ident, _, rotation in poses]}
     if view:
         request.update(azimuth=float(view[0]), elevation=float(view[1]))
     result = _blender(request, folder, cancelled)
     found = {row.get('id'): row for row in result.get('candidates', []) if isinstance(row, dict)}
     rows = []
-    for ident, label, rotation in poses:
+    candidates = list(poses)
+    # Blender proposes additional tilted face orientations from the imported geometry.
+    # They are suggestions only and go through the same visual selection as the axes.
+    if poses is POSES:
+        for row in result.get('candidates', [])[len(candidates):]:
+            ident, rotation = row.get('id'), row.get('rotation')
+            if (isinstance(ident, str) and re.fullmatch(r'geo[0-9]+', ident)
+                    and ident not in {item[0] for item in candidates} and valid_rotation(rotation)
+                    and len(candidates) < len(LETTERS)):
+                candidates.append((ident, '几何表面候选', rotation))
+    for ident, label, rotation in candidates:
         row = found.get(ident)
         if not row or (render and not isinstance(row.get('image'), str)):
             raise ValueError('朝向检查没有返回全部候选姿态。')
@@ -575,9 +586,12 @@ def decide(project, plan, folder, cancelled=None, progress=None):
         if _vision(): say('由视觉模型判断产品应如何摆放')
         chosen, source, reason, seen = choose(rows, sheet_path, names, flat=flat)
     rotation = list(chosen['rotation']); front = None; rejected = None
-    if chosen is not rows[0] and not flat:
-        # Before the pose is changed it is looked at again from four sides; a file that was
-        # not the right way up says nothing reliable about its front either.
+    # Preserve the current azimuth when it already has the selected side up; only
+    # change it if the four-view check confidently identifies a better front.
+    current = plan.get('rotation', [0, 0, 0])
+    if valid_rotation(current) and same_up(current, rotation):
+        rotation = list(current)
+    if source != 'file' and not flat:
         front = _front(project, plan, rotation, folder, cancelled, say, seen)
         if front and front.get('rejected'):
             rejected = {'id': chosen['id'], 'reason': front['reason'], 'sheet_url': front['sheet_url']}
@@ -586,7 +600,7 @@ def decide(project, plan, folder, cancelled=None, progress=None):
         elif front:
             rotation = front['rotation']
     record = {'version': VERSION, 'status': 'ready', 'checked_at': time.time(), 'source': source, 'reason': reason,
-              'product': seen['product'] if seen else None, 'chosen': chosen['id'], 'changed': chosen is not rows[0], 'rotation': rotation,
+              'product': seen['product'] if seen else None, 'chosen': chosen['id'], 'changed': source != 'file' and not same(rotation, current), 'rotation': rotation,
               'candidates': [{'id': row['id'], 'label': row['label'], 'rotation': row['rotation'], 'image_url': _url(row['path']),
                               'dimensions': row['dimensions'], 'support_ratio': row['support_ratio'], 'tip_angle': row['tip_angle'],
                               'flat_contact': row.get('flat_contact')}
@@ -598,6 +612,17 @@ def decide(project, plan, folder, cancelled=None, progress=None):
         record['rejected'] = rejected
     if front:
         record['front'] = {'turn': front['turn'], 'reason': front['reason'], 'sheet_url': front['sheet_url']}
+    # Observational classification only: this model has no pose-preference
+    # labels and must never influence the selected rotation or physical checks.
+    try:
+        import pose_experiment
+        observation = pose_experiment.observe(rows, folder / 'experiment', cancelled)
+    except InterruptedError:
+        raise
+    except Exception:
+        observation = {'status': 'unavailable', 'reason': '实验预测未完成；现有摆放逻辑继续运行。'}
+    if observation is not None:
+        record['experimental_prediction'] = observation
     return record
 
 
@@ -658,7 +683,7 @@ def public(record):
     if not isinstance(record, dict):
         return None
     keys = ('version', 'status', 'checked_at', 'source', 'reason', 'product', 'chosen', 'changed', 'rotation', 'candidates', 'front',
-            'rests_on', 'model', 'cells', 'rejected')
+            'rests_on', 'model', 'cells', 'rejected', 'experimental_prediction')
     return {key: copy.deepcopy(record[key]) for key in keys if key in record}
 
 
@@ -795,8 +820,8 @@ def _run(task_id):
             engine.yield_to_user(current['id'])
             current['orientation'] = record
             now = current['plan'].get('rotation', [0, 0, 0])
-            # Nothing could be told: the pose stays. The right side is already up: the way the user turned it stays.
-            changed = record['source'] != 'file' and not same_up(record['rotation'], now)
+            # Include a confident front-only turn even when the same side remains up.
+            changed = record['source'] != 'file' and not same(record['rotation'], now)
             if changed:
                 plan = planner.validate(repose(current['plan'], record['rotation']))
                 current.setdefault('history', []).append({'version': current['version'], 'plan': copy.deepcopy(current['plan']),

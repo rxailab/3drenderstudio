@@ -350,6 +350,11 @@ def _import(path):
         bpy.ops.wm.obj_import(filepath=str(path), forward_axis='NEGATIVE_Z', up_axis='Y')
     elif suffix == '.glb':
         bpy.ops.import_scene.gltf(filepath=str(path), import_pack_images=True)
+    elif suffix == '.stl':
+        if hasattr(bpy.ops.wm, 'stl_import'):
+            bpy.ops.wm.stl_import(filepath=str(path))
+        else:
+            bpy.ops.import_mesh.stl(filepath=str(path))
     else:
         raise ValueError('组件模型格式不受支持')
     added = [ob for ob in bpy.data.objects if ob not in before]

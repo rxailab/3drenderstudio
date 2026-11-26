@@ -84,6 +84,46 @@ def matrix_of(rotation):
     return np.array(Euler([math.radians(value) for value in rotation]).to_matrix(), dtype=np.float64)
 
 
+def geometry_candidates(faces, existing, limit=6):
+    """Propose up to three opposite tilted support directions from large surface normals.
+
+    This is a candidate generator, not a claim that a surface is a stable base.
+    The normal evidence is measured in the imported asset frame and paired with
+    its opposite so the visual check can compare both sides.
+    """
+    normals = faces[1]
+    areas = np.linalg.norm(normals, axis=1)
+    valid = areas > 1e-12
+    if not valid.any(): return []
+    normals, areas = normals[valid] / areas[valid, None], areas[valid]
+    # Cluster directions modulo sign, so opposite faces reinforce one axis.
+    major = np.argmax(np.abs(normals), axis=1)
+    signs = np.where(normals[np.arange(len(normals)), major] < 0, -1, 1)
+    normals = normals * signs[:, None]
+    bins = np.round(normals * 20).astype(np.int32)
+    _, inverse = np.unique(bins, axis=0, return_inverse=True)
+    weights = np.bincount(inverse, weights=areas)
+    total = float(areas.sum())
+    existing_up = [matrix_of(item['rotation'])[2] for item in existing]
+    chosen = []
+    for group in np.argsort(weights)[::-1]:
+        if weights[group] < total * .015: break
+        mask = inverse == group
+        direction = (normals[mask] * areas[mask, None]).sum(axis=0)
+        length = np.linalg.norm(direction)
+        if length < 1e-12: continue
+        direction /= length
+        if any(abs(float(np.dot(direction, other))) > .996 for other in existing_up): continue
+        for sign in (1, -1):
+            axis = Vector((direction * sign).tolist())
+            angles = axis.rotation_difference(Vector((0, 0, 1))).to_euler('XYZ')
+            rotation = [round(math.degrees(value), 5) for value in angles]
+            chosen.append({'id': 'geo%d' % (len(chosen) + 1), 'rotation': rotation})
+        existing_up.append(direction)
+        if len(chosen) >= limit: break
+    return chosen[:limit]
+
+
 def hull(points):
     """Convex hull of 2D points (counter-clockwise), by Andrew's monotone chain."""
     rows = sorted(set(map(tuple, points)))
@@ -236,6 +276,8 @@ def run(request):
     # Measured once in the file's own frame; every pose is that cloud turned.
     pose(root, meshes, [0, 0, 0])
     points, centre, parts, faces = cloud(meshes)
+    if request.get('geometry_candidates'):
+        candidates = list(candidates) + geometry_candidates(faces, candidates, min(6, 12 - len(candidates))) if len(candidates) < 12 else list(candidates)
     size = max(128, min(640, int(request.get('size', 320)))); samples = max(4, min(64, int(request.get('samples', 16))))
     camera = stage(size, samples, request.get('floor', True) is not False) if request.get('render', True) else None
     rows = []

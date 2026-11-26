@@ -156,15 +156,135 @@ def cleanup_deleted_projects():
     return results
 
 
-def delete_project(project_id):
+def _stop_process(process, kill=False):
+    if process is None:
+        return False
+    poll = getattr(process, 'poll', None)
+    if callable(poll) and poll() is not None:
+        return False
+    action = getattr(process, 'kill' if kill else 'terminate', None) or getattr(process, 'terminate', None)
+    if callable(action):
+        try:
+            action()
+        except OSError:
+            pass
+    return True
+
+
+def _active_processes(project_id):
+    import components
+    import ecommerce
+    import engine
+    import scene_exports
+    import viewport_service
+
+    found = []
+    for kind, processes in (
+        ('job', engine.PROCESSES),
+        ('export', scene_exports.PROCESSES),
+        (ecommerce.KIND, ecommerce.PROCESSES),
+    ):
+        for record in store.all_records(kind):
+            if record.get('project_id') == project_id and record['id'] in processes:
+                found.append(processes[record['id']])
+    comp_proc = components.PROCESSES.get(project_id)
+    if comp_proc is not None:
+        found.append(comp_proc)
+    for ident, item in list(viewport_service.TASKS.items()):
+        if item.get('project_id') == project_id and ident in viewport_service.PROCESSES:
+            found.append(viewport_service.PROCESSES[ident])
+    return found
+
+
+def abort_project_operations(project_id, timeout=3.0):
+    """Immediately cancel and terminate all active tasks and subprocesses for a project."""
+    import components
+    import ecommerce
+    import engine
+    import instruction_service
+    import listing
+    import material_agent
+    import orientation
+    import scene_exports
+    import scene_stylist
+    import viewport_service
+
+    for record in store.all_records('job'):
+        if record.get('project_id') == project_id and record.get('status') in ('queued', 'running'):
+            try:
+                engine.cancel(record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records('export'):
+        if record.get('project_id') == project_id and record.get('status') in ('queued', 'running'):
+            try:
+                scene_exports.stop(record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records('material_task'):
+        if record.get('project_id') == project_id and record.get('status') in material_agent.ACTIVE:
+            try:
+                material_agent.cancel(project_id, record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records(ecommerce.KIND):
+        if record.get('project_id') == project_id and record.get('status') in ('queued', 'running'):
+            try:
+                ecommerce.cancel(record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records(scene_stylist.KIND):
+        if record.get('project_id') == project_id and record.get('status') in scene_stylist.ACTIVE:
+            try:
+                scene_stylist.cancel(project_id, record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records(orientation.KIND):
+        if record.get('project_id') == project_id and record.get('status') in orientation.ACTIVE:
+            try:
+                orientation.cancel(project_id, record['id'])
+            except KeyError:
+                pass
+    for record in store.all_records(listing.KIND):
+        if record.get('project_id') == project_id and record.get('status') in ('queued', 'running'):
+            try:
+                listing.cancel(project_id, record['id'])
+            except KeyError:
+                pass
+    _stop_process(components.PROCESSES.get(project_id))
+    viewport_service.cancel_project(project_id)
+    instruction_service._INFLIGHT.pop(project_id, None)
+    for proc in _active_processes(project_id):
+        _stop_process(proc, kill=False)
+
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    kill_at = time.monotonic() + min(1.0, max(0.0, float(timeout)) * 0.5)
+    killed = False
+    while time.monotonic() < deadline:
+        live = [proc for proc in _active_processes(project_id) if callable(getattr(proc, 'poll', None)) and proc.poll() is None]
+        if not live and not OPERATIONS.get(project_id):
+            break
+        if not killed and live and time.monotonic() >= kill_at:
+            for proc in live:
+                _stop_process(proc, kill=True)
+            viewport_service.cancel_project(project_id, kill=True)
+            killed = True
+        time.sleep(0.05)
+
+
+def delete_project(project_id, force=False):
+    if force:
+        abort_project_operations(project_id)
     cleanup = None
     with store.LOCK:
         project = store.get('project', project_id)
         if project.get('id') != project_id:
             raise ValueError('项目记录标识不一致，未删除。')
-        _ensure_idle(project_id)
+        if not force:
+            _ensure_idle(project_id)
         folder = _project_folder(project_id)
         staged = None
+        renamed = False
         connection = None
         try:
             # The name is generated here; stored resource paths never drive removal.
@@ -181,17 +301,32 @@ def delete_project(project_id):
             connection.execute('PRAGMA synchronous=FULL')     # this commit must be on disk before the folder is renamed
             connection.execute('BEGIN IMMEDIATE')
             if staged is not None:
-                folder.rename(staged)
+                if force:
+                    for attempt in range(10):
+                        try:
+                            folder.rename(staged)
+                            renamed = True
+                            break
+                        except OSError:
+                            if attempt < 9:
+                                time.sleep(0.1)
+                else:
+                    folder.rename(staged)
+                    renamed = True
             records = connection.execute('SELECT kind,id,payload FROM records').fetchall()
             related = [(kind, ident) for kind, ident, payload in records
-                       if kind in {'job', 'export', 'material_task', 'ecommerce_export', 'listing_task', 'scene_task'}
+                       if kind not in {'project', CLEANUP_KIND}
                        and json.loads(payload).get('project_id') == project_id]
             connection.executemany('DELETE FROM records WHERE kind=? AND id=?', related)
             connection.execute('DELETE FROM records WHERE kind=? AND id=?', ('project', project_id))
             if cleanup:
-                cleanup.update(status='pending', updated_at=time.time())
-                connection.execute('UPDATE records SET payload=? WHERE kind=? AND id=?',
-                                   (json.dumps(cleanup, ensure_ascii=False), CLEANUP_KIND, cleanup['id']))
+                if renamed:
+                    cleanup.update(status='pending', updated_at=time.time())
+                    connection.execute('UPDATE records SET payload=? WHERE kind=? AND id=?',
+                                       (json.dumps(cleanup, ensure_ascii=False), CLEANUP_KIND, cleanup['id']))
+                else:
+                    connection.execute('DELETE FROM records WHERE kind=? AND id=?', (CLEANUP_KIND, cleanup['id']))
+                    cleanup = None
             connection.commit()
         except Exception:
             if connection is not None:
@@ -209,7 +344,13 @@ def delete_project(project_id):
         finally:
             if connection is not None:
                 connection.close()
-    cleaned = True if cleanup is None else _cleanup(cleanup)
+    if cleanup is not None:
+        cleaned = _cleanup(cleanup)
+    elif force and folder.exists():
+        shutil.rmtree(folder, ignore_errors=True)
+        cleaned = not folder.exists()
+    else:
+        cleaned = True
     result = {'deleted': True, 'id': project_id, 'cleanup_pending': not cleaned}
     if not cleaned:
         result['warning'] = '项目已从列表移除，但部分文件仍被占用；应用下次启动会继续清理。'

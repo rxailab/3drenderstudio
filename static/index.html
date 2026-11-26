@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#17181b">
+<meta name="theme-color" content="#141415">
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=36">
+<link rel="stylesheet" href="/static/styles.css?v=41">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
 <symbol id="i-back" viewBox="0 0 16 16"><path d="M9.5 3.5 5 8l4.5 4.5"/></symbol>
 <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5.5 3.5 3 6l2.5 2.5M3 6h6.2a3.4 3.4 0 0 1 0 6.8H6"/></symbol>
 <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.2"/></symbol>
-<symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></symbol>
+<symbol id="i-spark" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="5.5" cy="4.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="10.5" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="6.5" cy="11.5" r="1.3" fill="currentColor" stroke="none"/></symbol>
 <symbol id="i-grid" viewBox="0 0 16 16"><path d="M2.5 2.5h11v11h-11zM6.2 2.5v11M9.8 2.5v11M2.5 6.2h11M2.5 9.8h11"/></symbol>
 <symbol id="i-expand" viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9.2 6.8M2.5 13.5l4.3-4.3"/></symbol>
 <symbol id="i-reset" viewBox="0 0 16 16"><path d="M2.8 8.2a5.2 5.2 0 1 0 1.5-3.9M2.6 2.4v2.9h2.9"/></symbol>
@@ -36,6 +36,7 @@
 <option value="">选择摄影项目</option>
 </select>
 <span id="planState" class="plan-state" role="status" hidden=""></span>
+<span id="projectSpend" class="project-spend project-only" title="本项目已记录的 AI 模型总花费（按官方原价估算）" hidden></span>
 </div>
 <div class="topbar-actions">
 <button id="undoButton" type="button" class="icon-button project-only" disabled title="恢复上一版已保存方案" aria-label="恢复上一版已保存方案"><svg class="icon"><use href="#i-undo"/></svg></button>
@@ -83,8 +84,8 @@
 <span class="home-upload-icon" aria-hidden="true"><svg class="icon"><use href="#i-upload"/></svg></span>
 <div class="home-upload-copy">
 <h1 id="homeUploadTitle">上传产品模型</h1>
-<p>拖入模型文件，自动生成白底主图。</p>
-<p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · ZIP 资源包 · 每次 1 个模型，不超过 512 MB · 文件只保存在本机</p>
+<p>拖入模型文件，自动生成白底主图</p>
+<p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · STL · ZIP 资源包 · 每次 1 个模型 · 文件只保存在本机</p>
 </div>
 <div class="home-upload-actions">
 <button id="homeBrowseFolder" type="button" class="button secondary large">选择文件夹</button>
@@ -256,6 +257,7 @@
 </details></section>
 <section class="panel-section orient-section" aria-labelledby="orientTitle">
 <div class="orient-heading"><h2 id="orientTitle">摆放朝向</h2><span id="orientBadge" class="orient-badge" hidden></span></div>
+<p id="orientExperiment" class="field-help" hidden></p>
 <p id="orientStatus" class="render-reason" role="status" hidden></p>
 <div id="orientPoses" class="orient-poses" role="group" aria-label="候选姿态，点击改用" hidden></div>
 <div class="orient-actions">
@@ -725,11 +727,11 @@
 <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="选择或拖入模型文件">
 <span class="upload-symbol" aria-hidden="true"><svg class="icon"><use href="#i-upload"/></svg></span>
 <strong>拖入模型与配套资源</strong>
-<span>GLB，或 OBJ 连同 MTL 与贴图，也可以是 ZIP</span>
+<span>GLB、STL，或 OBJ 连同 MTL 与贴图，也可以是 ZIP</span>
 <button id="browseFiles" type="button" class="button secondary">选择文件</button>
 <button id="browseFolder" type="button" class="text-button">选择资源文件夹</button>
 </div>
-<input id="modelFiles" type="file" multiple accept=".glb,.obj,.mtl,.zip,.png,.jpg,.jpeg,.webp,.tga,.bmp,.tif,.tiff,.exr,.hdr" hidden>
+<input id="modelFiles" type="file" multiple accept=".glb,.obj,.stl,.mtl,.zip,.png,.jpg,.jpeg,.webp,.tga,.bmp,.tif,.tiff,.exr,.hdr" hidden>
 <input id="modelFolder" type="file" multiple webkitdirectory hidden>
 <div id="chosenFiles" class="chosen-files">
 </div>
@@ -738,8 +740,8 @@
 <strong id="uploadComponentsTitle">套装组件 <span>可选</span></strong>
 <button id="addComponentFiles" type="button" class="text-button">添加组件</button>
 </div>
-<p class="field-help">随箱附带的电池、充电器、工具箱等，每个组件一个 GLB / OBJ（带贴图的请打包成 ZIP），或一张白底 / 透明背景的图片。组件会和主模型一起处理，在套图里与产品一起渲染。</p>
-<input id="componentFiles" type="file" multiple accept=".glb,.obj,.zip,.png,.jpg,.jpeg,.webp" hidden>
+<p class="field-help">随箱附带的电池、充电器、工具箱等，每个组件一个 GLB / OBJ / STL（带贴图的请打包成 ZIP），或一张白底 / 透明背景的图片。组件会和主模型一起处理，在套图里与产品一起渲染。</p>
+<input id="componentFiles" type="file" multiple accept=".glb,.obj,.stl,.zip,.png,.jpg,.jpeg,.webp" hidden>
 <div id="chosenComponents" class="chosen-components"></div>
 </section>
 <label class="upload-platform">销售平台<select id="uploadPlatform" name="platform" aria-describedby="uploadPlatformHint"><option value="">暂不指定</option></select>
@@ -908,9 +910,9 @@
 <div id="toast" class="toast" role="status" aria-live="polite" hidden>
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
-<script type="module" src="/static/viewport.js?v=17-studio4"></script>
-<script src="/static/app.js?v=35" defer>
+<script type="module" src="/static/viewport.js?v=18-pick3d"></script>
+<script src="/static/app.js?v=38" defer>
 </script>
-<script src="/static/listing.js?v=40" defer></script>
+<script src="/static/listing.js?v=46" defer></script>
 </body>
 </html>

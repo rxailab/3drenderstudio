@@ -107,7 +107,7 @@ def _source(project,shot_id):
         return {'path':str(path),'sha256':sha,'kind':'derived_scene','version':output['version'],
                 'output_id':output.get('job_id'),'baseline_plan':copy.deepcopy(output['effective_plan']),
                 'product_object_names':_product_names(project)}
-    path=_path(project['id'],project.get('model_path'),{'.blend','.glb','.obj'})
+    path=_path(project['id'],project.get('model_path'),{'.blend','.glb','.obj','.stl'})
     return {'path':str(path),'sha256':_sha(path),'kind':'original_model','version':1,
             'product_object_names':_product_names(project)}
 
@@ -257,6 +257,7 @@ def _execute(ident):
     try:
         acquired=_WORKERS.acquire(timeout=TIMEOUT)
         if not acquired:raise TimeoutError()
+        if item.get('status')=='cancelled':return
         _current(item);_update(ident,status='running')
         folder=Path(item['_folder']);folder.mkdir(parents=True,exist_ok=True)
         source=item['_source'];project=item['_project']
@@ -272,6 +273,8 @@ def _execute(ident):
         with (folder/'export.log').open('w',encoding='utf-8') as log,blender_runner.launched(
                 command,ident=ident,lane=blender_runner.LIGHT,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT) as process:
             PROCESSES[ident]=process
+            if item.get('status')=='cancelled' and process.poll() is None:
+                process.terminate()
             try:code=process.wait(timeout=TIMEOUT)
             except subprocess.TimeoutExpired:
                 process.terminate()
@@ -279,6 +282,7 @@ def _execute(ident):
                 except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
                 raise TimeoutError() from None
             finally:PROCESSES.pop(ident,None)
+        if item.get('status')=='cancelled':return
         result_path=folder/'result.json'
         if not result_path.is_file():raise RuntimeError('实时模型准备未完成；请先生成当前镜头预览后重试。')
         result=json.loads(result_path.read_text(encoding='utf-8'))
@@ -304,6 +308,22 @@ def _execute(ident):
     finally:
         if acquired:_WORKERS.release()
         project_lifecycle.end_operation(item['project_id'])
+
+
+def cancel_project(project_id, kill=False):
+    stopped=False
+    with _TASK_LOCK:
+        for ident,item in list(TASKS.items()):
+            if item.get('project_id')!=project_id:continue
+            if item.get('status') in ('queued','running'):
+                item.update(status='cancelled',asset=None,error='项目已删除',updated_at=time.time())
+                stopped=True
+            process=PROCESSES.get(ident)
+            if process and process.poll() is None:
+                try:(process.kill() if kill else process.terminate())
+                except OSError:pass
+                stopped=True
+    return stopped
 
 
 def shutdown():

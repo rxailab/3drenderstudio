@@ -149,7 +149,8 @@ def propose(analysis, model_path=''):
     'decisions': [...]} without touching any plan.
     """
     analysis = analysis or {}
-    model_format = 'obj' if str(model_path).lower().endswith('.obj') else 'glb' if str(model_path).lower().endswith('.glb') else ''
+    lowered_path = str(model_path).lower()
+    model_format = 'obj' if lowered_path.endswith('.obj') else 'glb' if lowered_path.endswith('.glb') else 'stl' if lowered_path.endswith('.stl') else ''
     materials = {material['name']: material for material in analysis.get('materials', [])
                  if isinstance(material, dict) and isinstance(material.get('name'), str)}
     users = {}

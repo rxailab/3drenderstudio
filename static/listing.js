@@ -65,7 +65,7 @@ async function listingActivate(refresh=true) {
   finally{listingSwitching=null;}
   if(!current || current.id!==target)return;
   listingProject=current.id;listingState=null;listingEdit=null;listingDirty.product=listingDirty.brand=false;
-  listingDetail=null;listingStepFor=null;listingStep='style';listingVisited=new Set(['style']);listingOpenSections.clear();listingNeedsSeen.clear();clearTimeout(listingAutoTimer);
+  listingDetail=null;listingStepFor=null;listingStep='style';listingVisited=new Set(['style']);listingOpenSections.clear();listingNeedsSeen.clear();clearTimeout(listingAutoTimer);listingSetArticulationPickMode(false);
   $('listingPanel').hidden=false;$('listingMain').hidden=true;const side=$('listingPanel').closest('.listing-side');if(side)side.hidden=false;
   $('listingPanel').innerHTML='<p class="field-help">正在读取…</p>';listingSetHTML($('listingPages'),'');$('listingPlan').innerHTML='';listingSetHTML($('listingNotes'),'');listingSyncStage();
   try{await listingLoad(true);}catch(error){$('listingPanel').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;}
@@ -73,6 +73,7 @@ async function listingActivate(refresh=true) {
 // Called when the user leaves the tab: words still being typed are saved, polling stops.
 function listingDeactivate() {
   clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);clearTimeout(listingAutoTimer);
+  listingSetArticulationPickMode(false);
   document.body.classList.remove('listing-stage-on');const stage=listingStageNode();if(stage)stage.hidden=true;   // the model's view comes back
   if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
@@ -285,18 +286,17 @@ function listingPartsHTML(index,chosen) {
   const parts=listingState.parts || [];
   if(parts.length<2)return '';            // one part is the whole product: picking it points at nothing (listingPartsNote says so)
   return `<details class="listing-parts"><summary>对应部件（${chosen.length}）</summary><div class="listing-parts-list">${parts.map(name=>
-    `<label><input type="checkbox" data-scope="feature-part" data-index="${index}" value="${esc(name)}" ${chosen.includes(name)?'checked':''}> ${esc(name)}</label>`).join('')}</div>
+    `<label title="${esc(name)}"><input type="checkbox" data-scope="feature-part" data-index="${index}" value="${esc(name)}" ${chosen.includes(name)?'checked':''}><span>${esc(name)}</span></label>`).join('')}</div>
     <span class="field-help">选中部件后，功能标注会画出引线，并可生成该部件的特写。</span></details>`;
 }
 // ③ 填产品: the essentials first, the rest behind 更多信息; the components and the moving parts only when their page is chosen.
 function listingRenderProduct(reload=false) {
   const p=listingEdit.product,size=listingState.size,drafted=p.drafted,chosen=listingChosen();
   const rows=(list,scope,cells)=>list.map((row,index)=>`<div class="listing-row" data-row="${scope}">${cells(row,index)}<button type="button" class="icon-button" data-action="remove-${scope}" data-index="${index}" aria-label="删除这一条" title="删除">×</button></div>`).join('');
-  const empty=!String(p.title || '').trim() && !(p.features || []).length;
   const source=`<div class="listing-source">
       <label class="field-label" for="listingSource">产品介绍</label>
-      <textarea id="listingSource" data-scope="product" data-key="source" rows="6" maxlength="8000" placeholder="把商品详情、规格表或产品说明整段粘贴到这里，点「提取到各栏」，由文本模型分出名称、型号、尺寸、卖点、规格和指标。">${esc(p.source || '')}</textarea>
-      <div class="listing-source-actions"><button type="button" class="button secondary" data-action="extract">提取到各栏</button><button type="button" class="button subtle" data-action="draft" title="没有介绍时，根据模型部件名称起草卖点">起草文案</button></div>
+      <textarea id="listingSource" data-scope="product" data-key="source" rows="5" maxlength="8000" placeholder="把商品详情、规格表或产品说明整段粘贴到这里，点「提取到各栏」，由文本模型分出名称、型号、尺寸、卖点、规格和指标。">${esc(p.source || '')}</textarea>
+      <div class="listing-source-actions"><button type="button" class="button primary" data-action="extract">提取到各栏</button><button type="button" class="button accent" data-action="draft" title="没有介绍时，根据模型部件名称起草卖点">起草文案</button></div>
       <p class="field-help">${drafted?`上次${drafted.source==='extracted'?'从介绍中提取':drafted.source==='ai'?'由 AI 起草':'按部件名称起草'}。`:''}提取只采用介绍里写到的内容，含有介绍里没有的数字的条目会被略去；提取到的栏目会替换原内容，其余保留。${(drafted?.notes || []).map(esc).join(' ')}</p>
     </div>`;
   const filled=[p.headline,p.subline].filter(text=>String(text || '').trim()).length+p.specs.length+p.figures.length;
@@ -312,16 +312,16 @@ function listingRenderProduct(reload=false) {
   const box=chosen.has(LISTING_BOX),poses=chosen.has(LISTING_POSES),comps=listingState.components || [];
   const notReady=comps.filter(row=>row.status!=='ready').length;
   // the file input stays outside the box the poll redraws, so files chosen while it redraws still arrive
-  const boxBody='<input id="listingComponentFiles" type="file" multiple accept=".glb,.obj,.zip,.png,.jpg,.jpeg,.webp" hidden aria-label="选择组件文件"><div id="listingComponents"></div>';
+  const boxBody='<input id="listingComponentFiles" type="file" multiple accept=".glb,.obj,.stl,.zip,.png,.jpg,.jpeg,.webp" hidden aria-label="选择组件文件"><div id="listingComponents"></div>';
   $('listingPanel').innerHTML=`
-    ${listingSection('source','粘贴产品介绍，自动填写',p.source?'已粘贴介绍':'可选',source,empty)}
+    ${listingSection('source','粘贴产品介绍 / AI 起草文案',p.source?'已粘贴介绍':'粘贴介绍后提取，或直接起草',source,true)}
     <div class="listing-grid2">${listingField('产品名称',listingInput('product','title',p.title,'maxlength="60"'))}${listingField('型号',listingInput('product','model',p.model,'maxlength="40" placeholder="如 AG-20X"'))}</div>
     <div class="listing-grid2">${listingField('最长边真实尺寸（mm）',listingInput('product','size_mm',p.size_mm ?? '',`inputmode="decimal" placeholder="按模型估计约 ${esc(Math.round(size.mm))}"`),size.known?'':'填写后才会画出产品尺寸线，套装里的大小比例也才准确。','size specs')}
     ${listingField('图片文字语言',`<select data-scope="product" data-key="language"><option value="en" ${p.language==='en'?'selected':''}>English</option><option value="zh" ${p.language==='zh'?'selected':''}>中文</option></select>`)}</div>
-    <h4 class="listing-heading" data-need-mark="features feature_parts">卖点${listingNeedTag()} <button type="button" class="button subtle" data-action="add-feature">添加</button></h4>
+    <h4 class="listing-heading" data-need-mark="features feature_parts"><span>卖点${listingNeedTag()}</span><span class="listing-heading-actions"><button type="button" class="button accent" data-action="draft" title="根据模型部件或上方介绍起草卖点">起草文案</button><button type="button" class="button subtle" data-action="add-feature">添加</button></span></h4>
     ${listingPartsNote()}
     ${rows(p.features,'feature',(row,index)=>`<div class="listing-feature"><input type="text" data-scope="feature" data-index="${index}" data-key="title" value="${esc(row.title)}" maxlength="40" placeholder="卖点标题" aria-label="卖点标题">
-      <input type="text" data-scope="feature" data-index="${index}" data-key="detail" value="${esc(row.detail || '')}" maxlength="90" placeholder="一行说明（可不填）" aria-label="卖点说明">${listingPartsHTML(index,row.parts || [])}</div>`) || '<p class="field-help">还没有卖点。可粘贴产品介绍后提取，或点「起草文案」，也可以手动添加。</p>'}
+      <input type="text" data-scope="feature" data-index="${index}" data-key="detail" value="${esc(row.detail || '')}" maxlength="90" placeholder="一行说明（可不填）" aria-label="卖点说明">${listingPartsHTML(index,row.parts || [])}</div>`) || '<p class="field-help">还没有卖点。可在上方「粘贴产品介绍」框粘贴并点「提取到各栏」，或直接点右侧「起草文案」/「添加」。</p>'}
     ${listingSection('more','更多信息',filled?`已填 ${filled} 项`:'主标题、副标题、规格、大数字指标',more,false,'specs')}
     ${box?listingSection('components','套装组件',comps.length?`${comps.length} 个${notReady?`，${notReady} 个未就绪`:''}`:'没有组件',boxBody,listingSkipped().has(LISTING_BOX),'components'):''}
     ${poses?listingSection('articulation','活动部件',listingArticulationSummary(),'<div id="listingArticulation"></div>',listingSkipped().has(LISTING_POSES),'articulation'):''}`;
@@ -667,10 +667,92 @@ function listingUsecaseHTML() {
     <p class="field-help">图上的工件尺寸是你在这里选的尺寸；产品尺寸线只在填写了真实尺寸时画出。</p>`;
 }
 
-// ---- moving parts: what the pose agent (articulation.py) found, and asking it again ----
-let listingArticulation=null,listingArticulationTimer=null;
+// ---- moving parts: what the pose agent (articulation.py) found, user click-to-pick acceleration, and asking it again ----
+let listingArticulation=null,listingArticulationTimer=null,listingArticulationPickMode=false,listingArticulationPoints=[];
+const listingArticulationPicks=new Map();
 const listingArticulationStatus={ready:'有活动部件',none:'没有活动部件',failed:'识别失败',unknown:'尚未识别'};
 const listingRoleNames={rest:'静止',open:'打开',working:'使用中'};
+function listingArticulationPickSet(id) {
+  if(!id)return new Set();
+  if(!listingArticulationPicks.has(id))listingArticulationPicks.set(id,new Set());
+  return listingArticulationPicks.get(id);
+}
+function listingArticulationPicking() {
+  return !!listingArticulationPickMode && listingVisible() && listingStep==='product';
+}
+function listingRenderArticulationMarkers() {
+  const markers=$('feedbackMarkers'),viewer=$('viewer');
+  if(!markers || !viewer)return;
+  if(!listingArticulationPicking()){markers.innerHTML='';return;}
+  const rect=typeof imageContentRect==='function'?imageContentRect():null,vrect=viewer.getBoundingClientRect();
+  markers.innerHTML=rect?listingArticulationPoints.map((pt,idx)=>`<span class="feedback-marker ${pt.pending?'pending':pt.hit?'':'miss'}" style="left:${rect.left-vrect.left+rect.width*pt.x}px;top:${rect.top-vrect.top+rect.height*pt.y}px" title="${esc(pt.name || (pt.pending?'定位中…':'未命中'))}">${idx+1}</span>`).join(''):'';
+}
+function listingSyncRealtimePick() {
+  if(typeof syncRealtimeArticulationPick!=='function')return;
+  const id=listingOpenFor(),on=listingArticulationPicking();
+  syncRealtimeArticulationPick(on,on?listingArticulationPickSet(id):new Set());
+}
+function listingArticulationTogglePart(name) {
+  if(!listingArticulationPicking() || !name)return;
+  const id=listingOpenFor();if(!id)return;
+  const set=listingArticulationPickSet(id);
+  if(set.has(name)){set.delete(name);toast(`已取消选中：${name}`);}
+  else{set.add(name);toast(`已选中活动部件：${name}`);}
+  listingSyncRealtimePick();
+  listingRenderArticulation(false);
+}
+function listingSetArticulationPickMode(on) {
+  const next=!!on && !!listingOpenFor();
+  listingArticulationPickMode=next;
+  if(!next)listingArticulationPoints=[];
+  else{
+    listingStageOff=true;listingSyncStage();
+    // Prefer interactive 3D preview picking whenever 3D viewport is available; fall back to 2D image picking otherwise.
+    if(typeof realtimeAvailable==='function' && realtimeAvailable()){
+      if(typeof realtimeActive==='function' && !realtimeActive() && typeof setViewerMode==='function')setViewerMode('live');
+    }
+  }
+  const viewer=$('viewer');
+  if(viewer)viewer.classList.toggle('feedback-selecting',next || (typeof feedbackMode!=='undefined' && !!feedbackMode));
+  listingSyncRealtimePick();
+  if(typeof renderFeedbackMarkers==='function')renderFeedbackMarkers();
+  else listingRenderArticulationMarkers();
+}
+function listingArticulationPickClick(event) {
+  if(!listingArticulationPicking())return false;
+  const id=listingOpenFor();
+  if(!id || !currentOutput || typeof pointFromClient!=='function' || typeof feedbackSnapshot!=='function'){
+    toast('当前没有可点选的渲染图，请先生成预览或在右侧部件列表中勾选。',true);return true;
+  }
+  const point=pointFromClient(event.clientX,event.clientY);
+  if(!point)return true;
+  const snap=feedbackSnapshot(),pid='art-'+Date.now()+'-'+Math.random().toString(16).slice(2,6);
+  const entry={id:pid,x:point.x,y:point.y,pending:true,hit:false,name:''};
+  listingArticulationPoints.push(entry);
+  listingRenderArticulationMarkers();
+  api(`/api/projects/${encodeURIComponent(id)}/feedback/pick`,{method:'POST',body:{...snap,points:[{id:pid,x:point.x,y:point.y}]}})
+    .then(response=>{
+      const hit=response?.hits?.find(item=>item.id===pid);
+      entry.pending=false;
+      if(hit?.hit && hit.object_name){
+        entry.hit=true;entry.name=hit.object_name;
+        const set=listingArticulationPickSet(id);
+        set.add(hit.object_name);
+        toast(`已点选活动部件：${hit.object_name}`);
+        listingRenderArticulation(false);
+      }else{
+        entry.hit=false;
+        toast(hit?.message || '未点中模型部件，请点击会活动的门/抽屉/盖子。',true);
+      }
+      listingRenderArticulationMarkers();
+    })
+    .catch(error=>{
+      entry.pending=false;entry.hit=false;
+      toast('部件定位失败：'+error.message,true);
+      listingRenderArticulationMarkers();
+    });
+  return true;
+}
 function listingArticulationSummary() {
   const a=listingArticulation && listingArticulation.project===listingOpenFor()?listingArticulation.data:null;
   if(!a)return '正在读取…';
@@ -688,6 +770,9 @@ async function listingRenderArticulation(reload=true) {
     catch(error){if(listingOpenFor()===id && $('listingArticulation'))$('listingArticulation').innerHTML=`<p class="field-error">${esc(error.message)}</p>`;return;}
     const was=listingArticulation && listingArticulation.project===id && listingArticulation.data.running;
     listingArticulation={project:id,data};
+    if(!listingArticulationPicks.has(id) && Array.isArray(data.selected_parts) && data.selected_parts.length){
+      listingArticulationPicks.set(id,new Set(data.selected_parts));
+    }
     if(was && !data.running)listingLoad(false).catch(()=>{});      // the planned pages may change with the result
   }
   const box=$('listingArticulation');
@@ -695,20 +780,45 @@ async function listingRenderArticulation(reload=true) {
   // state.vision_ready false: the pose agent has no model to ask, so the button would only record that (undefined: not known)
   const a=listingArticulation.data,running=!!a.running,noVision=listingState?.vision_ready===false && !running;
   const status=running?'识别中':(listingArticulationStatus[a.status] || a.status || '尚未识别');
+  const picked=listingArticulationPickSet(id),pickedList=[...picked];
+  const choices=Array.isArray(a.part_choices)?a.part_choices:[];
+  const canPick3D=typeof realtimeAvailable==='function' && realtimeAvailable();
+  const canPickImage=typeof currentOutput!=='undefined' && !!currentOutput && (typeof system==='undefined' || system?.runtime?.capabilities?.pick!==false);
+  const canPick=canPick3D || canPickImage;
+  const pickBtnLabel=listingArticulationPickMode
+    ?(canPick3D?'正在 3D 预览中点选（点击结束）':'正在图上点选（点击结束）')
+    :(canPick3D?'在 3D 预览里点选活动部件':'在图上点选活动部件');
+  const pickBtnTitle=canPick3D?'开启后直接在左侧 3D 模型上点击会活动的部件（拖动仍可旋转视角）':canPickImage?'开启后在左侧产品图上点击会活动的部件':'请等待 3D 模型加载完成或先生成预览图';
+  const pickHelp=canPick3D?'请直接在左侧 3D 预览里点击会活动的部件（可拖动旋转查看背面/侧面，选中的部件会高亮为琥珀色，再次点击可取消），选好后点击下方识别按钮。':'请在左侧产品渲染图上逐一点击会活动的部件（例如左门、右门、抽屉或盖子），选好后点击下方识别按钮。';
   const states=(a.states || []).map((row,index)=>`<li><span class="listing-pose-num">${String(index+1).padStart(2,'0')}</span><strong>${esc(row.label_zh || row.id)}</strong> <span>${esc(row.label_en || '')}</span>${row.role?`<span class="listing-pose-role">${esc(listingRoleNames[row.role] || row.role)}</span>`:''}</li>`).join('');
   const usage=((a.usage || {}).zh || []).map(rule=>`<li>${esc(rule)}</li>`).join('');
   const notes=(a.notes || []).map(note=>`<li>${esc(note)}</li>`).join('');
   const picture=(url,alt)=>url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Math.round((a.at || 0)*1000)}" alt="${esc(alt)}" loading="lazy"></a>`:'';
+  const pickedChips=pickedList.map(name=>`<button type="button" class="listing-pick-chip is-picked" data-action="articulation-unpick" data-part="${esc(name)}" title="点击移除">${esc(name)} <span aria-hidden="true">×</span></button>`).join('');
+  const choiceChips=choices.map(row=>{
+    const on=picked.has(row.name);
+    return `<button type="button" class="listing-pick-chip${on?' is-picked':''}" data-action="articulation-pick-part" data-part="${esc(row.name)}" aria-pressed="${on}">${row.id?`<span>${row.id}</span> `:''}${esc(row.name)}</button>`;
+  }).join('');
+  const runLabel=running?'识别中…':pickedList.length?`按已选 ${pickedList.length} 个部件识别`:(a.status==='unknown' || !a.status?'识别活动部件':'重新识别活动部件');
   box.innerHTML=`
-    <p class="field-help">钳子、卡尺、卷尺、美工刀、工具箱这类产品有活动部件。视觉模型看模型的部件图，判断哪些部件会动、怎么动，再由 Blender 摆出各个姿态并检查。识别出 2 个以上姿态时，套图会多一张「多姿态展示」，场景图也会按正确的用法摆放产品。每个模型文件只识别一次。</p>
+    <p class="field-help">钳子、卡尺、卷尺、美工刀、工具箱这类产品有活动部件。可在左侧产品图上直接点选会活动的部件（如左门、右门、抽屉）来加速识别并避免误判，再由 Blender 摆出姿态。</p>
     <div class="listing-articulation-status" data-status="${esc(running?'running':a.status || 'unknown')}" role="status"><span class="field-label">状态</span><strong>${esc(status)}</strong>${a.product_kind?`<span>${esc(a.product_kind)}</span>`:''}</div>
+    <div class="listing-pick-box">
+      <div class="listing-pick-head">
+        <button type="button" class="button ${listingArticulationPickMode?'accent':'secondary'}" data-action="articulation-pick-toggle" aria-pressed="${listingArticulationPickMode}" ${running || !canPick?'disabled':''} title="${esc(pickBtnTitle)}">${esc(pickBtnLabel)}</button>
+        ${pickedList.length?`<button type="button" class="text-button" data-action="articulation-pick-clear" ${running?'disabled':''}>清空已选</button>`:''}
+      </div>
+      ${listingArticulationPickMode?`<p class="field-help">${esc(pickHelp)}</p>`:''}
+      ${pickedChips?`<div class="listing-pick-chips" aria-label="已选活动部件">${pickedChips}</div>`:''}
+      ${choices.length?`<details class="listing-parts"><summary>或直接勾选主要部件（${choices.length}）</summary><div class="listing-pick-chips">${choiceChips}</div></details>`:''}
+    </div>
     ${a.reasoning?`<p class="listing-articulation-reason">${esc(a.reasoning)}</p>`:''}
     ${states?`<h4 class="listing-heading">姿态</h4><ol class="listing-poses">${states}</ol>`:''}
     ${usage?`<h4 class="listing-heading">正确用法</h4><ul class="listing-usage">${usage}</ul>`:''}
     ${notes?`<h4 class="listing-heading">说明</h4><ul class="listing-usage">${notes}</ul>`:''}
     ${a.parts_sheet || a.previews?`<div class="listing-articulation-pictures">${picture(a.parts_sheet,'部件编号图')}${picture(a.previews,'各姿态预览')}</div>`:''}
     ${noVision?`<p class="listing-need-note" id="listingVisionNeeded" tabindex="-1">识别活动部件要用能看图的视觉模型，现在没有配置：在「AI 设置」里，主模型能看图就直接用它；不能的话，在「预览图像分析」里勾选「使用独立视觉模型」，填写「视觉模型名称」后保存。</p>`:''}
-    <div class="listing-save"><button type="button" class="button secondary" data-action="articulation-run" ${running || noVision?'disabled':''} ${noVision?'aria-describedby="listingVisionNeeded"':''}>${running?'识别中…':a.status==='unknown' || !a.status?'识别活动部件':'重新识别活动部件'}</button></div>`;
+    <div class="listing-save"><button type="button" class="button ${pickedList.length?'primary':'secondary'}" data-action="articulation-run" ${running || noVision?'disabled':''} ${noVision?'aria-describedby="listingVisionNeeded"':''}>${esc(runLabel)}</button></div>`;
   const sum=$('listingPanel').querySelector('[data-sum="articulation"]');if(sum)sum.textContent=listingArticulationSummary();
   if(listingFocusPending==='articulation-run'){listingFocusPending=null;(box.querySelector('[data-action="articulation-run"]:not(:disabled)') || box.querySelector('#listingVisionNeeded'))?.focus();}
   if(running && listingVisible())listingArticulationTimer=setTimeout(()=>listingRenderArticulation(true),2000);
@@ -856,6 +966,10 @@ function listingRenderCost(state,active) {
     cost.title=text?`估算：每张新场景图约 ${basis.tries || 1.5} 次图像模型调用（1536 px medium 每次约 $${basis.image_call || 0.075}），每页视觉审核约 $${(basis.review_page || [0.04,0.08]).join('–')}；沿用的场景图、标题和审核结果不再收费。实际费用以服务商账单为准。`:'';}
   if(spend){const s=state.spend;spend.hidden=!(s && s.calls);
     spend.textContent=s && s.calls?`本项目已记录的 AI 花费约 ${listingUSD(s.usd)}（${s.calls} 次调用${s.unpriced?`，其中 ${s.unpriced} 次的模型价格未知，未计入`:''}；按官方原价估算，${s.since?new Date(s.since*1000).toLocaleDateString('zh-CN')+' 起':'从本版本起'}记录）。`:'';}
+  if(state.spend){
+    if(typeof current!=='undefined' && current && current.id===listingProject)current.ai_spend=state.spend;
+    if(typeof renderProjectSpend==='function')renderProjectSpend(state.spend);
+  }
 }
 // ⑤ 生成: what the set will be made from, each line with a way back to its step.
 function listingSummaryHTML(active) {
@@ -918,7 +1032,9 @@ function listingRenderMain() {
   const filler=$('listingDegraded');if(filler)listingSetHTML(filler,listingDegradedHTML(degraded,active));
   const view=state.notes_view || listingNoteFallback(state.notes,state.plan.filter(row=>row.skipped).map(row=>[kinds[row.kind]?.zh || row.kind,row.skipped]));
   const busy=listingComponentsBusy()?[{text:'有组件还在处理，完成后再生成会把它们放进套图。',level:'warn',count:1}]:[];
-  listingSetHTML($('listingNotes'),[...view.seller,...busy].map(listingNoteItem).join('')+(view.tech.length?`<li class="listing-tech-row">${listingTechHTML(view.tech)}</li>`:''));
+  const needsRealSize=Array.isArray(listingEdit?.product?.pages) && listingEdit.product.pages.includes('T06') && !(listingEdit.product.size_mm>0) && !(current?.plan?.dimensions_mm?.length===3) && !state.plan.some(row=>row.kind==='T06' && row.skipped);
+  const sizeNote=needsRealSize?[{text:`「${kinds.T06?.zh || '尺寸图'}」需要填写产品的真实尺寸（mm），请先在「产品信息」中填写最长边真实尺寸。`,level:'warn',count:1}]:[];
+  listingSetHTML($('listingNotes'),[...view.seller,...sizeNote,...busy].map(listingNoteItem).join('')+(view.tech.length?`<li class="listing-tech-row">${listingTechHTML(view.tech)}</li>`:''));
   const stamp=Math.round((state.built_at || 0)*1000);
   listingSyncStage();
   const stage=listingStageNode(),open=listingDetail && pages.find(page=>page.id===listingDetail);
@@ -1007,6 +1123,9 @@ function listingOnInputOnce(event) {
     p.pages=(listingState.order || Object.keys(listingState.kinds)).filter(kind=>chosen.has(kind));
     for(const kind of chosen)if(!p.pages.includes(kind))p.pages.push(kind);
     listingTouch();listingRenderKinds();listingRenderMain();
+    if(node.checked && node.value==='T06' && !(p.size_mm>0) && !(current?.plan?.dimensions_mm?.length===3)){
+      toast('「尺寸图」需要填写产品的真实尺寸（mm），请在「产品信息」中填写最长边真实尺寸后再生成。',true);
+    }
   }
 }
 async function listingOnChange(event) {
@@ -1043,6 +1162,24 @@ async function listingBuildNow(fresh=false) {
   if(listingBusy)return;listingBusy=true;listingRenderMain();
   try{
     await listingSavePending();
+    const plan=listingState?.plan || [],kinds=listingState?.kinds || {};
+    const runnable=plan.filter(row=>!row.skipped),skipped=plan.filter(row=>row.skipped);
+    const missingSize=skipped.find(row=>row.kind==='T06' || String(row.skipped || '').includes('真实尺寸'));
+    if(!runnable.length){
+      if(missingSize){
+        toast(`无法生成：「${kinds[missingSize.kind]?.zh || '尺寸图'}」需要填写产品的真实尺寸（mm），请先在「产品信息」中填写最长边真实尺寸。`,true);
+        listingTab='product';listingRenderPanel();
+        document.querySelector('#listingPanel [data-scope="product"][data-key="size_mm"]')?.focus();
+      }else if(skipped.length){
+        toast('无法生成：'+skipped.map(row=>`「${kinds[row.kind]?.zh || row.kind}」${row.skipped}`).join('；')+'。',true);
+      }else{
+        toast('请至少勾选一张可以生成的套图页面。',true);
+      }
+      return;
+    }
+    if(missingSize && Array.isArray(listingEdit?.product?.pages) && listingEdit.product.pages.includes(missingSize.kind)){
+      toast(`提示：未填写产品真实尺寸，本次将跳过「${kinds[missingSize.kind]?.zh || '尺寸图'}」；如需生成请在「产品信息」中填写最长边真实尺寸（mm）。`);
+    }
     await api(`/api/projects/${listingProject}/listing/build`,{method:'POST',body:fresh?{fresh:true}:{}});
     await listingLoad(false);
   }catch(error){toast(error.message,true);}
@@ -1087,13 +1224,15 @@ async function listingOnClick(event) {
       finally{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='提取到各栏';}
     }
     else if(action==='draft'){
-      button.disabled=true;button.setAttribute('aria-busy','true');
+      button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='正在起草…';
       const id=listingProject;
       try{await listingSavePending();
         const state=await api(`/api/projects/${id}/listing/draft`,{method:'POST',body:{hint:($('listingSource')?.value || '').trim().slice(0,400),language:p.language}});
         if(listingOpenFor()!==id)return;
-        listingDirty.product=false;listingAdopt(state,true);toast(state.product.drafted?.source==='ai'?'已由 AI 起草':'已按部件名称起草');}
-      finally{button.disabled=false;button.removeAttribute('aria-busy');}
+        listingDirty.product=false;listingAdopt(state,true);
+        const count=(state.product?.features || []).length;
+        toast(count?`已${state.product.drafted?.source==='ai'?'由 AI ':''}起草 ${count} 条卖点`:'未识别出可起草的卖点，请粘贴产品介绍或手动添加',!count);}
+      finally{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='起草文案';}
     }
     else if(action==='component-turn'){await api(`/api/projects/${listingProject}/components/${id}`,{method:'PUT',body:{turn:button.dataset.turn}});await listingLoad(false);}
     else if(action==='component-refresh'){await api(`/api/projects/${listingProject}/components/${id}/refresh`,{method:'POST'});await listingLoad(false);}
@@ -1101,11 +1240,31 @@ async function listingOnClick(event) {
       const row=(listingState.components || []).find(item=>item.id===id),name=row?.name?`「${row.name}」`:'这个组件';
       if(!await listingConfirm('componentRemoveDialog','删除组件？',`删除${name}后，它的文件和抠图会一并删除，套装清单和主图里不再出现它。删除后无法恢复，需要时请重新上传。`,'删除组件'))return;
       await api(`/api/projects/${listingProject}/components/${id}`,{method:'DELETE'});await listingLoad(false);}
+    else if(action==='articulation-pick-toggle'){
+      listingSetArticulationPickMode(!listingArticulationPickMode);
+      listingRenderArticulation(false);
+      if(listingArticulationPickMode)toast((typeof realtimeAvailable==='function' && realtimeAvailable())?'请直接在左侧 3D 模型上点击会活动的部件（拖动仍可旋转视角）':'请在左侧产品图上点击会活动的部件，点完后点击下方开始识别');
+    }
+    else if(action==='articulation-pick-part'){
+      const part=button.dataset.part,set=listingArticulationPickSet(listingProject);
+      if(part){if(set.has(part))set.delete(part);else set.add(part);listingSyncRealtimePick();listingRenderArticulation(false);}
+    }
+    else if(action==='articulation-unpick'){
+      const part=button.dataset.part,set=listingArticulationPickSet(listingProject);
+      if(part){set.delete(part);listingSyncRealtimePick();listingRenderArticulation(false);}
+    }
+    else if(action==='articulation-pick-clear'){
+      listingArticulationPickSet(listingProject).clear();listingArticulationPoints=[];
+      listingSyncRealtimePick();listingRenderArticulation(false);listingRenderArticulationMarkers();
+    }
     else if(action==='articulation-run'){
       button.disabled=true;button.textContent='识别中…';
-      const id=listingProject,data=await api(`/api/projects/${id}/articulation`,{method:'POST',body:{}});
+      listingSetArticulationPickMode(false);
+      const id=listingProject,selected=[...listingArticulationPickSet(id)];
+      const data=await api(`/api/projects/${id}/articulation`,{method:'POST',body:selected.length?{selected_parts:selected}:{}});
       if(listingOpenFor()!==id)return;
-      listingArticulation={project:id,data};listingRenderArticulation(false);toast('已开始重新识别活动部件');
+      listingArticulation={project:id,data};listingRenderArticulation(false);
+      toast(selected.length?`已按所选 ${selected.length} 个部件开始快速识别`:'已开始重新识别活动部件');
     }
     else if(action==='logo-remove'){
       if(!await listingConfirm('logoRemoveDialog','移除品牌标志？','移除后，下次生成的套图不再印标志，页眉改为显示品牌名称文字。需要时可以重新上传。','移除标志'))return;
