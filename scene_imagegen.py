@@ -60,7 +60,8 @@ MAX_ATTEMPTS = 2               # the first picture, and one correction when the 
 # is the image model's commonest miss and the one a correction most often fixes: it gets one try more.
 USAGE_FLAGS = frozenset(('held_correctly', 'used_correctly', 'rests_stably', 'contact_plausible', 'installed_correctly', 'perspective_consistent'))
 USAGE_RETRY = 1                # recorded on a scene made with that extra try, so older failed scenes are tried again once
-RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100}     # the product render for a canvas of this longer side
+RENDER_PX = {2048: 1600, 1536: 1300, 1024: 1100, 768: 768}     # the product render for a canvas of this longer side
+EXTRA_REF_PX = 768             # extra multi-angle product renders sent as 3D visual references alongside the anchored canvas
 RENDER_SAMPLES = 48
 LOCK_FIXES = {'moved': 'the product was moved, resized or drawn again somewhere else: it must stay exactly where it is in image 1, at the '
                        'same size and angle, and only the area around it may be painted',
@@ -184,6 +185,34 @@ def angles(azimuth, elevation):
     other = -azimuth if abs(azimuth) >= 20 else azimuth + 75
     return [(round(float(azimuth), 1), round(float(elevation), 1)), (round(float(other), 1), round(float(elevation), 1)),
             (round(azimuth * .5, 1), round(min(60.0, elevation + 30), 1))]
+
+
+def extra_angles(azimuth, elevation):
+    """Three complementary product angles snapped to the cache grid (opposite 3/4, straight front or opposite side, and elevated 3/4)
+    so the image generation model sees the product's full 3D geometry, sides, hardware and depth alongside image 1."""
+    az = round(float(azimuth) / AZIMUTH_STEP) * AZIMUTH_STEP
+    el = max(ELEVATION_STEP, round(float(elevation) / ELEVATION_STEP) * ELEVATION_STEP)
+    primary = (round(float(az), 1), round(float(el), 1))
+    candidates = [
+        (round(float(-az if abs(az) >= 20 else az + 60), 1), round(float(el), 1)),
+        (round(float(0.0 if abs(az) >= 20 else az - 60), 1), round(float(el), 1)),
+        (round(float(az * .5), 1), round(min(60.0, float(el) + 30.0), 1)),
+    ]
+    out = []
+    for pair in candidates:
+        if pair != primary and pair not in out:
+            out.append(pair)
+    return out
+
+
+def _white_reference(rgba_path, target_path):
+    """Composite a transparent product render onto clean white for use as a multi-angle reference image."""
+    with Image.open(rgba_path) as cutout:
+        rgba = cutout.convert('RGBA')
+        white = Image.new('RGB', rgba.size, (255, 255, 255))
+        white.paste(rgba, mask=rgba.getchannel('A'))
+        white.save(target_path, 'PNG')
+    return target_path
 
 
 def reference_shot(index, azimuth, elevation):
@@ -407,8 +436,8 @@ def _perspective_hint(azimuth=None, elevation=None, mounting=None, for_check=Fal
 
 
 def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None, framing=None, pose=None, usage=None, setting=None,
-           mounting=None, azimuth=None, elevation=None):
-    """The words sent with the anchored canvas. ``scene`` is the only free text in it.
+           mounting=None, azimuth=None, elevation=None, extra_refs=0):
+    """The words sent with the anchored canvas (and optional multi-angle references). ``scene`` is the only free text in it.
 
     ``people`` is True when a person must be in the picture, False when nobody
     may be, and None when the scene description alone decides. With a person,
@@ -422,6 +451,16 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     if size_mm:
         size = ' Its largest dimension is about %s, which sets the scale of everything around it.' % (
             '%d cm' % round(size_mm / 10) if size_mm >= 100 else '%d mm' % round(size_mm))
+    extra_note = []
+    if extra_refs:
+        which = 'Image 2 shows' if extra_refs == 1 else 'Images 2 to %d show' % (extra_refs + 1)
+        extra_note = [
+            'MULTI-ANGLE REFERENCES. %s the EXACT SAME product from additional camera angles on plain white solely as 3D '
+            'visual reference for its true shape, sides, depth, hardware, colours and materials. Use them only to understand '
+            'the product\'s exact geometry and keep every detail faithful under realistic scene lighting — NEVER copy their '
+            'white background, NEVER add extra copies of the product into the scene, and NEVER change the product\'s angle, '
+            'position or size from image 1.' % which
+        ]
     lines = [
         'Complete this photograph for an online shop. Image 1 is the unfinished photograph.',
         'THE PRODUCT is a %s.%s It is already in image 1, in its final place, %s. It is finished and fixed: '
@@ -430,6 +469,7 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
         'lids, jaws, blades, sliders) stay exactly as image 1 shows them: never open, pull out, close, fold or move any of them, '
         'whatever the scene says. Only the light falling on it may change, to match the scene.' % (
             product, size, 'in front of a plain grey ground' if wall else 'on a plain grey ground'),
+        *extra_note,
         'PAINT EVERYTHING ELSE. Replace the whole grey ground with the scene, built around the product as it %s, the place '
         'around it. The perspective, scale and light of the scene must agree with the product. Nothing of the grey ground may '
         'remain. THE SCENE. ' % ('hangs: the wall it is mounted on, directly behind it, and the soft shadow it casts on that wall' if wall
@@ -453,10 +493,11 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
              'holding the product by the parts made to be held, as the tool is meant to be held.'))
            + ({'1:1': 'square', '4:3': 'landscape 4:3', '3:4': 'portrait 3:4'}.get(aspect, 'square'),)),
     ]
+    shift = len(extra_note)
     if pose and pose.get('description'):
         text = re.sub(r'\s+', ' ', str(pose['description'])).strip()[:400].rstrip('.')
         contact = re.sub(r'\s+', ' ', str(pose.get('contact') or '')).strip()[:120].rstrip('.')
-        lines.insert(2, 'THE POSE. The product in image 1 is already posed for this moment: %s.%s %s' % (
+        lines.insert(2 + shift, 'THE POSE. The product in image 1 is already posed for this moment: %s.%s %s' % (
             text, (' It meets the work at %s.' % contact) if contact else '', POSE_LINES['rest' if people is False else 'held']))
     use = []
     if setting:
@@ -466,14 +507,14 @@ def prompt(product, size_mm, scene, aspect='1:1', corrections=None, people=None,
     if rules and people is not False:
         use.append('Show it used correctly: ' + '; '.join(rules) + '.')
     if use:
-        lines.insert(3 if pose and pose.get('description') else 2, 'USE. ' + ' '.join(use))
+        lines.insert((3 if pose and pose.get('description') else 2) + shift, 'USE. ' + ' '.join(use))
     if hands:
-        lines.insert(3 if not (pose and pose.get('description')) else 4, HANDS_RULE)
+        lines.insert((3 if not (pose and pose.get('description')) else 4) + shift, HANDS_RULE)
     elif people in PEOPLE_RULES:
-        lines.insert(3 if not (pose and pose.get('description')) else 4,
+        lines.insert((3 if not (pose and pose.get('description')) else 4) + shift,
                      PEOPLE_WALL if wall and people is False else PEOPLE_RULES[people])
     if wall and people is not False:
-        lines.insert(2, WALL_RULE)
+        lines.insert(2 + shift, WALL_RULE)
     if corrections:
         fixes = '; '.join(re.sub(r'\s+', ' ', str(item)).strip()[:200] for item in corrections[:6] if str(item).strip())
         if fixes:
@@ -1068,8 +1109,20 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                               'keep' if mounting == 'wall' else pose if pose in scene_pose.MODES else 'auto', hint,
                               **({'usage': usage_rules} if usage_rules else {}))
     if stop(): raise InterruptedError()
-    staged = product_render(project, {**plan, 'rotation': posed['rotation']}, azimuth, elevation, size_mm, size, stop, say)
+    posed_plan = {**plan, 'rotation': posed['rotation']}
+    staged = product_render(project, posed_plan, azimuth, elevation, size_mm, size, stop, say)
     if stop(): raise InterruptedError()
+    actual_az = staged.get('azimuth', azimuth); actual_el = staged.get('elevation', elevation)
+    # Render additional complementary angles (cached via components.stage) so the image model sees all sides of the product.
+    extra_refs = []
+    extra_views = extra_angles(actual_az, actual_el)
+    for idx, (ref_az, ref_el) in enumerate(extra_views, 1):
+        if stop(): raise InterruptedError()
+        ref_staged = product_render(project, posed_plan, ref_az, ref_el, size_mm, (EXTRA_REF_PX, EXTRA_REF_PX), stop,
+                                    lambda _s, i=idx, n=len(extra_views): say('渲染产品多角度参考 %d / %d' % (i, n)))
+        ref_file = _white_reference(ref_staged['path'], folder / ('ref_angle_%d.png' % (idx + 1)))
+        extra_refs.append({'path': ref_file, 'raw_path': ref_staged['path'],
+                           'azimuth': ref_staged.get('azimuth', ref_az), 'elevation': ref_staged.get('elevation', ref_el)})
     # The anchor: the product's own render in its final place; the mask keeps it, the model paints the rest.
     with Image.open(staged['path']) as cutout:
         canvas, layer, box = scene_lock.anchor(cutout, size, 'hands' if hands else 'person' if people else 'wall' if mounting == 'wall' else 'none',
@@ -1084,21 +1137,31 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
     while number < limit:
         number += 1
         if stop(): raise InterruptedError()
-        actual_az = staged.get('azimuth', azimuth); actual_el = staged.get('elevation', elevation)
         say('图像模型正在生成场景' if number == 1 else retry)
         text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
-                      (articulation or {}).get('label'), mounting, azimuth=actual_az, elevation=actual_el)
+                      (articulation or {}).get('label'), mounting, azimuth=actual_az, elevation=actual_el, extra_refs=len(extra_refs))
 
         def call(value):
-            nonlocal masked
+            nonlocal masked, extra_refs, text
+            images = [canvas_path] + [item['path'] for item in extra_refs]
             try:
-                return edit(value, text, [canvas_path], size, stop, say, mask=masked)
+                return edit(value, text, images, size, stop, say, mask=masked)
             except RejectedError:
-                if not masked:
+                if masked:
+                    # A service that takes no mask still gets the anchored canvas and multi-angle references.
+                    masked = None
+                    try:
+                        return edit(value, text, images, size, stop, say)
+                    except RejectedError:
+                        if not extra_refs:
+                            raise
+                elif not extra_refs:
                     raise
-                # A service that takes no mask still gets the anchored canvas; the measurement below still applies.
-                masked = None
-                return edit(value, text, [canvas_path], size, stop, say)
+                # Fallback for gateways that only accept a single input image.
+                extra_refs = []
+                text = prompt(product, size_mm, scene, aspect, corrections, people, framing, posed, usage_rules,
+                              (articulation or {}).get('label'), mounting, azimuth=actual_az, elevation=actual_el, extra_refs=0)
+                return edit(value, text, [canvas_path], size, stop, say, mask=masked)
         try:
             result = call(value)
         except GatewayError:
@@ -1115,23 +1178,10 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
             usage[key] = usage.get(key, 0) + amount
         if stop(): raise InterruptedError()
         say('核对产品位置与外形')
-        restored = None
         with Image.open(target) as picture:
             lock = scene_lock.inspect(layer, picture)
             closeup = None
             if lock['status'] == 'kept':
-                # The image model's product is only its drawing of it: the render goes back in its place, so the size,
-                # proportions and parts are the product's own. The model's original stays beside it as attempt*.model.png.
-                put_back = scene_lock.restore(layer, picture, lock)
-                if put_back is not None:                # None: the render does not lie cleanly on it; the painting stays
-                    restored = folder / ('attempt%d.restored.png' % number); put_back.save(restored)
-                else:
-                    closeup = folder / ('closeup%d.jpg' % number)
-                    scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
-        if restored:
-            # replace(), not rename(): a scene folder made again already holds these files, and rename() will not overwrite on Windows
-            target.replace(folder / ('attempt%d.model.png' % number)); restored.replace(target)
-            with Image.open(target) as picture:
                 closeup = folder / ('closeup%d.jpg' % number)
                 scene_lock.side_by_side(layer, picture, lock).save(closeup, quality=90)
         batch = _ACTIVE_BATCH.get() if number == 1 else None
@@ -1151,7 +1201,7 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                                 azimuth=actual_az, elevation=actual_el)
         verdict['lock'] = lock
         attempts.append({'file': target, 'size': result['size'], 'check': verdict, 'prompt': text, 'closeup': closeup,
-                         'original': folder / ('attempt%d.model.png' % number) if restored else target})
+                         'original': target})
         if verdict['status'] != 'failed':
             break
         corrections = verdict['issues']
@@ -1181,14 +1231,14 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
                                                            item['check'].get('product_consistent') is False, len(item['check']['issues'])))
     stem = folder.name
     png = folder / (stem + '.png'); jpg = folder / (stem + '.jpg')
-    png.write_bytes(chosen['file'].read_bytes())       # with the product put back; the model's own file (and its provenance) is 'original'
+    png.write_bytes(chosen['file'].read_bytes())       # keep the image model's output directly without overlaying the render
     with Image.open(png) as picture:
         picture.convert('RGB').save(jpg, quality=95, subsampling=0)
     width, height = chosen['size']
     def url(path): return '/files/' + Path(path).relative_to(DATA).as_posix()
     import components
     record = {'model': value['model'], 'quality': value.get('quality', 'medium'), 'size': [width, height], 'attempts': len(attempts),
-              'restored': chosen['original'] != chosen['file'], 'mounting': mounting, 'original': url(chosen['original']),
+              'restored': False, 'mounting': mounting, 'original': url(chosen['original']),
               # what the check needs to be run again on this picture, without painting it again
               'recheck': {'reference': str(reference_path), 'closeup': str(chosen['closeup']) if chosen.get('closeup') else None,
                           'product': product, 'people': people, 'framing': framing, 'size_mm': size_mm, 'mounting': mounting,
@@ -1197,7 +1247,8 @@ def create(project, plan, azimuth, elevation, scene, product, size_mm, folder, c
               'usage_retry': USAGE_RETRY,
               'check': chosen['check'], 'people': people, 'framing': framing if people is True else None, 'prompt': chosen['prompt'][:6000], 'usage': usage,
               'seconds': round(time.time() - started, 1),
-              'references': [{'url': url(staged['path']), 'azimuth': staged.get('azimuth', azimuth), 'elevation': staged.get('elevation', elevation)}],
+              'references': ([{'url': url(staged['path']), 'azimuth': actual_az, 'elevation': actual_el}]
+                             + [{'url': url(item['raw_path']), 'azimuth': item['azimuth'], 'elevation': item['elevation']} for item in extra_refs]),
               'pose': posed,
               'anchor': {'version': scene_lock.VERSION, 'box': box_share, 'mask': bool(masked), 'canvas_url': url(canvas_path),
                          **({'closeup_url': url(chosen['closeup'])} if chosen.get('closeup') else {})},

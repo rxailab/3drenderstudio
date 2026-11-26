@@ -332,7 +332,7 @@ class FidelityTests(unittest.TestCase):
     def verdict(self, **changes):
         value = {'product_present': True, 'shape_consistent': True, 'parts_consistent': True, 'colours_consistent': True, 'no_added_text': True,
                  'nothing_attached': True, 'held_correctly': True, 'contact_plausible': True, 'used_correctly': True, 'rests_stably': True,
-                 'scale_plausible': True, 'installed_correctly': True, 'surroundings_new': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
+                 'scale_plausible': True, 'installed_correctly': True, 'perspective_consistent': True, 'surroundings_new': True, 'person_visible': False, 'face_visible': False, 'issues': [], 'note': '一致。'}
         value.update(changes)
         return value
 
@@ -534,7 +534,7 @@ class CreateTests(unittest.TestCase):
             return {'path': self.cutout, 'azimuth': azimuth, 'elevation': elevation, 'product_rect': [.25, .3, .75, .7]}
         self.prompts = []; self.verdicts = []; self.checked = []; self.framings = []; self.closeups = []; self.images = []; self.masks = []
         self.locks = []                                        # what the measurement says of each picture; 'kept' when not set
-        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None):
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, **extra):
             self.checked.append(people); self.framings.append(framing); self.closeups.append(closeup)
             return self.verdicts.pop(0)
         def inspect(layer, picture):
@@ -567,11 +567,25 @@ class CreateTests(unittest.TestCase):
         with Image.open(made['jpg']) as picture: self.assertEqual((picture.format, picture.size), ('JPEG', (1536, 1152)))
         record = made['record']
         self.assertEqual((record['model'], record['attempts'], record['check']['status'], record['usage']), ('gpt-image-2', 1, 'passed', {'total_tokens': 100}))
-        self.assertEqual(record['references'], [{'url': '/files/fixture/stage/x/picture.png', 'azimuth': 35, 'elevation': 18}])
-        self.assertEqual(self.rendered, [(35, 18, (1536, 1152))])                   # one render, from the scene's own camera
+        self.assertEqual(record['references'], [
+            {'url': '/files/fixture/stage/x/picture.png', 'azimuth': 35, 'elevation': 18},
+            {'url': '/files/fixture/stage/x/picture.png', 'azimuth': -30.0, 'elevation': 20.0},
+            {'url': '/files/fixture/stage/x/picture.png', 'azimuth': 0.0, 'elevation': 20.0},
+            {'url': '/files/fixture/stage/x/picture.png', 'azimuth': 15.0, 'elevation': 50.0},
+        ])
+        self.assertEqual(self.rendered, [
+            (35, 18, (1536, 1152)),
+            (-30.0, 20.0, (768, 768)),
+            (0.0, 20.0, (768, 768)),
+            (15.0, 50.0, (768, 768)),
+        ])
         self.assertEqual(len(self.prompts), 1); self.assertNotIn('CORRECTIONS', self.prompts[0])
-        # The model gets one picture, the anchored canvas, and a mask that keeps the product.
+        self.assertIn('MULTI-ANGLE REFERENCES. Images 2 to 4 show the EXACT SAME product', self.prompts[0])
+        # The model gets the anchored canvas as image 1 plus 3 multi-angle white-background references, and a mask for image 1.
+        self.assertEqual([Path(p).name for p in self.images[0]], ['canvas.png', 'ref_angle_2.png', 'ref_angle_3.png', 'ref_angle_4.png'])
         canvas = Path(self.images[0][0]); self.assertEqual(canvas.name, 'canvas.png')
+        with Image.open(self.images[0][1]) as ref2:
+            self.assertEqual((ref2.mode, ref2.getpixel((5, 5))), ('RGB', (255, 255, 255)))
         with Image.open(canvas) as picture:
             self.assertEqual(picture.size, (1536, 1152)); self.assertEqual(picture.getpixel((5, 5)), scene_lock.GROUND)
             self.assertEqual(picture.getpixel((768, 576))[:3], (200, 30, 30))        # the product, in the middle of the frame
@@ -614,7 +628,7 @@ class CreateTests(unittest.TestCase):
         def decide(project, plan, azimuth, elevation, scene, product, hold, cancelled=None, progress=None, mode='auto', hint='', usage=None):
             seen['pose'] = usage
             return scene_pose.kept(plan.get('rotation', [0, 0, 0]), mode, 'default', '保持默认姿态。')
-        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, usage=None):
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, usage=None, **extra):
             seen['check'] = usage
             return {'status': 'passed', 'issues': [], 'note': '一致。'}
         record = project()
@@ -693,12 +707,12 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(made['record']['check']['issues'], ['one', 'two', 'three'])
         self.assertIn('PEOPLE. Nobody is in the picture', self.prompts[0])
 
-    def test_a_wall_product_keeps_its_pose_hangs_higher_and_is_put_back_from_its_render(self):
+    def test_a_wall_product_keeps_its_pose_hangs_higher_and_keeps_generated_pixels_without_overlay(self):
         seen = []
-        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, mounting=None):
+        def check(references, generated, product, people=None, framing=None, closeup=None, size_mm=None, mounting=None, azimuth=None, elevation=None):
             seen.append(mounting); return {'status': 'passed', 'issues': [], 'note': '一致。'}
         def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
-            # the image model keeps the product where it is but paints its own version of it: another red, and bars down its middle
+            # the image model keeps the product where it is and paints its own lighting/details over it
             self.prompts.append(text)
             with Image.open(images[0]) as canvas:
                 picture = canvas.convert('RGB')
@@ -719,14 +733,13 @@ class CreateTests(unittest.TestCase):
         box = made['record']['anchor']['box']
         self.assertLess((box[1] + box[3]) / 2, .5)                              # higher in the frame than a product set down
         record = made['record']
-        self.assertEqual((record['restored'], record['mounting']), (True, 'wall'))
-        self.assertTrue(record['original'].endswith('/attempt1.model.png'))
+        self.assertEqual((record['restored'], record['mounting']), (False, 'wall'))
+        self.assertTrue(record['original'].endswith('/attempt1.png'))
         folder = self.data / 'fixture' / 'scene_ai' / 't1' / 'scene'
-        with Image.open(folder / 'scene.png') as picture, Image.open(folder / 'attempt1.model.png') as painted:
+        self.assertFalse((folder / 'attempt1.model.png').exists())
+        with Image.open(folder / 'scene.png') as picture:
             middle = (round((box[0] + box[2]) / 2 * picture.width), round((box[1] + box[3]) / 2 * picture.height))
-            self.assertEqual(painted.convert('RGB').getpixel(middle), (30, 200, 60))   # the image model's invented bars
-            restored = picture.convert('RGB').getpixel(middle)
-            self.assertGreater(restored[0], 150); self.assertLess(restored[1], 80)       # the render's red block again, lit like the picture
+            self.assertEqual(picture.convert('RGB').getpixel(middle), (30, 200, 60))     # generated pixels preserved without render overlay
             self.assertEqual(picture.convert('RGB').getpixel((5, 5)), (225, 228, 230))  # the wall is the image model's
 
     def test_a_product_that_moved_or_was_redrawn_is_made_again_without_asking_the_vision_model(self):
@@ -762,6 +775,22 @@ class CreateTests(unittest.TestCase):
             made = self.create()
         self.assertEqual((sent, made['record']['anchor']['mask']), ([True, False], False))
         self.assertEqual(Path(self.images[0][0]).name, 'canvas.png')
+        self.assertEqual(len(self.images[0]), 4)                                      # maskless fallback keeps multi-angle references
+
+    def test_a_service_that_rejects_multiple_images_falls_back_to_the_anchored_canvas(self):
+        seen_counts = []
+        def edit(value, text, images, size, cancelled=None, progress=None, mask=None):
+            seen_counts.append((len(images), mask is not None))
+            if len(images) > 1: raise scene_imagegen.RejectedError('图像请求被拒绝（HTTP 400）')
+            return self.edit(value, text, images, size, mask=mask)
+        self.verdicts = [{'status': 'passed', 'issues': [], 'note': '一致。'}]
+        with patch.object(scene_imagegen, 'edit', side_effect=edit):
+            made = self.create()
+        self.assertEqual(seen_counts, [(4, True), (4, False), (1, False)])
+        self.assertEqual([Path(p).name for p in self.images[0]], ['canvas.png'])
+        self.assertNotIn('MULTI-ANGLE REFERENCES.', self.prompts[0])
+        self.assertEqual(len(made['record']['references']), 1)
+        self.assertEqual(scene_imagegen.extra_angles(0, 15), [(60.0, 20.0), (-60.0, 20.0), (0.0, 50.0)])
 
     def test_a_gateway_that_gives_up_gets_one_more_try_at_low_quality_and_the_record_says_so(self):
         asked = []
