@@ -1,0 +1,1151 @@
+{
+  "version": 2,
+  "default": "silver-studio",
+  "presets": [
+    {
+      "id": "white",
+      "name": "白底",
+      "group": "摄影棚",
+      "image": null,
+      "thumbnail": null,
+      "environmentColor": "#ffffff",
+      "floorColor": "#ffffff",
+      "lighting": {
+        "key": 1,
+        "fill": 1,
+        "rim": 1,
+        "ambient": 1,
+        "yaw": 0
+      },
+      "radianceMap": "/static/studio-backdrops/radiance/white.bin"
+    },
+    {
+      "id": "cologne",
+      "name": "香水 · 象牙棕榈光影",
+      "group": "教学案例",
+      "examples": [
+        "Light Layers – Cologne Bottle"
+      ],
+      "lighting": {
+        "key": 1.05,
+        "fill": 0.85,
+        "rim": 1.3,
+        "ambient": 0.85,
+        "yaw": -10
+      },
+      "image": "/static/studio-backdrops/images/cologne.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/cologne.webp",
+      "floorColor": "#ddd6bd",
+      "environmentColor": "#b9b3a0",
+      "environmentGain": 1,
+      "environmentRotation": 0,
+      "radianceMap": "/static/studio-backdrops/radiance/cologne.bin"
+    },
+    {
+      "id": "blue-keyboard",
+      "name": "键盘 · 雾蓝悬浮",
+      "group": "教学案例",
+      "examples": [
+        "Animation - Keyboard Mockup"
+      ],
+      "lighting": {
+        "key": 0.92,
+        "fill": 0.87,
+        "rim": 1.22,
+        "ambient": 0.85,
+        "yaw": 12
+      },
+      "image": "/static/studio-backdrops/images/blue-keyboard.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/blue-keyboard.webp",
+      "floorColor": "#92c3e1",
+      "environmentColor": "#4e6686",
+      "environmentGain": 0.3,
+      "environmentRotation": 353.5,
+      "radianceMap": "/static/studio-backdrops/radiance/blue-keyboard.bin"
+    },
+    {
+      "id": "amber-caustics",
+      "name": "古龙水 · 琥珀暖木",
+      "group": "教学案例",
+      "examples": [
+        "Caustics - Cologne"
+      ],
+      "lighting": {
+        "key": 1.32,
+        "fill": 0.48,
+        "rim": 1.04,
+        "ambient": 0.78,
+        "yaw": -32
+      },
+      "image": "/static/studio-backdrops/images/amber-caustics.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/amber-caustics.webp",
+      "floorColor": "#92653f",
+      "environmentColor": "#9f7856",
+      "environmentMap": "/static/studio-backdrops/environments/aversis-bathroom-3k.bin",
+      "environmentSource": "Aversis_Bathroom_3k.hdz",
+      "environmentGain": 0.078,
+      "environmentRotation": 51,
+      "radianceMap": "/static/studio-backdrops/radiance/amber-caustics.bin"
+    },
+    {
+      "id": "silver-beam",
+      "name": "面光源 · 银灰斜光",
+      "group": "教学案例",
+      "examples": [
+        "Planar Light & Light Positioning - Visune"
+      ],
+      "lighting": {
+        "key": 1.26,
+        "fill": 0.55,
+        "rim": 1.02,
+        "ambient": 0.76,
+        "yaw": 34
+      },
+      "image": "/static/studio-backdrops/images/silver-beam.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/silver-beam.webp",
+      "floorColor": "#c0beb5",
+      "environmentColor": "#c2c1ba",
+      "environmentGain": 1,
+      "environmentRotation": 360,
+      "radianceMap": "/static/studio-backdrops/radiance/silver-beam.bin"
+    },
+    {
+      "id": "charcoal-stage",
+      "name": "模型入门 · 炭灰展台",
+      "group": "教学案例",
+      "examples": [
+        "KS101_1 Models"
+      ],
+      "lighting": {
+        "key": 1.15,
+        "fill": 0.45,
+        "rim": 1.18,
+        "ambient": 0.55,
+        "yaw": -18
+      },
+      "image": "/static/studio-backdrops/images/charcoal-stage.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/charcoal-stage.webp",
+      "floorColor": "#292f31",
+      "environmentColor": "#3b3e3f",
+      "environmentMap": "/static/studio-backdrops/environments/startup.bin",
+      "environmentSource": "startup.hdr",
+      "environmentGain": 1,
+      "environmentRotation": 0,
+      "radianceMap": "/static/studio-backdrops/radiance/charcoal-stage.bin"
+    },
+    {
+      "id": "silver-studio",
+      "name": "材质入门 · 银灰柔光",
+      "group": "教学案例",
+      "examples": [
+        "KS101_2 Materials"
+      ],
+      "lighting": {
+        "key": 0.91,
+        "fill": 1.12,
+        "rim": 0.91,
+        "ambient": 1.1,
+        "yaw": 8
+      },
+      "image": "/static/studio-backdrops/images/silver-studio.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/silver-studio.webp",
+      "floorColor": "#d9d8d4",
+      "environmentColor": "#c9c7c5",
+      "environmentMap": "/static/studio-backdrops/environments/startup.bin",
+      "environmentSource": "startup.hdr",
+      "radianceMap": "/static/studio-backdrops/radiance/silver-studio.bin"
+    },
+    {
+      "id": "black-jewelry",
+      "name": "灯光入门 · 黑棚轮廓",
+      "group": "教学案例",
+      "examples": [
+        "KS101_3 Lights"
+      ],
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.18,
+        "rim": 1.76,
+        "ambient": 0.3,
+        "yaw": 42
+      },
+      "image": "/static/studio-backdrops/images/black-jewelry.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/black-jewelry.webp",
+      "floorColor": "#000000",
+      "environmentColor": "#1e1e1e",
+      "environmentGain": 1,
+      "environmentRotation": 360,
+      "radianceMap": "/static/studio-backdrops/radiance/black-jewelry.bin"
+    },
+    {
+      "id": "wood-interior",
+      "name": "木饰面 · 暖木室内",
+      "group": "教学案例",
+      "examples": [
+        "Randomize Nodes – Wood"
+      ],
+      "lighting": {
+        "key": 1.05,
+        "fill": 0.71,
+        "rim": 0.88,
+        "ambient": 0.95,
+        "yaw": -38
+      },
+      "image": "/static/studio-backdrops/images/wood-interior.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/wood-interior.webp",
+      "floorColor": "#af9574",
+      "environmentColor": "#9a938b",
+      "environmentMap": "/static/studio-backdrops/environments/dosch-apartment-2k.bin",
+      "environmentSource": "Dosch-Apartment_2k.hdz",
+      "environmentGain": 1.5,
+      "environmentRotation": 240.5,
+      "radianceMap": "/static/studio-backdrops/radiance/wood-interior.bin"
+    },
+    {
+      "id": "charcoal-headphones",
+      "name": "耳机 · 石墨聚光",
+      "group": "教学案例",
+      "examples": [
+        "Mold-Tech - Headphones"
+      ],
+      "lighting": {
+        "key": 1.05,
+        "fill": 0.38,
+        "rim": 1.44,
+        "ambient": 0.55,
+        "yaw": 38
+      },
+      "image": "/static/studio-backdrops/images/charcoal-headphones.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/charcoal-headphones.webp",
+      "floorColor": "#292d2e",
+      "environmentColor": "#3b3e3f",
+      "environmentMap": "/static/studio-backdrops/environments/hdrmaps-empty-modern-storehouse-3k.bin",
+      "environmentSource": "hdrmaps-empty-modern-storehouse-3K.hdz",
+      "environmentGain": 0.138,
+      "environmentRotation": 299.5,
+      "radianceMap": "/static/studio-backdrops/radiance/charcoal-headphones.bin"
+    },
+    {
+      "id": "dark-garage",
+      "name": "跑车 · 暗调车库",
+      "group": "教学案例",
+      "examples": [
+        "Interpon & Color Mode - Lamborghini"
+      ],
+      "lighting": {
+        "key": 1.12,
+        "fill": 0.34,
+        "rim": 1.58,
+        "ambient": 0.62,
+        "yaw": -22
+      },
+      "image": "/static/studio-backdrops/images/dark-garage.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/dark-garage.webp",
+      "floorColor": "#0f191b",
+      "environmentColor": "#374144",
+      "environmentMap": "/static/studio-backdrops/environments/hdrmaps-empty-modern-storehouse-3k.bin",
+      "environmentSource": "hdrmaps-empty-modern-storehouse-3K.hdz",
+      "environmentGain": 1.2,
+      "environmentRotation": 92,
+      "radianceMap": "/static/studio-backdrops/radiance/dark-garage.bin"
+    },
+    {
+      "id": "lounge-daylight",
+      "name": "长椅 · 窗边木台",
+      "group": "教学案例",
+      "examples": [
+        "Sharpen - Lounge Bench"
+      ],
+      "lighting": {
+        "key": 1.22,
+        "fill": 0.69,
+        "rim": 1.03,
+        "ambient": 0.9,
+        "yaw": 25
+      },
+      "image": "/static/studio-backdrops/images/lounge-daylight.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/lounge-daylight.webp",
+      "floorColor": "#c59462",
+      "environmentColor": "#d0b79f",
+      "environmentMap": "/static/studio-backdrops/environments/dosch-stairwell-2k.bin",
+      "environmentSource": "Dosch-Stairwell_2k.hdz",
+      "environmentGain": 1.5,
+      "environmentRotation": 329,
+      "radianceMap": "/static/studio-backdrops/radiance/lounge-daylight.bin"
+    },
+    {
+      "id": "black-orbit",
+      "name": "珠宝 · 黑绒聚光",
+      "group": "教学案例",
+      "examples": [
+        "Camera Keyframe Animation - Orbit Interpolation"
+      ],
+      "lighting": {
+        "key": 1.18,
+        "fill": 0.25,
+        "rim": 1.59,
+        "ambient": 0.45,
+        "yaw": -34
+      },
+      "image": "/static/studio-backdrops/images/black-orbit.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/black-orbit.webp",
+      "floorColor": "#28292c",
+      "environmentColor": "#252627",
+      "environmentMap": "/static/studio-backdrops/environments/aversis-bathroom-3k.bin",
+      "environmentSource": "Aversis_Bathroom_3k.hdz",
+      "radianceMap": "/static/studio-backdrops/radiance/black-orbit.bin"
+    },
+    {
+      "id": "white-car",
+      "name": "赛车 · 暖白无缝棚",
+      "group": "教学案例",
+      "examples": [
+        "Camera Keyframe Animation - Path Interpolation"
+      ],
+      "lighting": {
+        "key": 0.99,
+        "fill": 0.92,
+        "rim": 1.13,
+        "ambient": 0.97,
+        "yaw": 16
+      },
+      "image": "/static/studio-backdrops/images/white-car.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/white-car.webp",
+      "floorColor": "#f6f5f3",
+      "environmentColor": "#e9e8e7",
+      "environmentMap": "/static/studio-backdrops/environments/aversis-city-alley-old-3k.bin",
+      "environmentSource": "Aversis_City-alley-old_3k.hdz",
+      "environmentGain": 1,
+      "environmentRotation": 127.5,
+      "radianceMap": "/static/studio-backdrops/radiance/white-car.bin"
+    },
+    {
+      "id": "cafe-window",
+      "name": "咖啡店 · 深绿窗光",
+      "group": "教学案例",
+      "examples": [
+        "Coffee-Shop"
+      ],
+      "lighting": {
+        "key": 1.24,
+        "fill": 0.6,
+        "rim": 0.92,
+        "ambient": 0.82,
+        "yaw": -36
+      },
+      "image": "/static/studio-backdrops/images/cafe-window.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/cafe-window.webp",
+      "floorColor": "#63615f",
+      "environmentColor": "#546151",
+      "environmentMap": "/static/studio-backdrops/environments/hdrmaps-sports-hall-in-the-shadow-3k.bin",
+      "environmentSource": "hdrmaps-sports-hall-in-the-shadow-3K.hdz",
+      "environmentGain": 1.252,
+      "environmentRotation": 305,
+      "radianceMap": "/static/studio-backdrops/radiance/cafe-window.bin"
+    },
+    {
+      "id": "silver-table",
+      "name": "边桌 · 柔灰渐变",
+      "group": "教学案例",
+      "examples": [
+        "3D Paint - Table"
+      ],
+      "lighting": {
+        "key": 0.87,
+        "fill": 1.04,
+        "rim": 0.96,
+        "ambient": 0.96,
+        "yaw": -18
+      },
+      "image": "/static/studio-backdrops/images/silver-table.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/silver-table.webp",
+      "floorColor": "#d7d5d2",
+      "environmentColor": "#c6c5c2",
+      "environmentMap": "/static/studio-backdrops/environments/dosch-stairwell-2k.bin",
+      "environmentSource": "Dosch-Stairwell_2k.hdz",
+      "radianceMap": "/static/studio-backdrops/radiance/silver-table.bin"
+    },
+    {
+      "id": "white-shoe",
+      "name": "运动鞋 · 纯白柔光",
+      "group": "教学案例",
+      "examples": [
+        "CMF NB Shoe Demo Scene"
+      ],
+      "lighting": {
+        "key": 0.92,
+        "fill": 1.17,
+        "rim": 0.75,
+        "ambient": 1,
+        "yaw": 23
+      },
+      "image": "/static/studio-backdrops/images/white-shoe.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/white-shoe.webp",
+      "floorColor": "#ffffff",
+      "environmentColor": "#efefef",
+      "environmentMap": "/static/studio-backdrops/environments/aversis-industrial-kitchen-3k.bin",
+      "environmentSource": "Aversis_Industrial-kitchen_3k.hdz",
+      "environmentGain": 1.6786,
+      "environmentRotation": 260.5,
+      "groundShadow": 0,
+      "radianceMap": "/static/studio-backdrops/radiance/white-shoe.bin"
+    },
+    {
+      "id": "blue-night",
+      "name": "摆球 · 冷蓝夜棚",
+      "group": "教学案例",
+      "examples": [
+        "Physics Ball&Chain"
+      ],
+      "lighting": {
+        "key": 0.84,
+        "fill": 0.39,
+        "rim": 1.55,
+        "ambient": 0.61,
+        "yaw": -15
+      },
+      "image": "/static/studio-backdrops/images/blue-night.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/blue-night.webp",
+      "floorColor": "#5c7185",
+      "environmentColor": "#394351",
+      "radianceMap": "/static/studio-backdrops/radiance/blue-night.bin"
+    },
+    {
+      "id": "white-radio",
+      "name": "收音机 · 雾白棚",
+      "group": "教学案例",
+      "examples": [
+        "Web Viewer Bush Radio"
+      ],
+      "lighting": {
+        "key": 0.96,
+        "fill": 0.98,
+        "rim": 1.04,
+        "ambient": 0.95,
+        "yaw": -10
+      },
+      "image": "/static/studio-backdrops/images/white-radio.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/white-radio.webp",
+      "floorColor": "#f6f6f7",
+      "environmentColor": "#e9e9ea",
+      "environmentMap": "/static/studio-backdrops/environments/studio-small-03-4k.bin",
+      "environmentSource": "studio_small_03_4k.exr",
+      "environmentGain": 0.795,
+      "environmentRotation": 200,
+      "radianceMap": "/static/studio-backdrops/radiance/white-radio.bin"
+    },
+    {
+      "id": "loft-atelier",
+      "name": "工作室 · 暖灰侧光",
+      "group": "教学案例",
+      "examples": [
+        "3DPaint_DemoScene"
+      ],
+      "lighting": {
+        "key": 1.13,
+        "fill": 0.66,
+        "rim": 1.05,
+        "ambient": 0.82,
+        "yaw": 42
+      },
+      "image": "/static/studio-backdrops/images/loft-atelier.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/loft-atelier.webp",
+      "floorColor": "#b5a17e",
+      "environmentColor": "#6d6756",
+      "environmentMap": "/static/studio-backdrops/environments/startup.bin",
+      "environmentSource": "startup.hdr",
+      "radianceMap": "/static/studio-backdrops/radiance/loft-atelier.bin"
+    },
+    {
+      "id": "welcome",
+      "name": "欢迎教程 · 暖灰渐变",
+      "group": "教学案例",
+      "examples": [
+        "Welcome Tour"
+      ],
+      "lighting": {
+        "key": 1,
+        "fill": 1,
+        "rim": 1,
+        "ambient": 1,
+        "yaw": 0
+      },
+      "image": "/static/studio-backdrops/images/welcome.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/welcome.webp",
+      "floorColor": "#908e8a",
+      "environmentColor": "#6a6865",
+      "groundShadow": 0,
+      "environmentMap": "/static/studio-backdrops/environments/welcome-pins.bin",
+      "environmentSource": "scene 1.bip / HDRI pins",
+      "environmentGain": 1,
+      "environmentRotation": 0,
+      "radianceMap": "/static/studio-backdrops/radiance/welcome.bin"
+    },
+    {
+      "id": "plate-studio-backdrop-16x9",
+      "name": "无缝摄影棚 · 16∶9",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/Studio Backdrop 16x9.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": 0
+      },
+      "floorColor": "#e7e5e8",
+      "environmentColor": "#dcdadd",
+      "image": "/static/studio-backdrops/images/plate-studio-backdrop-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-studio-backdrop-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-studio-backdrop-16x9.bin"
+    },
+    {
+      "id": "plate-studio-backdrop-4x3",
+      "name": "无缝摄影棚 · 4∶3",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/Studio Backdrop 4x3.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": 0
+      },
+      "floorColor": "#e9e7ea",
+      "environmentColor": "#dcdade",
+      "image": "/static/studio-backdrops/images/plate-studio-backdrop-4x3.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-studio-backdrop-4x3.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-studio-backdrop-4x3.bin"
+    },
+    {
+      "id": "plate-studio-backdrop-black",
+      "name": "黑色渐层",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/Studio_Backdrop_Black.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": -2
+      },
+      "floorColor": "#3e3e3e",
+      "environmentColor": "#383838",
+      "image": "/static/studio-backdrops/images/plate-studio-backdrop-black.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-studio-backdrop-black.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-studio-backdrop-black.bin"
+    },
+    {
+      "id": "plate-studio-backdrop-grey",
+      "name": "中灰渐层",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/Studio_Backdrop_Grey.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": -3
+      },
+      "floorColor": "#9c9c9c",
+      "environmentColor": "#7c7c7c",
+      "image": "/static/studio-backdrops/images/plate-studio-backdrop-grey.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-studio-backdrop-grey.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-studio-backdrop-grey.bin"
+    },
+    {
+      "id": "plate-studio-backdrop-white",
+      "name": "白色渐层",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/Studio_Backdrop_White.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": -2
+      },
+      "floorColor": "#cbcbcb",
+      "environmentColor": "#b1b1b1",
+      "image": "/static/studio-backdrops/images/plate-studio-backdrop-white.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-studio-backdrop-white.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-studio-backdrop-white.bin"
+    },
+    {
+      "id": "plate-white-solid-vignette",
+      "name": "白色暗角",
+      "group": "摄影棚",
+      "source": "Backplates/Studio/White Solid Vignette.jpg",
+      "lighting": {
+        "key": 1,
+        "fill": 0.9,
+        "rim": 1.04,
+        "ambient": 0.94,
+        "yaw": 0
+      },
+      "floorColor": "#efefef",
+      "environmentColor": "#e5e5e5",
+      "image": "/static/studio-backdrops/images/plate-white-solid-vignette.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-white-solid-vignette.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-white-solid-vignette.bin"
+    },
+    {
+      "id": "plate-concrete-wall-1-rawpixel-16x9",
+      "name": "清水混凝土 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Concrete Wall 1 - Rawpixel 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 4
+      },
+      "floorColor": "#c6c5c7",
+      "environmentColor": "#c0c0c0",
+      "image": "/static/studio-backdrops/images/plate-concrete-wall-1-rawpixel-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-concrete-wall-1-rawpixel-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-concrete-wall-1-rawpixel-16x9.bin"
+    },
+    {
+      "id": "plate-concrete-wall-1-rawpixel-1x1",
+      "name": "清水混凝土 · 1∶1",
+      "group": "室内",
+      "source": "Backplates/Interior/Concrete Wall 1 - Rawpixel 1x1.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 3
+      },
+      "floorColor": "#c1c1c2",
+      "environmentColor": "#cacaca",
+      "image": "/static/studio-backdrops/images/plate-concrete-wall-1-rawpixel-1x1.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-concrete-wall-1-rawpixel-1x1.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-concrete-wall-1-rawpixel-1x1.bin"
+    },
+    {
+      "id": "plate-concrete-wall-2-rawpixel-16x9",
+      "name": "浅灰水泥墙 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Concrete Wall 2- Rawpixel 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 7
+      },
+      "floorColor": "#c4c4c4",
+      "environmentColor": "#bbbbbb",
+      "image": "/static/studio-backdrops/images/plate-concrete-wall-2-rawpixel-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-concrete-wall-2-rawpixel-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-concrete-wall-2-rawpixel-16x9.bin"
+    },
+    {
+      "id": "plate-concrete-wall-2-rawpixel-1x1",
+      "name": "浅灰水泥墙 · 1∶1",
+      "group": "室内",
+      "source": "Backplates/Interior/Concrete Wall 2- Rawpixel 1x1.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 4
+      },
+      "floorColor": "#d0d0d0",
+      "environmentColor": "#c2c2c2",
+      "image": "/static/studio-backdrops/images/plate-concrete-wall-2-rawpixel-1x1.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-concrete-wall-2-rawpixel-1x1.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-concrete-wall-2-rawpixel-1x1.bin"
+    },
+    {
+      "id": "plate-corridor-1-verne-ho-3x2",
+      "name": "车站通道 · 3∶2",
+      "group": "室内",
+      "source": "Backplates/Interior/Corridor 1 - Verne Ho 3x2.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -1
+      },
+      "floorColor": "#909a9f",
+      "environmentColor": "#3a4549",
+      "image": "/static/studio-backdrops/images/plate-corridor-1-verne-ho-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-corridor-1-verne-ho-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-corridor-1-verne-ho-3x2.bin"
+    },
+    {
+      "id": "plate-corridor-2-marc-olivier-jodoin-16x9",
+      "name": "蓝光走廊 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Corridor 2 - Marc Olivier Jodoin 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -12
+      },
+      "floorColor": "#3f4445",
+      "environmentColor": "#5c696d",
+      "image": "/static/studio-backdrops/images/plate-corridor-2-marc-olivier-jodoin-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-corridor-2-marc-olivier-jodoin-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-corridor-2-marc-olivier-jodoin-16x9.bin"
+    },
+    {
+      "id": "plate-corridor-3-phil-desforges-16x9",
+      "name": "暗灰长廊 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Corridor 3 - Phil Desforges 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 0
+      },
+      "floorColor": "#3c3c3c",
+      "environmentColor": "#323232",
+      "image": "/static/studio-backdrops/images/plate-corridor-3-phil-desforges-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-corridor-3-phil-desforges-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-corridor-3-phil-desforges-16x9.bin"
+    },
+    {
+      "id": "plate-corridor-3-phil-desforges-1x1",
+      "name": "暗灰长廊 · 1∶1",
+      "group": "室内",
+      "source": "Backplates/Interior/Corridor 3 - Phil Desforges 1x1.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 1
+      },
+      "floorColor": "#3b3b3b",
+      "environmentColor": "#303030",
+      "image": "/static/studio-backdrops/images/plate-corridor-3-phil-desforges-1x1.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-corridor-3-phil-desforges-1x1.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-corridor-3-phil-desforges-1x1.bin"
+    },
+    {
+      "id": "plate-garage-1-caleb-rogers-3x2",
+      "name": "地下车库 · 3∶2",
+      "group": "室内",
+      "source": "Backplates/Interior/Garage 1 -  Caleb Rogers 3x2.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -4
+      },
+      "floorColor": "#262522",
+      "environmentColor": "#33322e",
+      "image": "/static/studio-backdrops/images/plate-garage-1-caleb-rogers-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-garage-1-caleb-rogers-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-garage-1-caleb-rogers-3x2.bin"
+    },
+    {
+      "id": "plate-garage-2-carl-newton-3x2",
+      "name": "冷光停车场 · 3∶2",
+      "group": "室内",
+      "source": "Backplates/Interior/Garage 2 - Carl Newton 3x2.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 1
+      },
+      "floorColor": "#101f23",
+      "environmentColor": "#3d4c53",
+      "image": "/static/studio-backdrops/images/plate-garage-2-carl-newton-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-garage-2-carl-newton-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-garage-2-carl-newton-3x2.bin"
+    },
+    {
+      "id": "plate-hdri-locations-industrial-1-46mm",
+      "name": "工业厂房 1",
+      "group": "室内",
+      "source": "Backplates/Interior/hdri-locations_industrial_1_46mm.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 21
+      },
+      "floorColor": "#b4b8a3",
+      "environmentColor": "#686c5f",
+      "image": "/static/studio-backdrops/images/plate-hdri-locations-industrial-1-46mm.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-hdri-locations-industrial-1-46mm.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-hdri-locations-industrial-1-46mm.bin"
+    },
+    {
+      "id": "plate-hdri-locations-industrial-2-35mm",
+      "name": "工业厂房 2",
+      "group": "室内",
+      "source": "Backplates/Interior/hdri-locations_industrial_2_35mm.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -2
+      },
+      "floorColor": "#b0af9b",
+      "environmentColor": "#778177",
+      "image": "/static/studio-backdrops/images/plate-hdri-locations-industrial-2-35mm.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-hdri-locations-industrial-2-35mm.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-hdri-locations-industrial-2-35mm.bin"
+    },
+    {
+      "id": "plate-kitchen-counter-charles-deluvio-16x9",
+      "name": "厨房石材台面 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Kitchen Counter - Charles Deluvio - 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -11
+      },
+      "floorColor": "#646466",
+      "environmentColor": "#9a9692",
+      "image": "/static/studio-backdrops/images/plate-kitchen-counter-charles-deluvio-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-kitchen-counter-charles-deluvio-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-kitchen-counter-charles-deluvio-16x9.bin"
+    },
+    {
+      "id": "plate-kitchen-counter-charles-deluvio-1x1",
+      "name": "厨房石材台面 · 1∶1",
+      "group": "室内",
+      "source": "Backplates/Interior/Kitchen Counter - Charles Deluvio - 1x1.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -34
+      },
+      "floorColor": "#656464",
+      "environmentColor": "#8b8179",
+      "image": "/static/studio-backdrops/images/plate-kitchen-counter-charles-deluvio-1x1.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-kitchen-counter-charles-deluvio-1x1.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-kitchen-counter-charles-deluvio-1x1.bin"
+    },
+    {
+      "id": "plate-tunnel-stefan-kunze-3x2",
+      "name": "拱顶隧道 · 3∶2",
+      "group": "室内",
+      "source": "Backplates/Interior/Tunnel - Stefan Kunze 3x2.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 0
+      },
+      "floorColor": "#858687",
+      "environmentColor": "#5c5e63",
+      "image": "/static/studio-backdrops/images/plate-tunnel-stefan-kunze-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-tunnel-stefan-kunze-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-tunnel-stefan-kunze-3x2.bin"
+    },
+    {
+      "id": "plate-warehouse-fortelock-clanky-16x10",
+      "name": "日光仓库 · 16∶10",
+      "group": "室内",
+      "source": "Backplates/Interior/Warehouse - Fortelock Clanky 16x10.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": -5
+      },
+      "floorColor": "#9ba2a5",
+      "environmentColor": "#6b6964",
+      "image": "/static/studio-backdrops/images/plate-warehouse-fortelock-clanky-16x10.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-warehouse-fortelock-clanky-16x10.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-warehouse-fortelock-clanky-16x10.bin"
+    },
+    {
+      "id": "plate-wood-table-andrej-lisakov-16x9",
+      "name": "浅木桌面 · 16∶9",
+      "group": "室内",
+      "source": "Backplates/Interior/Wood Table - Andrej Lisakov 16x9.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 3
+      },
+      "floorColor": "#cbaf88",
+      "environmentColor": "#dcddde",
+      "image": "/static/studio-backdrops/images/plate-wood-table-andrej-lisakov-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-wood-table-andrej-lisakov-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-wood-table-andrej-lisakov-16x9.bin"
+    },
+    {
+      "id": "plate-wood-table-andrej-lisakov-1x1",
+      "name": "浅木桌面 · 1∶1",
+      "group": "室内",
+      "source": "Backplates/Interior/Wood Table - Andrej Lisakov 1x1.jpg",
+      "lighting": {
+        "key": 1.08,
+        "fill": 0.81,
+        "rim": 1.02,
+        "ambient": 0.88,
+        "yaw": 4
+      },
+      "floorColor": "#d0b998",
+      "environmentColor": "#e2e1e2",
+      "image": "/static/studio-backdrops/images/plate-wood-table-andrej-lisakov-1x1.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-wood-table-andrej-lisakov-1x1.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-wood-table-andrej-lisakov-1x1.bin"
+    },
+    {
+      "id": "plate-bench-scott-webb-3x2",
+      "name": "户外长椅 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Bench - Scott Webb 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": -7
+      },
+      "floorColor": "#c8bbb5",
+      "environmentColor": "#8e9080",
+      "image": "/static/studio-backdrops/images/plate-bench-scott-webb-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-bench-scott-webb-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-bench-scott-webb-3x2.bin"
+    },
+    {
+      "id": "plate-desert-road-osman-rana-3x2",
+      "name": "沙漠公路 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Desert Road - Osman Rana 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": -4
+      },
+      "floorColor": "#ecdfcd",
+      "environmentColor": "#dddfe1",
+      "image": "/static/studio-backdrops/images/plate-desert-road-osman-rana-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-desert-road-osman-rana-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-desert-road-osman-rana-3x2.bin"
+    },
+    {
+      "id": "plate-dosch-design-dirt-lot",
+      "name": "城市空地",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Dosch-Design_Dirt-Lot.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 3
+      },
+      "floorColor": "#b8b096",
+      "environmentColor": "#8a9eaf",
+      "image": "/static/studio-backdrops/images/plate-dosch-design-dirt-lot.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-dosch-design-dirt-lot.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-dosch-design-dirt-lot.bin"
+    },
+    {
+      "id": "plate-hdri-locations-forestroad-1-70mm",
+      "name": "林间公路",
+      "group": "户外",
+      "source": "Backplates/Outdoor/hdri-locations_forestroad_1_70mm.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 36
+      },
+      "floorColor": "#97977f",
+      "environmentColor": "#686962",
+      "image": "/static/studio-backdrops/images/plate-hdri-locations-forestroad-1-70mm.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-hdri-locations-forestroad-1-70mm.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-hdri-locations-forestroad-1-70mm.bin"
+    },
+    {
+      "id": "plate-hdri-locations-iceland-1-30mm",
+      "name": "冰岛荒原",
+      "group": "户外",
+      "source": "Backplates/Outdoor/hdri-locations_iceland_1_30mm.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 17
+      },
+      "floorColor": "#765e45",
+      "environmentColor": "#7a726b",
+      "image": "/static/studio-backdrops/images/plate-hdri-locations-iceland-1-30mm.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-hdri-locations-iceland-1-30mm.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-hdri-locations-iceland-1-30mm.bin"
+    },
+    {
+      "id": "plate-hdri-locations-urban-2-24mm",
+      "name": "城市街角",
+      "group": "户外",
+      "source": "Backplates/Outdoor/hdri-locations_urban_2_24mm.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": -2
+      },
+      "floorColor": "#bba69b",
+      "environmentColor": "#83858f",
+      "image": "/static/studio-backdrops/images/plate-hdri-locations-urban-2-24mm.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-hdri-locations-urban-2-24mm.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-hdri-locations-urban-2-24mm.bin"
+    },
+    {
+      "id": "plate-outdoor-1-alex-talmon",
+      "name": "雪线山坡",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Outdoor 1 - Alex Talmon.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": -4
+      },
+      "floorColor": "#312e33",
+      "environmentColor": "#d6d7d5",
+      "image": "/static/studio-backdrops/images/plate-outdoor-1-alex-talmon.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-outdoor-1-alex-talmon.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-outdoor-1-alex-talmon.bin"
+    },
+    {
+      "id": "plate-parking-lot-derek-torsani-3x2",
+      "name": "桥下停车场 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Parking Lot - Derek Torsani 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 4
+      },
+      "floorColor": "#795c43",
+      "environmentColor": "#807771",
+      "image": "/static/studio-backdrops/images/plate-parking-lot-derek-torsani-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-parking-lot-derek-torsani-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-parking-lot-derek-torsani-3x2.bin"
+    },
+    {
+      "id": "plate-road-1-fre-sonneveld-34mm-3x2",
+      "name": "沙漠双黄线 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Road 1 - Fre Sonneveld 34mm 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 0
+      },
+      "floorColor": "#514f5e",
+      "environmentColor": "#96b2b5",
+      "image": "/static/studio-backdrops/images/plate-road-1-fre-sonneveld-34mm-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-road-1-fre-sonneveld-34mm-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-road-1-fre-sonneveld-34mm-3x2.bin"
+    },
+    {
+      "id": "plate-road-2-joshua-sortino-twin-peaks-20mm-3x2",
+      "name": "山路落日 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Road 2 - Joshua Sortino - Twin Peaks 20mm 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 25
+      },
+      "floorColor": "#2f2c30",
+      "environmentColor": "#708588",
+      "image": "/static/studio-backdrops/images/plate-road-2-joshua-sortino-twin-peaks-20mm-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-road-2-joshua-sortino-twin-peaks-20mm-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-road-2-joshua-sortino-twin-peaks-20mm-3x2.bin"
+    },
+    {
+      "id": "plate-road-3-tim-wright-16x9",
+      "name": "田野公路 · 16∶9",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Road 3 - Tim Wright 16x9.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": -6
+      },
+      "floorColor": "#75787c",
+      "environmentColor": "#d3d1cf",
+      "image": "/static/studio-backdrops/images/plate-road-3-tim-wright-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-road-3-tim-wright-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-road-3-tim-wright-16x9.bin"
+    },
+    {
+      "id": "plate-steps-boris-stefanik-16x9",
+      "name": "台阶光影 · 16∶9",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Steps - Boris Stefanik 16x9.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 0
+      },
+      "floorColor": "#4d5055",
+      "environmentColor": "#3e3f41",
+      "image": "/static/studio-backdrops/images/plate-steps-boris-stefanik-16x9.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-steps-boris-stefanik-16x9.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-steps-boris-stefanik-16x9.bin"
+    },
+    {
+      "id": "plate-underpass-zach-woolf-3x2",
+      "name": "高架桥下 · 3∶2",
+      "group": "户外",
+      "source": "Backplates/Outdoor/Underpass - Zach Woolf 3x2.jpg",
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.92,
+        "rim": 0.92,
+        "ambient": 0.98,
+        "yaw": 9
+      },
+      "floorColor": "#181c2c",
+      "environmentColor": "#3e3e44",
+      "image": "/static/studio-backdrops/images/plate-underpass-zach-woolf-3x2.webp",
+      "thumbnail": "/static/studio-backdrops/thumbs/plate-underpass-zach-woolf-3x2.webp",
+      "radianceMap": "/static/studio-backdrops/radiance/plate-underpass-zach-woolf-3x2.bin"
+    }
+  ]
+}
