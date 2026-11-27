@@ -44,10 +44,14 @@ export class ViewportRefinement {
     this.scene.add(this.triangle);
   }
 
-  reset() {
+  pause() {
     clearTimeout(this.timer);
     cancelAnimationFrame(this.raf);
     this.timer = this.raf = 0;
+  }
+
+  reset() {
+    this.pause();
     if (this.count) this.frame.dataset.samples = '0';
     this.count = 0;
   }

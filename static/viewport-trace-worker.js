@@ -28,6 +28,18 @@ function pause() {
   fence = null;
 }
 
+function setRunVisible(epoch, visible) {
+  if (!run || run.epoch !== epoch || run.visible === visible) return;
+  run.visible = visible;
+  if (visible) {
+    step();
+  } else {
+    // Leave the accumulation, delivery slot, and current GPU fence intact.
+    clearTimeout(timer);
+    fenceTicket++;
+  }
+}
+
 function checkFenceSoon() {
   if (!fenceChecks) {
     fenceChecks = new MessageChannel();
@@ -251,7 +263,7 @@ function releaseScene() {
 function begin(message) {
   stopWarmup();
   pause();
-  run = {epoch:message.epoch, delivery:new TraceDelivery(message.limit), tileMs:10};
+  run = {epoch:message.epoch, delivery:new TraceDelivery(message.limit), tileMs:10, visible:true, ready:false};
   camera = readCamera(message.camera);
   prepareTracer();
   if (message.payload) {
@@ -312,6 +324,7 @@ function begin(message) {
     self.postMessage({kind:'kernel',epoch:active.epoch,profile,cache:exact?cache:'miss'});
     entry.warm=false;
     stage('first_sample');
+    active.ready=true;
     step();
   }).catch(error=>{if (run===active) fail(error.message);});
 }
@@ -331,7 +344,7 @@ function present(samples, now) {
 }
 
 function step() {
-  if (!run) return;
+  if (!run || !run.visible || !run.ready) return;
   try {
     if (gl.isContextLost()) throw new Error('路径追踪的图形连接已中断');
     // A short bounded batch can finish after a drag starts. All remaining
@@ -381,6 +394,7 @@ self.onmessage = ({data}) => {
     if (data.kind === 'release') releaseScene();
     if (data.kind === 'run') begin(data);
     if (data.kind === 'pause') pause();
+    if (data.kind === 'visibility') setRunVisible(data.epoch,data.visible);
     if (data.kind === 'presented' && run?.epoch === data.epoch) {
       run.delivery.acknowledge(data.samples);
       if (tracer.samples >= run.delivery.limit && !fence) step();

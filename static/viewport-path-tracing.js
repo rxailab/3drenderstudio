@@ -89,10 +89,13 @@ export class ViewportPathTracing {
     if (!this.reason) this.setState('raster','interactive');
   }
 
-  suspend() {
-    const building = this.building;
-    this.reset();
-    if (building) this.releaseWorker();
+  setVisible(visible) {
+    if (!visible) {
+      // A scene copy that has not reached the worker can be retried on return.
+      this.abort?.abort();
+      this.abort = null;
+    }
+    if (this.running) this.worker?.postMessage({kind:'visibility',epoch:this.epoch,visible});
   }
 
   invalidate() {
@@ -157,7 +160,7 @@ export class ViewportPathTracing {
         this.preparing(data.stage);
       } else if (data.kind === 'frame') {
         try {
-          if (this.epoch !== data.epoch || !this.running || this.view.disposed || !this.view.visible || document.hidden) { data.bitmap.close(); return; }
+          if (this.epoch !== data.epoch || !this.running || this.view.disposed) { data.bitmap.close(); return; }
           this.showFrame(data.bitmap,data.samples);
           if(this.profileEpoch===data.epoch && this.kernelProfile) {
             rememberTraceProfile(this.kernelProfile);
@@ -177,7 +180,7 @@ export class ViewportPathTracing {
 
   async start() {
     const v = this.view;
-    if (!this.enabled || this.reason || this.running || this.abort || !v.model || v.disposed || !v.visible || document.hidden || v.orbiting || v.previewTarget) return;
+    if (!this.enabled || this.reason || this.running || this.abort || (this.hasFrame && this.imageSamples >= this.limit) || !v.model || v.disposed || !v.visible || document.hidden || v.orbiting || v.previewTarget) return;
     const epoch = this.epoch, abort = new AbortController();
     this.abort = abort;
     this.preparing(!this.ready ? 'device' : this.sentRevision !== this.revision ? 'copy' : 'first_sample');
@@ -237,7 +240,9 @@ export class ViewportPathTracing {
     this.texture.needsUpdate = true;
     this.hasFrame = true;
     this.imageSamples = samples;
-    try { this.present(); } finally { previous?.close(); }
+    // A bitmap may already be in flight when switching to the rendered image.
+    // Retain it (including the final sample) without drawing to a hidden canvas.
+    try { if(this.view.visible && !document.hidden)this.present(); } finally { previous?.close(); }
   }
 
   present() { this.view.refinement.presentTrace(this.texture,this.imageSamples,this.limit); }

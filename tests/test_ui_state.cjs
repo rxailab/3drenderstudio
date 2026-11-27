@@ -335,6 +335,27 @@ test('rendered image switch after resetting the camera shows the existing image 
   assert.equal(h.node('renderImage').hidden,false);
   assert.equal(h.records.get('a').jobs.length,0);
 });
+test('switching back from a saved image keeps the active viewport and its displayed trace progress',async t=>{
+  const {h,rt}=await openViewRefreshFixture(t);
+  const view=rt.instances[0],label=h.node('viewportTraceLabel');
+  const initialAssetRequests=rt.assetCalls.length;
+  for(const [phase,samples] of [['sampling',32],['complete',128]]){
+    view.trace({phase,samples,adapterName:'NVIDIA GeForce RTX 3070'});
+    const progress=label.textContent;
+    assert.match(progress,new RegExp(`${samples} 次采样`));
+    h.node('savedViewButton').click();await tick();
+    assert.equal(h.node('renderImage').hidden,false);
+    assert.equal(view.visible,false);
+    h.node('liveViewButton').click();await tick();
+    assert.equal(h.node('viewportTraceToggle').hidden,false);
+    assert.equal(view.visible,true);
+    assert.equal(label.textContent,progress);
+  }
+  assert.equal(view.disposed,false);
+  assert.equal(view.loads,1);
+  assert.equal(rt.instances.length,1);
+  assert.equal(rt.assetCalls.length,initialAssetRequests);
+});
 test('rendered image refresh submits one preview at the new pose and displays the returned image',async t=>{
   const jobGate=deferred();
   const {h,rt}=await openViewRefreshFixture(t,previewProject(),{intercept:async call=>{

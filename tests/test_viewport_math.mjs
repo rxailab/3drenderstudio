@@ -153,6 +153,26 @@ test('settling restores physical display pixels and respects the large viewport 
     assert.deepEqual(sizes.at(-1),[879,879]);
   } finally {if(original===undefined)delete globalThis.window;else globalThis.window=original;}
 });
+
+test('a hidden host keeps its accumulation dimensions until its next measurable resize',async()=>{
+  const View=await productViewportClass(),view=Object.create(View.prototype);
+  const previous=globalThis.window;
+  let size=500,changes=0;
+  Object.assign(view,{visible:true,camera:{},aspect:1,frame:{style:{}},host:{getBoundingClientRect:()=>({width:size,height:size})},
+    renderer:{domElement:{width:500,height:500},setDrawingBufferSize(w,h){Object.assign(this.domElement,{width:w,height:h});}},
+    requestDraw(){changes++;}});
+  try{
+    globalThis.window={devicePixelRatio:1};
+    view.resize();view.visible=false;size=0;view.resize();
+    view.visible=true;view.resize();
+    size=500.1;view.resize();
+    assert.equal(changes,0);
+    assert.equal(view.renderer.domElement.width,500);
+    size=750;view.resize();
+    assert.equal(changes,1);
+    assert.equal(view.renderer.domElement.width,750);
+  }finally{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
+});
 test('glass uses oriented receivers in world space and reuses them while orbiting',()=>{
   const model=new THREE.Group();
   const glass=new THREE.MeshPhysicalMaterial({transmission:1,thickness:1});

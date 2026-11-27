@@ -72,11 +72,12 @@ async function workerFixture(tilesPerSample, limit, tileTime=0) {
     renderer={};
     tracer={samples:0, target:{texture:{}}, _quad:{material:{uniforms:{traceSamples:{value:0}}},render(){}},
       renderSample(){recordTile(); this.samples+=1/tilesPerSample;}};
-    (epoch => {
+    ((epoch, ready=true) => {
       pause();
-      run={epoch,delivery:new TraceDelivery(limit),tileMs:10,tilesPerSample};
+      const active=run={epoch,delivery:new TraceDelivery(limit),tileMs:10,tilesPerSample,ready,visible:true};
       tracer.samples=0;
       step();
+      return ()=>{if (run===active) {active.ready=true;step();}};
     })
   `,{
     self,driver,TraceDelivery,traceTileBatch,estimateTraceTileMs,fencePollMs,MessageChannel,
@@ -130,6 +131,53 @@ test('coarse timers allow fast batches to grow and a busy fence waits without sp
   assert.deepEqual(slow.batches,Array(8).fill(1));
   assert.equal(slow.checks[1]-slow.checks[0],16);
   assert.equal(slow.checks.length,3*slow.batches.length);
+});
+
+test('hiding keeps the current tile and delivers a pending final image on return', async () => {
+  const {start,tick,drain,message,frames,batches,checks}=await workerFixture(2,8,30);
+  const visible=value=>message({kind:'visibility',epoch:1,visible:value});
+  start(1);
+  tick(); // The driver is busy and a timed fence retry has been scheduled.
+  visible(false);
+  drain();
+  assert.deepEqual(batches,[1]);
+  assert.equal(checks.length,1);
+  visible(true);
+  drain();
+  assert.equal(batches.reduce((a,b)=>a+b,0),16);
+  assert.deepEqual(frames,[[1,1]]); // All 8 samples exist but the first bitmap still occupies the slot.
+  visible(false);
+  message({kind:'presented',epoch:1,samples:1});
+  drain();
+  assert.deepEqual(frames,[[1,1]]);
+  visible(true);
+  visible(true);
+  drain();
+  assert.deepEqual(frames,[[1,1],[1,8]]);
+  assert.equal(batches.reduce((a,b)=>a+b,0),16);
+});
+
+test('compilation and stale visibility messages cannot start hidden or cancelled sampling', async () => {
+  const {start,drain,message,frames,batches}=await workerFixture(1,2);
+  const visibility=(epoch,visible)=>message({kind:'visibility',epoch,visible});
+  const finishCompilation=start(1,false);
+  visibility(1,false);
+  visibility(1,true); // Shader still linking.
+  visibility(1,false);
+  finishCompilation();
+  visibility(0,true);
+  assert.deepEqual(batches,[]);
+  visibility(1,true);
+  visibility(1,false); // Posted fence check remains in the event queue.
+  drain();
+  assert.deepEqual(batches,[1]);
+  assert.deepEqual(frames,[]);
+  message({kind:'pause'});
+  visibility(1,true);
+  start(2);
+  visibility(1,false);
+  drain();
+  assert.deepEqual(frames,[[2,1]]);
 });
 
 test('the tiled tracer blends once per complete sample and publishes the actual odd/even buffer', async () => {

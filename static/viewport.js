@@ -50,7 +50,7 @@ export class ProductViewport {
     const environment=studioEnvironmentMap();
     this.environment=this.filterEnvironment(environment);this.scene.environment=this.environment.texture;
     this.studioRadiance=environment;
-    this.contextLost=event=>{event.preventDefault();this.stopDrawing();this.onError(new Error('3D 显示连接中断，请重新载入实时预览。'));};
+    this.contextLost=event=>{event.preventDefault();this.stopDrawing();this.pathTracing?.reset();this.onError(new Error('3D 显示连接中断，请重新载入实时预览。'));};
     canvas.addEventListener('webglcontextlost',this.contextLost);
     this.keyHandler=event=>this.onKey(event);canvas.addEventListener('keydown',this.keyHandler);
     this.pointerDownHandler=event=>{if(event.button===0)this.pointerDown={x:event.clientX,y:event.clientY};};
@@ -69,7 +69,7 @@ export class ProductViewport {
       this.pixelRatioQuery.addEventListener('change',this.pixelRatioChanged);this.resize();
     };
     this.pixelRatioChanged();
-    this.visibilityHandler=()=>{if(document.hidden){this.stopDrawing();this.orbiting=false;}else this.requestDraw();};document.addEventListener('visibilitychange',this.visibilityHandler);
+    this.visibilityHandler=()=>this.syncDrawingVisibility();document.addEventListener('visibilitychange',this.visibilityHandler);
   }
   async load(asset,metadata,shot,plan,projectId) {
     const generation=++this.generation;
@@ -255,16 +255,34 @@ export class ProductViewport {
   reset() {if(this.initialShot){this.setShot(this.initialShot,this.initialPlan);this.onChange(false);}}
   setTraceOptions(options) {this.pathTracing?.options(options);}
   invalidateTraceScene() {this.fastOptics?.invalidate();this.studioGround?.invalidate();this.renderer.shadowMap.needsUpdate=true;this.pathTracing?.invalidate();this.requestDraw();}
-  stopDrawing() {cancelAnimationFrame(this.frameRequest);this.frameRequest=0;this.refinement?.reset();this.pathTracing?.suspend();}
+  stopDrawing() {
+    cancelAnimationFrame(this.frameRequest);this.frameRequest=0;
+    this.refinement?.pause();this.pathTracing?.setVisible(false);
+    this.orbiting=false;
+  }
   setVisible(visible) {
     if(this.visible===visible)return;
     this.visible=visible;if(this.controls)this.controls.enabled=visible;
-    if(visible){this.resize();this.requestDraw();}else{this.stopDrawing();this.orbiting=false;}
+    this.syncDrawingVisibility();
+  }
+  syncDrawingVisibility() {
+    if(!this.visible || document.hidden){this.stopDrawing();return;}
+    // A real resize while hidden invalidates the old buffer before resuming it.
+    this.resize();
+    this.pathTracing?.setVisible(true);
+    if(this.pathTracing?.hasFrame){this.pathTracing.present();return;}
+    if(!this.needsDraw && this.refinement?.count && !this.motionQuality){
+      this.refinement.present();
+      this.pathTracing?.start();
+      this.refinement.start(this.scene,this.camera);
+    }else if(!this.frameRequest)this.requestDraw();
   }
   resize() {
-    if(this.disposed || !this.camera)return;
+    if(this.disposed || this.visible===false || !this.camera)return;
+    const available=this.host.getBoundingClientRect();
+    if(available.width<=0 || available.height<=0)return;
     fitBackdrop(this.plate,this.aspect);
-    const available=this.host.getBoundingClientRect(),width=Math.max(1,Math.min(available.width,available.height*this.aspect)),height=width/this.aspect;
+    const width=Math.max(1,Math.min(available.width,available.height*this.aspect)),height=width/this.aspect;
     // Allocate one backing pixel per display pixel when settled. The worker
     // traces this exact buffer, so a 128-sample image needs no enlargement.
     // The upper bound also limits the three floating-point accumulation
@@ -278,8 +296,8 @@ export class ProductViewport {
     // Keep silhouette, specular and other materials at the full motion size.
     this.renderer.transmissionResolutionScale=this.motionQuality ? .75 : 1;
     this.frame.style.width=width+'px';this.frame.style.height=height+'px';
-    if(w===this.renderer.domElement.width && h===this.renderer.domElement.height && this.drawWidth===width && this.drawHeight===height)return;
     this.drawWidth=width;this.drawHeight=height;
+    if(w===this.renderer.domElement.width && h===this.renderer.domElement.height)return;
     // Set integer physical dimensions directly. Three otherwise floors the
     // canvas and rounds the GL viewport at fractional Windows display scales.
     this.renderer.setDrawingBufferSize(w,h,1);this.requestDraw();
