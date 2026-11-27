@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from './vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { cameraFromShot, shotFromCamera, aspectNumber, validateBounds } from './viewport-math.mjs';
+import { makeLibraryPreviewMaterial } from './viewport-library-material.js';
+import { assignGeneratedSpaces } from './viewport-wood-material.js';
+import { SelectionMaterials } from './viewport-selection.js';
+import { ViewportRefinement } from './viewport-refinement.js';
+import { buildStudioLighting,studioEnvironmentMap } from './viewport-studio.js';
+import { ViewportPathTracing } from './viewport-path-tracing.js';
+import { setTraceWarmupEnabled } from './viewport-trace-cache.js';
+import { FastViewportOptics } from './viewport-fast-optics.js';
+import { backdropPreset,loadBackdrop,fitBackdrop,backdropLighting,backdropRadiance,loadStudioEnvironment,prepareBackdropLights } from './viewport-backdrop.js';
 
 function disposeTree(root) {
   const textures=new Set(),materials=new Set(),geometries=new Set();
@@ -21,48 +30,27 @@ function safeAssetURL(value,projectId) {
   return url.href;
 }
 
-// A neutral photographic studio for image-based lighting. These cards exist
-// only in the environment map: they produce readable reflections on metal and
-// glass without covering the product or replacing any imported material.
-function createStudioEnvironment() {
-  const studio=new THREE.Scene();studio.background=new THREE.Color().setRGB(.32,.32,.32);
-  const geometry=new THREE.PlaneGeometry(1,1);
-  const cards=[
-    {position:[-4,4,3],size:[3.4,5.2],strength:3.8},
-    // A low front-side card catches shallow camera angles on horizontal metal.
-    {position:[5,2,5],size:[4,4.5],strength:3.4},
-    {position:[5,2,-5],size:[3,4.5],strength:2.1},
-    {position:[-5,2,5],size:[3,4.5],strength:2.1},
-    // The overhead card extends toward the viewer, so upward-facing product
-    // surfaces reflect a broad softbox instead of a flat dark ceiling.
-    {position:[0,5,2],size:[8,6],strength:4.2},
-    {position:[0,2,-5],size:[4.5,3],strength:1.1},
-  ];
-  for(const card of cards){
-    const color=new THREE.Color().setRGB(card.strength,card.strength,card.strength);
-    const material=new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,toneMapped:false});
-    const panel=new THREE.Mesh(geometry,material);panel.position.fromArray(card.position);
-    panel.scale.set(card.size[0],card.size[1],1);panel.lookAt(0,0,0);studio.add(panel);
-  }
-  return studio;
-}
-
 export class ProductViewport {
-  constructor(host,{onChange=()=>{},onError=()=>{},onPick=()=>{},onHover=()=>{}}={}) {
+  constructor(host,{onChange=()=>{},onError=()=>{},onPick=()=>{},onHover=()=>{},onTraceState}={}) {
     this.host=host;this.onChange=onChange;this.onError=onError;this.onPick=onPick;this.onHover=onHover;this.disposed=false;this.visible=true;this.generation=0;
-    this.pickEnabled=false;this.highlighted=new Set();this.raycaster=new THREE.Raycaster();this.pointerDown=null;this.hoveredPart='';this.clonedMaterials=new Set();
+    this.pickEnabled=false;this.highlighted=new Set();this.raycaster=new THREE.Raycaster();this.pointerDown=null;this.hoveredPart='';this.selectionMaterials=new SelectionMaterials();
+    this.librarySlots=new Map();this.previewBindings=[];this.savedLibrarySurfaces=[];
     this.frame=document.createElement('div');this.frame.className='realtime-canvas-frame';host.replaceChildren(this.frame);
     try{this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});}
     catch(_){this.frame.remove();throw new Error('浏览器未能开启 3D 加速。请开启硬件加速后重试，或切换到已渲染图片。');}
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure=1;this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate=false;
     const canvas=this.renderer.domElement;canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label','可交互的产品实时预览。拖动旋转，滚轮缩放，右键拖动平移。方向键旋转，Shift 加方向键平移，加减键缩放，Home 复位。');
     this.frame.append(canvas);this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0xffffff);
-    const environment=createStudioEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);
-    this.environment=pmrem.fromScene(environment,.04);this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.65;
-    disposeTree(environment);pmrem.dispose();
-    this.contextLost=event=>{event.preventDefault();this.onError(new Error('3D 显示连接中断，请重新载入实时预览。'));};
+    this.refinement=new ViewportRefinement(this.renderer,this.frame);
+    this.pathTracing=new ViewportPathTracing(this,onTraceState);
+    this.fastOptics=new FastViewportOptics(this);
+    this.backdropRevision=0;this.backdrop={id:'white'};
+    const environment=studioEnvironmentMap();
+    this.environment=this.filterEnvironment(environment);this.scene.environment=this.environment.texture;
+    this.studioRadiance=environment;
+    this.contextLost=event=>{event.preventDefault();this.stopDrawing();this.onError(new Error('3D 显示连接中断，请重新载入实时预览。'));};
     canvas.addEventListener('webglcontextlost',this.contextLost);
     this.keyHandler=event=>this.onKey(event);canvas.addEventListener('keydown',this.keyHandler);
     this.pointerDownHandler=event=>{if(event.button===0)this.pointerDown={x:event.clientX,y:event.clientY};};
@@ -75,12 +63,20 @@ export class ProductViewport {
     canvas.addEventListener('pointerleave',this.pointerLeaveHandler);
     this.resizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(()=>this.resize()):null;this.resizeObserver?.observe(host);
     this.windowResize=()=>this.resize();window.addEventListener('resize',this.windowResize);
-    this.visibilityHandler=()=>{if(!document.hidden)this.requestDraw();};document.addEventListener('visibilitychange',this.visibilityHandler);
+    this.pixelRatioChanged=()=>{
+      this.pixelRatioQuery?.removeEventListener('change',this.pixelRatioChanged);
+      this.pixelRatioQuery=window.matchMedia(`(resolution: ${window.devicePixelRatio||1}dppx)`);
+      this.pixelRatioQuery.addEventListener('change',this.pixelRatioChanged);this.resize();
+    };
+    this.pixelRatioChanged();
+    this.visibilityHandler=()=>{if(document.hidden){this.stopDrawing();this.orbiting=false;}else this.requestDraw();};document.addEventListener('visibilitychange',this.visibilityHandler);
   }
   async load(asset,metadata,shot,plan,projectId) {
     const generation=++this.generation;
     if(metadata?.schema!=='wuying-viewport-v1' || metadata.coordinate_system!=='gltf-y-up')throw new Error('实时预览数据版本不兼容，请重试。');
     this.bounds=validateBounds(metadata.bounds);this.metadata=metadata;this.aspect=aspectNumber(plan.aspect);this.planMargin=plan.margin;
+    this.shotId=shot?.id;
+    this.setExposure(plan);
     const assetURL=safeAssetURL(asset.url,projectId);this.abort=new AbortController();
     const response=await fetch(assetURL,{signal:this.abort.signal,credentials:'same-origin'});
     if(!response.ok)throw new Error('实时模型下载失败，请重试。');
@@ -122,6 +118,29 @@ export class ProductViewport {
     gltf.scene.traverse(node=>{
       if(node.isMesh){
         node.userData.productObjectName=resolveProductName(node);
+        // Use the GLB's original names. Three can sanitize or uniquify object
+        // names, and the material in a checkpoint can be an object-local copy.
+        let owner=node;
+        while(owner && gltf.parser.associations.get(owner)?.nodes===undefined)owner=owner.parent;
+        const nodeIndex=owner && gltf.parser.associations.get(owner)?.nodes;
+        const sourceName=gltf.parser.json.nodes?.[nodeIndex]?.name;
+        const objectName=metadata.object_names && Object.hasOwn(metadata.object_names,sourceName) ? metadata.object_names[sourceName] : null;
+        const slotMap=objectName && metadata.material_slots && Object.hasOwn(metadata.material_slots,objectName) ? metadata.material_slots[objectName] : null;
+        if(slotMap){
+          node.userData.productObjectName=objectName;
+          const mats=Array.isArray(node.material)?node.material:[node.material];
+          node.userData.librarySlotKeys=mats.map((mat,index)=>{
+            const association=gltf.parser.associations.get(node);
+            const primitive=gltf.parser.json.meshes?.[association?.meshes]?.primitives?.[association?.primitives ?? index];
+            const materialIndex=gltf.parser.associations.get(mat)?.materials ?? primitive?.material;
+            const exportName=gltf.parser.json.materials?.[materialIndex]?.name ?? '';
+            if(!Object.hasOwn(slotMap,exportName) || typeof slotMap[exportName]!=='string')return null;
+            const materialName=slotMap[exportName],key=JSON.stringify([objectName,materialName]);
+            if(!this.librarySlots.has(key))this.librarySlots.set(key,{key,object_name:objectName,material_name:materialName,bindings:[]});
+            this.librarySlots.get(key).bindings.push({node,index});
+            return key;
+          });
+        }
         const materials=(Array.isArray(node.material)?node.material:[node.material]).filter(Boolean);
         // Three's real-time shadow maps treat transmission as opaque. Avoid a
         // false black silhouette when the entire mesh is transmissive; mixed
@@ -131,42 +150,74 @@ export class ProductViewport {
       }
       if(node.isLight || node.isCamera)node.visible=false;
     });
+    assignGeneratedSpaces(gltf.scene,metadata.generated_spaces);
     this.model=gltf.scene;this.scene.add(this.model);this.buildLighting(metadata);
     // A legacy checkpoint may have an optimized camera absent from its older
     // plan. The export manifest measures the actual current scene camera.
     const actual={...shot};
     for(const key of ['projection','azimuth','elevation','focal_length','ortho_scale','target_offset','camera_distance'])if(metadata.camera?.[key]!==undefined)actual[key]=metadata.camera[key];
-    this.setShot(actual,plan);this.ready=true;this.applyHighlights();this.requestDraw();
+    if(metadata.camera)actual.viewport_reference_diagonal=this.bounds.diagonal;
+    this.setShot(actual,plan);this.backdropDirection=this.camera.getWorldDirection(new THREE.Vector3());
+    this.ready=true;this.applyHighlights();this.requestDraw();
+  }
+  filterEnvironment(texture) {
+    if(!this.renderer.extensions.has('OES_texture_float_linear'))texture.minFilter=texture.magFilter=THREE.NearestFilter;
+    const filter=new THREE.PMREMGenerator(this.renderer);
+    try{return filter.fromEquirectangular(texture);}finally{filter.dispose();}
+  }
+  clearLighting() {
+    this.studioGround?.dispose();
+    for(const node of this.studioNodes || []) {
+      this.scene.remove(node);
+      node.dispose?.();
+      node.geometry?.dispose();node.material?.dispose();
+    }
+    this.studioNodes=null;this.studioGround=null;this.viewFill=null;
   }
   buildLighting(metadata) {
-    const b=this.bounds,d=b.diagonal,c=new THREE.Vector3(...b.center);
-    const worldStrength=Number.isFinite(metadata.world?.strength)?Math.max(0,metadata.world.strength):1;
-    // Bounded studio approximation retains absolute brightness changes. Do
-    // not divide powers by their maximum: that cancels a user's global boost.
-    // Blender area-light power and the generated room environment are not in
-    // the same units. Keep a neutral preview fill so dark sides remain legible
-    // as the model rotates, while still responding to the scene environment.
-    this.scene.environmentIntensity=Math.min(8,.55+worldStrength*.65);
-    this.renderer.toneMappingExposure=2**Math.max(-10,Math.min(10,Number(metadata.exposure)||0));
-    this.scene.add(new THREE.HemisphereLight(0xffffff,0xe3e5e8,Math.min(8,.75+worldStrength*.65)));
-    // A bounded camera-side fill keeps faces legible while orbiting; the
-    // scene's own lights still supply its main direction and shadows.
-    this.viewFill=new THREE.DirectionalLight(0xffffff,Math.min(1.4,.65+worldStrength*.25));
-    this.scene.add(this.viewFill,this.viewFill.target);
-    const candidates=(metadata.lights || []).filter(light=>Array.isArray(light.position) && light.position.length===3).slice(0,6);
-    const defaults=[{position:[c.x-d,c.y+d*1.7,c.z+d*1.5],energy:3},{position:[c.x+d,c.y+d*.7,c.z+d],energy:1.5},{position:[c.x,c.y+d,c.z-d],energy:1.2}];
-    const lights=candidates.length?candidates:defaults;
-    lights.forEach((source,index)=>{
-      const color=Array.isArray(source.color)?new THREE.Color().setRGB(...source.color.slice(0,3)):0xffffff;
-      const energy=Math.max(0,Number(source.energy ?? source.power ?? source.intensity)||0);
-      const distanceSquared=source.position.reduce((sum,value,i)=>sum+(value-b.center[i])**2,0);
-      const intensity=!candidates.length?energy:source.type==='SUN'?energy*2:energy*.06/Math.max(distanceSquared,d*d*.04);
-      const light=new THREE.DirectionalLight(color,Math.min(25,intensity));light.position.fromArray(source.position);
-      light.target.position.fromArray(Array.isArray(source.target)?source.target:Array.isArray(source.direction)?source.position.map((value,i)=>value+source.direction[i]*d):b.center);this.scene.add(light,light.target);
-      if(index===0){light.castShadow=true;light.shadow.mapSize.set(1024,1024);Object.assign(light.shadow.camera,{left:-d,right:d,top:d,bottom:-d,near:Math.max(d*.001,.00001),far:d*30});light.shadow.bias=-.0001;light.shadow.normalBias=d*.001;}
-    });
-    const ground=new THREE.Mesh(new THREE.PlaneGeometry(d*20,d*20),new THREE.ShadowMaterial({color:0x515761,opacity:.22,depthWrite:false}));
-    ground.rotation.x=-Math.PI/2;ground.position.set(c.x,b.min[1]-d*.0005,c.z);ground.receiveShadow=true;this.scene.add(ground);
+    this.clearLighting();
+    this.studioMetadata={...backdropLighting(metadata,this.bounds,this.backdrop),exposure:this.exposureEV ?? metadata.exposure};
+    const previous=new Set(this.scene.children);
+    buildStudioLighting(this,this.studioMetadata);
+    this.studioNodes=this.scene.children.filter(node=>!previous.has(node));
+  }
+  setExposure(plan) {
+    const delta=plan?.shot_adjustments?.[this.shotId]?.exposure_delta ?? 0;
+    const ev=Number.isFinite(plan?.exposure) ?
+      THREE.MathUtils.clamp(plan.exposure+delta,-4,4) : (this.metadata?.exposure ?? 0);
+    if(this.exposureEV===ev)return;
+    this.exposureEV=ev;
+    this.renderer.toneMappingExposure=2**ev;
+    if(this.studioMetadata)this.studioMetadata.exposure=ev;
+    if(this.ready)this.requestDraw();
+  }
+  async setStudioBackdrop(id,preset) {
+    const revision=++this.backdropRevision;
+    if(this.disposed || id===this.backdrop.id)return;
+    const next=await backdropPreset(id,preset);
+    if(this.disposed || revision!==this.backdropRevision)return;
+    const [photo,environment,lamps]=await Promise.allSettled([loadBackdrop(next),loadStudioEnvironment(next),prepareBackdropLights(next)]);
+    const plate=photo.value;
+    if(this.disposed || revision!==this.backdropRevision){plate?.dispose();environment.value?.dispose?.();return;}
+    if(photo.status==='rejected' || environment.status==='rejected' || lamps.status==='rejected'){
+      plate?.dispose();environment.value?.dispose?.();throw photo.reason || environment.reason || lamps.reason;
+    }
+    const direction=this.backdropDirection || new THREE.Vector3(0,0,-1);
+    let radiance,filtered;
+    try{
+      fitBackdrop(plate,this.aspect);
+      radiance=backdropRadiance(next,plate?.image,direction,environment.value);
+      filtered=this.filterEnvironment(radiance);
+    }catch(error){plate?.dispose();radiance?.dispose();throw error;}
+    const oldPlate=this.plate,oldRadiance=this.studioRadiance,oldEnvironment=this.environment;
+    this.plate=plate;this.backdrop=next;this.environment=filtered;
+    this.studioRadiance=radiance;
+    this.scene.background=plate || new THREE.Color(0xffffff);
+    this.scene.environment=filtered.texture;
+    if(this.model)this.buildLighting(this.metadata);
+    this.fastOptics?.invalidate();this.pathTracing?.invalidateBackdrop();
+    this.requestDraw();
+    oldPlate?.dispose();oldRadiance?.dispose();oldEnvironment?.dispose();
   }
   setShot(shot,plan={},options={}) {
     if(!this.bounds || this.disposed)return;
@@ -181,6 +232,9 @@ export class ProductViewport {
     this.controls.enableDamping=true;this.controls.dampingFactor=.12;this.controls.minPolarAngle=Math.PI/180*.1;this.controls.maxPolarAngle=Math.PI/180*170;
     this.controls.minZoom=.04;this.controls.maxZoom=40;this.controls.minDistance=this.bounds.diagonal*.02;this.controls.maxDistance=this.bounds.diagonal*100;
     this.controls.rotateSpeed=.75;this.controls.zoomSpeed=.8;this.controls.screenSpacePanning=true;
+    this.orbiting=false;
+    this.controls.addEventListener('start',()=>{this.orbiting=true;this.requestDraw();});
+    this.controls.addEventListener('end',()=>{this.orbiting=false;this.requestDraw();});
     this.controls.update();this.controls.saveState();
     this.initialShot=JSON.parse(JSON.stringify(shot));this.initialPlan={aspect:this.aspect,margin:this.planMargin};
     this.baseline=this.snapshot();this.controls.addEventListener('change',()=>{this.needsDraw=true;if(!this.suppressChange)this.onChange(this.hasChanged());this.requestDraw();});
@@ -199,13 +253,40 @@ export class ProductViewport {
     this.setShot(view,initialPlan);this.baseline=baseline;this.initialShot=initialShot;this.initialPlan=initialPlan;this.onChange(this.hasChanged());
   }
   reset() {if(this.initialShot){this.setShot(this.initialShot,this.initialPlan);this.onChange(false);}}
-  setVisible(visible) {this.visible=visible;this.controls && (this.controls.enabled=visible);if(visible){this.resize();this.requestDraw();}else{cancelAnimationFrame(this.frameRequest);this.frameRequest=0;}}
+  setTraceOptions(options) {this.pathTracing?.options(options);}
+  invalidateTraceScene() {this.fastOptics?.invalidate();this.studioGround?.invalidate();this.renderer.shadowMap.needsUpdate=true;this.pathTracing?.invalidate();this.requestDraw();}
+  stopDrawing() {cancelAnimationFrame(this.frameRequest);this.frameRequest=0;this.refinement?.reset();this.pathTracing?.suspend();}
+  setVisible(visible) {
+    if(this.visible===visible)return;
+    this.visible=visible;if(this.controls)this.controls.enabled=visible;
+    if(visible){this.resize();this.requestDraw();}else{this.stopDrawing();this.orbiting=false;}
+  }
   resize() {
     if(this.disposed || !this.camera)return;
+    fitBackdrop(this.plate,this.aspect);
     const available=this.host.getBoundingClientRect(),width=Math.max(1,Math.min(available.width,available.height*this.aspect)),height=width/this.aspect;
-    this.frame.style.width=width+'px';this.frame.style.height=height+'px';this.renderer.setSize(Math.round(width),Math.round(height),false);this.requestDraw();
+    // Allocate one backing pixel per display pixel when settled. The worker
+    // traces this exact buffer, so a 128-sample image needs no enlargement.
+    // The upper bound also limits the three floating-point accumulation
+    // targets on very large displays. Orbiting keeps its smaller raster budget.
+    const pixelBudget=this.motionQuality?800000:2048**2;
+    const dpr=window.devicePixelRatio||1,ratio=this.motionQuality?Math.min(2,dpr):dpr;
+    const physicalWidth=Math.max(1,Math.round(width*ratio)),physicalHeight=Math.max(1,Math.round(height*ratio));
+    const scale=Math.min(1,Math.sqrt(pixelBudget/(physicalWidth*physicalHeight)));
+    const w=Math.max(1,Math.floor(physicalWidth*scale)),h=Math.max(1,Math.floor(physicalHeight*scale));
+    // Only the image seen through glass uses this multisampled color buffer.
+    // Keep silhouette, specular and other materials at the full motion size.
+    this.renderer.transmissionResolutionScale=this.motionQuality ? .75 : 1;
+    this.frame.style.width=width+'px';this.frame.style.height=height+'px';
+    if(w===this.renderer.domElement.width && h===this.renderer.domElement.height && this.drawWidth===width && this.drawHeight===height)return;
+    this.drawWidth=width;this.drawHeight=height;
+    // Set integer physical dimensions directly. Three otherwise floors the
+    // canvas and rounds the GL viewport at fractional Windows display scales.
+    this.renderer.setDrawingBufferSize(w,h,1);this.requestDraw();
   }
   requestDraw() {
+    this.refinement?.reset();
+    this.pathTracing?.reset();
     this.needsDraw=true;
     if(this.disposed || !this.visible || document.hidden || this.frameRequest || this.drawing)return;
     const draw=()=>{
@@ -217,12 +298,22 @@ export class ProductViewport {
         // The listener may request a draw, but this frame owns scheduling
         // until update/render finish, so only one future RAF can be pending.
         moved=this.controls.update();
+        if(this.drawWidth && Boolean(this.motionQuality)!==Boolean(moved || this.orbiting)){
+          this.motionQuality=Boolean(moved || this.orbiting);this.resize();
+        }
         if(!this.disposed && this.visible && !document.hidden && (this.needsDraw || moved)){
           if(this.viewFill){this.viewFill.position.copy(this.camera.position);this.viewFill.target.position.copy(this.controls.target);}
+          this.fastOptics?.prepare(!!this.previewTarget);
           this.needsDraw=false;this.renderer.render(this.scene,this.camera);
+          // The host may still be hidden with a 1px backing buffer while the
+          // project is loading. Only publish a frame that can actually be seen.
+          if(this.ready && this.drawWidth>1 && this.drawHeight>1 &&
+              this.frame.dataset.previewOptics!=='ready')this.frame.dataset.previewOptics='ready';
         }
       }finally{this.drawing=false;}
-      if((moved || this.needsDraw) && !this.disposed && this.visible && !document.hidden && !this.frameRequest)this.frameRequest=requestAnimationFrame(draw);
+      if(this.disposed || !this.visible || document.hidden || this.frameRequest)return;
+      if(moved || this.needsDraw)this.frameRequest=requestAnimationFrame(draw);
+      else if(this.ready && !this.orbiting && !this.previewTarget)this.refinement?.start(this.scene,this.camera,()=>this.pathTracing?.start());
     };
     this.frameRequest=requestAnimationFrame(draw);
   }
@@ -243,48 +334,101 @@ export class ProductViewport {
     if(!this.pickEnabled && this.hoveredPart){this.hoveredPart='';this.onHover('');}
   }
   setHighlightedParts(names) {
-    this.highlighted=new Set(Array.from(names || []).filter(Boolean));
+    const next=new Set(Array.from(names || []).filter(Boolean));
+    if(next.size===this.highlighted.size && [...next].every(name=>this.highlighted.has(name)))return;
+    this.highlighted=next;
     this.applyHighlights();
-    this.requestDraw();
+    this.invalidateTraceScene();
   }
   applyHighlights() {
     if(!this.model)return;
-    const tint=new THREE.Color(0xd99b43);
-    this.model.traverse(node=>{
-      if(!node.isMesh)return;
-      const on=this.highlighted.has(node.userData.productObjectName);
-      if(on && !node.userData._pickCloned){
-        if(Array.isArray(node.material)){
-          node.material=node.material.map(m=>{const c=m.clone();this.clonedMaterials.add(c);return c;});
-        }else if(node.material){
-          const c=node.material.clone();this.clonedMaterials.add(c);node.material=c;
-        }
-        node.userData._pickCloned=true;
-      }
-      const mats=(Array.isArray(node.material)?node.material:[node.material]).filter(Boolean);
-      for(const mat of mats){
-        if(!('emissive' in mat))continue;
-        if(!mat.userData._origEmissive){
-          mat.userData._origEmissive=mat.emissive.clone();
-          mat.userData._origEmissiveIntensity=mat.emissiveIntensity ?? 1;
-        }
-        if(on){mat.emissive.copy(tint);mat.emissiveIntensity=0.45;}
-        else{mat.emissive.copy(mat.userData._origEmissive);mat.emissiveIntensity=mat.userData._origEmissiveIntensity;}
-      }
-    });
+    this.model.traverse(node=>{if(node.isMesh)this.applyNodeHighlight(node);});
   }
-  raycastClient(clientX,clientY) {
-    if(!this.ready || !this.model || !this.camera)return '';
+  applyNodeHighlight(node){
+    const on=this.highlighted.has(node.userData.productObjectName);
+    const resolve=m=>this.selectionMaterials.resolve(m,on);
+    node.material=Array.isArray(node.material)?node.material.map(resolve):resolve(node.material);
+  }
+  raycastHits(clientX,clientY) {
+    if(!this.ready || !this.model || !this.camera)return [];
     const rect=this.renderer.domElement.getBoundingClientRect();
-    if(rect.width<=0 || rect.height<=0)return '';
+    if(rect.width<=0 || rect.height<=0 || clientX<rect.left || clientX>rect.right || clientY<rect.top || clientY>rect.bottom)return [];
     const ndc=new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1,-((clientY-rect.top)/rect.height)*2+1);
     this.raycaster.setFromCamera(ndc,this.camera);
-    const hits=this.raycaster.intersectObject(this.model,true);
-    for(const hit of hits){
+    return this.raycaster.intersectObject(this.model,true);
+  }
+  raycastClient(clientX,clientY) {
+    for(const hit of this.raycastHits(clientX,clientY)){
       const name=hit.object?.userData?.productObjectName;
       if(name)return name;
     }
     return '';
+  }
+  materialTargetAt(x,y) {
+    const hit=this.raycastHits(x,y)[0];
+    const key=hit?.object.userData.librarySlotKeys?.[hit.face?.materialIndex ?? 0];
+    return this.librarySlots.get(key) || null;
+  }
+  bindLibrarySurface(target,surface){
+    const originals=new Map();
+    for(const {node,index} of target.bindings){
+      if(!originals.has(node)){
+        originals.set(node,{node,original:node.material,shadow:node.castShadow});
+        if(Array.isArray(node.material))node.material=node.material.slice();
+      }
+      const material=surface.forGeometry(node.geometry,node.userData.generatedSpace);
+      if(Array.isArray(node.material))node.material[index]=material;
+      else node.material=material;
+    }
+    for(const node of originals.keys()){
+      const materials=Array.isArray(node.material)?node.material:[node.material];
+      node.castShadow=!materials.every(mat=>mat?.transmission>0.05);
+    }
+    return Array.from(originals.values());
+  }
+  restoreLibraryBindings(bindings){
+    for(const {node,original,shadow} of bindings){
+      node.material=original;node.castShadow=shadow;this.applyNodeHighlight(node);
+    }
+  }
+  applySavedLibraryMaterials(overrides,items){
+    const byId=new Map(items.map(item=>[item.id,item]));
+    for(const row of overrides){
+      // The project's own image channels are embedded in this exported GLB.
+      if(row.textures && Object.keys(row.textures).length)continue;
+      const target=this.librarySlots.get(JSON.stringify([row.object_name,row.material_name]));
+      const item=byId.get(row.catalog_id);
+      if(!target || !item)continue;
+      const surface=makeLibraryPreviewMaterial(item,()=>{
+        this.applyHighlights();
+        this.invalidateTraceScene();
+      },this.bounds.diagonal,row);
+      const bindings=this.bindLibrarySurface(target,surface);
+      this.savedLibrarySurfaces.push({surface,bindings});
+    }
+    if(overrides.length){this.applyHighlights();this.invalidateTraceScene();}
+  }
+  captureMaterialFrame() {
+    const source=this.renderer.domElement,image=document.createElement('canvas');
+    image.width=source.width;image.height=source.height;
+    if(this.pathTracing?.hasFrame)this.pathTracing.present();
+    else if(this.refinement?.count)this.refinement.present();else this.renderer.render(this.scene,this.camera);
+    image.getContext('2d').drawImage(source,0,0);
+    image.setAttribute('aria-label','已保存的部件材质');image.setAttribute('role','img');
+    return image;
+  }
+  previewLibraryMaterial(target,item) {
+    if(this.previewTarget===target && this.previewItem===item)return;
+    this.restoreLibraryBindings(this.previewBindings);
+    this.previewBindings=[];this.previewTarget=target;
+    if(item!==this.previewItem){
+      this.previewSurface?.dispose();this.previewSurface=null;this.previewItem=item;
+      if(item)this.previewSurface=makeLibraryPreviewMaterial(item,()=>this.requestDraw(),this.bounds.diagonal);
+    }
+    if(target && this.previewSurface)this.previewBindings=this.bindLibrarySurface(target,this.previewSurface);
+    this.fastOptics?.refreshBindings();
+    this.renderer.shadowMap.needsUpdate=true;
+    this.requestDraw();
   }
   onPointerMove(event) {
     if(!this.pickEnabled || !this.ready)return;
@@ -300,14 +444,18 @@ export class ProductViewport {
     if(name)this.onPick(name);
   }
   dispose() {
-    if(this.disposed)return;this.disposed=true;this.generation++;this.abort?.abort();cancelAnimationFrame(this.frameRequest);this.resizeObserver?.disconnect();this.controls?.dispose();
+    if(this.disposed)return;this.disposed=true;this.generation++;this.abort?.abort();this.stopDrawing();this.resizeObserver?.disconnect();this.controls?.dispose();
+    this.highlighted.clear();this.previewLibraryMaterial(null,null);this.librarySlots.clear();
+    for(const {surface,bindings} of this.savedLibrarySurfaces.reverse()){this.restoreLibraryBindings(bindings);surface.dispose();}
     window.removeEventListener('resize',this.windowResize);document.removeEventListener('visibilitychange',this.visibilityHandler);
+    this.pixelRatioQuery?.removeEventListener('change',this.pixelRatioChanged);
     this.renderer.domElement.removeEventListener('webglcontextlost',this.contextLost);this.renderer.domElement.removeEventListener('keydown',this.keyHandler);
     this.renderer.domElement.removeEventListener('pointerdown',this.pointerDownHandler);this.renderer.domElement.removeEventListener('pointerup',this.pointerUpHandler);
     this.renderer.domElement.removeEventListener('pointermove',this.pointerMoveHandler);this.renderer.domElement.removeEventListener('pointerleave',this.pointerLeaveHandler);
-    for(const mat of this.clonedMaterials)mat.dispose();this.clonedMaterials.clear();
-    disposeTree(this.scene);this.environment?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();this.frame.remove();
+    this.fastOptics?.dispose();
+    this.applyHighlights();this.selectionMaterials.dispose();
+    this.pathTracing?.dispose();this.refinement?.dispose();this.clearLighting();disposeTree(this.scene);this.plate?.dispose();this.studioRadiance?.dispose();this.environment?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();this.frame.remove();
   }
 }
-window.WuyingViewport={create:(host,options)=>new ProductViewport(host,options)};
+window.WuyingViewport={create:(host,options)=>new ProductViewport(host,options),setTraceWarmupEnabled};
 window.dispatchEvent(new Event('wuying-viewport-ready'));

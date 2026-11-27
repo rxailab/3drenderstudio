@@ -336,6 +336,7 @@ metal()
 glass()
 bag()
 index=[
+    {'id':'material-optics','name':'金属反射与玻璃折射','description':'旋转白底场景，观察红色参照物在银球上的倒影，以及玻璃球后的彩色条纹。','file':'material-optics.glb','license':'CC0-1.0','features':['metallic reflection','solid glass','IOR 1.52']},
     {'id':'matte-bottle','name':'哑光塑料按压瓶','description':'细长物体，哑光塑料、独立泵头、已有标签文字；GLB。','file':'matte-pump-bottle.glb','license':'CC0-1.0','features':['matte plastic','elongated','multipart','text label']},
     {'id':'metal-tray','name':'拉丝金属收纳盘','description':'扁平单网格金属物体，圆角与真实凹槽；GLB。','file':'brushed-metal-tray.glb','license':'CC0-1.0','features':['metal','flat','single mesh','concave']},
     {'id':'glass-tumbler','name':'厚壁透明玻璃杯','description':'真实内外壁、杯口及杯底厚度，单网格；GLB。','file':'thick-glass-tumbler.glb','license':'CC0-1.0','features':['transparent','hollow','single mesh','actual thickness']},
@@ -347,10 +348,11 @@ index=[
 (OUT/'LICENSE.txt').write_text('SPDX-License-Identifier: CC0-1.0\n\nAll models, geometry, fictional MORA labels, materials and textures in this directory were procedurally authored for this application. The authors dedicate them to the public domain under CC0 1.0 Universal. No third-party assets or real brand marks are used.\nhttps://creativecommons.org/publicdomain/zero/1.0/\n',encoding='utf-8')
 (OUT/'README.md').write_text('''# 验收样例资产
 
-全部资产由 `scripts/generate_samples.py` 在 Blender 中实际建模并导出，许可为 CC0-1.0。MORA 为虚构样例标签。样例几何是人工规则生成的测试产品，不声称是扫描实物。
+样例资产均为本项目生成，采用 CC0-1.0 许可。光学场景可通过 `tests/make_material_optics.py` 重建，其余产品由 `scripts/generate_samples.py` 在 Blender 中建模并导出。MORA 为虚构样例标签。
 
 | 文件 | 验证内容 |
 | --- | --- |
+| material-optics.glb | 抛光银球与红色参照物、折射率 1.52 的实心玻璃球及其背后的条纹 |
 | matte-pump-bottle.glb | 细长哑光塑料、多部件、保留文字 |
 | brushed-metal-tray.glb | 扁平金属、单网格、凹槽 |
 | thick-glass-tumbler.glb | 透明材料、空心、真实壁厚 |

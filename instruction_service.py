@@ -207,6 +207,7 @@ def public_project(project):
     """Unapplied candidates and evidence fingerprints stay on the server."""
     result=copy.deepcopy(project)
     result.pop(PROPOSALS_KEY,None)
+    result.pop('_material_redo',None)
     return result
 
 

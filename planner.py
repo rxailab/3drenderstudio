@@ -2,6 +2,7 @@
 import copy
 import math
 import re
+from pathlib import Path
 from camera_controls import validate_shot
 from lighting_controls import LIGHTING_DEFAULTS, LIGHT_DIRECTION_LIMITS, LIGHTING_LIMITS
 from intelligence_rules import (
@@ -18,7 +19,7 @@ def default_plan():
         light_softness=1,lighting=copy.deepcopy(LIGHTING_DEFAULTS),texture_scale=1,texture_rotation=0,material_overrides=[],object_material_overrides=[],
         repair={'normals':False,'smooth':False},pose={},time_budget=1200,max_corrections=2,
         source='rules',visual_review=True,pending=['实际摆放方向与主展示面请在预览中确认'],shots=[
-        dict(id='hero',label='白底主图',kind='full',projection='orthographic',azimuth=35,elevation=18,focal_length=70,style='white'),
+        dict(id='hero',label='主图',kind='full',projection='orthographic',azimuth=35,elevation=18,focal_length=70,style='white'),
         dict(id='campaign',label='棚拍宣传',kind='full',projection='orthographic',azimuth=-38,elevation=22,focal_length=60),
         dict(id='side',label='侧面结构',kind='full',projection='orthographic',azimuth=90,elevation=12,focal_length=70),
         dict(id='back',label='背面展示',kind='full',projection='orthographic',azimuth=155,elevation=22,focal_length=70),
@@ -63,8 +64,19 @@ def validate_texture_override(material):
             elif not isinstance(value,str) or len(value)>4096:
                 raise ValueError('外部材质来源记录无效')
 
+def validate_project_textures(plan,material_root):
+    root=Path(material_root).resolve()
+    for row in plan.get('material_overrides',[])+plan.get('object_material_overrides',[]):
+        for channel,filename in row.get('textures',{}).items():
+            path=Path(filename).resolve()
+            if channel not in TEXTURE_CHANNELS or root not in path.parents or not path.is_file():
+                raise ValueError('PBR 贴图必须先导入到当前项目')
+
 def validate(plan):
     p = copy.deepcopy(plan)
+    if 'viewport_backdrop' in p:
+        from studio_backdrops import require_id
+        require_id(p['viewport_backdrop'])
     for k, options in [('style',['white','soft','dark']),('aspect',['1:1','4:3','3:4'])]:
         if p.get(k) not in options: raise ValueError(k+' 不支持该选项')
     if p.get('look','classic') not in ('classic','showcase'): raise ValueError('look 不支持该选项')
@@ -124,7 +136,10 @@ def validate(plan):
     if not isinstance(local_materials,list) or len(local_materials)>1000: raise ValueError('局部材质参数无效')
     seen=set()
     for m in local_materials:
-        if not isinstance(m,dict) or set(m)-{'object_name','material_name','preset','color','roughness','metallic','transmission','coat','source','preserve_original','textures','license','resource','texture_scale','texture_rotation','lookdev_finish','lookdev_reason'}: raise ValueError('局部材质字段无效')
+        if not isinstance(m,dict) or set(m)-{'object_name','material_name','preset','catalog_id','color','roughness','metallic','transmission','coat','source','preserve_original','textures','license','resource','texture_scale','texture_rotation','lookdev_finish','lookdev_reason'}: raise ValueError('局部材质字段无效')
+        if 'catalog_id' in m:
+            from keyshot_catalog import require_id
+            require_id(m['catalog_id'])
         validate_texture_override(m)
         if not all(isinstance(m.get(k),str) and m[k] for k in ['object_name','material_name']): raise ValueError('局部材质必须指定部件和材质名称')
         pair=(m['object_name'],m['material_name'])

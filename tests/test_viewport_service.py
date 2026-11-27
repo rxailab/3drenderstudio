@@ -145,6 +145,36 @@ class ViewportServiceTests(unittest.TestCase):
         path=self.root/'asset.glb';glb(path);self.assertTrue(viewport._glb(path))
         glb(path,external=True);self.assertFalse(viewport._glb(path))
 
+    def test_only_backdrop_changes_can_reuse_the_previous_material_target(self):
+        item=self.submit()
+        manifest_path=self.cache(item)/'manifest.json'
+        manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest.update(material_slots={'Body':{'0':'Metal'}},world={'strength':.45},lights=[],
+                        source={'project_id':'fixture','shot_id':'hero','version':1})
+        store.atomic_json(manifest_path,manifest)
+        project=store.get('project','fixture')
+        project['history'].append({'version':1,'plan':copy.deepcopy(project['plan'])})
+        project['plan'].update(source='user',viewport_backdrop='cologne')
+        project['version']=2
+        store.put('project',project)
+        viewport.verify_material_target('fixture',item['id'],2,'hero','Body','Metal')
+        project['plan']['shots'][0].update(ortho_scale=4,viewport_reference_diagonal=5)
+        self.assertEqual(viewport.render_baselines(project,['hero'])['hero']['world'],{'strength':.45})
+        live_exposure=copy.deepcopy(project)
+        live_exposure['plan'].update(exposure=1.6,shot_adjustments={'hero':{'exposure_delta':-.2}})
+        self.assertEqual(viewport.render_baselines(live_exposure,['hero'])['hero']['world'],{'strength':.45})
+        live_exposure['plan']['shot_adjustments']['hero']['lighting']={'key_power':2}
+        self.assertEqual(viewport.render_baselines(live_exposure,['hero']),{})
+        with patch.object(viewport,'TASKS',{}):
+            viewport.verify_material_target('fixture',item['id'],2,'hero','Body','Metal')
+            with self.assertRaises(viewport.ViewportError):
+                viewport.verify_material_target('fixture',item['id'],2,'hero','Body','Other slot')
+        project['plan']['object_material_overrides']=[{'object_name':'Body','material_name':'Metal','preset':'metal'}]
+        store.put('project',project)
+        self.assertEqual(viewport.render_baselines(project,['hero']),{})
+        with self.assertRaises(viewport.ViewportError):
+            viewport.verify_material_target('fixture',item['id'],2,'hero','Body','Metal')
+
     def test_http_contract_and_cross_project_task_guard(self):
         from app import app
         client=app.test_client()

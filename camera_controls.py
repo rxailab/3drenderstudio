@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 
 PROJECTIONS=('orthographic','perspective')
-CAMERA_FIELDS=('azimuth','elevation','focal_length','projection','ortho_scale','camera_distance','target_offset','target_object')
+CAMERA_FIELDS=('azimuth','elevation','focal_length','projection','ortho_scale','camera_distance','target_offset','target_object','viewport_reference_diagonal')
 ORTHO_SCALE_LIMITS=(.000001,1e9)
 TARGET_OFFSET_LIMITS=(-10,10)
 CONTRACT_VERSION=1
@@ -29,6 +29,8 @@ def validate_shot(shot):
         if key in shot:_number(shot[key],*limits,key)
     if 'ortho_scale' in shot:_number(shot['ortho_scale'],*ORTHO_SCALE_LIMITS,'正交画面宽度')
     if 'camera_distance' in shot:_number(shot['camera_distance'],*ORTHO_SCALE_LIMITS,'镜头距离')
+    if 'viewport_reference_diagonal' in shot:
+        _number(shot['viewport_reference_diagonal'],1e-12,1e12,'视口模型包围盒对角线')
     if 'target_offset' in shot:
         value=shot['target_offset']
         if not isinstance(value,list) or len(value)!=3:raise ValueError('镜头平移需要三个坐标')

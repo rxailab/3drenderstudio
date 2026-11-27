@@ -117,6 +117,14 @@ def _primitive(value):
     try:return [_primitive(v) for v in value]
     except TypeError:return str(type(value).__name__)
 
+def _image_ref(image):
+    # Save As rebases relative paths even for self-contained packed images.
+    # Identity for catalog images comes from the packed data and its map ID.
+    ident=image.get('wuying_catalog_image')
+    if image.packed_file and isinstance(ident,str) and ident:
+        return 'packed:'+ident
+    return image.filepath
+
 def _nodes(tree):
     if not tree:return None
     result=[]
@@ -125,7 +133,7 @@ def _nodes(tree):
              'inputs':[(socket.name,_primitive(socket.default_value)) for socket in node.inputs if hasattr(socket,'default_value')]}
         if hasattr(node,'operation'):row['operation']=node.operation
         if hasattr(node,'color_ramp'):row['ramp']=[(round(e.position,7),vector(e.color)) for e in node.color_ramp.elements]
-        if getattr(node,'image',None):row['image']={'name':node.image.name,'filepath':node.image.filepath}
+        if getattr(node,'image',None):row['image']={'name':node.image.name,'filepath':_image_ref(node.image)}
         result.append(row)
     return {'nodes':result,'links':sorted((link.from_node.name,link.from_socket.identifier,link.to_node.name,link.to_socket.identifier) for link in tree.links)}
 
@@ -195,7 +203,7 @@ def _fingerprints(objects):
                     if image:
                         packed=getattr(image,'packed_file',None)
                         packed_hash=hashlib.sha256(bytes(packed.data)).hexdigest() if packed else None
-                        resource_nodes.append([node.name,image.name,image.filepath,packed_hash,list(image.size)])
+                        resource_nodes.append([node.name,image.name,_image_ref(image),packed_hash,list(image.size)])
                     if node.type=='GROUP':resource_nodes.append([node.name,'GROUP',_nodes(node.node_tree)])
                 structure=_nodes(mat.node_tree)
                 for node in structure['nodes']:
@@ -209,9 +217,14 @@ def _fingerprints(objects):
             if _protected(mat,[(obj.name,index)])[0] and re.search(r'logo|label|brand|标识|商标|文字',obj.name+' '+mat.name,re.I):
                 labels.append([binding,_nodes(mat.node_tree),vector(mat.diffuse_color)])
     color_hash=digest(colors)
+    # Keep a compact per-slot proof so an explicit local replacement can
+    # change its own packed images and node graph without masking other edits.
+    material_proof=[[binding[0],binding[1],digest(col),digest(resource)]
+                    for (binding,col),(_,resource) in zip(colors,resources)]
+    text_sha256=digest([label for label in labels if isinstance(label[0],str)])
     return {'geometry_sha256':geometry.hexdigest(),'transforms_sha256':digest(transforms),
             'color_sha256':color_hash,'colors_sha256':color_hash,'resources_sha256':digest(resources),
-            'labels_sha256':digest(labels)}
+            'labels_sha256':digest(labels),'font_text_sha256':text_sha256,'material_binding_proof':material_proof}
 
 def _role(obj):
     role=obj.get('wuying_light_role') or obj.get('studio_role')
@@ -600,16 +613,93 @@ def _unlinked_color(value):
 
 def _material_alias(name):return re.sub(r'(?:\.\d{3})+$','',name or '')
 
+def _catalog_delta(scene,products,old,row,index,operations,authorized,plan):
+    """Replace all slots with the explicitly selected identity on this object."""
+    from blender import catalog_shader
+    obj=scene.objects.get(row['object_name'])
+    if obj not in products or obj.type not in ('MESH','CURVE','FONT','SURFACE','META'):
+        raise ValueError('材质替换引用了产品登记外的网格')
+    requested=row['material_name']
+    current_id=row.get('catalog_id')
+    slots=list(obj.material_slots)
+    matches=[i for i,slot in enumerate(slots) if slot.material and requested in
+             (slot.material.name,slot.material.get('wuying_source_material'),slot.material.get('_studio_source_material'))]
+    if not matches and requested=='Default material':
+        matches=[i for i,slot in enumerate(slots) if slot.material is None]
+        if not slots:
+            obj['wuying_catalog_empty_source_data']=obj.data
+            obj.data=obj.data.copy()
+            obj.data.materials.append(None)
+            matches=[0]
+    if not matches:
+        raise ValueError('无法确认当前部位的材质槽：'+obj.name)
+    replacements={}
+    prior_links=dict(obj.get('wuying_catalog_slot_links',{}))
+    for i in matches:
+        slot=obj.material_slots[i];existing=slot.material
+        if old.get('catalog_id') and (not existing or existing.get('wuying_catalog_id')!=old['catalog_id']):
+            raise ValueError('场景与记录的原材质不一致，请刷新视图后重试。')
+        original=existing
+        if existing and existing.get('wuying_catalog_id'):
+            original=existing.get('wuying_catalog_original')
+        prior_links.setdefault(str(i),slot.link)
+        slot.link='OBJECT'   # isolate other objects sharing the same data
+        if current_id:
+            import bpy
+            if original not in replacements:
+                material=bpy.data.materials.new(requested+' · 物影')
+                if original is not None:
+                    material['wuying_catalog_original']=original
+                material['wuying_source_material']=requested
+                material['_studio_source_material']=requested
+                catalog_shader.apply(material,row,plan,bool(getattr(obj.data,'uv_layers',None)))
+                replacements[original]=material
+            slot.material=replacements[original]
+        else:
+            slot.material=original
+            prior=prior_links.pop(str(i))
+            if prior=='DATA' and obj.data.materials[i]!=original and obj.data.users==1:
+                obj.data.materials[i]=original
+            if prior=='DATA' and obj.data.materials[i]==original:
+                slot.link='DATA'
+    if prior_links:
+        obj['wuying_catalog_slot_links']=prior_links
+    elif 'wuying_catalog_slot_links' in obj:
+        del obj['wuying_catalog_slot_links']
+    if not current_id and obj.get('wuying_catalog_empty_source_data') is not None:
+        if len(obj.data.materials)==1 and obj.material_slots[0].material is None:
+            obj.data=obj['wuying_catalog_empty_source_data']
+        del obj['wuying_catalog_empty_source_data']
+    bindings=[{'object_name':obj.name,'slot_index':i} for i in matches]
+    record={'path':f'object_material_overrides[{index}].catalog_id',
+            'object_name':obj.name,'material_name':requested,
+            'catalog_id':current_id,'previous_catalog_id':old.get('catalog_id'),'bindings':bindings}
+    authorized.append(record)
+    operations.append({'kind':'catalog_material','bindings':bindings,'catalog_id':current_id})
+
 def _changed_materials(scene,products,plan,baseline,operations,authorized):
     valid_names={obj.name for obj in products}
     for field in ('material_overrides','object_material_overrides'):
         local=field=='object_material_overrides';key_fields=('object_name','material_name') if local else ('name',)
         previous={tuple(row.get(key) for key in key_fields):row for row in baseline.get(field,[])}
         current={tuple(row.get(key) for key in key_fields):row for row in plan.get(field,[])}
-        if set(previous)-set(current):raise ValueError('不能从摄影快照恢复已移除的旧材质覆盖，请保留当前材质或重新生成基础场景')
+        for missing in previous.keys()-current.keys():
+            old=previous[missing]
+            if not local or not old.get('catalog_id'):
+                raise ValueError('不能从摄影快照恢复已移除的旧材质覆盖，请保留当前材质或重新生成基础场景')
+            index=baseline[field].index(old)
+            _catalog_delta(scene,products,old,{key:old[key] for key in key_fields},index,operations,authorized,plan)
         for index,row in enumerate(plan.get(field,[])):
             old=previous.get(tuple(row.get(key) for key in key_fields),{})
             changes={key:value for key,value in row.items() if key not in (*key_fields,'source') and old.get(key)!=value}
+            catalog_parameters=('catalog_id','color','roughness','metallic','transmission','coat',
+                                'textures','texture_scale','texture_rotation')
+            catalog_changed=any(row.get(key)!=old.get(key) for key in catalog_parameters)
+            if local and catalog_changed and (row.get('catalog_id') or old.get('catalog_id')):
+                _catalog_delta(scene,products,old,row,index,operations,authorized,plan)
+                if row.get('catalog_id'):continue
+                old={}
+                changes={key:value for key,value in row.items() if key not in (*key_fields,'source')}
             if not old and row.get('preserve_original') is True:
                 # A first scalar override carries plan bookkeeping added by
                 # apply_patch(). Its fallback preset does not replace the
@@ -824,10 +914,26 @@ def _proof(before,after,authorized):
     flags={name:before[field]==after[field] for name,field in (
         ('geometry_preserved','geometry_sha256'),('transforms_preserved','transforms_sha256'),
         ('color_preserved','color_sha256'),('resources_preserved','resources_sha256'),('labels_preserved','labels_sha256'))}
-    if not all(value for name,value in flags.items() if name!='color_preserved') or (not flags['color_preserved'] and not authorized):
+    catalog_changes=[change for change in authorized if 'catalog_id' in change]
+    colors=[change for change in authorized if 'catalog_id' not in change]
+    untouched=False
+    if catalog_changes:
+        catalog_targets={(b['object_name'],b['slot_index']) for row in catalog_changes for b in row['bindings']}
+        color_targets={(b['object_name'],b['slot_index']) for row in colors for b in row['bindings']}
+        def unaffected(state):
+            return {(name,slot):(None if (name,slot) in color_targets else color,res)
+                    for name,slot,color,res in state['material_binding_proof'] if (name,slot) not in catalog_targets}
+        untouched=unaffected(before)==unaffected(after)
+        # An explicitly hit label may receive a new surface. Verify every
+        # other material binding and the original text of all font objects.
+        flags['labels_preserved'] |= untouched and before['font_text_sha256']==after['font_text_sha256']
+    if (not all(flags[name] for name in ('geometry_preserved','transforms_preserved','labels_preserved')) or
+        (catalog_changes and not untouched) or (not flags['resources_preserved'] and not untouched) or
+        (not flags['color_preserved'] and not colors and not untouched)):
         raise RuntimeError('摄影处理意外改变了产品结构、位置、颜色、文字或纹理，结果未采用')
     return {**flags,'before':{key:value for key,value in before.items() if key.endswith('_sha256')},
-            'after':{key:value for key,value in after.items() if key.endswith('_sha256')},'authorized_color_changes':authorized}
+            'after':{key:value for key,value in after.items() if key.endswith('_sha256')},'authorized_color_changes':colors,
+            'authorized_catalog_changes':catalog_changes,'untouched_materials_verified':untouched}
 
 def execute(request):
     import bpy
@@ -848,6 +954,11 @@ def execute(request):
     if action=='inspect':
         if file_digest(source)!=request['source_sha256']:raise ValueError('源场景在检查时发生变化')
         return {'success':True,'request_id':ident,'source_sha256':request['source_sha256'],'catalog':before}
+    studio_plan=request.get('plan') or {}
+    chosen=studio_plan.get('viewport_backdrop')
+    if chosen and scene.get('wuying_viewport_studio'):
+        from blender.viewport_studio import restore
+        restore(scene)
     resolution=request.get('resolution',768);samples=request.get('samples',32)
     if type(resolution) is not int or not 32<=resolution<=4096:raise ValueError('出图尺寸必须为32至4096像素')
     if type(samples) is not int or not 1<=samples<=512:raise ValueError('采样数必须为1至512')
@@ -863,6 +974,12 @@ def execute(request):
     scene.cycles.use_denoising=samples>=8
     if samples>=8:
         scene.cycles.denoiser='OPENIMAGEDENOISE';scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold=.03 if resolution<=1024 else .012
+    render_device=None
+    if chosen:
+        from blender.worker import device
+        render_device=device(request.get('force_cpu',False),nvidia_required=resolution>=4096)
+        scene.cycles.max_bounces=12
+        scene.cycles.transmission_bounces=12
     scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGBA';scene.render.image_settings.color_depth='8'
     operations=[];warnings=[];authorized=[]
     recipe=request.get('recipe',{})
@@ -872,6 +989,15 @@ def execute(request):
     if recipe:_apply_recipe(scene,products,points,recipe,operations,warnings)
     elif 'plan' in request or 'baseline_plan' in request:
         _checkpoint(scene,products,points,request.get('plan'),request.get('baseline_plan'),request.get('shot_id'),operations,authorized)
+    viewport_studio_settings={}
+    if chosen:
+        from blender.viewport_studio import apply as apply_studio
+        from blender.camera_projection import apply_camera
+        effective=_effective_plan(studio_plan,request['shot_id'])
+        shot=next(s for s in effective['shots'] if s['id']==request['shot_id'])
+        if shot.get('viewport_reference_diagonal'):
+            apply_camera(scene,shot,products,effective.get('margin',.12),points)
+        viewport_studio_settings=apply_studio(scene,products,points,effective,chosen,request.get('viewport_studio_base'))
     bpy.context.view_layer.update();after=catalog(scene,products,points)
     verification=_proof(before,after,authorized)
     png=out/'image.png';blend=out/'scene.blend';scene.render.filepath=str(png)
@@ -904,7 +1030,8 @@ def execute(request):
            'png_sha256':file_digest(png),'blend_sha256':file_digest(blend)}
     return {'success':True,'request_id':ident,'source_sha256':request['source_sha256'],'outputs':{'png':'image.png','blend':'scene.blend'},
             'proof':proof,'catalog':saved,'metrics':metrics,'checks':saved['framing'],'operations':operations,'warnings':warnings,
-            'device':bpy.context.scene.cycles.device,'render_pipeline_version':3}
+            'device':bpy.context.scene.cycles.device,'render_device':render_device,
+            'viewport_backdrop':chosen,'studio':viewport_studio_settings,'render_settings':{'engine':'CYCLES','samples':samples},'render_pipeline_version':3}
 
 def main():
     request_path=Path(sys.argv[sys.argv.index('--')+1]);request=json.loads(request_path.read_text(encoding='utf-8-sig'))

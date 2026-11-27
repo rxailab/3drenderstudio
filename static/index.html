@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=41">
+<link rel="stylesheet" href="/static/styles.css?v=47">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -40,6 +40,7 @@
 </div>
 <div class="topbar-actions">
 <button id="undoButton" type="button" class="icon-button project-only" disabled title="恢复上一版已保存方案" aria-label="恢复上一版已保存方案"><svg class="icon"><use href="#i-undo"/></svg></button>
+<button id="redoButton" type="button" class="icon-button project-only" disabled title="重做材质替换" aria-label="重做材质替换"><svg class="icon" style="transform:scaleX(-1)"><use href="#i-undo"/></svg></button>
 <details id="projectMenu" class="menu project-only">
 <summary class="icon-button" aria-label="更多项目操作" title="更多"><svg class="icon"><use href="#i-more"/></svg></summary>
 <div class="menu-panel" role="group" aria-label="项目操作">
@@ -84,7 +85,7 @@
 <span class="home-upload-icon" aria-hidden="true"><svg class="icon"><use href="#i-upload"/></svg></span>
 <div class="home-upload-copy">
 <h1 id="homeUploadTitle">上传产品模型</h1>
-<p>拖入模型文件，自动生成白底主图</p>
+<p>拖入模型文件，自动生成主图</p>
 <p class="home-upload-limits">GLB · OBJ + MTL 与贴图 · STL · ZIP 资源包 · 每次 1 个模型 · 文件只保存在本机</p>
 </div>
 <div class="home-upload-actions">
@@ -105,7 +106,23 @@
 </section>
 </section>
 <section id="projectPanel" class="project-panel" hidden>
-<aside class="shot-rail" aria-label="镜头">
+<aside class="project-rail" aria-label="材质库与镜头">
+<section id="localMaterialLibrary" class="local-material-library" aria-labelledby="localMaterialTitle">
+<div class="local-material-heading"><h2 id="localMaterialTitle">本地材质库</h2><span id="localMaterialCount" aria-live="polite"></span></div>
+<div class="local-material-filters">
+<input type="search" id="localMaterialSearch" aria-label="搜索材质名称或分类" placeholder="搜索材质">
+<select id="localMaterialCategory" aria-label="筛选材质分类"><option value="">全部分类</option></select>
+</div>
+<p id="localMaterialHint" class="field-help" role="status"></p>
+<button id="localMaterialLive" class="button secondary" type="button" hidden>切换到主图 3D</button>
+<button id="localMaterialRetry" class="button secondary" type="button" hidden>重新读取材质库</button>
+<span id="localMaterialKeys" class="sr-only">用方向键浏览本页材质，按 Enter 选择。</span>
+<div id="localMaterialGrid" class="local-material-grid" role="group" aria-label="材质样球" aria-describedby="localMaterialKeys"></div>
+<div id="localMaterialPages" class="local-material-pages" hidden><button type="button" id="localMaterialPrev" class="button subtle">上一页</button><span id="localMaterialPage"></span><button type="button" id="localMaterialNext" class="button subtle">下一页</button></div>
+</section>
+<details id="shotDrawer" class="shot-drawer">
+<summary><svg class="icon drawer-chevron" aria-hidden="true"><use href="#i-chevron"/></svg><span>镜头</span><span id="shotDrawerSelection"></span></summary>
+<div class="shot-rail">
 <div class="shots-heading">
 <h2><span class="sr-only">镜头图组 </span><span id="shotCount"></span></h2>
 <label class="check-label" title="勾选的镜头会输出 4K"><input id="selectAllShots" type="checkbox">全选</label>
@@ -115,11 +132,13 @@
 </div>
 <button id="selectCurrentShot" type="button" class="text-button">只选当前</button>
 <button id="shotThumbnails" type="button" class="text-button" title="为还没有图片的镜头各渲染一张小图；不点则只在你打开某个镜头时渲染它" hidden>生成其余镜头缩略图</button>
+</div>
+</details>
 </aside>
 <div class="stage">
 <div class="viewer-toolbar">
 <div class="viewer-title">
-<strong id="shotTitle">白底主图</strong>
+<strong id="shotTitle">主图</strong>
 <span id="renderKind" class="pill">等待预览</span>
 </div>
 <div class="viewer-actions">
@@ -143,6 +162,7 @@
 </section>
 <div id="viewer" class="viewer">
 <div id="realtimeViewport" class="realtime-viewport" hidden></div>
+<div id="materialCommittedFrame" class="realtime-viewport" hidden></div>
 <div id="viewportStatus" class="viewport-status" role="status" aria-live="polite" hidden>
 <span class="viewport-spinner" aria-hidden="true"></span>
 <strong id="viewportStatusTitle">正在准备实时模型</strong>
@@ -150,6 +170,16 @@
 <button id="retryViewport" type="button" class="button secondary" hidden>重新载入</button>
 </div>
 <div id="viewportHint" class="viewport-hint" hidden>拖动旋转 · 滚轮缩放 · 右键平移</div>
+<details id="viewportBackdrop" class="viewport-backdrop" hidden>
+<summary id="viewportBackdropButton" aria-label="选择视口背景" title="选择预览与最终渲染共用的背景和布光"><span id="viewportBackdropChip" class="backdrop-chip" aria-hidden="true"></span><span>视口背景</span><strong id="viewportBackdropName">载入中</strong></summary>
+<div class="backdrop-panel">
+<div class="backdrop-filters"><input type="search" id="viewportBackdropSearch" placeholder="搜索背景或案例" aria-label="搜索视口背景或案例" autocomplete="off"><select id="viewportBackdropGroup" aria-label="背景分类"><option value="">全部分类</option></select></div>
+<div id="viewportBackdropGrid" class="backdrop-choices" role="group" aria-label="视口背景"></div>
+<div id="viewportBackdropStatus" class="backdrop-status" role="status" hidden></div>
+<button id="viewportBackdropRetry" type="button" class="button secondary" hidden>重新读取背景</button>
+</div>
+</details>
+<button id="viewportTraceToggle" type="button" class="viewport-trace-toggle" aria-label="停稳后自动光追" aria-pressed="true" hidden><span class="trace-dot" aria-hidden="true"></span><span id="viewportTraceLabel">自动光追</span></button>
 <img id="renderImage" alt="当前镜头渲染图" hidden>
 <div id="renderEmpty" class="render-empty">
 <h2>当前镜头还没有预览</h2>
@@ -213,10 +243,10 @@
 </main>
 <aside class="settings inspector">
 <div class="inspector-tabs" role="tablist" aria-label="工作台面板">
-<button id="inspectorListingTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorListing" data-inspector="listing">套图</button>
+<button id="inspectorListingTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorListing" data-inspector="listing">套图</button>
 <button id="inspectorReviewTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorReview" data-inspector="review">调整</button>
 <button id="inspectorMaterialTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorMaterial" data-inspector="material">材质</button>
-<button id="inspectorPlanTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorPlan" data-inspector="plan">参数</button>
+<button id="inspectorPlanTab" type="button" role="tab" aria-selected="true" aria-controls="inspectorPlan" data-inspector="plan">参数</button>
 <button id="inspectorEcommerceTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="inspectorEcommerce" data-inspector="ecommerce">导出</button>
 </div>
 <div id="inspectorBody" class="inspector-body">
@@ -387,39 +417,10 @@
 </form>
 </details>
 </section>
-<section id="inspectorPlan" role="tabpanel" aria-labelledby="inspectorPlanTab" hidden>
+<section id="inspectorPlan" role="tabpanel" aria-labelledby="inspectorPlanTab">
 <div id="emptySettings" class="empty-settings"><p>上传模型后可调整摄影参数。</p></div>
 <form id="settingsForm" hidden>
 <div class="settings-scroll">
-<fieldset class="style-field" title="白底主图固定为白底；其他镜头使用所选背景">
-<legend>背景</legend>
-<div class="style-options">
-<label class="style-option">
-<input type="radio" name="style" value="white">
-<span class="style-preview white">
-<i>
-</i>
-</span>
-<span>白底</span>
-</label>
-<label class="style-option">
-<input type="radio" name="style" value="soft" checked>
-<span class="style-preview soft">
-<i>
-</i>
-</span>
-<span>浅色</span>
-</label>
-<label class="style-option">
-<input type="radio" name="style" value="dark">
-<span class="style-preview dark">
-<i>
-</i>
-</span>
-<span>深色</span>
-</label>
-</div>
-</fieldset>
 <fieldset>
 <legend>画幅 <span id="outputSize" class="legend-value">成品 4096 × 4096 px</span></legend>
 <div class="segmented">
@@ -631,7 +632,7 @@
 </div>
 </details>
 </section>
-<section id="inspectorListing" class="listing-inspector" role="tabpanel" aria-labelledby="inspectorListingTab">
+<section id="inspectorListing" class="listing-inspector" role="tabpanel" aria-labelledby="inspectorListingTab" hidden>
 <h2 class="sr-only">套图</h2>
 <p class="field-help listing-intro">按步骤选风格、选图片、填产品信息，再一键生成整套电商图片。</p>
 <nav class="listing-stepper" aria-label="套图步骤">
@@ -911,9 +912,11 @@
 <div id="toast" class="toast" role="status" aria-live="polite" hidden>
 </div>
 <script type="importmap">{"imports":{"three":"/static/vendor/three/build/three.module.js"}}</script>
-<script type="module" src="/static/viewport.js?v=18-pick3d"></script>
-<script src="/static/app.js?v=38" defer>
+<script type="module" src="/static/viewport.js?v=23"></script>
+<script src="/static/material-labels-zh.js" defer></script>
+<script src="/static/material-browser.js?v=5" defer></script>
+<script src="/static/app.js?v=45" defer>
 </script>
-<script src="/static/listing.js?v=46" defer></script>
+<script src="/static/listing.js?v=48" defer></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-"""The first white hero render is a persisted server-side upload continuation.
+"""The first hero render is a persisted server-side upload continuation.
 
 All storage is temporary, Blender execution is replaced, and no image quality
 claim is made by these lifecycle tests.
@@ -73,6 +73,22 @@ class InitialPreviewTests(unittest.TestCase):
         self.assertEqual(project['initial_preview']['status'],'queued')
         self.assertEqual(engine.QUEUE.qsize(),1)
 
+    def test_new_upload_queues_its_first_preview_with_the_silver_studio(self):
+        from app import create_project
+        originals=self.data/'fresh'/'originals'
+        originals.mkdir(parents=True)
+        (originals/'product.obj').write_text('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n',encoding='ascii')
+        with patch('listing.adopt_shared_brand'):
+            created=create_project(originals)
+        self.assertEqual(created['plan']['viewport_backdrop'],'silver-studio')
+        self.assertEqual(created['plan']['shots'][0]['label'],'主图')
+        analysis=engine.QUEUE.get_nowait();engine.QUEUE.task_done()
+        with patch.object(engine,'execute',return_value=copy.deepcopy(self.analysis)):
+            engine.run_job(analysis)
+        preview,=self.preview_jobs()
+        self.assertEqual((preview['project_id'],preview['origin'],preview['shot_ids']),('fresh','initial_preview',['hero']))
+        self.assertEqual(preview['plan']['viewport_backdrop'],'silver-studio')
+
     def test_global_dark_style_does_not_change_the_white_hero_or_render_other_shots(self):
         project=store.get('project','fixture');project['plan']['style']='dark';store.put('project',project)
         self.run_analysis();job=self.preview_jobs()[0]
@@ -135,7 +151,7 @@ class InitialPreviewTests(unittest.TestCase):
         self.assertEqual(store.get('job',job['id'])['status'],'completed')
         self.assertEqual(project['initial_preview']['status'],'failed')
         self.assertIn('Fixture renderer unavailable',project['initial_preview']['error'])
-        self.assertIn('白底主图未启动',store.get('job',job['id'])['initial_preview_notice'])
+        self.assertIn('主图未启动',store.get('job',job['id'])['initial_preview_notice'])
         self.assertEqual(self.preview_jobs(),[]);self.assertEqual(engine.QUEUE.qsize(),0)
 
     def test_startup_recovers_only_the_completed_analysis_scheduling_gap(self):
@@ -218,7 +234,7 @@ class InitialPreviewTests(unittest.TestCase):
         project=store.get('project','fixture');project['plan']['shots'][0]['style']='dark';store.put('project',project)
         self.run_analysis()
         self.assertEqual(self.preview_jobs(),[])
-        self.assertIn('白底主图镜头',store.get('project','fixture')['initial_preview']['error'])
+        self.assertIn('主图镜头',store.get('project','fixture')['initial_preview']['error'])
 
     def test_deleted_queue_entry_is_consumed_without_breaking_future_jobs(self):
         engine.run_job('deleted-job')

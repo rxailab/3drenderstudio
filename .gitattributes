@@ -1,0 +1,3 @@
+# The bundled renderer has a byte-level checksum in sources.json.
+/static/vendor/pathtracer/webgl-pathtracer.js text eol=lf
+/static/studio-backdrops/**/radiance/*.bin binary

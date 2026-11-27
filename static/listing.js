@@ -74,7 +74,7 @@ async function listingActivate(refresh=true) {
 function listingDeactivate() {
   clearTimeout(listingTimer);clearTimeout(listingArticulationTimer);clearTimeout(listingAutoTimer);
   listingSetArticulationPickMode(false);
-  document.body.classList.remove('listing-stage-on');const stage=listingStageNode();if(stage)stage.hidden=true;   // the model's view comes back
+  listingSyncStage();
   if(listingOpenFor())listingSavePending().catch(error=>toast(error.message,true));
 }
 async function listingLoad(reset) {
@@ -847,7 +847,11 @@ function listingStageShown() { return !!(listingStageNode() && listingVisible() 
 function listingSyncStage() {
   const stage=listingStageNode(),on=listingStageShown();
   document.body.classList.toggle('listing-stage-on',on);
-  if(stage)stage.hidden=!on;
+  if(stage && stage.hidden===on){
+    stage.hidden=!on;
+    if(typeof renderRealtimeStage==='function')renderRealtimeStage();
+    if(typeof localMaterialBrowser!=='undefined')localMaterialBrowser?.refresh();
+  }
 }
 // Rewritten only when something changed: the 1.5 s polling during a build must not reset scrolling or focus.
 const listingHTMLCache=new WeakMap();

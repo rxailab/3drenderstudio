@@ -208,6 +208,24 @@ class HeroSceneRuntimeTests(unittest.TestCase):
         self.assertEqual(changes[0]['path'],'object_material_overrides[0].color')
         self.assertEqual(changes[0]['requested_color'],'#234567');self.assertEqual(changes[0]['bindings'],[{'object_name':'Body','slot_index':0}])
 
+    def test_catalog_swap_renders_and_reopens_packed_textured_surface(self):
+        from keyshot_catalog import catalog
+        from hero_optimizer import _authorized_catalog_edit
+        source=self.optimized()
+        baseline=self.base_plan(source);plan=copy.deepcopy(baseline)
+        ident=next(row['id'] for row in catalog()['materials'] if row['name']=='Walnut')
+        plan['object_material_overrides']=[{'object_name':'Body','material_name':'Paint',
+                                           'catalog_id':ident,'preserve_original':False}]
+        result=self.invoke(source=source['_out']/'scene.blend',plan=plan,baseline_plan=baseline,shot_id='hero')
+        proof=result['proof']
+        self.assertTrue(proof['saved_scene_verified'])
+        self.assertTrue(proof['labels_preserved'])
+        self.assertFalse(proof['resources_preserved'])
+        self.assertTrue(_authorized_catalog_edit(proof,result['_request']))
+        undo=self.invoke(source=result['_out']/'scene.blend',plan=baseline,baseline_plan=plan,shot_id='hero')
+        self.assertEqual(undo['catalog']['resources_sha256'],source['catalog']['resources_sha256'])
+        self.assertTrue(_authorized_catalog_edit(undo['proof'],undo['_request']))
+
     def test_checkpoint_executes_first_local_gloss_override_from_instruction_patch(self):
         from ai_client import apply_patch
         from planner import default_plan

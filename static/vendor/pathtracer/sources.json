@@ -1,0 +1,37 @@
+{
+  "entry": "three-gpu-pathtracer/src/core/WebGLPathTracer.js",
+  "bundler": "esbuild@0.27.0",
+  "options": {
+    "bundle": true,
+    "format": "esm",
+    "platform": "browser",
+    "target": "es2021",
+    "minifySyntax": true,
+    "legalComments": "inline"
+  },
+  "externalModules": {
+    "three": "../three/build/three.module.js"
+  },
+  "packages": {
+    "three-gpu-pathtracer": {
+      "version": "0.0.28",
+      "resolved": "https://registry.npmjs.org/three-gpu-pathtracer/-/three-gpu-pathtracer-0.0.28.tgz",
+      "integrity": "sha512-Ybfa6qpRIU2QP4EXQJaawYZzVN4raSFqsr9qhXXVSiCi59fjef0pyyXztYYWqAnX7bweKmD70p2xMEWehl019A==",
+      "license": "LICENSE-three-gpu-pathtracer"
+    },
+    "three-mesh-bvh": {
+      "version": "0.9.17",
+      "resolved": "https://registry.npmjs.org/three-mesh-bvh/-/three-mesh-bvh-0.9.17.tgz",
+      "integrity": "sha512-uU2DNnTHsMcrsAM1kiLXEeLx4JNsPLayLTPE5Rf7exbFRuQYEifS4DhGEA+lDiU8/7mID1PsE9sH8i6p5prZSg==",
+      "license": "LICENSE-three-mesh-bvh"
+    },
+    "three": {
+      "version": "0.187.0",
+      "resolved": "https://registry.npmjs.org/three/-/three-0.187.0.tgz",
+      "integrity": "sha512-Qiu7R+Cmh8CstZsY1uJOSWnVlfo7ZtNLV7mF8Jltk3LB3AtDu9cRZlcnRKkAk8Y4z6KKw35z7Y7Urd7jWY8etA==",
+      "license": "LICENSE-three"
+    }
+  },
+  "localPatch": "PathTracingRenderer.completeSamplesOnly defers alpha accumulation to the final tile and target follows the last written blend buffer. Material textures retain their UV transforms and can select up to four vertex UV sets in surface and shadow rays. Catalog wood uses the shared viewport-wood-wave.js field and the object's Generated coordinates at surface hits.",
+  "bundleSHA256": "aaf9656ed5440a583d648e0a54ce2a75eefec81e0342ca46193df5031484e350"
+}

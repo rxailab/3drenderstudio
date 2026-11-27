@@ -16,3 +16,16 @@ brandkit/vendor/
 # material library: no HDRI/EXR sources in git (the 319 MB pack stays outside)
 materials/**/*.exr
 materials/**/*.hdr
+
+# Local KeyShot photographs and imported lighting. Procedural defaults live in builtin/.
+/static/studio-backdrops/catalog.json
+/static/studio-backdrops/images/
+/static/studio-backdrops/thumbs/
+/static/studio-backdrops/radiance/
+/static/studio-backdrops/environments/
+
+# Local material images are installed from the user's KeyShot library.
+/KeyShot提取/
+/materials/keyshot/previews/
+/materials/keyshot/textures/
+/materials/keyshot/viewport-textures/

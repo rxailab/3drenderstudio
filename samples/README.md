@@ -1,9 +1,10 @@
 # 验收样例资产
 
-全部资产由 `scripts/generate_samples.py` 在 Blender 中实际建模并导出，许可为 CC0-1.0。MORA 为虚构样例标签。样例几何是人工规则生成的测试产品，不声称是扫描实物。
+样例资产均为本项目生成，采用 CC0-1.0 许可。光学场景可通过 `tests/make_material_optics.py` 重建，其余产品由 `scripts/generate_samples.py` 在 Blender 中建模并导出。MORA 为虚构样例标签。
 
 | 文件 | 验证内容 |
 | --- | --- |
+| material-optics.glb | 抛光银球与红色参照物、折射率 1.52 的实心玻璃球及其背后的条纹 |
 | matte-pump-bottle.glb | 细长哑光塑料、多部件、保留文字 |
 | brushed-metal-tray.glb | 扁平金属、单网格、凹槽 |
 | thick-glass-tumbler.glb | 透明材料、空心、真实壁厚 |

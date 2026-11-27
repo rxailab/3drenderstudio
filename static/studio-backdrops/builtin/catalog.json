@@ -1,0 +1,260 @@
+{
+  "version": 2,
+  "default": "silver-studio",
+  "presets": [
+    {
+      "id": "white",
+      "name": "白底",
+      "group": "摄影棚",
+      "image": null,
+      "thumbnail": null,
+      "environmentColor": "#ffffff",
+      "floorColor": "#ffffff",
+      "lighting": {
+        "key": 1,
+        "fill": 1,
+        "rim": 1,
+        "ambient": 1,
+        "yaw": 0
+      },
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/white.bin"
+    },
+    {
+      "id": "blue-keyboard",
+      "name": "键盘 · 雾蓝悬浮",
+      "group": "教学案例",
+      "examples": [
+        "Animation - Keyboard Mockup"
+      ],
+      "lighting": {
+        "key": 0.92,
+        "fill": 0.87,
+        "rim": 1.22,
+        "ambient": 0.85,
+        "yaw": 12
+      },
+      "image": "/static/studio-backdrops/builtin/images/blue-keyboard.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/blue-keyboard.webp",
+      "floorColor": "#92c3e1",
+      "environmentColor": "#4e6686",
+      "environmentGain": 0.3,
+      "environmentRotation": 353.5,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/blue-keyboard.bin"
+    },
+    {
+      "id": "silver-beam",
+      "name": "面光源 · 银灰斜光",
+      "group": "教学案例",
+      "examples": [
+        "Planar Light & Light Positioning - Visune"
+      ],
+      "lighting": {
+        "key": 1.26,
+        "fill": 0.55,
+        "rim": 1.02,
+        "ambient": 0.76,
+        "yaw": 34
+      },
+      "image": "/static/studio-backdrops/builtin/images/silver-beam.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/silver-beam.webp",
+      "floorColor": "#c0beb5",
+      "environmentColor": "#c2c1ba",
+      "environmentGain": 1,
+      "environmentRotation": 360,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/silver-beam.bin"
+    },
+    {
+      "id": "charcoal-stage",
+      "name": "模型入门 · 炭灰展台",
+      "group": "教学案例",
+      "examples": [
+        "KS101_1 Models"
+      ],
+      "lighting": {
+        "key": 1.15,
+        "fill": 0.45,
+        "rim": 1.18,
+        "ambient": 0.55,
+        "yaw": -18
+      },
+      "image": "/static/studio-backdrops/builtin/images/charcoal-stage.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/charcoal-stage.webp",
+      "floorColor": "#292f31",
+      "environmentColor": "#3b3e3f",
+      "environmentGain": 1,
+      "environmentRotation": 0,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/charcoal-stage.bin"
+    },
+    {
+      "id": "silver-studio",
+      "name": "材质入门 · 银灰柔光",
+      "group": "教学案例",
+      "examples": [
+        "KS101_2 Materials"
+      ],
+      "lighting": {
+        "key": 0.91,
+        "fill": 1.12,
+        "rim": 0.91,
+        "ambient": 1.1,
+        "yaw": 8
+      },
+      "image": "/static/studio-backdrops/builtin/images/silver-studio.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/silver-studio.webp",
+      "floorColor": "#d9d8d4",
+      "environmentColor": "#c9c7c5",
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/silver-studio.bin"
+    },
+    {
+      "id": "black-jewelry",
+      "name": "灯光入门 · 黑棚轮廓",
+      "group": "教学案例",
+      "examples": [
+        "KS101_3 Lights"
+      ],
+      "lighting": {
+        "key": 1.14,
+        "fill": 0.18,
+        "rim": 1.76,
+        "ambient": 0.3,
+        "yaw": 42
+      },
+      "image": "/static/studio-backdrops/builtin/images/black-jewelry.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/black-jewelry.webp",
+      "floorColor": "#000000",
+      "environmentColor": "#1e1e1e",
+      "environmentGain": 1,
+      "environmentRotation": 360,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/black-jewelry.bin"
+    },
+    {
+      "id": "charcoal-headphones",
+      "name": "耳机 · 石墨聚光",
+      "group": "教学案例",
+      "examples": [
+        "Mold-Tech - Headphones"
+      ],
+      "lighting": {
+        "key": 1.05,
+        "fill": 0.38,
+        "rim": 1.44,
+        "ambient": 0.55,
+        "yaw": 38
+      },
+      "image": "/static/studio-backdrops/builtin/images/charcoal-headphones.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/charcoal-headphones.webp",
+      "floorColor": "#292d2e",
+      "environmentColor": "#3b3e3f",
+      "environmentGain": 0.138,
+      "environmentRotation": 299.5,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/charcoal-headphones.bin"
+    },
+    {
+      "id": "white-car",
+      "name": "赛车 · 暖白无缝棚",
+      "group": "教学案例",
+      "examples": [
+        "Camera Keyframe Animation - Path Interpolation"
+      ],
+      "lighting": {
+        "key": 0.99,
+        "fill": 0.92,
+        "rim": 1.13,
+        "ambient": 0.97,
+        "yaw": 16
+      },
+      "image": "/static/studio-backdrops/builtin/images/white-car.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/white-car.webp",
+      "floorColor": "#f6f5f3",
+      "environmentColor": "#e9e8e7",
+      "environmentGain": 1,
+      "environmentRotation": 127.5,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/white-car.bin"
+    },
+    {
+      "id": "silver-table",
+      "name": "边桌 · 柔灰渐变",
+      "group": "教学案例",
+      "examples": [
+        "3D Paint - Table"
+      ],
+      "lighting": {
+        "key": 0.87,
+        "fill": 1.04,
+        "rim": 0.96,
+        "ambient": 0.96,
+        "yaw": -18
+      },
+      "image": "/static/studio-backdrops/builtin/images/silver-table.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/silver-table.webp",
+      "floorColor": "#d7d5d2",
+      "environmentColor": "#c6c5c2",
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/silver-table.bin"
+    },
+    {
+      "id": "white-shoe",
+      "name": "运动鞋 · 纯白柔光",
+      "group": "教学案例",
+      "examples": [
+        "CMF NB Shoe Demo Scene"
+      ],
+      "lighting": {
+        "key": 0.92,
+        "fill": 1.17,
+        "rim": 0.75,
+        "ambient": 1,
+        "yaw": 23
+      },
+      "image": "/static/studio-backdrops/builtin/images/white-shoe.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/white-shoe.webp",
+      "floorColor": "#ffffff",
+      "environmentColor": "#efefef",
+      "environmentGain": 1.6786,
+      "environmentRotation": 260.5,
+      "groundShadow": 0,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/white-shoe.bin"
+    },
+    {
+      "id": "blue-night",
+      "name": "摆球 · 冷蓝夜棚",
+      "group": "教学案例",
+      "examples": [
+        "Physics Ball&Chain"
+      ],
+      "lighting": {
+        "key": 0.84,
+        "fill": 0.39,
+        "rim": 1.55,
+        "ambient": 0.61,
+        "yaw": -15
+      },
+      "image": "/static/studio-backdrops/builtin/images/blue-night.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/blue-night.webp",
+      "floorColor": "#5c7185",
+      "environmentColor": "#394351",
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/blue-night.bin"
+    },
+    {
+      "id": "white-radio",
+      "name": "收音机 · 雾白棚",
+      "group": "教学案例",
+      "examples": [
+        "Web Viewer Bush Radio"
+      ],
+      "lighting": {
+        "key": 0.96,
+        "fill": 0.98,
+        "rim": 1.04,
+        "ambient": 0.95,
+        "yaw": -10
+      },
+      "image": "/static/studio-backdrops/builtin/images/white-radio.webp",
+      "thumbnail": "/static/studio-backdrops/builtin/thumbs/white-radio.webp",
+      "floorColor": "#f6f6f7",
+      "environmentColor": "#e9e9ea",
+      "environmentGain": 0.795,
+      "environmentRotation": 200,
+      "radianceMap": "/static/studio-backdrops/builtin/radiance/white-radio.bin"
+    }
+  ]
+}

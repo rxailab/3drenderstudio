@@ -9,6 +9,22 @@ from app import app, safe_path, extract_archive, check_resources
 from planner import default_plan, validate, instruct
 
 class CoreTests(unittest.TestCase):
+    def test_bound_render_cache_requires_actual_shot_exposure(self):
+        from engine import viewport_exposure_matches
+        plan={'viewport_backdrop':'silver-beam','exposure':1.6,'shot_adjustments':{'detail':{'exposure_delta':-.6}}}
+        stale={'studio':{'exposure':0},'effective_settings':{'exposure':1.6}}
+        self.assertFalse(viewport_exposure_matches(stale,plan,'hero'))
+        self.assertFalse(viewport_exposure_matches({},plan,'hero'))
+        self.assertTrue(viewport_exposure_matches({'studio':{'exposure':1.60000002}},plan,'hero'))
+        self.assertTrue(viewport_exposure_matches({'studio':{'exposure':1}},plan,'detail'))
+    def test_viewport_backdrop_must_identify_a_local_studio_preset(self):
+        from studio_backdrops import catalog
+        for preset in catalog():
+            self.assertEqual(validate({**default_plan(),'viewport_backdrop':preset})['viewport_backdrop'],preset)
+        for invalid in (None,{},'../other','https://example.com/environment.hdr'):
+            with self.assertRaises(ValueError):
+                validate({**default_plan(),'viewport_backdrop':invalid})
+
     def test_plan_rejects_nonfinite_and_extreme(self):
         for value in [float('nan'),float('inf'),-1,2]:
             p=default_plan();p['margin']=value

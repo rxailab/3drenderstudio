@@ -248,13 +248,13 @@ def analyze(objects, meshes, path):
                 blender_version=bpy.app.version_string)
 
 
-def device(force_cpu=False):
+def device(force_cpu=False,nvidia_required=False):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     prefs = bpy.context.preferences.addons['cycles'].preferences
     found = []
     if not force_cpu:
-        for api in ('OPTIX','CUDA','HIP','ONEAPI','METAL'):
+        for api in (('OPTIX','CUDA') if nvidia_required else ('OPTIX','CUDA','HIP','ONEAPI','METAL')):
             try:
                 prefs.compute_device_type = api
                 prefs.get_devices()
@@ -267,6 +267,8 @@ def device(force_cpu=False):
                     event('使用 GPU 渲染',device=result)
                     return result
             except Exception: pass
+    if nvidia_required:
+        raise RuntimeError('该主视图的 4K 光追需要可用的 NVIDIA OptiX 或 CUDA 设备。')
     scene.cycles.device = 'CPU'
     result = dict(status='ready',type='CPU',backend='CPU',name='CPU',reason='用户指定或 GPU 不可用',blender_version=bpy.app.version_string)
     event('使用 CPU 渲染',device=result)
@@ -288,8 +290,28 @@ def rgb(color):
         return [v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in vals]+[1]
     return list(color[:3])+[1]
 
+def rotated_normal_color(tree,normal_color,rotation):
+    if not rotation:
+        return normal_color
+    # Texture coordinate rotation moves the pattern in the opposite direction.
+    # Rotate the decoded tangent normal with it, then encode back to RGB.
+    nodes,links=tree.nodes,tree.links
+    decode=nodes.new('ShaderNodeVectorMath');decode.operation='SUBTRACT';decode.inputs[1].default_value=(.5,.5,.5)
+    rotate=nodes.new('ShaderNodeVectorRotate');rotate.rotation_type='AXIS_ANGLE'
+    rotate.name='External normal direction';rotate.inputs['Axis'].default_value=(0,0,1)
+    rotate.inputs['Angle'].default_value=-math.radians(rotation)
+    encode=nodes.new('ShaderNodeVectorMath');encode.operation='ADD';encode.inputs[1].default_value=(.5,.5,.5)
+    links.new(normal_color,decode.inputs[0]);links.new(decode.outputs['Vector'],rotate.inputs['Vector'])
+    links.new(rotate.outputs['Vector'],encode.inputs[0])
+    return encode.outputs['Vector']
+
 
 def configure_material(mat, override, plan):
+    if override.get('catalog_id'):
+        from blender.catalog_shader import apply
+        users = [obj for obj in bpy.context.scene.objects if obj.type=='MESH'
+                 and any(slot.material==mat for slot in obj.material_slots)]
+        return apply(mat, override, plan, bool(users) and all(obj.data.uv_layers for obj in users))
     preset = override.get('preset','matte_plastic')
     rough,metal,trans,col = PRESETS[preset]
     mat.use_nodes=True
@@ -381,18 +403,7 @@ def configure_material(mat, override, plan):
         links.new(external_mapping.outputs['Vector'],node.inputs['Vector'])
         if not has_uv: node.projection='BOX';node.projection_blend=.2
         if key=='normal':
-            normal_color=node.outputs['Color']
-            if rotation:
-                # Rotating texture coordinates rotates the pattern in the
-                # opposite direction. Rotate tangent normals by that same
-                # inverse angle so highlights follow the new weave/grain.
-                decode=nodes.new('ShaderNodeVectorMath');decode.operation='SUBTRACT';decode.inputs[1].default_value=(.5,.5,.5)
-                rotate=nodes.new('ShaderNodeVectorRotate');rotate.rotation_type='AXIS_ANGLE'
-                rotate.name='External normal direction';rotate.inputs['Axis'].default_value=(0,0,1)
-                rotate.inputs['Angle'].default_value=-math.radians(rotation)
-                encode=nodes.new('ShaderNodeVectorMath');encode.operation='ADD';encode.inputs[1].default_value=(.5,.5,.5)
-                links.new(normal_color,decode.inputs[0]);links.new(decode.outputs['Vector'],rotate.inputs['Vector'])
-                links.new(rotate.outputs['Vector'],encode.inputs[0]);normal_color=encode.outputs['Vector']
+            normal_color=rotated_normal_color(tree,node.outputs['Color'],rotation)
             normal=nodes.new('ShaderNodeNormalMap');links.new(normal_color,normal.inputs['Color']);links.new(normal.outputs['Normal'],bs.inputs['Normal'])
         else:
             links.new(node.outputs['Color'],bs.inputs[{'base_color':'Base Color','roughness':'Roughness','metallic':'Metallic','transmission':'Transmission Weight'}[key]])
@@ -637,6 +648,9 @@ def apply_material_overrides(meshes,plan):
         for slot in selected:
             original=slot.material
             mat=original.copy();mat['_studio_source_material']=original.get('_studio_source_material',original.name)
+            if override.get('catalog_id'):
+                mat['wuying_catalog_original'] = original.get('wuying_catalog_original',original)
+                mat['wuying_source_material'] = mat['_studio_source_material']
             slot.material=mat;configured=configure_material(mat,override,plan);applied.append(mat.name)
             if override.get('textures') or configured['library']: resources.append(configured);warnings.extend(configured['warnings'])
         if not applied: raise ValueError('局部材质槽不存在：'+override['material_name'])
@@ -1111,6 +1125,12 @@ def render(req,objects,meshes):
     quality=req.get('quality','preview');long={'thumbnail':256,'preview':512,'reference':1024,'showcase':2048}.get(quality,4096)
     aspect=plan.get('aspect','1:1');a,b=[int(x) for x in aspect.split(':')]
     scene.render.resolution_x=round(long*a/max(a,b));scene.render.resolution_y=round(long*b/max(a,b));scene.render.resolution_percentage=100
+    chosen=plan.get('viewport_backdrop')
+    if chosen:
+        from blender.camera_projection import world_points,apply_camera
+        from blender.viewport_studio import apply as apply_studio
+        scene['studio_product_objects']=json.dumps([obj.name for obj in meshes])
+        studio_base=req.get('viewport_studio_base')
     operations,warnings=prepare(objects,meshes,plan)
     if plan.get('look')=='showcase': operations.append(soften_edges(meshes))
     # A usage scene: props and an opened compartment, rebuilt from the stored layout.
@@ -1128,19 +1148,24 @@ def render(req,objects,meshes):
             operations.append(dict(operation='scene_set',props=[prop['asset_id'] for prop in scene_set.get('props',[])],
                                    opened=len((scene_set.get('open') or {}).get('objects',[]))))
     cam,checks=camera(plan,shot,meshes)
-    settings=studio(plan,shot,meshes,set_meshes)
-    if scene_set: settings['scene_set']=scene_dress.surface(scene_set,shot,meshes)
-    dev=device(req.get('force_cpu',False))
+    if chosen:
+        points=world_points(meshes)
+        apply_camera(scene,shot,meshes,plan.get('margin',.12),points)
+        settings=apply_studio(scene,meshes,points,plan,chosen,studio_base)
+    else:
+        settings=studio(plan,shot,meshes,set_meshes)
+        if scene_set: settings['scene_set']=scene_dress.surface(scene_set,shot,meshes)
+    dev=device(req.get('force_cpu',False),nvidia_required=bool(chosen and long>=4096))
     scene.cycles.samples={'thumbnail':8,'preview':24,'reference':48,'showcase':160,'standard':128,'fine':1024}[quality]
     scene.cycles.use_adaptive_sampling=True;scene.cycles.adaptive_threshold={'thumbnail':.1,'preview':.07,'reference':.04,'showcase':.015,'standard':.015,'fine':.005}[quality]
     scene.cycles.use_denoising=True;scene.cycles.max_bounces=12;scene.cycles.transmission_bounces=12
     scene.cycles.time_limit=0 if quality!='fine' else float(plan.get('time_budget',1200))
     # A white background cannot reflect (it is a shadow catcher): it is rendered on transparent film and finished with
     # its reflection afterwards (blender/reflection.py), so the background stays pure white.
-    reflect_white=plan.get('reflection',True) and (settings.get('style')=='white' or (settings.get('style') not in ('white','dark') and not set_meshes))
+    reflect_white=not chosen and plan.get('reflection',True) and (settings.get('style')=='white' or (settings.get('style') not in ('white','dark') and not set_meshes))
     reflect_ground='white' if settings.get('style')=='white' else 'soft'
     scene.render.image_settings.file_format='PNG';scene.render.image_settings.color_mode='RGBA' if reflect_white else 'RGB';scene.render.image_settings.color_depth='8'
-    scene.render.film_transparent=False             # the saved project keeps its white background; transparency is for this render only
+    scene.render.film_transparent=bool(chosen)
     stem=out.name;png=out/(stem+'.png');jpg=out/(stem+'.jpg');blend=out/(stem+'.blend')
     scene.render.filepath=str(png)
     scene['studio_plan']=json.dumps(plan,ensure_ascii=False);scene['studio_shot']=json.dumps(shot,ensure_ascii=False)
@@ -1148,7 +1173,7 @@ def render(req,objects,meshes):
     scene_policy=scene_file_policy(req)
     if scene_policy=='keep':event('正在保存可复现工程')
     saved=save_scene(blend,scene_policy,req['model_path'])
-    scene.render.film_transparent=reflect_white
+    scene.render.film_transparent=bool(chosen or reflect_white)
     event('Cycles 正在渲染',device=dev,shot=shot.get('id'),sample_target=scene.cycles.samples,
           render_width=scene.render.resolution_x,render_height=scene.render.resolution_y)
     # Blender 5 no longer prints the sample count while it renders; report it so the percentage does not
@@ -1163,7 +1188,7 @@ def render(req,objects,meshes):
     # moving this camera back cannot change the picture: measure the real product
     # vertices in that view once and never repeat an identical render.
     adapter=bool(req.get('camera_projection_contract'))
-    limit=0 if adapter else int(plan.get('max_corrections',2))
+    limit=0 if adapter or chosen else int(plan.get('max_corrections',2))
     margin=plan.get('margin',.12);manual_view=False
     for attempt in range(limit+1):
         if adapter:
@@ -1247,7 +1272,7 @@ def render(req,objects,meshes):
             if pair not in visible_materials:
                 visible_materials[pair]={'object_name':pair[0],'material_name':pair[1],
                     'material_info':hit['material_info']}
-    return dict(success=True,render_pipeline_version=4,device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name if saved else None),scene_file=scene_policy,
+    return dict(success=True,render_pipeline_version=4,device=dev,viewport_backdrop=chosen,render_device=dev,files=dict(png=png.name,jpg=jpg.name,blend=blend.name if saved else None),scene_file=scene_policy,
                 width=scene.render.resolution_x,height=scene.render.resolution_y,checks=checks,warnings=warnings,
                 operations=operations,camera=cam,studio=settings,quality=quality,render_seconds=round(time.time()-started,3),
                 product_samples=samples,visible_materials=list(visible_materials.values()),effective_settings={'exposure':plan['exposure'],'light_softness':plan['light_softness'],'lighting':settings['lighting_multipliers']},

@@ -1,5 +1,13 @@
 [
   {
+    "id": "material-optics",
+    "name": "金属反射与玻璃折射",
+    "description": "旋转白底场景，观察红色参照物在银球上的倒影，以及玻璃球后的彩色条纹。",
+    "file": "material-optics.glb",
+    "license": "CC0-1.0",
+    "features": ["metallic reflection", "solid glass", "IOR 1.52"]
+  },
+  {
     "id": "matte-bottle",
     "name": "哑光塑料按压瓶",
     "description": "细长物体，哑光塑料、独立泵头、已有标签文字；GLB。",

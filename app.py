@@ -28,7 +28,8 @@ import project_lifecycle
 import viewport_service
 import ecommerce
 import ecommerce_platforms
-from planner import default_plan,validate,instruct,PRESETS
+from planner import default_plan,validate,instruct,PRESETS,validate_project_textures
+from studio_backdrops import catalog_path as backdrop_catalog_path, default_backdrop
 app=Flask(__name__,static_folder='static')
 app.config['MAX_CONTENT_LENGTH']=None
 ALLOWED={'.obj','.mtl','.glb','.stl','.png','.jpg','.jpeg','.webp','.tga','.bmp','.tif','.tiff','.exr','.hdr','.json','.txt'}
@@ -49,7 +50,7 @@ def local_guard():
     origin=request.headers.get('Origin')
     if request.method not in ['GET','HEAD','OPTIONS'] and origin and origin not in ['http://'+request.host,'https://'+request.host]: abort(403)
 
-YIELDING_ENDPOINTS={'plan','undo','instruction','instruction_confirm','feedback_apply','review_propose','review_apply','hero_optimize',
+YIELDING_ENDPOINTS={'plan','undo','redo_material','drop_library_material','instruction','instruction_confirm','feedback_apply','review_propose','review_apply','hero_optimize',
                     'material_import','selected_material_apply','material_agent_create','ecommerce_adapt'}
 
 @app.before_request
@@ -86,6 +87,28 @@ def release_project_operation(error=None):
 
 @app.get('/')
 def index(): return send_from_directory(ROOT/'static','index.html')
+
+@app.get('/static/studio-backdrops/catalog.json')
+def backdrop_catalog():
+    return send_file(backdrop_catalog_path(), mimetype='application/json', max_age=0)
+
+@app.get('/api/material-library')
+def library_catalog():
+    import keyshot_catalog
+    return conditional(jsonify(keyshot_catalog.catalog()))
+
+@app.get('/api/material-library/<catalog_id>/thumbnail')
+@app.get('/api/material-library/<catalog_id>/textures/<channel>')
+def library_image(catalog_id,channel=None):
+    import keyshot_catalog
+    try:
+        path=(keyshot_catalog.texture_path(catalog_id,channel) if channel is not None
+              else keyshot_catalog.thumbnail_path(catalog_id))
+        if path is None:
+            return send_file(keyshot_catalog.swatch_png(catalog_id),mimetype='image/png')
+    except (KeyError,ValueError,FileNotFoundError):
+        abort(404)
+    return send_file(path,conditional=True)
 
 @app.get('/api/system')
 def system():
@@ -249,7 +272,7 @@ def create_project(base,name='',metadata=None,platform=None):
     plan=default_plan()
     # New projects get the showcase look: look-developed finishes, a photographic
     # light set, and a background high-quality pass of each previewed image.
-    plan.update(look='showcase',auto_polish=True)
+    plan.update(look='showcase',auto_polish=True,viewport_backdrop=default_backdrop())
     metadata=metadata or {}
     if metadata.get('dimensions'):
         value=metadata['dimensions']
@@ -366,12 +389,7 @@ def validate_project_plan(ident,plan):
     if plan.get('scene_checkpoints'):
         import hero_optimizer
         hero_optimizer.validate_checkpoints(ident,plan)
-    root=(DATA/ident/'materials').resolve()
-    for m in plan.get('material_overrides',[])+plan.get('object_material_overrides',[]):
-        for channel,path in m.get('textures',{}).items():
-            if channel not in ['base_color','roughness','metallic','normal','transmission']: raise ValueError('未知 PBR 通道')
-            resolved=Path(path).resolve()
-            if root not in resolved.parents or not resolved.is_file(): raise ValueError('PBR 贴图必须先导入到当前项目')
+    validate_project_textures(plan,DATA/ident/'materials')
     if plan.get('scene_set'):
         import scene_set
         props=(DATA/ident/'props').resolve()
@@ -382,14 +400,72 @@ def validate_project_plan(ident,plan):
 
 @app.post('/api/projects/<ident>/undo')
 def undo(ident):
+    body=request.get_json(silent=True) if request.is_json else {}
     with LOCK:
         p=get('project',ident)
+        _check_history_version(p,body)
         if not p['history']: raise ValueError('暂无可回退操作')
-        event=p['history'].pop();p['plan']=event['plan'];p['version']+=1
+        event=p['history'].pop()
+        if event.get('kind')=='material_drop':
+            redo=p.get('_material_redo',{})
+            steps=redo.get('steps',[]) if redo.get('version')==p['version'] else []
+            p['_material_redo']={'version':p['version']+1,'steps':steps+[{'plan':p['plan'],'reason':event['reason']}]}
+        p['plan']=event['plan'];p['version']+=1
         if event.get('hero_restore_output'):
             import hero_optimizer
             hero_optimizer.restore_history_output(p,event)
         put('project',p)
+    return jsonify(engine.project_view(ident))
+
+def _check_history_version(project,body):
+    if not isinstance(body,dict):raise ValueError('版本请求必须是对象')
+    if 'expected_version' in body and (type(body['expected_version']) is not int or body['expected_version']!=project['version']):
+        abort(409,description='方案已变化，请刷新后重试。')
+
+@app.post('/api/projects/<ident>/redo')
+def redo_material(ident):
+    body=request.get_json(silent=True) if request.is_json else {}
+    with LOCK:
+        p=get('project',ident)
+        _check_history_version(p,body)
+        redo=p.get('_material_redo',{})
+        if redo.get('version')!=p['version'] or not redo.get('steps'):
+            abort(409,description='当前版本没有可重做的材质替换。')
+        step=redo['steps'].pop()
+        p['history'].append({'kind':'material_drop','version':p['version'],'at':time.time(),'plan':p['plan'],'reason':step['reason']})
+        p['plan']=step['plan'];p['version']+=1
+        if redo['steps']:redo['version']=p['version']
+        else:p.pop('_material_redo')
+        put('project',p)
+    return jsonify(engine.project_view(ident))
+
+@app.post('/api/projects/<ident>/materials/drop')
+def drop_library_material(ident):
+    import keyshot_catalog
+    body=request.get_json(force=True)
+    required={'expected_version','shot_id','viewport_id','object_name','material_name','catalog_id'}
+    if not isinstance(body,dict) or set(body)!=required or type(body['expected_version']) is not int:
+        raise ValueError('请选择当前视图中的部件和库材质。')
+    if any(not isinstance(body[key],str) or not body[key] or len(body[key])>256 for key in required-{'expected_version'}):
+        raise ValueError('材质替换目标无效。')
+    catalog_id=keyshot_catalog.require_id(body['catalog_id'])
+    name,material=body['object_name'],body['material_name']
+    try:
+        viewport_service.verify_material_target(ident,body['viewport_id'],body['expected_version'],body['shot_id'],name,material)
+    except viewport_service.StaleViewport as exc:
+        return jsonify(error=str(exc),error_code='stale_viewport'),409
+    except viewport_service.ViewportError as exc:
+        abort(exc.status_code,description=str(exc))
+    with LOCK:
+        p=get('project',ident)
+        _check_history_version(p,body)
+        row={'object_name':name,'material_name':material,'catalog_id':catalog_id,'preserve_original':False,'source':'user'}
+        current=p['plan'].get('object_material_overrides',[])
+        other=[m for m in current if (m['object_name'],m['material_name'])!=(name,material)]
+        if row not in current:
+            new=validate_project_plan(ident,{**p['plan'],'source':'user','object_material_overrides':other+[row]})
+            p['history'].append({'kind':'material_drop','version':p['version'],'at':time.time(),'plan':p['plan'],'reason':'从材质库替换 '+name+' / '+material})
+            p['plan']=new;p['version']+=1;put('project',p)
     return jsonify(engine.project_view(ident))
 
 @app.post('/api/projects/<ident>/materials/import')

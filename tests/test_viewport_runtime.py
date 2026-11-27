@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 import struct
@@ -22,6 +23,8 @@ root=Path(sys.argv[sys.argv.index('--')+1]);target=root/'source.blend'
 bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
 scene=bpy.context.scene
 bpy.ops.mesh.primitive_cube_add(size=1,location=(0,0,1));body=bpy.context.object;body.name='Body';body.scale=(1.6,1,2)
+body.data.use_auto_texspace=False
+body.data.texspace_location=(.25,-.5,.125);body.data.texspace_size=(1.5,2.5,.75)
 mat=bpy.data.materials.new('Paint');mat.use_nodes=True;node=mat.node_tree.nodes.get('Principled BSDF')
 node.inputs['Base Color'].default_value=(.4,.02,.03,1);node.inputs['Roughness'].default_value=.35;node.inputs['Metallic'].default_value=.6
 body.data.materials.append(mat)
@@ -41,6 +44,7 @@ for name,position,energy in [('KeyLight',(-3,-4,5),350),('FillLight',(3,-2,3),12
  data=bpy.data.lights.new(name,'AREA');data.energy=energy;data.size=3;data.shape='RECTANGLE';data.size_y=2
  light=bpy.data.objects.new(name,data);scene.collection.objects.link(light);light.location=position
  light.rotation_euler=(Vector((0,0,1))-light.location).to_track_quat('-Z','Y').to_euler()
+ if name=='KeyLight':light.scale=(2,.5,1)
 scene.world.use_nodes=True;scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value=.25
 scene['studio_product_objects']=json.dumps(['Body','Brand label'])
 scene.render.resolution_x=128;scene.render.resolution_y=128;scene.render.resolution_percentage=100
@@ -89,6 +93,8 @@ class ViewportRuntimeTests(unittest.TestCase):
     def test_native_saved_scene_exports_actual_product_without_floor(self):
         out,report=self.invoke();manifest=report['manifest'];data=content(out/'scene.glb')
         self.assertEqual(manifest['geometry']['objects'],2);self.assertEqual(len(data['meshes']),2)
+        self.assertEqual(manifest['generated_spaces']['Body'],{'center':[.25,-.5,.125],'half_size':[1.5,2.5,.75]})
+        self.assertEqual(manifest['generated_spaces']['Brand label'],{'center':[0.,0.,0.],'half_size':[.5,.5,.5]})
         self.assertFalse(any('floor' in row.get('name','').lower() for row in data.get('nodes',[])))
         self.assertEqual(manifest['camera']['projection'],'orthographic')
         self.assertEqual(manifest['camera']['sensor_fit'],'HORIZONTAL')
@@ -96,6 +102,12 @@ class ViewportRuntimeTests(unittest.TestCase):
         self.assertAlmostEqual(manifest['bounds_blender']['max'][2],2,places=5)
         self.assertEqual(len(manifest['lights']),3);self.assertEqual(manifest['lights'][0]['type'],'AREA')
         self.assertIn('size_y',manifest['lights'][0]);self.assertEqual(manifest['lighting_fidelity'],'webgl-approximation')
+        key=next(light for light in manifest['lights'] if light['name']=='KeyLight')
+        self.assertAlmostEqual(key['width_world'],6,places=5)
+        self.assertAlmostEqual(key['height_world'],1,places=5)
+        for axis in (key['axis_x'],key['axis_y']):
+            self.assertAlmostEqual(sum(v*v for v in axis),1,places=5)
+            self.assertAlmostEqual(sum(a*b for a,b in zip(axis,key['direction'])),0,places=5)
         paint=next(row for row in data['materials'] if row['name']=='Paint')['pbrMetallicRoughness']
         self.assertAlmostEqual(paint['roughnessFactor'],.35,places=5);self.assertAlmostEqual(paint['metallicFactor'],.6,places=5)
         self.assertTrue(data.get('images'));self.assertTrue(all('uri' not in row for row in data['images']))
@@ -139,6 +151,13 @@ class ViewportRuntimeTests(unittest.TestCase):
         self.assertEqual(report['manifest']['camera']['projection'],'orthographic')
         self.assertEqual(report['manifest']['geometry']['objects'],2)
         self.assertTrue(any(row['kind']=='preview_studio' for row in report['manifest']['applied_operations']))
+        manifest=report['manifest'];center=manifest['bounds']['center']
+        self.assertEqual(len({tuple(light['position']) for light in manifest['lights']}),3)
+        for light in manifest['lights']:
+            to_center=[c-p for c,p in zip(center,light['position'])]
+            distance=math.hypot(*to_center)
+            self.assertGreater(distance,manifest['bounds']['diagonal'])
+            self.assertAlmostEqual(sum(a*b for a,b in zip(to_center,light['direction']))/distance,1,places=5)
 
     def test_uploaded_glb_applies_global_and_local_pbr_overrides_before_export(self):
         original,_=self.invoke();source=self.root/'uploaded-materials.glb';shutil.copy2(original/'scene.glb',source)

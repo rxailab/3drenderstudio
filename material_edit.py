@@ -56,7 +56,7 @@ def apply_selection(project_id, body):
                 for key in ('roughness','metallic','transmission'):
                     if key not in patch: entry.pop(key,None)
                 entry['preserve_original']=False
-                for key in ('textures','resource','license','texture_scale','texture_rotation'):
+                for key in ('catalog_id','textures','resource','license','texture_scale','texture_rotation'):
                     entry.pop(key,None)
             elif entry.get('textures'):
                 # An explicit scalar replaces that downloaded channel; leaving

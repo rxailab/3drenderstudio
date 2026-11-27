@@ -379,7 +379,24 @@ def _remapped(plan, meshes):
         name = actual(override.get('name', '*'))
         if name:
             overrides.append({**override, 'name': name})
-    return {**plan, 'material_overrides': overrides, 'object_material_overrides': []}
+    local = []
+    def unique(names, original):
+        if original in names:
+            return original
+        candidates = [name for name in names if base(name) == base(original)]
+        return candidates[0] if len(candidates)==1 else None
+    for row in plan.get('object_material_overrides') or []:
+        if not row.get('catalog_id'):
+            continue
+        name = unique([obj.name for obj in meshes],row['object_name'])
+        obj = next((obj for obj in meshes if obj.name==name),None)
+        if obj is None:
+            continue
+        slots = {mat.name if mat else 'Default material' for mat in obj.data.materials} or {'Default material'}
+        material = unique(slots,row['material_name'])
+        if material:
+            local.append({**row,'object_name':name,'material_name':material})
+    return {**plan, 'material_overrides': overrides, 'object_material_overrides': local}
 
 
 KIT_SCALE = .72                  # kit images show the product larger than its accessories, as the examples do

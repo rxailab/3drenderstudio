@@ -445,6 +445,7 @@ def _pairs_have_external(plan, pairs):
     for obj,mat in pairs:
         local=next((m for m in plan.get('object_material_overrides',[]) if (m.get('object_name'),m.get('material_name'))==(obj,mat)),None)
         global_override=next((m for m in plan.get('material_overrides',[]) if m.get('name')==mat),None)
+        if local and local.get('catalog_id'): return True
         if any(m and m.get('textures') for m in (local,global_override)): return True
     return False
 
@@ -470,7 +471,7 @@ def _automatic_request(project, records, chain):
         if not isinstance(targets,list) or not 1<=len(targets)<=12 or any(not isinstance(t,dict) for t in targets): continue
         pairs={(t.get('object_name'),t.get('material_name')) for t in targets}
         if not pairs<=known or len(pairs)!=len(targets): notes.append('诊断目标不是有效的部件材质关联');continue
-        if pairs&attempted or _pairs_have_external(project['plan'],pairs): notes.append('该部件已处理或已有外部贴图，本轮不重复替换');continue
+        if pairs&attempted or _pairs_have_external(project['plan'],pairs): notes.append('该部件已处理或已指定库材质、外部贴图，本轮不重复替换');continue
         result=_result_for(project['id'],output)
         if not result: notes.append('缺少真实场景采样，保留现有材质');continue
         points=[]

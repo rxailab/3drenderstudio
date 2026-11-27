@@ -99,6 +99,10 @@ def apply_camera(scene,shot,products,margin=.12,points=None):
     points=world_points(products) if points is None else points
     low=points.min(axis=0);high=points.max(axis=0);center=Vector((low+high)/2)
     diagonal=max(float(np.linalg.norm(high-low)),1e-6)
+    reference=shot.get('viewport_reference_diagonal')
+    if reference:
+        unit_ratio=diagonal/reference
+        shot={**shot,**{key:shot[key]*unit_ratio for key in ('ortho_scale','camera_distance') if key in shot}}
     framing=points;target=center.copy()
     if shot.get('kind')=='detail' and shot.get('target_object'):
         selected=[obj for obj in products if obj.name==shot['target_object']]

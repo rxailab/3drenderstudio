@@ -1,5 +1,13 @@
 # 本地接口与可复现性
 
+## 主视图和最终渲染的摄影棚
+
+主视图从 `GET /static/studio-backdrops/catalog.json` 读取背景列表。选择后通过项目的 `POST /plan` 接口保存 `viewport_backdrop`，字段值为目录中对应的 ID，例如 `cologne`。镜头保存的 `viewport_reference_diagonal` 用于在模型归一化后还原正交宽度或透视拍摄距离。
+
+`POST /api/projects/{id}/jobs` 将当前方案和匹配的视口基础布光保存为任务快照。绑定主视图的标准 4K 输出使用 NVIDIA Cycles 光追，结果的 `viewport_backdrop` 和 `render_device` 记录实际使用的预设与设备。旧工程打开主视图时可沿用此前在该浏览器选过的背景。
+
+材质拖放沿用已核验的模型部件和材质槽。仅背景发生变化时，已有视图可以提交当前项目版本。若视图已经更新，`POST /api/projects/{id}/materials/drop` 返回 HTTP 409 和 `error_code="stale_viewport"`，客户端会核对新视图中的原目标，再提交这次拖放。
+
 ## v32 品牌模板套图与并入的场景图
 
 **场景生成入口移除。** `POST /api/projects/{id}/scene` 返回 405，`POST /api/projects/{id}/scene/recommend` 返回 404。以下接口保留，用于查看和管理以前的场景：
@@ -720,6 +728,13 @@ AI 的 `target_bindings` 需要把本次原文部位对应到这张表中的编�
 “退出项目”是客户端导航，不调用删除或取消接口。它清除当前打开的项目，返回上传首页；已有后台任务继续，重新打开项目可查看结果。未保存草稿沿用保存／放弃／取消选择，尚未确认的指令身份保留以供重试。
 
 ## 部件材质接口
+
+### 本地材质库与拖放
+
+- `GET /api/material-library` 返回 `categories`、`total` 和 `materials`。每款材质包含稳定的 `id`、名称、分类、`thumbnail_url` 和共享的 `pbr` 参数。缩略图与视口贴图由条目中的本地 URL 按需读取。
+- 视口 manifest 的 `object_names` 将 GLB 节点映射到原部件，`material_slots` 将各部件的 GLB 材质名映射到方案中的材质名。悬停、移出和 Esc 均在浏览器内处理。
+- `POST /api/projects/{id}/materials/drop` 接受 `expected_version`、`shot_id`、`viewport_id`、`object_name`、`material_name` 和 `catalog_id`。视图必须属于当前项目、版本和镜头，目标必须出现在此次导出的可见表面。成功时返回完整项目，本次修改保存在 `plan.object_material_overrides`。相同绑定重复放置相同材质会沿用版本。
+- `POST /api/projects/{id}/undo` 回退最近一步。`POST /api/projects/{id}/redo` 重做撤销的库材质替换。两者均可携带 `expected_version`，版本过期返回 409。项目的 `can_redo` 表示当前能否重做。
 
 定位、编辑与诊断都用 `output_id`（渲染任务ID）、`shot_id`、`quality`、`version` 四项精确绑定已有图片。材质编辑仅允许当前方案版本，项目不可有排队或运行中的渲染任务；服务器根据坐标重新运行已保存场景的射线查询，不接受客户端提供的部件名称作为修改依据。
 

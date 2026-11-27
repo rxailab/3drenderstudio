@@ -138,6 +138,8 @@ def project_view(ident):
     # Pending candidates and evidence digests are service-private. Public
     # receipts expose only the reviewed diff and the unresolved user requests.
     p.pop('_instruction_proposals',None)
+    redo=p.pop('_material_redo',{})
+    p['can_redo']=bool(redo.get('version')==p['version'] and redo.get('steps'))
     p['jobs']=[j for j in all_records('job') if j['project_id']==ident]
     p['exports']=[e for e in all_records('export') if e['project_id']==ident]
     import ecommerce
@@ -250,6 +252,9 @@ def submit(ident,kind='preview',quality='preview',shot_ids=None,request_key=None
         job=dict(id=uuid.uuid4().hex,project_id=ident,kind=kind,quality=desired_quality,
             shot_ids=ids,status='queued',stage='等待执行',progress=0,current_shot=None,error=None,log_tail=[],
             plan=copy.deepcopy(p['plan']),version=p['version'],created_at=time.time(),request_key=request_key,retry_of=retry_of,completed=[])
+        if kind!='analyze' and 'viewport_backdrop' in p['plan']:
+            import viewport_service
+            job['viewport_studio_bases']=viewport_service.render_baselines(p,ids)
         if force_review: job['force_review']=True
         if review_question: job['review_question']=review_question
         if review_source:
@@ -321,7 +326,7 @@ def schedule_initial_preview(project_id, analysis_job_id=None):
         existing=next((job for job in jobs if job.get('request_key')==key),None)
         if existing:
             if existing.get('kind')!='preview' or existing.get('quality')!='preview' or existing.get('shot_ids')!=['hero']:
-                state.update(status='failed',error='白底主图任务标识与原任务不一致，请使用预览当前镜头重新生成。')
+                state.update(status='failed',error='主图任务标识与原任务不一致，请使用预览当前镜头重新生成。')
                 put('project',project);return None
             # A process could stop after submit saved the job but before this
             # origin marker was written. Reconcile, never submit it again.
@@ -341,15 +346,15 @@ def schedule_initial_preview(project_id, analysis_job_id=None):
             require_runtime('render')
             hero=next((shot for shot in project['plan']['shots'] if shot['id']=='hero'),None)
             if hero is None or hero.get('style')!='white':
-                raise ValueError('当前方案缺少白底主图镜头，请检查摄影方案后生成预览。')
+                raise ValueError('当前方案缺少主图镜头，请检查摄影方案后生成预览。')
             job=submit(project_id,'preview','preview',['hero'],request_key=key,expected_version=project['version'])
-            job.update(origin='initial_preview',analysis_job_id=analysis['id'],stage='等待生成白底主图')
+            job.update(origin='initial_preview',analysis_job_id=analysis['id'],stage='等待生成主图')
             put('job',job)
             state['job_id']=job['id'];put('project',project)
             _record_initial_preview_state(job)
             return job
         except (ValueError,OSError) as exc:
-            state.update(status='failed',error='模型已分析，但白底主图未启动：'+str(exc))
+            state.update(status='failed',error='模型已分析，但主图未启动。'+str(exc))
             put('project',project)
             update_job(analysis['id'],initial_preview_notice=state['error'])
             return None
@@ -500,6 +505,10 @@ def schedule_polish(project_id,completed_job_id):
 
 
 def execute(job,request,out):
+    bound=request.get('action')=='render' and 'viewport_backdrop' in request.get('plan',{})
+    if bound:
+        base=job.get('viewport_studio_bases',{}).get(request['shot']['id'])
+        if base:request['viewport_studio_base']=base
     if (request.get('action')=='render'
             and request.get('shot',{}).get('id') in request.get('plan',{}).get('scene_checkpoints',{})):
         import hero_optimizer
@@ -521,7 +530,7 @@ def execute(job,request,out):
                          'product_object_names':list(dict.fromkeys(product_names))}
         request['camera_projection_contract']=camera_contract
         angles=requested_angles(effective_plan(request['plan'],request.get('shot',{}).get('id')).get('lighting',{}))
-        if angles:
+        if angles and not bound:
             require_runtime('light_direction')
             direction_contract={'version':LIGHT_DIRECTION_CONTRACT_VERSION,'request_id':uuid.uuid4().hex,
                                 'requested':angles,'product_object_names':list(dict.fromkeys(product_names))}
@@ -612,6 +621,13 @@ def effective_plan(plan,shot_id):
         result['lighting']={**result.get('lighting',{}),**adjustment.get('lighting',{})}
     result['shot_adjustments']={}
     return result
+
+
+def viewport_exposure_matches(result,plan,shot_id):
+    if not plan.get('viewport_backdrop'):
+        return True
+    actual=result.get('studio',{}).get('exposure')
+    return type(actual) in (int,float) and math.isclose(actual,effective_plan(plan,shot_id)['exposure'],abs_tol=1e-5)
 
 
 class LightingInspectionStale(RuntimeError):
@@ -939,6 +955,8 @@ def discard_candidate_scenes(candidates,best):
 def review_and_correct(job,project,shot,out,record,result):
     plan=copy.deepcopy(job['plan']);current_plan=plan
     protected=instruction_protected_roots(plan)
+    if plan.get('viewport_backdrop'):
+        protected=set(protected) | {'lighting','light_softness','exposure'}
     best_record=record;best_plan=plan;best_round=0;candidates=[]
     review=inspect_preview(job,record,result,effective_plan(plan,shot['id']),project.get('analysis'))
     attempts=[{'round':0,'exposure':effective_plan(plan,shot['id'])['exposure'],'light_softness':effective_plan(plan,shot['id'])['light_softness'],'lighting':copy.deepcopy(effective_plan(plan,shot['id']).get('lighting',{})),'score':review.get('score',0),'png_url':record['png_url'],'decision_reason':'原始预览，作为本轮比较基准。'}]
@@ -1023,6 +1041,10 @@ def commit_review_results(job,selected,adjustments):
         update_job(job['id'],adopted_version=project['version'],automatic_adjustments=adjustments)
 
 def output_record(job,shot,out,result):
+    backdrop=result.get('viewport_backdrop')
+    desired=job.get('plan',{}).get('viewport_backdrop')
+    if desired and job.get('kind') in ('render','preview') and backdrop!=desired:
+        raise RuntimeError('渲染器没有确认应用主视图选中的摄影背景。')
     png=next(out.glob('*.png'),None);jpg=next(out.glob('*.jpg'),None);blend=next(out.glob('*.blend'),None)
     if blend and result.get('scene_file')=='proof':
         # A throwaway render (a thumbnail) saved its scene only so the camera / light hooks could reopen it; execute has
@@ -1054,7 +1076,7 @@ def output_record(job,shot,out,result):
         metrics['studio_light_directions']=copy.deepcopy(result.get('catalog',{}).get('light_directions',[]))
         metrics['studio_camera']=copy.deepcopy(result.get('catalog',{}).get('camera',{}))
     def url(path): return '/files/'+path.relative_to(DATA).as_posix() if path else None
-    return dict(shot_id=shot['id'],shot_label=shot['label'],quality=job['quality'],version=job['version'],job_id=job['id'],png_url=url(png),jpg_url=url(jpg),blend_url=url(blend),blend_sha256=light_scene_digest(blend) if blend else None,width=size[0],height=size[1],checks=result.get('checks',{}),metrics=metrics,device=result.get('device'),created_at=time.time(),result_url=url(out/'result.json'),effective_plan=effective_plan(job['plan'],shot['id']))
+    return dict(shot_id=shot['id'],shot_label=shot['label'],quality=job['quality'],version=job['version'],job_id=job['id'],png_url=url(png),jpg_url=url(jpg),blend_url=url(blend),blend_sha256=light_scene_digest(blend) if blend else None,width=size[0],height=size[1],checks=result.get('checks',{}),metrics=metrics,device=result.get('render_device',result.get('device')),created_at=time.time(),result_url=url(out/'result.json'),effective_plan=effective_plan(job['plan'],shot['id']),viewport_backdrop=backdrop)
 
 def run_job(ident):
     """Track the whole worker lifecycle, including completed-job callbacks.
@@ -1124,7 +1146,9 @@ def _run_job(ident):
                 # Resume only verified matching outputs from the same revision and quality.
                 existing=next((o for o in reversed(get('project',p['id'])['outputs']) if o['version']==j['version'] and o['quality']==j['quality'] and o['shot_id']==shot['id']),None)
                 if existing and j['kind']=='preview' and j.get('force_review'): existing=None
-                if existing and requested_angles(effective_plan(j['plan'],shot['id']).get('lighting',{})):
+                if existing and 'viewport_backdrop' in j['plan'] and existing.get('viewport_backdrop')!=j['plan']['viewport_backdrop']:
+                    existing=None
+                if existing and 'viewport_backdrop' not in j['plan'] and requested_angles(effective_plan(j['plan'],shot['id']).get('lighting',{})):
                     try:
                         result_url=existing.get('result_url','')
                         result_path=(DATA/result_url[7:]).resolve() if isinstance(result_url,str) and result_url.startswith('/files/') else None
@@ -1141,9 +1165,15 @@ def _run_job(ident):
                     try:
                         result_url=existing.get('result_url','')
                         result_path=(DATA/result_url[7:]).resolve() if isinstance(result_url,str) and result_url.startswith('/files/') else None
-                        if not result_path or (DATA/p['id']).resolve() not in result_path.parents or not camera_matches_result(json.loads(result_path.read_text(encoding='utf-8')),shot):
+                        if not result_path or (DATA/p['id']).resolve() not in result_path.parents:
+                            raise ValueError('缓存结果路径无效')
+                        cached_result=json.loads(result_path.read_text(encoding='utf-8'))
+                        if not camera_matches_result(cached_result,shot):
                             existing=None
                             update_job(ident,stage='按当前镜头投影重新生成图片')
+                        elif not viewport_exposure_matches(cached_result,j['plan'],shot['id']):
+                            existing=None
+                            update_job(ident,stage='按当前镜头曝光重新生成图片')
                     except (OSError,ValueError,TypeError,KeyError):existing=None
                 # A new preset render must use the current lighting pipeline at
                 # every quality. Native checkpoints intentionally keep their own
@@ -1175,7 +1205,8 @@ def _run_job(ident):
                 req={'action':'render','model_path':p['model_path'],'plan':j['plan'],'shot':shot,'quality':j['quality']}
                 try: r=execute(j,req,out)
                 except RuntimeError as exc:
-                    if any(word in str(exc).lower() for word in ['cuda','optix','gpu','memory']):
+                    require_gpu=j['kind']=='render' and 'viewport_backdrop' in j['plan'] and j['quality'] in ('standard','fine')
+                    if not require_gpu and any(word in str(exc).lower() for word in ['cuda','optix','gpu','memory']):
                         update_job(ident,stage='GPU 失败，回退 CPU',fallback_reason=str(exc));req['force_cpu']=True;r=execute(j,req,out)
                     else: raise
                 record=output_record(j,shot,out,r)

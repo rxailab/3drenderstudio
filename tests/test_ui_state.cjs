@@ -98,7 +98,7 @@ async function setup(t,{ready=true,projects=[project('a'),project('b')],journal=
       }
       if(action==='plan'){
         if(Number(call.headers['X-Plan-Version'])!==p.version)return response({error:'方案版本已更新'},409);
-        p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'手动修改'});p.plan=copy(call.body);p.version++;return response(p);
+        p.history.push({version:p.version,plan:copy(p.plan),at:1,reason:'手动修改'});p.plan={...p.plan,...copy(call.body)};p.version++;return response(p);
       }
       if(action==='instruct'){
         const key=call.headers['Idempotency-Key'],stored=h.instructions.get(p.id+':'+key);
@@ -155,19 +155,113 @@ function installRealtime(h,options={}) {
   };
   h.w.WuyingViewport={create:(host,callbacks)=>{
     if(options.createError)throw new Error(options.createError);
+    let baseline=copy(defaultView);
     const instance={camera:{isOrthographicCamera:true,isPerspectiveCamera:false},view:copy(defaultView),visible:false,disposed:false,loads:0,resets:0,
-      load:async()=>{instance.loads++;if(options.load)await options.load(instance);},
+      load:async(asset,metadata,shot)=>{instance.loads++;baseline=copy(defaultView);
+        for(const key of [...Object.keys(defaultView),'focal_length','camera_distance','viewport_reference_diagonal'])if(shot[key]!==undefined)baseline[key]=copy(shot[key]);
+        instance.view=copy(baseline);if(options.load)await options.load(instance);},
+      setTraceOptions:settings=>{instance.traceEnabled=settings.enabled;},trace:state=>callbacks.onTraceState(state),
       setVisible:value=>{instance.visible=value;},dispose:()=>{instance.disposed=true;},snapshot:()=>copy(instance.view),
-      acceptView:()=>callbacks.onChange(false),setShot:(shot,plan)=>{instance.view=copy(shot);instance.lastPlan=copy(plan);instance.camera.isPerspectiveCamera=shot.projection==='perspective';},
+      acceptView:()=>{baseline=copy(instance.view);callbacks.onChange(false);},setShot:(shot,plan)=>{instance.view=copy(shot);baseline=copy(shot);instance.lastPlan=copy(plan);instance.camera.isPerspectiveCamera=shot.projection==='perspective';},
       restoreUnappliedView:view=>{instance.view=copy(view);callbacks.onChange(true);},
-      reset:()=>{instance.resets++;instance.view=copy(defaultView);callbacks.onChange(false);},
+      reset:()=>{instance.resets++;instance.view=copy(baseline);callbacks.onChange(false);},
       orbit:view=>{Object.assign(instance.view,view);callbacks.onChange(true);}};
+    if(options.backdrop)instance.setStudioBackdrop=(id,preset)=>options.backdrop(instance,id,preset);
     instances.push(instance);return instance;
   }};
   h.w.dispatchEvent(new h.w.Event('wuying-viewport-ready'));
   return {instances,assetCalls,metadata};
 }
 async function settleRealtime(h) {for(let i=0;i<10 && !['ready','failed'].includes(h.run('realtime.status'));i++)await tick();}
+
+test('viewport backdrops switch in place, filter by group and persist separately for each project',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");
+  const catalog={default:'silver-studio',presets:[{id:'white',name:'白底',group:'摄影棚'},{id:'silver-studio',name:'银灰柔光',group:'摄影棚'},{id:'sand',name:'香水柔光',group:'教学案例',examples:['Light Layers']},{id:'lake',name:'湖边',group:'户外'}]};
+  let pending;
+  const rt=installRealtime(h,{intercept:call=>call.url==='/static/studio-backdrops/catalog.json'?h.response(catalog):undefined,
+    backdrop:(view,id,preset)=>{assert.equal(preset.id,id);if(id==='lake'){pending=deferred();return pending.promise;}view.chosen=id;}});
+  await settleRealtime(h);await tick();
+  const picker=h.node('viewportBackdrop'),grid=h.node('viewportBackdropGrid'),group=h.node('viewportBackdropGroup'),name=h.node('viewportBackdropName');
+  assert.equal(picker.hidden,false);assert.equal(grid.children.length,4);
+  const original=rt.instances[0],assetCount=rt.assetCalls.length;
+  assert.equal(original.chosen,'silver-studio');assert.equal(name.textContent,'银灰柔光');
+  assert.equal(h.records.get('a').version,1);assert.equal(h.calls.filter(c=>c.url.endsWith('/plan')).length,0);
+  group.value='教学案例';group.dispatchEvent(new h.w.Event('change'));assert.equal(grid.children.length,1);
+  input(h,'viewportBackdropSearch','light layers');assert.equal(grid.children.length,1);assert.match(grid.firstElementChild.title,/Light Layers/);
+  picker.open=true;grid.firstElementChild.click();await tick();
+  assert.equal(original.chosen,'sand');assert.equal(name.textContent,'香水柔光');assert.equal(picker.open,false);
+  assert.equal(h.records.get('a').plan.viewport_backdrop,'sand');assert.equal(rt.assetCalls.length,assetCount);
+  assert.equal(h.run('dirty'),false);
+  group.value='';group.dispatchEvent(new h.w.Event('change'));input(h,'viewportBackdropSearch','湖');
+  picker.open=true;grid.firstElementChild.click();pending.reject(new Error('图片读取失败'));await tick();
+  assert.match(h.node('viewportBackdropStatus').textContent,/图片读取失败/);assert.equal(h.records.get('a').plan.viewport_backdrop,'sand');
+  grid.firstElementChild.click();
+  input(h,'viewportBackdropSearch','');grid.querySelector('[data-backdrop="sand"]').click();await tick();pending.resolve();await tick();
+  assert.equal(name.textContent,'香水柔光');
+  await h.run("openProject('b')");await settleRealtime(h);await tick();assert.equal(name.textContent,'银灰柔光');
+  await h.run("openProject('a')");await settleRealtime(h);await tick();assert.equal(rt.instances.at(-1).chosen,'sand');
+  assert.equal(h.calls.filter(row=>row.url==='/static/studio-backdrops/catalog.json').length,1);
+});
+
+test('4K waits for a chosen studio, preserves unsaved parameters and uses the live camera scale',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");
+  const catalog={default:'white',presets:[{id:'white',name:'白底'},{id:'sand',name:'沙色棚'}]};
+  const texture=deferred(),patch=deferred();
+  const rt=installRealtime(h,{intercept:async call=>{
+    if(call.url==='/static/studio-backdrops/catalog.json')return h.response(catalog);
+    if(call.url.endsWith('/plan') && Object.keys(call.body).length===1)await patch.promise;
+  },backdrop:()=>texture.promise});
+  await settleRealtime(h);await tick();
+  input(h,'margin','19');rt.instances[0].orbit({azimuth:122,ortho_scale:2.75,viewport_reference_diagonal:4.25});
+  h.node('viewportBackdropGrid').querySelector('[data-backdrop="sand"]').click();
+  const render=h.run("run('render')");await tick();
+  assert.equal(h.calls.some(c=>c.url.endsWith('/jobs')),false);
+  texture.resolve();await tick();
+  assert.deepEqual(h.calls.filter(c=>c.url.endsWith('/plan')).map(c=>c.body),[{viewport_backdrop:'sand'}]);
+  assert.equal(h.node('renderConfirmDialog'),null);
+  patch.resolve();await tick();
+  assert.equal(h.records.get('a').plan.margin,.12);assert.equal(h.run('dirty'),true);
+  h.node('renderConfirmDialog').querySelector('[data-choice="render"]').click();await render;
+  assert.equal(h.records.get('a').plan.viewport_backdrop,'sand');assert.equal(h.records.get('a').plan.margin,.19);
+  const shot=h.records.get('a').plan.shots[0];assert.equal(shot.azimuth,122);
+  assert.equal(shot.ortho_scale,2.75);assert.equal(shot.viewport_reference_diagonal,4.25);
+  const job=h.calls.find(c=>c.url.endsWith('/jobs'));assert.equal(job.body.expected_version,h.records.get('a').version);
+});
+
+test('legacy browser studio choices survive until the next save, and a saved white backdrop takes precedence',async t=>{
+  const h=await setup(t);
+  h.w.localStorage.setItem('wuying-viewport-backdrop-a','lake');
+  h.w.localStorage.setItem('wuying-viewport-backdrop-b','lake');
+  h.records.get('b').plan.viewport_backdrop='white';
+  await h.run("openProject('a')");
+  const catalog={default:'silver-studio',presets:['white','lake','silver-studio'].map(id=>({id,name:id}))};
+  const rt=installRealtime(h,{intercept:call=>call.url==='/static/studio-backdrops/catalog.json'?h.response(catalog):undefined,
+    backdrop:(view,id)=>{view.chosen=id;}});
+  await settleRealtime(h);await tick();assert.equal(rt.instances[0].chosen,'lake');
+  assert.equal(h.records.get('a').version,1);assert.equal(h.records.get('a').plan.viewport_backdrop,undefined);
+  assert.equal(h.w.localStorage.getItem('wuying-viewport-backdrop-a'),'lake');
+  input(h,'margin','19');await h.run('savePlan(true)');
+  assert.equal(h.records.get('a').version,2);assert.equal(h.records.get('a').plan.viewport_backdrop,'lake');
+  assert.equal(h.w.localStorage.getItem('wuying-viewport-backdrop-a'),null);
+  await h.run("openProject('b')");await settleRealtime(h);await tick();
+  assert.equal(rt.instances.at(-1).chosen,'white');assert.equal(h.records.get('b').version,1);
+  assert.equal(h.w.localStorage.getItem('wuying-viewport-backdrop-b'),null);
+});
+
+test('idle tracing discloses the active adapter, respects the toggle, and ignores messages from old shots',async t=>{
+  const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
+  const first=rt.instances[0],toggle=h.node('viewportTraceToggle'),label=h.node('viewportTraceLabel');
+  assert.equal(first.traceEnabled,true);assert.equal(toggle.hidden,false);
+  first.trace({phase:'preparing',stage:'compile',reason:'显卡正在编译光追着色器'});assert.match(label.textContent,/编译光追/);assert.match(toggle.title,/继续拖动/);
+  first.trace({phase:'sampling',samples:4,width:1432,height:1074,adapterType:'hardware',adapterName:'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU, D3D11)'});assert.match(label.textContent,/RTX 3070 光追 · 4 次/);assert.match(toggle.title,/NVIDIA/);assert.match(toggle.title,/1432 × 1074/);
+  first.trace({phase:'unavailable',reason:'缺少浮点渲染支持'});assert.match(label.textContent,/不可用/);assert.match(toggle.title,/浮点/);
+  toggle.click();assert.equal(first.traceEnabled,false);assert.equal(toggle.getAttribute('aria-pressed'),'false');
+  h.node('shotList').querySelector('[data-shot="side"]').click();assert.equal(toggle.hidden,true);
+  h.node('shotList').querySelector('[data-shot="hero"]').click();await settleRealtime(h);
+  assert.equal(rt.instances.at(-1).traceEnabled,false);
+  toggle.click();first.trace({phase:'complete',samples:64,adapterType:'hardware'});
+  assert.doesNotMatch(label.textContent,/64/);assert.equal(h.w.localStorage.getItem('wuying-viewport-trace'),'on');
+});
 
 test('realtime hero defaults to an actual async model stage and leaves photo-only shots unchanged',async t=>{
   const h=await setup(t);await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
@@ -198,6 +292,150 @@ test('preview captures the visible orbit, pan and zoom once into the versioned s
   assert.equal(hero.projection,'orthographic');assert.equal(hero.azimuth,-110);assert.equal(hero.ortho_scale,3.125);assert.deepEqual(hero.target_offset,[.1,-.2,.05]);
   assert.equal(saved.headers['X-Plan-Version'],'1');assert.equal(job.body.expected_version,2);assert.deepEqual(job.body.shot_ids,['hero']);
   assert.ok(h.calls.indexOf(saved)<h.calls.indexOf(job));assert.equal(h.calls.filter(call=>call.url.endsWith('/plan')).length,1);
+});
+async function openViewRefreshFixture(t,p=previewProject(),options={}) {
+  const h=await setup(t,{projects:[p]});
+  await h.run("openProject('a')");
+  const rt=installRealtime(h,options);
+  await settleRealtime(h);
+  return {h,rt};
+}
+async function chooseViewRefresh(h,choice) {
+  h.node('savedViewButton').click();
+  await tick();
+  const dialog=h.node('refreshViewDialog');
+  assert.ok(dialog?.open,'the changed camera should offer to refresh the saved image');
+  const button=dialog.querySelector('[data-choice="'+choice+'"]');
+  assert.ok(button && !button.disabled,'the requested action must be available');
+  button.click();
+  await tick();
+}
+test('rendered image switch lets the user cancel or keep the old picture without saving a moved camera',async t=>{
+  const {h,rt}=await openViewRefreshFixture(t);
+  const camera=rt.instances[0];
+  camera.orbit({azimuth:127,ortho_scale:2.2,target_offset:[.1,.05,0]});
+  await chooseViewRefresh(h,'cancel');
+  assert.equal(h.node('realtimeViewport').hidden,false);
+  assert.equal(camera.view.azimuth,127);
+  await chooseViewRefresh(h,'existing');
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.node('renderImage').getAttribute('src'),h.records.get('a').outputs[0].png_url);
+  h.node('liveViewButton').click();
+  assert.equal(h.node('realtimeViewport').hidden,false);
+  assert.equal(camera.view.azimuth,127);
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/jobs') || call.url.endsWith('/plan')).length,0);
+});
+test('rendered image switch after resetting the camera shows the existing image directly',async t=>{
+  const {h,rt}=await openViewRefreshFixture(t);
+  rt.instances[0].orbit({azimuth:-91});
+  h.node('resetViewport').click();
+  h.node('savedViewButton').click();
+  await tick();
+  assert.ok(!h.node('refreshViewDialog')?.open);
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.records.get('a').jobs.length,0);
+});
+test('rendered image refresh submits one preview at the new pose and displays the returned image',async t=>{
+  const jobGate=deferred();
+  const {h,rt}=await openViewRefreshFixture(t,previewProject(),{intercept:async call=>{
+    if(call.url.endsWith('/jobs') && call.method==='POST')await jobGate.promise;
+  }});
+  rt.instances[0].orbit({azimuth:-112,elevation:31,ortho_scale:2.3,target_offset:[.05,.08,0]});
+  h.node('savedViewButton').click();h.node('savedViewButton').click();await tick();
+  assert.equal(h.w.document.querySelectorAll('dialog[open]').length,1);
+  const refresh=h.node('refreshViewDialog').querySelector('[data-choice="refresh"]');
+  refresh.click();refresh.click();await tick();
+  const jobs=h.calls.filter(call=>call.url.endsWith('/jobs'));
+  assert.equal(jobs.length,1);
+  assert.deepEqual(jobs[0].body.shot_ids,['hero']);
+  assert.equal(jobs[0].body.kind,'preview');
+  const p=h.records.get('a'),shot=p.plan.shots[0];
+  assert.equal(jobs[0].body.expected_version,p.version);
+  assert.equal(shot.azimuth,-112);assert.equal(shot.elevation,31);assert.equal(shot.ortho_scale,2.3);
+  assert.deepEqual(shot.target_offset,[.05,.08,0]);
+  jobGate.resolve();await tick();
+  p.jobs[0].status='completed';
+  p.outputs.push({...p.outputs[0],job_id:p.jobs[0].id,version:p.version,created_at:200,png_url:'/files/a/new-orbit.png'});
+  await h.run('poll()');await tick();
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.node('renderImage').getAttribute('src'),'/files/a/new-orbit.png');
+  h.node('liveViewButton').click();await settleRealtime(h);
+  h.node('savedViewButton').click();await tick();
+  assert.ok(!h.node('refreshViewDialog')?.open);
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(p.jobs.length,1);
+});
+test('rendered image refresh recognizes an applied camera before saving and after reopening its project',async t=>{
+  const {h,rt}=await openViewRefreshFixture(t);
+  rt.instances[0].orbit({azimuth:126,ortho_scale:1.9});
+  h.node('applyViewportView').click();
+  assert.equal(h.run('realtime.changed'),false);
+  await chooseViewRefresh(h,'cancel');
+  await h.run('savePlan(true)');await settleRealtime(h);
+  h.run('leaveProjectView()');await h.run("openProject('a')");await settleRealtime(h);
+  assert.equal(h.records.get('a').plan.shots[0].azimuth,126);
+  await chooseViewRefresh(h,'existing');
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.records.get('a').jobs.length,0);
+});
+test('rendered image switch ignores exposure and material revisions whose camera is unchanged',async t=>{
+  const p=previewProject();
+  p.history.push({version:1,plan:copy(p.plan),at:2,reason:'摄影参数'});
+  p.version=2;p.plan.exposure=.5;p.plan.material_overrides=[{name:'BodyMaterial',roughness:.75}];
+  const {h}=await openViewRefreshFixture(t,p);
+  h.node('savedViewButton').click();await tick();
+  assert.ok(!h.node('refreshViewDialog')?.open);
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.records.get('a').jobs.length,0);
+});
+test('rendered image switch uses the camera stored with the output even at the same project version',async t=>{
+  const p=previewProject(),image=p.outputs[0];
+  image.effective_plan=copy(p.plan);
+  image.effective_plan.shots[0].azimuth=-59;
+  p.jobs=[{id:image.job_id,kind:'preview',quality:'preview',version:1,status:'completed',shot_ids:['hero'],plan:copy(p.plan)}];
+  const {h}=await openViewRefreshFixture(t,p);
+  await chooseViewRefresh(h,'existing');
+  assert.equal(h.node('renderImage').getAttribute('src'),image.png_url);
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/jobs')).length,0);
+});
+test('rendered image switch reuses a queued preview for this camera and shot',async t=>{
+  const p=previewProject();
+  p.history.push({version:1,plan:copy(p.plan),at:2,reason:'更新镜位'});
+  p.version=2;p.plan.shots[0].azimuth=106;
+  p.jobs=[{id:'current-preview',kind:'preview',quality:'preview',version:2,status:'queued',shot_ids:['hero'],plan:copy(p.plan)}];
+  const {h}=await openViewRefreshFixture(t,p);
+  h.node('savedViewButton').click();await tick();
+  assert.ok(!h.node('refreshViewDialog')?.open);
+  assert.equal(h.node('renderImage').hidden,false);
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/jobs')).length,0);
+});
+test('rendered image switch offers the first image after moving a camera without a saved image',async t=>{
+  const {h,rt}=await openViewRefreshFixture(t,project());
+  assert.equal(h.node('savedViewButton').disabled,true);
+  rt.instances[0].orbit({azimuth:79,ortho_scale:2.5});
+  assert.equal(h.node('savedViewButton').disabled,false);
+  await chooseViewRefresh(h,'refresh');
+  const p=h.records.get('a');
+  assert.equal(p.plan.shots[0].azimuth,79);
+  assert.equal(p.jobs.length,1);assert.equal(p.jobs[0].kind,'preview');assert.deepEqual(p.jobs[0].shot_ids,['hero']);
+});
+test('rendered image refresh stays live and can be retried when job submission fails',async t=>{
+  let fail=true;
+  const h=await setup(t,{projects:[previewProject()]});
+  await h.run("openProject('a')");
+  const rt=installRealtime(h,{intercept:call=>{
+    if(fail && call.url.endsWith('/jobs'))return h.response({error:'本机暂时无法排队'},503);
+  }});
+  await settleRealtime(h);
+  rt.instances[0].orbit({azimuth:148,ortho_scale:2.1});
+  await chooseViewRefresh(h,'refresh');await settleRealtime(h);
+  assert.equal(h.node('realtimeViewport').hidden,false);
+  assert.equal(h.node('renderImage').hidden,true);
+  assert.equal(h.records.get('a').jobs.length,0);
+  assert.match(h.node('toast').textContent,/本机暂时无法排队/);
+  fail=false;await chooseViewRefresh(h,'refresh');
+  assert.equal(h.records.get('a').jobs.length,1);
+  assert.equal(h.records.get('a').plan.shots[0].azimuth,148);
 });
 test('live image switching preserves photo provenance and part picking always returns to the saved image',async t=>{
   const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");const rt=installRealtime(h);await settleRealtime(h);
@@ -404,7 +642,7 @@ test('choosing a preset also replaces a still-blocked independent vision draft w
 
 test('initial screen explains the next step and disables project actions',async t=>{
   const h=await setup(t);
-  assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');   // 套图 is the tab a project opens on
+  assert.equal(h.node('inspectorPlanTab').getAttribute('aria-selected'),'true');
   assert.equal(h.node('previewButton').disabled,true);assert.equal(h.node('renderButton').disabled,true);
   assert.equal(h.node('renderReason').hidden,true);
 });
@@ -510,12 +748,14 @@ test('upload preflight rejects missing models and multiple models, and allows la
 });
 
 test('stable polling keeps focus on the selected shot checkbox',async t=>{
-  const h=await setup(t);await h.run("openProject('a')");const checkbox=h.w.document.querySelector('[data-select-shot="hero"]');checkbox.focus();
+  const h=await setup(t);await h.run("openProject('a')");h.node('shotDrawer').open=true;
+  const checkbox=h.w.document.querySelector('[data-select-shot="hero"]');checkbox.focus();
   await h.run('poll()');assert.equal(h.w.document.activeElement,checkbox);
 });
 
 test('tabs support arrow keys and only the active tab is in the tab order',async t=>{
   const h=await setup(t);await h.run("openProject('a')");const tab=h.node('inspectorPlanTab');tab.focus();tab.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  await tick(); // The destination tab fetches its project export state.
   const active=h.w.document.querySelector('[data-inspector][aria-selected="true"]');assert.equal(active.tabIndex,0);assert.equal(h.w.document.activeElement,active);
   const other=[...h.w.document.querySelectorAll('[data-inspector]')].filter(node=>node!==active);assert.ok(other.every(node=>node.tabIndex===-1));
 });
@@ -1862,17 +2102,17 @@ test('exit waits for submitted changes but background-only work keeps it enabled
 
 test('home polling updates background project progress without opening a project',async t=>{
   const h=await setup(t);h.records.get('a').initial_preview={status:'running',job_id:'initial-a'};
-  await h.run('poll()');assert.equal(h.run('current'),null);assert.match(h.node('projectList').querySelector('[data-project="a"]').textContent,/白底主图生成中/);
+  await h.run('poll()');assert.equal(h.run('current'),null);assert.match(h.node('projectList').querySelector('[data-project="a"]').textContent,/主图生成中/);
   assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
 });
 
-test('initial white hero progress and completion use backend state without a frontend job submission',async t=>{
+test('initial hero progress and completion use backend state without a frontend job submission',async t=>{
   const a=project('a');a.status='analyzing';a.analysis=null;a.initial_preview={status:'pending'};a.jobs=[{id:'analyze-a',kind:'analyze',status:'running',stage:'读取模型',created_at:1}];
-  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");assert.match(h.node('renderEmpty').textContent,/完成后自动生成白底主图/);
+  const h=await setup(t,{projects:[a]});await h.run("openProject('a')");assert.match(h.node('renderEmpty').textContent,/完成后自动生成主图/);
   const record=h.records.get('a');record.analysis=project().analysis;record.status='ready';record.initial_preview={status:'queued',job_id:'initial-a'};
   record.jobs=[{id:'initial-a',kind:'preview',origin:'initial_preview',status:'queued',shot_ids:['hero'],stage:'等待执行',created_at:2},...record.jobs.map(job=>({...job,status:'completed'}))];
-  await h.run('poll()');assert.match(h.node('renderEmpty').textContent,/白底主图已排队/);assert.match(h.node('jobPanel').textContent,/白底主图/);
-  record.initial_preview.status='running';record.jobs[0].status='running';record.jobs[0].stage='正在采样';await h.run('poll()');assert.match(h.node('renderEmpty').textContent,/正在生成白底主图/);
+  await h.run('poll()');assert.match(h.node('renderEmpty').textContent,/主图已排队/);assert.match(h.node('jobPanel').textContent,/主图/);
+  record.initial_preview.status='running';record.jobs[0].status='running';record.jobs[0].stage='正在采样';await h.run('poll()');assert.match(h.node('renderEmpty').textContent,/正在生成主图/);
   record.initial_preview.status='completed';record.jobs[0].status='completed';record.outputs=copy(previewProject().outputs);await h.run('poll()');assert.equal(h.node('renderImage').hidden,false);assert.equal(h.node('renderEmpty').hidden,true);
   assert.equal(h.calls.filter(call=>call.url.endsWith('/jobs') && call.method==='POST').length,0);assert.equal(h.node('uploadSubmit').textContent,'上传并生成主图');
 });
@@ -1886,15 +2126,15 @@ test('initial render scheduling errors remain actionable and mobile delete targe
   h.w.document.querySelector('.brand').click();await tick();assert.equal(h.run('current'),null);
 });
 
-test('upload opens the automatic white hero flow and does not submit a second rendering job',async t=>{
+test('upload opens the automatic hero flow and does not submit a second rendering job',async t=>{
   const h=await setup(t,{projects:[]}),uploaded=project('uploaded');uploaded.status='analyzing';uploaded.analysis=null;uploaded.initial_preview={status:'pending'};uploaded.plan.style='dark';
   uploaded.jobs=[{id:'upload-analysis',kind:'analyze',status:'queued',stage:'等待分析',created_at:2}];
   h.intercept=call=>{if(call.url==='/api/projects' && call.method==='POST'){assert.ok(call.body instanceof h.w.FormData);h.records.set(uploaded.id,copy(uploaded));return h.response(uploaded,201);}};
   await h.run('showUpload()');h.w.modelUpload=[new h.w.File(['test model'],'product.glb')];h.run('addFiles(modelUpload)');
   await h.node('uploadForm').onsubmit({preventDefault(){}});
   assert.equal(h.node('uploadDialog').open,false);assert.equal(h.run('current.id'),'uploaded');assert.equal(h.run('activeShot'),'hero');
-  assert.equal(h.run('current.plan.style'),'dark');assert.equal(h.node('shotTitle').textContent,'白底主图');assert.match(h.node('renderEmpty').textContent,/完成后自动生成白底主图/);
-  assert.match(h.node('toast').textContent,/分析完成后会自动生成白底主图/);assert.equal(h.node('uploadSubmit').textContent,'上传并生成主图');
+  assert.equal(h.run('current.plan.style'),'dark');assert.equal(h.node('shotTitle').textContent,'白底主图');assert.match(h.node('renderEmpty').textContent,/完成后自动生成主图/);
+  assert.match(h.node('toast').textContent,/分析完成后会自动生成主图/);assert.equal(h.node('uploadSubmit').textContent,'上传并生成主图');
   assert.deepEqual(h.calls.filter(call=>call.method==='POST').map(call=>call.url),['/api/projects']);
 });
 
@@ -2689,10 +2929,17 @@ test('components chosen with a new project are sent with it, each with its name,
   assert.equal(h.node('chosenComponents').children.length,0,'the list is cleared for the next project');
 });
 
-test('the 套图 tab is first, open when a project opens, and holds the whole workspace',async t=>{
-  const h=await setup(t,{projects:[previewProject()]});await h.run("openProject('a')");
+test('opening the project starts on the main shot with its parameters and keeps the listing workspace available',async t=>{
+  const h=await setup(t,{projects:[previewProject()]});
+  h.w.localStorage.setItem('wuying-shot-a','side');await h.run("openProject('a')");
+  assert.equal(h.run('activeShot'),'hero');assert.equal(h.run('realtime.mode'),'live');
+  assert.equal(h.node('shotDrawer').open,false);
+  assert.equal(h.node('localMaterialLibrary').closest('.project-rail')?.parentElement,h.node('projectPanel'));
+  assert.equal(h.node('inspectorPlanTab').getAttribute('aria-selected'),'true');assert.equal(h.node('inspectorPlan').hidden,false);
+  assert.equal(h.node('inspectorListing').hidden,true);
   assert.equal(h.node('inspectorOverlayTab'),null);assert.equal(h.node('layerStage'),null);assert.equal(h.node('listingDialog'),null);
   assert.equal(h.node('inspectorListingTab').textContent,'套图');
+  h.node('inspectorListingTab').click();await tick();
   assert.equal(h.node('inspectorListing').hidden,false);assert.equal(h.node('inspectorListingTab').getAttribute('aria-selected'),'true');
   assert.equal(h.w.document.body.classList.contains('listing-wide'),true);                    // the panel is widened for it
   for(const id of ['listingPanel','listingBuild','listingPlan','listingPages'])assert.ok(h.node('inspectorListing').querySelector('#'+id),id);

@@ -213,7 +213,11 @@ def _validate_render(result,request,out,allow_authorized_color=False,allow_plan_
     proof=result.get('proof')
     flags=list(PROOF_FLAGS)
     authorized_color=False
-    if allow_authorized_color and isinstance(proof,dict) and proof.get('color_preserved') is False:
+    catalog_edit=allow_authorized_color and isinstance(proof,dict) and _authorized_catalog_edit(proof,request)
+    if catalog_edit:
+        flags.remove('resources_preserved')
+        flags.remove('color_preserved')
+    elif allow_authorized_color and isinstance(proof,dict) and proof.get('color_preserved') is False:
         authorized_color=_authorized_color_change(proof,request)
         if authorized_color:flags.remove('color_preserved')
     if (not isinstance(proof,dict) or any(proof.get(key) is not True for key in flags)
@@ -231,14 +235,20 @@ def _validate_render(result,request,out,allow_authorized_color=False,allow_plan_
     expected_size=(request['resolution'],request['resolution'])
     if allow_plan_aspect:
         aspect=request.get('plan',{}).get('aspect','1:1')
-        if aspect!=request.get('baseline_plan',{}).get('aspect','1:1'):
+        if request.get('plan',{}).get('viewport_backdrop') or aspect!=request.get('baseline_plan',{}).get('aspect','1:1'):
             if aspect not in ('1:1','4:3','3:4'):raise RuntimeError('后续镜头画幅无效。')
             x,y=map(int,aspect.split(':'));expected_size=tuple(round(request['resolution']*v/max(x,y)) for v in (x,y))
     if engine.verify_image(paths['png'],'PNG')!=expected_size:
         raise RuntimeError('原生主图没有按指定尺寸完成渲染。')
     for key in ('geometry_sha256','transforms_sha256','color_sha256','resources_sha256'):
-        if key=='color_sha256' and authorized_color:continue
         before=proof.get('before',{}).get(key);after=proof.get('after',{}).get(key)
+        if catalog_edit and key in ('color_sha256','resources_sha256'):
+            flag='color_preserved' if key=='color_sha256' else 'resources_preserved'
+            if (not all(isinstance(value,str) and re.fullmatch('[a-f0-9]{64}',value) for value in (before,after))
+                    or proof.get(flag) is not (before==after)):
+                raise RuntimeError('材质替换的前后核验不一致。')
+            continue
+        if key=='color_sha256' and authorized_color:continue
         if not isinstance(before,str) or not before or before!=after:
             raise RuntimeError('原生场景的保留数据发生变化，候选未采用。')
     framing=result.get('metrics',{}).get('framing',{})
@@ -247,6 +257,45 @@ def _validate_render(result,request,out,allow_authorized_color=False,allow_plan_
     if digest(request['source_blend'])!=request['source_sha256']:
         raise RuntimeError('原生场景在处理期间变化，本次结果未采用。')
     return paths
+
+
+def _authorized_catalog_edit(proof,request):
+    changes=proof.get('authorized_catalog_changes')
+    if not changes or not isinstance(changes,list) or proof.get('untouched_materials_verified') is not True:
+        return False
+    plan,baseline=request.get('plan'),request.get('baseline_plan')
+    if (not isinstance(plan,dict) or not isinstance(baseline,dict) or proof.get('request_match') is not True
+            or proof.get('request_plan_sha256')!=fingerprint(plan)
+            or proof.get('request_baseline_plan_sha256')!=fingerprint(baseline)):
+        return False
+    if proof.get('authorized_color_changes') and not _authorized_color_change(proof,request):
+        return False
+    def rows_by_slot(rows):
+        return {(row['object_name'],row['material_name']):(i,row) for i,row in enumerate(rows)}
+    before=rows_by_slot(baseline.get('object_material_overrides',[]))
+    after=rows_by_slot(plan.get('object_material_overrides',[]))
+    expected=set()
+    for pair in before.keys()|after.keys():
+        old=before.get(pair,(None,{}))[1];new=after.get(pair,(None,{}))[1]
+        if not (old.get('catalog_id') or new.get('catalog_id')):continue
+        if old!=new:expected.add(pair)
+    reported=set()
+    for change in changes:
+        if not isinstance(change,dict):return False
+        obj,material=change.get('object_name'),change.get('material_name')
+        if not isinstance(obj,str) or not isinstance(material,str):return False
+        pair=(obj,material)
+        if pair not in expected or pair in reported:return False
+        old_index,old=before.get(pair,(None,{}));index,new=after.get(pair,(old_index,{}))
+        if (change.get('path')!='object_material_overrides[%d].catalog_id'%index
+                or change.get('previous_catalog_id')!=old.get('catalog_id') or change.get('catalog_id')!=new.get('catalog_id')):
+            return False
+        slots=change.get('bindings')
+        if not isinstance(slots,list) or not slots or any(not isinstance(slot,dict) or slot.get('object_name')!=obj
+                or type(slot.get('slot_index')) is not int or slot['slot_index']<0 for slot in slots):
+            return False
+        reported.add(pair)
+    return reported==expected
 
 
 def _authorized_color_change(proof,request):
@@ -391,7 +440,9 @@ def restore_history_output(project,event):
 def render_checkpoint(job,request,out):
     """Render the adopted native scene; never rebuild it with the old worker."""
     import engine
+    from planner import validate_project_textures
     plan=request['plan'];shot_id=request.get('shot',{}).get('id')
+    validate_project_textures(plan,DATA/job['project_id']/'materials')
     token=plan.get('scene_checkpoints',{}).get(shot_id)
     scene,metadata=_checkpoint(job['project_id'],token)
     if metadata.get('shot_id')!=shot_id:raise ValueError('主图快照与所选镜头不一致。')
@@ -399,11 +450,16 @@ def render_checkpoint(job,request,out):
     native_request=_request(scene,metadata['blend_sha256'],metadata['product_object_names'],'render',
         recipe={},resolution=resolution,samples=8 if quality=='thumbnail' else 32 if quality=='preview' else 128,shot_id=shot_id,
         plan=copy.deepcopy(plan),baseline_plan=metadata['baseline_plan'],force_cpu=bool(request.get('force_cpu')))
+    if request.get('viewport_studio_base'):
+        native_request['viewport_studio_base']=request['viewport_studio_base']
+    if 'viewport_backdrop' in plan:
+        native_request['quality']=quality
+        native_request['target_aspect']=plan.get('aspect','1:1')
     result=_native(job,native_request,out);_validate_render(result,native_request,out,allow_authorized_color=True,allow_plan_aspect=True)
     result['checks']=copy.deepcopy(result.get('metrics',{}).get('framing',{}))
     result['render_pipeline_version']=3
     # Existing downstream consumers can use the proof and actual measurements.
-    result['studio']={'light_directions':copy.deepcopy(result.get('catalog',{}).get('light_directions',[]))}
+    result.setdefault('studio',{})['light_directions']=copy.deepcopy(result.get('catalog',{}).get('light_directions',[]))
     return result
 
 

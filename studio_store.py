@@ -36,6 +36,8 @@ def connection():
     return c
 
 def put(kind, obj):
+    if kind=='project' and '_material_redo' in obj and obj['_material_redo']['version']!=obj.get('version'):
+        obj.pop('_material_redo')
     obj['updated_at'] = time.time()
     with LOCK, connection() as c:
         c.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)', (kind,obj['id'],json.dumps(obj,ensure_ascii=False)))

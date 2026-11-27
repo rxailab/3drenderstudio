@@ -2,9 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { blenderToGltf,gltfToBlender,cameraFromShot,shotFromCamera,fittedOrthoScale,aspectNumber } from '../static/viewport-math.mjs';
 import * as THREE from '../static/vendor/three/build/three.module.js';
-import {readFile} from 'node:fs/promises';
+import {FastViewportOptics} from '../static/viewport-fast-optics.js';
+import {traceTextureLayout,serializeTraceScene} from '../static/viewport-trace-scene.js';
+import {registerHooks} from 'node:module';
 const bounds={min:[-1,0,-.4],max:[1,3,.8],center:[0,1.5,.2],diagonal:Math.hypot(2,3,1.2)};
 const near=(a,b,message='')=>assert.ok(Math.abs(a-b)<1e-8,message || `${a} != ${b}`);
+test('a saved viewport camera frames the same product after a uniform change of model units',()=>{
+  const scaled={};
+  for(const [key,value] of Object.entries(bounds))scaled[key]=Array.isArray(value)?value.map(n=>n*.42):value*.42;
+  for(const projection of ['orthographic','perspective']){
+    const shot={projection,azimuth:18,elevation:10,ortho_scale:6,camera_distance:7,target_offset:[.1,-.1,.2]};
+    const initial=cameraFromShot(shot,bounds,4/3);
+    const snapshot=shotFromCamera(initial,bounds);
+    near(snapshot.viewport_reference_diagonal,bounds.diagonal);
+    const restored=cameraFromShot(snapshot,scaled,4/3);
+    if(projection==='orthographic')near(restored.width,.42*initial.width);
+    else near(restored.distance,.42*initial.distance);
+    restored.target.forEach((v,i)=>near(v,initial.target[i]*.42));
+  }
+});
 test('Blender/glTF axes are invertible and preserve dimensional offsets',()=>{
   for(const point of [[0,0,0],[2,-3,4],[-.003,12.8,-500]])assert.deepEqual(gltfToBlender(blenderToGltf(point)),point);
   assert.deepEqual(blenderToGltf([0,-1,0]),[0,0,1]);
@@ -66,14 +82,98 @@ test('invalid or excessively displaced camera states fail instead of serializing
 async function productViewportClass() {
   // Execute the shipped module without a browser/GPU. Import URLs follow the
   // bundled import map. This does not claim any browser pixel verification.
-  const moduleURL=new URL('../static/viewport.js',import.meta.url);
-  let source=await readFile(moduleURL,'utf8');
-  source=source.replace(/from '([^']+)'/g,(all,name)=>`from '${name==='three'?new URL('../static/vendor/three/build/three.module.js',import.meta.url).href:new URL(name,moduleURL).href}'`);
+  const threeURL=new URL('../static/vendor/three/build/three.module.js',import.meta.url).href;
+  const hooks=registerHooks({resolve(name,context,next){
+    return name==='three'?{url:threeURL,shortCircuit:true}:next(name,context);
+  }});
   const previous=globalThis.window;globalThis.window={dispatchEvent(){}};
   let ProductViewport;
-  try{({ProductViewport}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64')));}finally{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
+  try{({ProductViewport}=await import('../static/viewport.js'));}finally{hooks.deregister();if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
   return ProductViewport;
 }
+test('the ray tracer preserves native non-square material maps and counts shared maps once',async()=>{
+  const map=new THREE.Texture({width:1600,height:2368});
+  const material=new THREE.MeshStandardMaterial({map,emissiveMap:map});
+  assert.deepEqual(traceTextureLayout([material]),{width:1600,height:2368,layers:1});
+  assert.deepEqual(traceTextureLayout([]),{width:1,height:1,layers:1});
+  const original=globalThis.createImageBitmap,requests=[];
+  globalThis.createImageBitmap=async(image,options)=>{
+    requests.push(options);
+    return {width:options.resizeWidth??image.width,height:options.resizeHeight??image.height,close(){}};
+  };
+  try {
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(),material);
+    const {payload}=await serializeTraceScene(mesh,{},bounds,{backplate:new THREE.Texture({width:4200,height:2100})});
+    assert.equal(requests[0].resizeWidth,undefined);
+    assert.deepEqual(payload.textures.map(({width,height})=>[width,height]),[[1600,2368],[2048,1024]]);
+    assert.equal(payload.materials[0].textures.map,payload.materials[0].textures.emissiveMap);
+  } finally {if(original===undefined)delete globalThis.createImageBitmap;else globalThis.createImageBitmap=original;}
+});
+test('large material sets share a bounded atlas, with a separate maximum edge length',()=>{
+  const large=()=>new THREE.Texture({width:8192,height:1024});
+  const materials=Array.from({length:12},()=>({map:large()}));
+  const {width,height,layers}=traceTextureLayout(materials);
+  assert.equal(layers,12);
+  assert.ok(width*height*layers<=12e6);
+  assert.ok(width*height*layers>11.9e6);
+  assert.deepEqual(traceTextureLayout([materials[0]]),{width:4096,height:512,layers:1});
+});
+test('settling restores physical display pixels and respects the large viewport ceiling',async()=>{
+  const View=await productViewportClass(),view=Object.create(View.prototype);
+  const original=globalThis.window, sizes=[];
+  let side=600;
+  Object.assign(view,{camera:{},aspect:1,frame:{style:{}},host:{getBoundingClientRect:()=>({width:side,height:side})},
+    renderer:{domElement:{},setDrawingBufferSize(w,h,ratio){
+      this.domElement.width=Math.floor(w*ratio);this.domElement.height=Math.floor(h*ratio);
+      sizes.push([this.domElement.width,this.domElement.height]);
+    }},
+    requestDraw(){}});
+  try {
+    globalThis.window={devicePixelRatio:3};
+    view.resize();
+    assert.deepEqual(sizes.at(-1),[1800,1800]);
+    view.motionQuality=true;
+    view.resize();
+    const [w,h]=sizes.at(-1);
+    assert.ok(w*h<=800000 && w<1800);
+    assert.equal(view.renderer.transmissionResolutionScale,.75);
+    view.motionQuality=false;
+    view.resize();
+    assert.deepEqual(sizes.at(-1),[1800,1800]);
+    assert.equal(view.renderer.transmissionResolutionScale,1);
+    side=1600;
+    view.resize();
+    assert.deepEqual(sizes.at(-1),[2048,2048]);
+    globalThis.window.devicePixelRatio=1;
+    view.resize();
+    assert.deepEqual(sizes.at(-1),[1600,1600]);
+    side=703;
+    globalThis.window.devicePixelRatio=1.25;
+    view.resize();
+    assert.deepEqual(sizes.at(-1),[879,879]);
+  } finally {if(original===undefined)delete globalThis.window;else globalThis.window=original;}
+});
+test('glass uses oriented receivers in world space and reuses them while orbiting',()=>{
+  const model=new THREE.Group();
+  const glass=new THREE.MeshPhysicalMaterial({transmission:1,thickness:1});
+  model.add(new THREE.Mesh(new THREE.SphereGeometry(.5),glass));
+  const panel=new THREE.Mesh(new THREE.BoxGeometry(2,3,.04),new THREE.MeshStandardMaterial());
+  panel.geometry.computeBoundingBox();
+  panel.position.set(4,2,-3);panel.rotation.y=.8;panel.scale.set(2,.5,1);
+  model.add(panel);
+  const optics=new FastViewportOptics({model,bounds});
+  optics.prepare();
+  const shader={uniforms:{},fragmentShader:'',vertexShader:''};
+  glass.onBeforeCompile(shader);
+  assert.equal(shader.uniforms.wyReceiverCount.value,1);
+  const receiver=shader.uniforms.wyReceiverFromWorld.value[0];
+  const edge=panel.localToWorld(new THREE.Vector3(1,1.5,0)).applyMatrix4(receiver);
+  near(edge.x,1);near(edge.y,1);near(edge.z,0);
+  panel.visible=false;optics.prepare();
+  assert.equal(shader.uniforms.wyReceiverCount.value,1);
+  optics.invalidate();optics.prepare();
+  assert.equal(shader.uniforms.wyReceiverCount.value,0);
+});
 test('real viewport lighting preserves global power, world intensity and exposure changes',async()=>{
   const ProductViewport=await productViewportClass();
   const build=(power,world,exposure)=>{
@@ -98,6 +198,24 @@ test('real viewport lighting preserves global power, world intensity and exposur
   assert.ok(build(500,100,0).viewFill.intensity<=1.4);
   assert.ok(bright.scene.environmentIntensity>dim.scene.environmentIntensity);near(bright.renderer.toneMappingExposure/dim.renderer.toneMappingExposure,2);
   assert.ok(dim.scene.children.some(node=>node.isMesh && node.receiveShadow && node.material.isShadowMaterial),'white preview must retain a real shadow receiver');
+});
+
+test('the current shot EV overrides a retained studio across a lighting rebuild',async()=>{
+  const View=await productViewportClass(),view=Object.create(View.prototype);
+  Object.assign(view,{bounds,scene:new THREE.Scene(),renderer:{},ready:true,shotId:'detail',
+    metadata:{world:{strength:.5},lights:[],exposure:-2}});
+  let redraws=0;
+  view.requestDraw=()=>redraws++;
+  view.setExposure({exposure:1.6,shot_adjustments:{detail:{exposure_delta:-.6}}});
+  view.buildLighting(view.metadata);
+  near(view.renderer.toneMappingExposure,2);
+  near(view.studioMetadata.exposure,1);
+  view.setExposure({exposure:1});
+  assert.equal(redraws,1);
+  view.setExposure({exposure:3,shot_adjustments:{detail:{exposure_delta:2}}});
+  near(view.renderer.toneMappingExposure,16);
+  near(view.metadata.exposure,-2);
+  view.clearLighting();
 });
 test('damped control change events schedule one tracked RAF and stop when hidden',async()=>{
   const ProductViewport=await productViewportClass();

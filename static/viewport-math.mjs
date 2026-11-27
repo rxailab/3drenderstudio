@@ -46,8 +46,9 @@ export function cameraFromShot(shot,bounds,aspect=1,sourceCamera={},margin=.1) {
   const fitWidth=fittedOrthoScale(bounds,direction,aspect,margin);
   const sameFraming=(!finite(sourceCamera.azimuth) || Math.abs(sourceCamera.azimuth-azimuth)<1e-5) && (!finite(sourceCamera.elevation) || Math.abs(sourceCamera.elevation-elevation)<1e-5) && (!finite(sourceCamera.aspect) || Math.abs(sourceCamera.aspect-aspect)<1e-5);
   const sourceWidth=sameFraming && sourceCamera.projection==='orthographic' && finite(sourceCamera.ortho_scale) && sourceCamera.ortho_scale>0?sourceCamera.ortho_scale:null;
-  const width=finite(shot.ortho_scale) && shot.ortho_scale>0?shot.ortho_scale:(sourceWidth || fitWidth);
-  const distance=projection==='perspective' && finite(shot.camera_distance) && shot.camera_distance>0?shot.camera_distance:(sourceDistance || Math.max(fitWidth*lens/36,bounds.diagonal*2));
+  const scale=finite(shot.viewport_reference_diagonal) && shot.viewport_reference_diagonal>0?bounds.diagonal/shot.viewport_reference_diagonal:1;
+  const width=finite(shot.ortho_scale) && shot.ortho_scale>0?shot.ortho_scale*scale:(sourceWidth || fitWidth);
+  const distance=projection==='perspective' && finite(shot.camera_distance) && shot.camera_distance>0?shot.camera_distance*scale:(sourceDistance || Math.max(fitWidth*lens/36,bounds.diagonal*2));
   const sensorWidth=finite(sourceCamera.sensor_width) && sourceCamera.sensor_width>0?sourceCamera.sensor_width:36;
   return {projection,position:target.map((v,i)=>v+direction[i]*distance),target,up:[0,1,0],
     width,height:width/aspect,aspect,distance,focal_length:lens,
@@ -62,7 +63,7 @@ export function shotFromCamera(state,bounds) {
   const targetOffset=gltfToBlender(state.target.map((v,i)=>(v-bounds.center[i])/bounds.diagonal));
   if(targetOffset.some(v=>Math.abs(v)>10))throw new Error('画面已移得太远，请将产品移回取景范围。');
   const projection=state.projection==='perspective'?'perspective':'orthographic';
-  const result={projection,azimuth:deg(Math.atan2(delta[0],delta[2])),elevation:clamp(deg(Math.atan2(delta[1],Math.hypot(delta[0],delta[2]))),-80,89.9),target_offset:targetOffset};
+  const result={projection,azimuth:deg(Math.atan2(delta[0],delta[2])),elevation:clamp(deg(Math.atan2(delta[1],Math.hypot(delta[0],delta[2]))),-80,89.9),target_offset:targetOffset,viewport_reference_diagonal:bounds.diagonal};
   if(projection==='orthographic') {
     const width=state.width/(state.zoom || 1);
     if(!finite(width) || width<1e-6 || width>1e9)throw new Error('当前缩放超出可保存范围，请稍微缩回。');

@@ -32,6 +32,11 @@ class ViewportError(ValueError):
         super().__init__(message);self.status_code=status_code
 
 
+class StaleViewport(ViewportError):
+    def __init__(self,message='实时视图已失效，请重新核对当前模型的材质槽。'):
+        super().__init__(message,409)
+
+
 def _digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
 
@@ -118,6 +123,8 @@ def _signature(project,shot_id):
     if not script.is_file():raise ViewportError('实时预览组件尚未就绪，请完整安装本次升级。',503)
     revision_paths=[script,ROOT/'blender/worker.py',ROOT/'blender/hero_scene.py',ROOT/'blender/camera_projection.py',
                     ROOT/'blender/light_direction.py',ROOT/'camera_controls.py',ROOT/'hero_state.py']
+    if any(row.get('catalog_id') for row in project['plan'].get('object_material_overrides',[])):
+        revision_paths.extend([ROOT/'keyshot_catalog.py',ROOT/'blender/catalog_shader.py',ROOT/'materials/keyshot/catalog.json'])
     revision=_digest({str(path.relative_to(ROOT)):_sha(path) for path in revision_paths if path.is_file()})
     guard={'project_id':project['id'],'version':project['version'],'shot_id':shot_id,
            'plan':_digest(project['plan']),'analysis':_digest(project.get('analysis')),
@@ -171,7 +178,8 @@ def _asset(folder,manifest):
 
 def capabilities():
     available=bool(engine.blender_path() and (ROOT/'blender/export_viewport.py').is_file())
-    return {'available':available,'format':'glb','projection':'orthographic','interactive':True}
+    return {'available':available,'format':'glb','projection':'orthographic','interactive':True,
+            'shared_studio_render':available and (ROOT/'blender/viewport_studio.py').is_file()}
 
 
 def submit(project_id,body):
@@ -190,7 +198,9 @@ def submit(project_id,body):
     ident=fingerprint[:32];folder=DATA/project_id/'viewport'/fingerprint
     if folder.is_symlink() or (DATA/project_id).resolve() not in folder.resolve().parents:
         raise ViewportError('实时预览缓存目录无效。')
-    with _TASK_LOCK:
+    # Job submission reads ready viewports while holding the project lock.
+    # Reserve the project before the task map in the same order.
+    with LOCK, _TASK_LOCK:
         prior=TASKS.get(ident)
         if prior and prior['status'] in ('queued','running'):return _public(prior)
         cached=_cached(folder,fingerprint)
@@ -244,6 +254,106 @@ def _current(item):
     source,guard,fingerprint=_signature(project,item['shot_id'])
     if fingerprint!=item['_fingerprint']:raise ViewportError('场景资源已变化，本次实时预览未采用。',409)
     return project
+
+
+def _binding_plan(plan, for_studio=False):
+    plan=copy.deepcopy(plan)
+    for key in ('source','viewport_backdrop'):
+        plan.pop(key,None)
+    if for_studio:
+        # Framing and display exposure can both be edited live without
+        # rebuilding the model and its lights. Resolve EV again at render time.
+        plan.pop('exposure',None)
+        adjustments=plan.get('shot_adjustments',{})
+        for shot_id,values in list(adjustments.items()):
+            values.pop('exposure_delta',None)
+            if not values:del adjustments[shot_id]
+        if not adjustments:plan.pop('shot_adjustments',None)
+        for shot in plan.get('shots',[]):
+            for key in ('projection','azimuth','elevation','target_offset','focal_length','camera_distance','ortho_scale','viewport_reference_diagonal'):
+                shot.pop(key,None)
+    return plan
+
+
+def _same_assets(a,b):
+    return (all(a[key]==b[key] for key in ('project_id','shot_id','analysis','resources','export_revision','schema'))
+            and all(a['source'].get(key)==b['source'].get(key) for key in ('path','sha256','product_object_names')))
+
+
+def render_baselines(project,shot_ids):
+    """Freeze the actual visible rig before the queued job outlives its viewport."""
+    with _TASK_LOCK:
+        candidates=[item for item in reversed(list(TASKS.values()))
+                    if item['status']=='ready' and item['project_id']==project['id'] and item['shot_id'] in shot_ids]
+    matched={}
+    current_plan=_binding_plan(project['plan'],for_studio=True)
+    guards={}
+    for item in candidates:
+        shot_id=item['shot_id']
+        if shot_id in matched or _binding_plan(item['_project']['plan'],for_studio=True)!=current_plan:
+            continue
+        if shot_id not in guards:
+            guards[shot_id]=_signature(project,shot_id)[1]
+        if not _same_assets(item['_guard'],guards[shot_id]):
+            continue
+        manifest=_cached(Path(item['_folder']),item['_fingerprint'])
+        if manifest:
+            matched[shot_id]={k:manifest[k] for k in ('bounds','lights','world','exposure','camera') if k in manifest}
+    return matched
+
+
+def _restored_surface_manifest(project,viewport_id,shot_id):
+    """Recover an unchanged, previously verified surface after a server restart."""
+    root=(DATA/project['id']).resolve()
+    cache=root/'viewport'
+    if cache.is_symlink() or not cache.is_dir():return None
+    for folder in cache.glob(viewport_id+'*'):
+        fingerprint=folder.name
+        if not re.fullmatch('[a-f0-9]{64}',fingerprint) or folder.is_symlink() or folder.resolve().parent!=cache:
+            continue
+        manifest=_cached(folder,fingerprint)
+        captured=(manifest or {}).get('source',{})
+        if captured.get('project_id')!=project['id'] or captured.get('shot_id')!=shot_id:continue
+        version=captured.get('version')
+        past_plan=project['plan'] if project['version']==version else next((
+            event.get('plan') for event in reversed(project.get('history',[])) if event.get('version')==version),None)
+        if not past_plan or _binding_plan(past_plan)!=_binding_plan(project['plan']):continue
+        old_project={**project,'plan':planner.validate(past_plan),'version':version,
+                     'outputs':[row for row in project.get('outputs',[]) if row.get('version',0)<=version]}
+        _,old_guard,original=_signature(old_project,shot_id)
+        if original==fingerprint and _same_assets(old_guard,_signature(project,shot_id)[1]):
+            return manifest
+    return None
+
+
+def verify_material_target(project_id,viewport_id,version,shot_id,object_name,material_name):
+    """Bind a raycast result to an exported, visible surface in this project."""
+    if not isinstance(viewport_id,str) or not re.fullmatch(r'[a-f0-9]{32}',viewport_id):
+        raise ViewportError('实时视图标识无效。')
+    project=get('project',project_id)
+    if project['version']!=version:
+        raise ViewportError('方案版本已更新，请同步项目后再放置材质。',409)
+    with _TASK_LOCK:
+        item=TASKS.get(viewport_id)
+        if item and (item['project_id']!=project_id or item['shot_id']!=shot_id or item['status']!='ready'):
+            raise StaleViewport()
+    if item is None:
+        manifest=_restored_surface_manifest(project,viewport_id,shot_id)
+    else:
+        if item['version']==version:
+            try:_current(item)
+            except ViewportError as exc:
+                if exc.status_code==409:raise StaleViewport(str(exc)) from exc
+                raise
+        elif (_binding_plan(item['_project']['plan'])!=_binding_plan(project['plan'])
+              or not _same_assets(item['_guard'],_signature(project,shot_id)[1])):
+            raise StaleViewport('模型或材质已发生变化，正在核对当前视图。')
+        manifest=_cached(Path(item['_folder']),item['_fingerprint'])
+    if not manifest:
+        raise StaleViewport('实时模型已变化，请重新准备视图。')
+    slots=manifest.get('material_slots',{}).get(object_name,{})
+    if material_name not in slots.values():
+        raise ViewportError('目标未命中此视图中可替换的材质槽。')
 
 
 def _update(ident,**values):

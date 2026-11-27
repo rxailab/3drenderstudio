@@ -74,6 +74,9 @@ def open_source(request,root):
     if source.suffix.lower()=='.blend':
         bpy.ops.wm.open_mainfile(filepath=str(source),load_ui=False,use_scripts=False)
         scene=bpy.context.scene
+        if scene.get('wuying_viewport_studio'):
+            from blender.viewport_studio import restore
+            restore(scene)
         products=hero_scene._products(scene,request.get('product_object_names',[]))
     else:
         bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
@@ -124,9 +127,6 @@ def original_plan(scene,products,points,plan,shot_id,operations,authorized,*,fre
         # delta restrictions do not apply to an imported working copy.
         # Validate all source images before the worker can load textures.
         material_resources(products,root,warnings if warnings is not None else [])
-        for override in effective.get('material_overrides',[])+effective.get('object_material_overrides',[]):
-            for path in override.get('textures',{}).values():
-                confined(path,root)
         from blender.worker import apply_material_overrides
         applied,notes=apply_material_overrides([obj for obj in products if obj.type=='MESH'],effective)
         operations.extend(applied)
@@ -138,21 +138,29 @@ def original_plan(scene,products,points,plan,shot_id,operations,authorized,*,fre
     # separate from any subsequently saved production render.
     if not any(obj.type=='LIGHT' and hero_scene._visible(obj,scene) for obj in scene.objects):
         import numpy as np
-        from mathutils import Vector
+        from mathutils import Matrix,Vector
         low=points.min(axis=0);high=points.max(axis=0);center=Vector((low+high)/2)
         diagonal=max(float(np.linalg.norm(high-low)),1e-5)
         lighting=effective.get('lighting',{})
-        for role,position,power,size in [('key',(-1,-1.2,1.8),70,1.3),('fill',(1,-.6,1),35,1.1),('rim',(.5,1,1.4),45,1)]:
+        # A broad rectangular key gives rolled highlights on curved metal.
+        # The camera-side fill is wider and weaker; a narrow strip lights the rim.
+        for role,position,power,width,height in [
+            ('key',(-1,-1.15,1.65),59,1.42,1.78),
+            ('fill',(1,-.65,.85),20,1.45,1.1),
+            ('rim',(.65,1.05,1.3),23,.48,1.48),
+        ]:
             data=bpy.data.lights.new(role.title()+'Light','AREA')
             data.energy=power*diagonal*diagonal*lighting.get(role+'_power',1)
-            data.shape='DISK';data.size=diagonal*size*effective.get('light_softness',1)
+            softness=diagonal*effective.get('light_softness',1)
+            data.shape='RECTANGLE';data.size=width*softness;data.size_y=height*softness
             obj=bpy.data.objects.new(data.name,data);scene.collection.objects.link(obj)
-            obj.location=center+Vector(position)*diagonal;hero_scene._aim(obj,center)
+            location=center+Vector(position)*diagonal
             if role+'_azimuth' in lighting or role+'_elevation' in lighting:
                 az=lighting.get(role+'_azimuth',-35 if role=='key' else 40 if role=='fill' else 145)
                 el=lighting.get(role+'_elevation',45)
-                obj.location=hero_scene._light_position(scene,hero_scene._bounds(points),az,el,diagonal*2)
-                hero_scene._aim(obj,center)
+                location=hero_scene._light_position(scene,hero_scene._bounds(points),az,el,diagonal*2)
+            obj.matrix_world=Matrix.Translation(location)
+            hero_scene._aim(obj,center)
         if scene.world is None:scene.world=bpy.data.worlds.new('Wuying viewport world')
         scene.world.use_nodes=True
         node=scene.world.node_tree.nodes.get('Background')
@@ -223,6 +231,14 @@ def metadata(scene,products,points,warnings,operations):
         for name in ('size','size_y','shadow_soft_size','spot_size','spot_blend'):
             if hasattr(light,name):row[name]=float(getattr(light,name))
         if hasattr(light,'shape'):row['shape']=light.shape
+        if light.type=='AREA':
+            # Use the transformed emitter plane so rectangular softboxes keep their roll and scale.
+            basis=obj.matrix_world.to_3x3()
+            axis_x=basis@Vector((1,0,0))
+            axis_y=basis@Vector((0,1,0))
+            height=light.size_y if light.shape in {'RECTANGLE','ELLIPSE'} else light.size
+            row.update(axis_x=yup(axis_x.normalized()),axis_y=yup(axis_y.normalized()),
+                       width_world=light.size*axis_x.length,height_world=height*axis_y.length)
         lights.append(row)
     world={'color':[1,1,1],'strength':0,'has_environment_texture':False}
     if scene.world:
@@ -262,6 +278,7 @@ def export_glb(scene,products,target):
            for instance in graph.object_instances):
         raise ValueError('该模型包含尚未实化的几何实例，请先将实例转换为网格再打开实时视图。')
     count=0;triangles=0
+    object_names={};slot_names={};generated_spaces={}
     for obj in products:
         if not hero_scene._visible(obj,scene):continue
         if not getattr(obj,'visible_camera',True):continue
@@ -273,12 +290,23 @@ def export_glb(scene,products,target):
         triangles+=sum(max(0,len(poly.vertices)-2) for poly in mesh.polygons)
         if triangles>4000000:raise ValueError('模型超过 400 万面，建议先简化后打开实时视图。')
         clone=bpy.data.objects.new(obj.name+' · viewport',mesh);clone.matrix_world=evaluated.matrix_world.copy()
+        object_names[clone.name]=obj.name
+        slot_names[obj.name]={}
+        # Blender's Generated socket uses one texture space for the whole
+        # object, including meshes exported as several glTF primitives.
+        # Keep Blender local axes here; glTF local (x,y,z) is Blender (x,-z,y).
+        texture_space=evaluated.data if hasattr(evaluated.data,'texspace_location') else mesh
+        generated_spaces[obj.name]={'center':numbers(texture_space.texspace_location),
+                                    'half_size':numbers(texture_space.texspace_size)}
         # Object-linked material overrides are not stored in the mesh data.
         # Replacing slots in place preserves each face's material index.
         # Clearing all slots would collapse multi-material meshes to slot zero.
         for index,slot in enumerate(evaluated.material_slots):
             if index<len(mesh.materials):mesh.materials[index]=slot.material
             else:mesh.materials.append(slot.material)
+            if slot.material:
+                material=slot.material
+                slot_names[obj.name][material.name]=material.get('_studio_source_material') or material.get('wuying_source_material') or material.name
         export_scene.collection.objects.link(clone);count+=1
     if not count:raise ValueError('当前产品没有可导出的可见表面。')
     # glTF can traverse every scene by default, including a selected ground
@@ -301,7 +329,21 @@ def export_glb(scene,products,target):
     nodes=[node for node in gltf.get('nodes',[]) if 'mesh' in node]
     if len(nodes)!=count or {node.get('name') for node in nodes}!={obj.name for obj in export_scene.objects}:
         raise ValueError('导出的实时模型包含产品范围外的对象，未收录此结果。')
-    return {'objects':count,'triangles':triangles,'bytes':target.stat().st_size}
+    # glTF may split one Blender mesh into one primitive per material. Publish
+    # only slots that occur on exported faces, keeping the original Blender
+    # identity even when a prior local override copied or renamed the material.
+    hit_slots={}
+    for node in nodes:
+        name=object_names[node['name']]
+        bindings=hit_slots[name]={}
+        for primitive in gltf['meshes'][node['mesh']]['primitives']:
+            index=primitive.get('material')
+            if index is None:
+                bindings['']='Default material'
+            else:
+                exported=gltf['materials'][index]['name']
+                if exported in slot_names[name]:bindings[exported]=slot_names[name][exported]
+    return {'objects':count,'triangles':triangles,'bytes':target.stat().st_size},object_names,hit_slots,generated_spaces
 
 
 def run(path):
@@ -312,6 +354,10 @@ def run(path):
     out=confined(request['output_dir'],root,False)
     if not out.is_dir() or path.parent.resolve()!=out:raise ValueError('实时预览输出目录无效。')
     source,scene,products,resources=open_source(request,root)
+    plan=request['plan']
+    for override in plan.get('material_overrides',[])+plan.get('object_material_overrides',[]):
+        for texture_path in override.get('textures',{}).values():
+            confined(texture_path,root)
     points=hero_scene._world_vertices(products);operations=[];authorized=[]
     warnings=['实时光照、阴影与反射采用交互式近似，正式成图以 Blender 渲染为准。']
     if request.get('baseline_plan') is not None:
@@ -322,7 +368,8 @@ def run(path):
         warnings.append('当前实时画面从上传的模型准备，可在正式出图前旋转查看。')
     resources+=material_resources(products,root,warnings)
     manifest=metadata(scene,products,points,warnings,operations)
-    manifest['geometry']=export_glb(scene,products,out/'scene.glb')
+    (manifest['geometry'],manifest['object_names'],manifest['material_slots'],
+     manifest['generated_spaces'])=export_glb(scene,products,out/'scene.glb')
     if sha(source)!=request['source_sha256']:raise ValueError('导出过程中模型发生变化，请重试。')
     for row in resources:
         if sha(confined(root/row['path'],root))!=row['sha256']:raise ValueError('导出过程中贴图发生变化，请重试。')

@@ -11,7 +11,7 @@ const code=[between('const receivedTags=new WeakMap();','function toast('),betwe
 function harness(answers) {
   const c={calls:[],renders:{library:0,project:0,tasks:0},statusNames:{ready:'可开始拍摄'},deletedProjectIds:new Set(),libraryRequest:0,projectRequest:0,reviewRevision:0,
     polling:false,busy:false,planSavePromise:null,projectLoading:false,realismBusy:false,materialAgentSubmitting:false,dirty:false,styleFocusNotice:'',
-    current:null,allProjects:[],system:{available:true},serviceDisconnected:false,
+    current:null,allProjects:[],system:{available:true},serviceDisconnected:false,studioBackdropWrite:null,
     updateSystemStatus(){},renderActionState(){},resumeInstructionPreflight:async()=>{},scheduleThumbnails(){},materialBusy:false,automaticMaterialBusy(){return c.materialBusy;},
     api:async path=>({available:true,path}),
     Error,JSON,Number,Math,Object,WeakMap};
