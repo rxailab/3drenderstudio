@@ -883,7 +883,8 @@ function syncLightDirections() {
   const local=draft?.shot_adjustments?.[cameraShot]?.lighting || {},shared=draft?.lighting || {};
   for(const [id,key] of Object.entries(lightDirectionInputs)){
     $(id).value=Object.hasOwn(local,key)?local[key]:'';
-    $(id).placeholder=Number.isFinite(shared[key])?shared[key]+'°（项目默认）':'沿用原始布光';
+    $(id).placeholder=Number.isFinite(shared[key])?String(shared[key]):'默认';$(id).title=Number.isFinite(shared[key])?'留空沿用项目默认 '+shared[key]+'°':'留空沿用原始布光';
+    if(Number.isFinite(shared[key]))$(id).dataset.shared=shared[key];else delete $(id).dataset.shared;
   }
 }
 function stashLightDirections() {
@@ -901,7 +902,7 @@ function syncCamera() {
   setValue('azimuth',s.azimuth);setValue('elevation',s.elevation);setValue('focalLength',s.focal_length);setValue('detailTarget',s.target_object || '');
   setValue('cameraProjection',s.projection==='perspective'?'perspective':'orthographic');syncProjectionField();
   $('detailTarget').disabled = s.kind !== 'detail';
-  syncLightDirections();
+  syncLightDirections();window.anglePads?.sync();
 }
 function syncProjectionField() { const perspective=$('cameraProjection').value==='perspective';$('focalLengthField').hidden=!perspective;$('focalLength').disabled=!perspective; }
 function stashCamera() { const s = shots().find(s => s.id === cameraShot); if (!s) return; Object.assign(s,{azimuth:readNumber('azimuth'),elevation:readNumber('elevation'),focal_length:readNumber('focalLength'),projection:$('cameraProjection').value==='perspective'?'perspective':'orthographic'});if ($('detailTarget').value) s.target_object = $('detailTarget').value;else delete s.target_object;stashLightDirections(); }
@@ -2871,8 +2872,6 @@ function installEvents() {
     syncCamera();renderViewer();renderShots();renderInspection();renderActionState();
   };
   $('cameraShot').onchange=()=>showShot($('cameraShot').value);
-  document.querySelectorAll('[data-tab]').forEach(b=>{b.tabIndex=b.getAttribute('aria-selected')==='true'?0:-1;b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>{x.setAttribute('aria-selected',x===b);x.tabIndex=x===b?0:-1;});for(const key of ['materials','camera','structure'])$(key+'Tab').hidden=key!==b.dataset.tab;};});
-  for(const selector of ['.settings-tabs']){const list=document.querySelector(selector);if(!list)continue;list.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...list.querySelectorAll('[role=tab]')].filter(tab=>!tab.hidden),index=tabs.indexOf(event.target);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[next].click();tabs[next].focus();});}
   $('shotList').onclick=e=>{const button=e.target.closest('[data-shot]');if(button)showShot(button.dataset.shot);};
   $('shotList').onchange=e=>{if(e.target.dataset.selectShot){if(e.target.checked)selectedShots.add(e.target.dataset.selectShot);else selectedShots.delete(e.target.dataset.selectShot);renderProject();}};
   $('selectAllShots').onchange=()=>{selectedShots=$('selectAllShots').checked?new Set(shots().map(s=>s.id)):new Set();renderProject();};
