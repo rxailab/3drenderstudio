@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <title>物影 Studio · 产品摄影工作台</title>
 <link rel="preload" href="/static/vendor/fonts/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css?v=47">
+<link rel="stylesheet" href="/static/styles.css?v=48">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -453,14 +453,91 @@
 </label>
 <input id="exposure" type="range" min="-4" max="4" step="0.1" value="0">
 </div>
-<details class="advanced-plan">
-<summary>高级参数</summary>
-<div class="settings-tabs" role="tablist" aria-label="详细设置">
-<button type="button" role="tab" aria-selected="true" data-tab="materials">全局材质</button>
-<button type="button" role="tab" aria-selected="false" data-tab="camera">镜头与灯光</button>
-<button type="button" role="tab" aria-selected="false" data-tab="structure">模型姿态</button>
+<div class="shot-scope">
+<label for="cameraShot">镜头与灯光作用于</label>
+<select id="cameraShot">
+</select>
 </div>
-<div id="materialsTab" class="tab-content">
+<details id="cameraSection" class="plan-section" open>
+<summary><span>镜头角度</span><span id="cameraSummary" class="section-value"></span></summary>
+<div id="cameraTab" class="section-body">
+<div class="orbit-pads">
+<figure class="pad">
+<svg id="orbitTop" class="pad-svg" viewBox="-60 -60 120 120" role="slider" tabindex="0" aria-label="水平角：拖动相机绕产品旋转" aria-valuemin="-180" aria-valuemax="180"></svg>
+<figcaption><span>水平角</span><span class="unit-input"><input id="azimuth" type="number" min="-360" max="360" value="35" step="any" aria-label="水平角（度）"><i>°</i></span></figcaption>
+</figure>
+<figure class="pad">
+<svg id="orbitSide" class="pad-svg" viewBox="-60 -60 120 120" role="slider" tabindex="0" aria-label="俯仰角：拖动相机升高或降低" aria-valuemin="-80" aria-valuemax="90"></svg>
+<figcaption><span>俯仰角</span><span class="unit-input"><input id="elevation" type="number" min="-80" max="90" value="18" step="any" aria-label="俯仰角（度）"><i>°</i></span></figcaption>
+</figure>
+</div>
+<div id="cameraPresets" class="chip-row" role="group" aria-label="常用机位">
+<button type="button" data-view="0,10">正面</button>
+<button type="button" data-view="-35,18">左前</button>
+<button type="button" data-view="35,18">右前</button>
+<button type="button" data-view="90,10">侧面</button>
+<button type="button" data-view="180,10">背面</button>
+<button type="button" data-view="35,60">俯视</button>
+</div>
+<div class="prop-line">
+<span class="prop-name">投影</span>
+<div id="projectionToggle" class="segmented compact" role="group" aria-label="投影方式">
+<button type="button" data-projection="orthographic" title="无近大远小，适合尺寸准确的电商主图">正交</button>
+<button type="button" data-projection="perspective" title="有近大远小，更接近真实相机">透视</button>
+</div>
+<select id="cameraProjection" hidden aria-hidden="true" tabindex="-1"><option value="orthographic">正交 · 无近大远小</option><option value="perspective">透视</option></select>
+</div>
+<div id="focalLengthField" class="range-field" hidden>
+<label for="focalLength">焦距 <output id="focalLengthValue">70 mm</output></label>
+<input id="focalLength" type="range" min="20" max="200" value="70" step="any">
+<div class="range-ends"><span>广角</span><span>长焦</span></div>
+</div>
+<label class="field-label" for="detailTarget">细节目标部件</label>
+<select id="detailTarget">
+</select>
+<p class="field-help">完整图容纳整个模型；细节镜头围绕目标部件构图。</p>
+</div>
+</details>
+<details id="lightSection" class="plan-section">
+<summary><span>灯光方向</span><span id="lightSummary" class="section-value"></span></summary>
+<div class="section-body light-direction-settings">
+<div class="light-stage">
+<figure class="pad light-pad">
+<svg id="lightPad" class="pad-svg" viewBox="-70 -70 140 140" aria-label="灯位图：从正上方俯视，圆心是产品正上方，外圈是地平线"></svg>
+</figure>
+<figure class="light-ball">
+<canvas id="lightBall" width="144" height="144" aria-hidden="true"></canvas>
+<figcaption>镜头所见明暗</figcaption>
+</figure>
+</div>
+<div id="lightLooks" class="chip-row" role="group" aria-label="常用布光">
+<button type="button" data-look="">默认</button>
+<button type="button" data-look="three">三点布光</button>
+<button type="button" data-look="side">侧光</button>
+<button type="button" data-look="top">顶光</button>
+<button type="button" data-look="back">逆光</button>
+</div>
+<p class="field-help">拖动圆点移动灯位：越靠近圆心灯越高，下方是相机一侧。虚线圆点表示沿用默认布光。</p>
+<div class="light-rows">
+<div class="light-row light-row-head" aria-hidden="true"><span></span><span></span><span>方位</span><span>高度</span><span></span></div>
+<div class="light-row" data-light="key"><span class="light-dot" aria-hidden="true">主</span><span class="light-name">主光</span>
+<span class="unit-input"><input id="keyAzimuth" data-light-direction="key_azimuth" type="number" min="-180" max="180" step="any" placeholder="默认" aria-label="主光方位角（度）"><i>°</i></span>
+<span class="unit-input"><input id="keyElevation" data-light-direction="key_elevation" type="number" min="0" max="85" step="any" placeholder="默认" aria-label="主光俯仰角（度）"><i>°</i></span>
+<button type="button" class="icon-button light-reset" data-light-reset="key" aria-label="主光恢复默认" title="恢复默认">↺</button></div>
+<div class="light-row" data-light="fill"><span class="light-dot" aria-hidden="true">补</span><span class="light-name">补光</span>
+<span class="unit-input"><input id="fillAzimuth" data-light-direction="fill_azimuth" type="number" min="-180" max="180" step="any" placeholder="默认" aria-label="补光方位角（度）"><i>°</i></span>
+<span class="unit-input"><input id="fillElevation" data-light-direction="fill_elevation" type="number" min="0" max="85" step="any" placeholder="默认" aria-label="补光俯仰角（度）"><i>°</i></span>
+<button type="button" class="icon-button light-reset" data-light-reset="fill" aria-label="补光恢复默认" title="恢复默认">↺</button></div>
+<div class="light-row" data-light="rim"><span class="light-dot" aria-hidden="true">轮</span><span class="light-name">轮廓光</span>
+<span class="unit-input"><input id="rimAzimuth" data-light-direction="rim_azimuth" type="number" min="-180" max="180" step="any" placeholder="默认" aria-label="轮廓光方位角（度）"><i>°</i></span>
+<span class="unit-input"><input id="rimElevation" data-light-direction="rim_elevation" type="number" min="0" max="85" step="any" placeholder="默认" aria-label="轮廓光俯仰角（度）"><i>°</i></span>
+<button type="button" class="icon-button light-reset" data-light-reset="rim" aria-label="轮廓光恢复默认" title="恢复默认">↺</button></div>
+</div>
+</div>
+</details>
+<details id="materialSection" class="plan-section">
+<summary><span>全局材质</span></summary>
+<div id="materialsTab" class="section-body">
 <label class="field-label" for="materialSlot">全局材质槽</label>
 <p class="field-help">影响使用该材质槽的全部部件；局部修改请点选部件。</p>
 <select id="materialSlot">
@@ -509,44 +586,10 @@
 <button id="importMaterial" type="button" class="button secondary">导入并记录许可</button>
 </details>
 </div>
-<div id="cameraTab" class="tab-content" hidden>
-<label class="field-label" for="cameraShot">调整镜头</label>
-<select id="cameraShot">
-</select>
-<div class="two-fields">
-<label>水平角 °<input id="azimuth" type="number" min="-360" max="360" value="35" step="any">
-</label>
-<label>俯仰角 °<input id="elevation" type="number" min="-80" max="90" value="18" step="any">
-</label>
-</div>
-<label class="field-label" for="cameraProjection">投影方式</label>
-<select id="cameraProjection"><option value="orthographic">正交 · 无近大远小</option><option value="perspective">透视</option></select>
-<div id="focalLengthField" hidden>
-<label class="field-label" for="focalLength">焦距 (mm)</label>
-<input id="focalLength" type="number" min="20" max="200" value="70" step="any">
-</div>
-<label class="field-label" for="detailTarget">细节目标部件</label>
-<select id="detailTarget">
-</select>
-<p class="field-help">完整图会容纳整个模型；细节镜头围绕目标部件构图。改变比例后重新计算取景。</p>
-<details class="light-direction-settings">
-<summary>当前镜头的灯光方向</summary>
-<p class="field-help">方位角相对镜头：0° 为正面，±90° 为侧面，180° 为背面。俯仰角越大，灯位越高。留空沿用项目或原始布光。</p>
-<div class="two-fields">
-<label>主光方位角 °<input id="keyAzimuth" data-light-direction="key_azimuth" type="number" min="-180" max="180" step="any" placeholder="沿用原始布光"></label>
-<label>主光俯仰角 °<input id="keyElevation" data-light-direction="key_elevation" type="number" min="0" max="85" step="any" placeholder="沿用原始布光"></label>
-</div>
-<div class="two-fields">
-<label>补光方位角 °<input id="fillAzimuth" data-light-direction="fill_azimuth" type="number" min="-180" max="180" step="any" placeholder="沿用原始布光"></label>
-<label>补光俯仰角 °<input id="fillElevation" data-light-direction="fill_elevation" type="number" min="0" max="85" step="any" placeholder="沿用原始布光"></label>
-</div>
-<div class="two-fields">
-<label>轮廓光方位角 °<input id="rimAzimuth" data-light-direction="rim_azimuth" type="number" min="-180" max="180" step="any" placeholder="沿用原始布光"></label>
-<label>轮廓光俯仰角 °<input id="rimElevation" data-light-direction="rim_elevation" type="number" min="0" max="85" step="any" placeholder="沿用原始布光"></label>
-</div>
 </details>
-</div>
-<div id="structureTab" class="tab-content" hidden>
+<details id="structureSection" class="plan-section">
+<summary><span>模型姿态</span></summary>
+<div id="structureTab" class="section-body">
 <label class="field-label">整体方向（角度）</label>
 <div class="three-fields">
 <label>X<input id="rotateX" type="number" min="-360" max="360" value="0" step="any">
@@ -594,7 +637,7 @@
 <button id="savePlan" type="submit" class="button secondary" disabled>保存参数</button>
 <button id="discardPlan" type="button" class="text-button" disabled>放弃调整</button>
 </div>
-<details class="quality-settings">
+<details class="quality-settings plan-section">
 <summary>出图质量</summary>
 <label class="field-label" for="quality">正式渲染档位</label>
 <select id="quality">
@@ -915,7 +958,8 @@
 <script type="module" src="/static/viewport.js?v=23"></script>
 <script src="/static/material-labels-zh.js" defer></script>
 <script src="/static/material-browser.js?v=5" defer></script>
-<script src="/static/app.js?v=45" defer>
+<script src="/static/angle-pads.js?v=1" defer></script>
+<script src="/static/app.js?v=46" defer>
 </script>
 <script src="/static/listing.js?v=48" defer></script>
 </body>
